@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Environment
+.env
+.env.*.local
+apps/api/.env
+
+# Laravel
+apps/api/storage/*.key
+apps/api/public/storage
+apps/api/.phpunit.cache
+
+# Expo / React Native prebuild artifacts (managed workflow regenerates these)
+.expo/
+apps/mobile/ios/
+apps/mobile/android/
+
+# Build output
+dist/
+
+# Logs
+*.log
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+!.vscode/extensions.json

@@ -1,0 +1,8 @@
+{
+  "name": "reelmap",
+  "private": true,
+  "workspaces": [
+    "apps/mobile",
+    "packages/contracts"
+  ]
+}
