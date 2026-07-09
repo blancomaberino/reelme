@@ -11,6 +11,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property Platform $platform
+ * @property string $external_id
+ * @property string $url
+ * @property string|null $caption
+ * @property PostPrivacy $privacy
+ * @property FetchStatus $fetch_status
+ */
 class SourcePost extends Model
 {
     /** @use HasFactory<SourcePostFactory> */
