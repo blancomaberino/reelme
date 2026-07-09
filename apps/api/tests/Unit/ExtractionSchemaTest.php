@@ -6,18 +6,20 @@ use Tests\TestCase;
 // Needs the framework (config/base_path); Unit tests are otherwise framework-free.
 uses(TestCase::class);
 
-function loadExample(string $file): object
+function loadExample(string $file, bool $assoc = false): object|array
 {
     $path = config('contracts.examples_path')."/{$file}";
     $raw = file_get_contents($path);
 
     expect($raw)->not->toBeFalse("fixture missing: {$path}");
 
-    return json_decode($raw, false, flags: JSON_THROW_ON_ERROR);
+    return json_decode($raw, $assoc, flags: JSON_THROW_ON_ERROR);
 }
 
 it('resolves the canonical schema file', function () {
-    expect(ExtractionSchema::path())->toEndWith('packages/contracts/extraction.schema.json')
+    // Path may be the monorepo default or an env override (container/deploy);
+    // what matters is it points at the extraction schema and the file exists.
+    expect(ExtractionSchema::path())->toEndWith('extraction.schema.json')
         ->and(file_exists(ExtractionSchema::path()))->toBeTrue();
 });
 
@@ -40,10 +42,7 @@ it('rejects the shared invalid fixture', function () {
 });
 
 it('accepts an array payload by normalizing it to an object', function () {
-    $payload = json_decode(
-        file_get_contents(config('contracts.examples_path').'/valid-extraction.json'),
-        true,
-    );
+    $payload = loadExample('valid-extraction.json', assoc: true);
 
     expect(ExtractionSchema::validate($payload)->isValid())->toBeTrue();
 });

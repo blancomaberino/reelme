@@ -17,15 +17,13 @@ const SCHEMA = join(ROOT, 'extraction.schema.json');
 // without clobbering the committed types.
 const OUT = process.env.CONTRACTS_OUT ?? join(ROOT, 'src', 'generated', 'extraction.ts');
 
-const BANNER = [
-  '/**',
-  ' * GENERATED — do not edit; run `npm run generate` in packages/contracts.',
-  ' * Source of truth: packages/contracts/extraction.schema.json',
-  ' */',
-  '',
-].join('\n');
+const BANNER = `/**
+ * GENERATED — do not edit; run \`npm run generate\` in packages/contracts.
+ * Source of truth: packages/contracts/extraction.schema.json
+ */
+`;
 
-export async function generate(): Promise<string> {
+async function generate(): Promise<string> {
   const body = await compileFromFile(SCHEMA, {
     additionalProperties: false,
     bannerComment: '',

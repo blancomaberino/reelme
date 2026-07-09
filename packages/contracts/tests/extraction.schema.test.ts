@@ -16,24 +16,21 @@ const schema = readJson('extraction.schema.json') as object;
 const validExample = readJson('examples/valid-extraction.json');
 const invalidExample = readJson('examples/invalid-extraction.json');
 
-function buildValidator() {
-  // draft-07 is Ajv's default mode (NOT Ajv2020). Formats enabled on both
-  // sides (see the PHP round-trip test) so `website: format uri` behaves the same.
-  const ajv = new Ajv({ allErrors: true, strict: false });
-  addFormats(ajv);
-  return ajv.compile(schema);
-}
+// Compiled once — the schema is static. draft-07 is Ajv's default mode (NOT
+// Ajv2020). Formats enabled on both sides (see the PHP round-trip test) so
+// `website: format uri` behaves the same.
+const ajv = new Ajv({ allErrors: true, strict: false });
+addFormats(ajv);
+const validate = ajv.compile(schema);
 
 describe('extraction.schema.json (draft-07)', () => {
   it('accepts the canonical valid fixture', () => {
-    const validate = buildValidator();
     const ok = validate(validExample);
     expect(validate.errors).toBeNull();
     expect(ok).toBe(true);
   });
 
   it('rejects the invalid fixture with the expected error paths', () => {
-    const validate = buildValidator();
     const ok = validate(invalidExample);
     expect(ok).toBe(false);
 

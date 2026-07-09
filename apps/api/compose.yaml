@@ -17,12 +17,16 @@ services:
             XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
             XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
             IGNITION_LOCAL_SITES_PATH: '${PWD}'
+            # The monorepo contracts live outside apps/api; point the app at the
+            # read-only mount below explicitly rather than relying on base_path()
+            # path arithmetic. (On host/CI the config default resolves ../../packages.)
+            CONTRACTS_EXTRACTION_SCHEMA_PATH: /srv/contracts/extraction.schema.json
+            CONTRACTS_EXAMPLES_PATH: /srv/contracts/examples
         volumes:
             - '.:/var/www/html'
-            # Monorepo contracts (packages/contracts) live outside apps/api. Mount
-            # them read-only where base_path('../../packages/...') resolves in the
-            # container: /var/www/html/../../packages == /var/packages.
-            - '../../packages:/var/packages:ro'
+            # Monorepo contracts package, mounted read-only at a self-documenting
+            # path; the CONTRACTS_* env vars above point the app here.
+            - '../../packages/contracts:/srv/contracts:ro'
         networks:
             - sail
         depends_on:
