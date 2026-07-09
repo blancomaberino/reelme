@@ -42,8 +42,11 @@ Route::prefix('v1')->group(function () {
     });
 });
 
-// Signed local-dev media upload target (see MediaUrlService). Not a versioned
-// API endpoint; guarded to local-driver disks. R2 uses native presigned uploads.
-Route::put('/media/upload', MediaUploadController::class)
-    ->middleware('signed')
-    ->name('media.upload');
+// Signed local-dev media upload target (see MediaUrlService). Registered only
+// outside production — R2 uses native presigned uploads, so this route is never
+// legitimately signed in prod. Not a versioned API endpoint.
+if (! app()->isProduction()) {
+    Route::put('/media/upload', MediaUploadController::class)
+        ->middleware('signed')
+        ->name('media.upload');
+}

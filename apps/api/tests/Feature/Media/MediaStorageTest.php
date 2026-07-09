@@ -4,6 +4,7 @@ use App\Services\Media\MediaPaths;
 use App\Services\Media\MediaUrlService;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 // --- Config ---
 
@@ -77,7 +78,7 @@ it('stores a file via the signed local upload route', function () {
 
     $signed = app(MediaUrlService::class)->temporaryUploadUrl('media/shr_1/original/clip.mp4', 'local_media');
 
-    $this->call('PUT', $signed['url'], content: 'video-bytes')->assertOk();
+    $this->call('PUT', $signed['url'], content: 'video-bytes')->assertNoContent();
 
     Storage::disk('local_media')->assertExists('media/shr_1/original/clip.mp4');
 });
@@ -85,4 +86,24 @@ it('stores a file via the signed local upload route', function () {
 it('rejects the local upload route without a valid signature', function () {
     $this->put('/api/media/upload?disk=local_media&path=media/x/y.mp4')
         ->assertForbidden();
+});
+
+it('rejects a signed upload targeting a non-media disk (e.g. public)', function () {
+    // Even a validly-signed URL may only target the configured media disks —
+    // never the web-served `public` disk.
+    $url = URL::temporarySignedRoute('media.upload', now()->addMinutes(5), [
+        'disk' => 'public',
+        'path' => 'evil.html',
+    ]);
+
+    $this->call('PUT', $url, content: '<script>')->assertNotFound();
+});
+
+it('rejects a signed upload with a traversal path', function () {
+    $url = URL::temporarySignedRoute('media.upload', now()->addMinutes(5), [
+        'disk' => 'local_media',
+        'path' => '../../secret',
+    ]);
+
+    $this->call('PUT', $url, content: 'x')->assertStatus(422);
 });

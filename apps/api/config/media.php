@@ -22,15 +22,13 @@ return [
     'put_url_ttl' => (int) env('MEDIA_PUT_URL_TTL', 15),
 
     /*
-    |--------------------------------------------------------------------------
-    | Path conventions (see App\Services\Media\MediaPaths — T-017 relies on these)
-    |--------------------------------------------------------------------------
-    | originals disk : media/{share_id}/original/{sha256}.{ext}
-    | media disk     : media/{share_id}/frames/frame_{index}_{ms}.jpg
-    |                  media/{share_id}/thumb.jpg
-    |                  media/{share_id}/audio.wav
-    |
-    | Originals and derived live under distinct DISKS/roots so the M5 deletion
-    | job (T-050) and the R2 lifecycle rule can key off the `originals` prefix.
+    | Max bytes accepted by the signed local-dev upload route (Content-Length cap).
+    | Production uses native presigned R2 uploads, not this route.
     */
+    'max_upload_bytes' => (int) env('MEDIA_MAX_UPLOAD_BYTES', 1024 * 1024 * 1024),
+
+    // Path conventions are defined in App\Services\Media\MediaPaths (T-017 relies
+    // on them) and documented in docs/media-retention.md. Originals vs derived
+    // live on distinct disks/roots so the M5 deletion job + R2 lifecycle rule can
+    // key off the `originals` prefix.
 ];
