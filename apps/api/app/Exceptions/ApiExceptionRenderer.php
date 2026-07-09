@@ -31,6 +31,10 @@ class ApiExceptionRenderer
 
         [$status, $code, $message, $details] = self::map($e);
 
+        // Preserve headers the exception carries (e.g. Retry-After and
+        // X-RateLimit-* on a 429 throttle response).
+        $headers = $e instanceof HttpExceptionInterface ? $e->getHeaders() : [];
+
         return response()->json([
             'error' => [
                 'code' => $code,
@@ -38,7 +42,7 @@ class ApiExceptionRenderer
                 'details' => (object) $details,
                 'request_id' => self::requestId($request),
             ],
-        ], $status);
+        ], $status, $headers);
     }
 
     /**

@@ -1,6 +1,13 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Auth\LoginController;
+use App\Http\Controllers\Api\V1\Auth\LogoutController;
+use App\Http\Controllers\Api\V1\Auth\PasswordResetController;
+use App\Http\Controllers\Api\V1\Auth\RefreshController;
+use App\Http\Controllers\Api\V1\Auth\RegisterController;
+use App\Http\Controllers\Api\V1\Auth\SocialController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\MeController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -14,4 +21,22 @@ use Illuminate\Support\Facades\Route;
 */
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthController::class);
+
+    // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
+    Route::prefix('auth')->middleware('throttle:auth')->group(function () {
+        Route::post('/register', RegisterController::class);
+        Route::post('/login', LoginController::class);
+        Route::post('/social', SocialController::class);
+        Route::post('/forgot-password', [PasswordResetController::class, 'forgot']);
+        Route::post('/reset-password', [PasswordResetController::class, 'reset']);
+
+        Route::middleware('auth:sanctum')->group(function () {
+            Route::post('/logout', LogoutController::class);
+            Route::post('/refresh', RefreshController::class);
+        });
+    });
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/me', [MeController::class, 'show']);
+    });
 });

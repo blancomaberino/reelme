@@ -1,12 +1,16 @@
 <?php
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /*
 |--------------------------------------------------------------------------
 | Test Case
 |--------------------------------------------------------------------------
-| Feature tests boot the full application via Tests\TestCase. Unit tests stay
-| framework-free (plain assertions) for speed.
+| Feature tests boot the full application (Tests\TestCase) and run against a
+| migrated Postgres database (RefreshDatabase) so citext/PostGIS behave as in
+| production. Unit tests stay framework-free for speed.
 */
-pest()->extend(TestCase::class)->in('Feature');
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class)
+    ->in('Feature');
