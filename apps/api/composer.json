@@ -12,6 +12,7 @@
         "laravel/horizon": "^5.47",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.35",
         "opis/json-schema": "^2.6"
     },
     "require-dev": {
