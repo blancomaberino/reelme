@@ -64,7 +64,7 @@ Jobs run on Redis queues supervised by [Horizon](https://laravel.com/docs/horizo
 ./vendor/bin/sail artisan horizon:terminate # graceful stop (deploys call this)
 ```
 
-- Dashboard: **`/horizon`** — gated to `is_admin` users in **every** environment (not just local).
+- Dashboard: **`/horizon`** — gated to `is_admin` users in all **non-local** environments (staging/production); Horizon leaves it open in `local` by default (dev only, tunnel-blocked by Sentinel). Guests and non-admins get 403.
 - Production runs Horizon as a Forge daemon, restarted on each deploy via `horizon:terminate` (01-architecture §7). The scheduler runs `horizon:snapshot` every 5 min for metrics.
 - `retry_after` (960s) is deliberately greater than the longest supervisor timeout (media = 900s) so long jobs are never re-delivered mid-flight.
 

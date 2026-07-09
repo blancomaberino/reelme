@@ -27,8 +27,10 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
      */
     protected function gate(): void
     {
-        // Admins only, in EVERY environment (never the local-open default in
-        // staging/production). `users.is_admin` lands in T-003.
+        // Admins only in all non-local environments (staging/production). Horizon
+        // leaves the dashboard open in `local` by its own default (accepted for
+        // dev; Sentinel blocks public/tunnel exposure there). `users.is_admin`
+        // lands in T-003; guests (null user) are denied.
         Gate::define('viewHorizon', fn (?User $user = null) => (bool) $user?->is_admin);
     }
 }
