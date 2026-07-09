@@ -14,6 +14,11 @@ class AdminUserSeeder extends Seeder
 {
     public function run(): void
     {
+        // Defense-in-depth: never create a known-password admin in production.
+        if (app()->environment('production')) {
+            return;
+        }
+
         User::updateOrCreate(
             ['email' => 'admin@reelmap.test'],
             [

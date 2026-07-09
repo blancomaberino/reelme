@@ -24,6 +24,13 @@ it('allows admins into the admin panel', function () {
     $this->get('/admin')->assertOk();
 });
 
+it('blocks non-admins from the Users resource directly (not just /admin)', function () {
+    $this->actingAs(User::factory()->create());
+
+    // Hardens against panel-middleware regression: the resource page itself is denied.
+    $this->get('/admin/users')->assertForbidden();
+});
+
 // --- Users resource ---
 
 it('lists users and searches by username', function () {
