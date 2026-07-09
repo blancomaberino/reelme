@@ -4,7 +4,6 @@ use App\Enums\MediaKind;
 use App\Support\Database\Constraints;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -35,7 +34,7 @@ return new class extends Migration
             $table->index('sha256');
         });
 
-        DB::statement(Constraints::enumCheck('media_assets', 'kind', MediaKind::cases()));
+        Constraints::enumCheck('media_assets', 'kind', MediaKind::class);
     }
 
     public function down(): void

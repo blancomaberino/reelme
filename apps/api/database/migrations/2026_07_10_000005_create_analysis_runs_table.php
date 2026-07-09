@@ -37,8 +37,13 @@ return new class extends Migration
             $table->index('finished_at');
         });
 
-        DB::statement(Constraints::enumCheck('analysis_runs', 'engine', AnalysisEngine::cases()));
-        DB::statement(Constraints::enumCheck('analysis_runs', 'status', AnalysisStatus::cases()));
+        Constraints::enumCheck('analysis_runs', 'engine', AnalysisEngine::class);
+        Constraints::enumCheck('analysis_runs', 'status', AnalysisStatus::class);
+
+        // Numeric integrity for pipeline trust: confidence is a 0–1 probability,
+        // cost is never negative.
+        DB::statement('ALTER TABLE analysis_runs ADD CONSTRAINT analysis_runs_confidence_range_check CHECK (overall_confidence IS NULL OR (overall_confidence >= 0 AND overall_confidence <= 1))');
+        DB::statement('ALTER TABLE analysis_runs ADD CONSTRAINT analysis_runs_cost_nonneg_check CHECK (cost_usd IS NULL OR cost_usd >= 0)');
     }
 
     public function down(): void

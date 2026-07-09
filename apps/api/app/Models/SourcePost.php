@@ -16,7 +16,11 @@ class SourcePost extends Model
     /** @use HasFactory<SourcePostFactory> */
     use HasFactory;
 
-    protected $guarded = ['id'];
+    // Populated by trusted source adapters (T-012+), not user request input.
+    protected $fillable = [
+        'platform', 'external_id', 'url', 'influencer_id', 'caption',
+        'posted_at', 'privacy', 'oembed_json', 'fetch_status', 'fetched_at',
+    ];
 
     /**
      * @return array<string, string>

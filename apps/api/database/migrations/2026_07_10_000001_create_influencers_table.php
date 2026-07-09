@@ -15,10 +15,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Defensive: T-003 enables these, but keep this migration order-safe.
-        DB::statement('CREATE EXTENSION IF NOT EXISTS postgis');
-        DB::statement('CREATE EXTENSION IF NOT EXISTS pg_trgm');
-        DB::statement('CREATE EXTENSION IF NOT EXISTS unaccent');
+        // citext is enabled by the 0000_ extensions migration (guaranteed to run
+        // first); re-assert only the one this migration's ALTER depends on.
         DB::statement('CREATE EXTENSION IF NOT EXISTS citext');
 
         Schema::create('influencers', function (Blueprint $table) {
@@ -39,7 +37,7 @@ return new class extends Migration
 
         DB::statement('ALTER TABLE influencers ALTER COLUMN handle TYPE citext');
         DB::statement('ALTER TABLE influencers ADD CONSTRAINT influencers_platform_handle_unique UNIQUE (platform, handle)');
-        DB::statement(Constraints::enumCheck('influencers', 'platform', Platform::cases()));
+        Constraints::enumCheck('influencers', 'platform', Platform::class);
     }
 
     public function down(): void

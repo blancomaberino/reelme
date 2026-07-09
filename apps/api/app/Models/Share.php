@@ -14,7 +14,10 @@ class Share extends Model
     /** @use HasFactory<ShareFactory> */
     use HasFactory;
 
-    protected $guarded = ['id'];
+    // Only what a sharer legitimately supplies. `user_id` comes from auth,
+    // `status`/`failure_reason`/`published_at` are driven by the pipeline state
+    // machine — never mass-assigned. (Factories bypass this via Model::unguarded.)
+    protected $fillable = ['source_post_id', 'shared_via'];
 
     /**
      * @return array<string, string>

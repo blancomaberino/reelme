@@ -125,3 +125,52 @@ it('rejects an invalid platform enum via the CHECK constraint', function () {
         'updated_at' => now(),
     ]);
 })->throws(QueryException::class);
+
+it('enforces case-insensitive uniqueness on influencer handle (citext)', function () {
+    Influencer::factory()->create(['platform' => Platform::Instagram, 'handle' => 'FoodieFin']);
+
+    // Same platform, only case differs — citext collides.
+    Influencer::factory()->create(['platform' => Platform::Instagram, 'handle' => 'foodiefin']);
+})->throws(QueryException::class);
+
+it('rejects a duplicate (sha256, source_post_id) media asset', function () {
+    $post = SourcePost::factory()->create();
+    $sha = hash('sha256', 'same-bytes');
+
+    MediaAsset::factory()->create(['source_post_id' => $post->id, 'sha256' => $sha]);
+    MediaAsset::factory()->create(['source_post_id' => $post->id, 'sha256' => $sha]);
+})->throws(QueryException::class);
+
+it('rejects an out-of-range analysis confidence via CHECK', function () {
+    $share = Share::factory()->create();
+
+    DB::table('analysis_runs')->insert([
+        'share_id' => $share->id,
+        'engine' => 'local',
+        'model' => 'x',
+        'status' => 'succeeded',
+        'overall_confidence' => 1.5, // > 1.0
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+})->throws(QueryException::class);
+
+// --- Mass-assignment protection (system fields are not fillable) ---
+
+it('does not mass-assign system-controlled fields', function () {
+    $share = new Share;
+
+    expect($share->isFillable('source_post_id'))->toBeTrue()
+        ->and($share->isFillable('shared_via'))->toBeTrue()
+        ->and($share->isFillable('status'))->toBeFalse()
+        ->and($share->isFillable('user_id'))->toBeFalse();
+
+    // A controller that (wrongly) forwards raw input can't escalate:
+    $share->fill(['source_post_id' => 1, 'status' => 'published', 'user_id' => 999]);
+    expect($share->status)->toBeNull()
+        ->and($share->user_id)->toBeNull();
+
+    expect((new Influencer)->isFillable('claimed_by_user_id'))->toBeFalse()
+        ->and((new AnalysisRun)->isFillable('result_json'))->toBeTrue() // pipeline-written, but never from a request
+        ->and((new Share)->isFillable('id'))->toBeFalse();
+});

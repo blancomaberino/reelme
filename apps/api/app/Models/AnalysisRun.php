@@ -14,7 +14,13 @@ class AnalysisRun extends Model
     /** @use HasFactory<AnalysisRunFactory> */
     use HasFactory;
 
-    protected $guarded = ['id'];
+    // Written only by the analysis pipeline (ModelRouter/jobs, T-019+), never
+    // from user request input — `result_json`/`cost_usd` are trust-sensitive.
+    protected $fillable = [
+        'share_id', 'engine', 'model', 'status', 'started_at', 'finished_at',
+        'input_tokens', 'output_tokens', 'cost_usd', 'overall_confidence',
+        'result_json', 'error',
+    ];
 
     /**
      * @return array<string, string>

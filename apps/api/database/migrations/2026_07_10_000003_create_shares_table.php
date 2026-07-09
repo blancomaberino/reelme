@@ -4,7 +4,6 @@ use App\Enums\ShareStatus;
 use App\Support\Database\Constraints;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -31,7 +30,7 @@ return new class extends Migration
             $table->index('source_post_id');
         });
 
-        DB::statement(Constraints::enumCheck('shares', 'status', ShareStatus::cases()));
+        Constraints::enumCheck('shares', 'status', ShareStatus::class);
     }
 
     public function down(): void

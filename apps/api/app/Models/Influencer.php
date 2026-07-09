@@ -14,7 +14,13 @@ class Influencer extends Model
     /** @use HasFactory<InfluencerFactory> */
     use HasFactory;
 
-    protected $guarded = ['id'];
+    // Identity/profile fields set by the ingest pipeline. `claimed_by_user_id`
+    // and `claimed_at` are granted only by the verified claim flow (T-038),
+    // never mass-assigned.
+    protected $fillable = [
+        'platform', 'handle', 'display_name', 'avatar_url',
+        'follower_count_cached', 'follower_count_synced_at',
+    ];
 
     /**
      * @return array<string, string>

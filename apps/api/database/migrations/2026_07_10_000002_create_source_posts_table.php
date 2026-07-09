@@ -6,7 +6,6 @@ use App\Enums\PostPrivacy;
 use App\Support\Database\Constraints;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -36,9 +35,9 @@ return new class extends Migration
             $table->index('fetch_status');
         });
 
-        DB::statement(Constraints::enumCheck('source_posts', 'platform', Platform::cases()));
-        DB::statement(Constraints::enumCheck('source_posts', 'privacy', PostPrivacy::cases()));
-        DB::statement(Constraints::enumCheck('source_posts', 'fetch_status', FetchStatus::cases()));
+        Constraints::enumCheck('source_posts', 'platform', Platform::class);
+        Constraints::enumCheck('source_posts', 'privacy', PostPrivacy::class);
+        Constraints::enumCheck('source_posts', 'fetch_status', FetchStatus::class);
     }
 
     public function down(): void
