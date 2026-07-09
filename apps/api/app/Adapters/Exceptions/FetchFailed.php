@@ -10,7 +10,7 @@ use Throwable;
  * to the next adapter in the chain. Carries an optional Retry-After (seconds)
  * for 429/rate-limit responses.
  */
-class FetchFailed extends RuntimeException
+class FetchFailed extends RuntimeException implements AdapterFailure
 {
     public function __construct(
         string $message = 'Fetch failed.',

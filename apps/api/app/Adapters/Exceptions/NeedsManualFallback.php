@@ -11,7 +11,7 @@ use Throwable;
  * `review_reason: fetch_failed`, prompting the app for a caption + screen
  * recording. ManualUploadAdapter throws this when no manual payload exists yet.
  */
-class NeedsManualFallback extends RuntimeException
+class NeedsManualFallback extends RuntimeException implements AdapterFailure
 {
     public function __construct(
         string $message = 'Manual upload required.',

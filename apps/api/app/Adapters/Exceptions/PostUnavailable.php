@@ -9,7 +9,7 @@ use Throwable;
  * Permanent failure — the post is deleted, or private and no linked account
  * authorizes access. The caller advances the chain (ultimately to manual).
  */
-class PostUnavailable extends RuntimeException
+class PostUnavailable extends RuntimeException implements AdapterFailure
 {
     public function __construct(
         string $message = 'Post is unavailable.',

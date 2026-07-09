@@ -9,7 +9,8 @@ use Illuminate\Contracts\Container\Container;
  * Resolves the priority-ordered adapter chain for a canonical URL (04 §2).
  * Chains come from config/ingestion.php; every chain terminates in the
  * configured fallback (ManualUploadAdapter). URL canonicalization is the
- * caller's job (T-016) — the registry only tolerates www/mobile host variants.
+ * caller's job (T-016) — the registry accepts subdomain variants (www./m./vm.)
+ * via suffix-anchored host matching but rejects look-alike domains.
  */
 class AdapterRegistry
 {
@@ -26,13 +27,18 @@ class AdapterRegistry
     public function platformFor(string $canonicalUrl): ?Platform
     {
         $host = strtolower((string) parse_url($canonicalUrl, PHP_URL_HOST));
-        $host = preg_replace('/^www\./', '', $host) ?? $host;
+
+        // Suffix-anchored: exact host or a dot-subdomain of it. NEVER a bare
+        // substring — `instagram.com.evil.com` / `notinstagram.com` are
+        // attacker domains and must not be classified as a trusted platform
+        // (that would route them to a real adapter + the user's token, T-013+).
+        $isHost = fn (string $domain): bool => $host === $domain || str_ends_with($host, '.'.$domain);
 
         return match (true) {
-            str_contains($host, 'instagram.com') => Platform::Instagram,
-            $host === 'x.com', $host === 't.co', str_contains($host, 'twitter.com') => Platform::X,
-            str_contains($host, 'tiktok.com') => Platform::Tiktok,
-            str_contains($host, 'youtube.com'), $host === 'youtu.be' => Platform::Youtube,
+            $isHost('instagram.com') => Platform::Instagram,
+            $isHost('x.com'), $isHost('t.co'), $isHost('twitter.com') => Platform::X,
+            $isHost('tiktok.com') => Platform::Tiktok,
+            $isHost('youtube.com'), $isHost('youtu.be') => Platform::Youtube,
             default => null,
         };
     }

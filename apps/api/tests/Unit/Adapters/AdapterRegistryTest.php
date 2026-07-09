@@ -31,6 +31,24 @@ it('returns null platform for an unknown host', function () {
     expect(registry()->platformFor('https://example.com/foo'))->toBeNull();
 });
 
+dataset('look-alike hosts', [
+    'subdomain of attacker' => 'https://instagram.com.evil.com/reel/x',
+    'prefix look-alike' => 'https://notinstagram.com/p/x',
+    'tiktok look-alike' => 'https://tiktok.com.evil.com/v/1',
+    'youtube look-alike' => 'https://youtube.com.evil.com/watch?v=x',
+    'userinfo trick' => 'https://x.com.evil.com/status/1',
+]);
+
+it('never classifies a look-alike domain as a trusted platform', function (string $url) {
+    // Suffix-anchored matching: an attacker host that merely contains the
+    // platform domain as a substring must resolve to manual-only.
+    expect(registry()->platformFor($url))->toBeNull();
+
+    $chain = registry()->resolve($url);
+    expect($chain)->toHaveCount(1)
+        ->and($chain[0])->toBeInstanceOf(ManualUploadAdapter::class);
+})->with('look-alike hosts');
+
 it('resolves an unknown host to a manual-only chain', function () {
     $chain = registry()->resolve('https://nonsense.example/x');
 

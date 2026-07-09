@@ -18,6 +18,23 @@ function manualAdapter(): ManualUploadAdapter
     return app(ManualUploadAdapter::class);
 }
 
+/** A source_post with a manual payload (pasted caption + screen recording). */
+function manualPayloadPost(array $attributes = []): SourcePost
+{
+    Storage::fake('local_media');
+
+    $post = SourcePost::factory()->create($attributes);
+    MediaAsset::factory()->create([
+        'source_post_id' => $post->id,
+        'kind' => MediaKind::ScreenRecording,
+        'disk' => 'local_media',
+        'storage_path' => 'media/'.$post->id.'/original/rec.mp4',
+        'mime' => 'video/mp4',
+    ]);
+
+    return $post;
+}
+
 it('supports any URL and needs no auth', function () {
     expect(manualAdapter()->supports('https://anything/x'))->toBeTrue()
         ->and(manualAdapter()->requiresAuth())->toBeFalse();
@@ -35,19 +52,10 @@ it('throws NeedsManualFallback when the post does not exist', function () {
 })->throws(NeedsManualFallback::class);
 
 it('returns manual SourcePostData when a payload exists', function () {
-    Storage::fake('local_media');
-
-    $post = SourcePost::factory()->create([
+    manualPayloadPost([
         'platform' => Platform::Instagram,
         'url' => 'https://insta/reel/B',
         'caption' => 'pasted caption text',
-    ]);
-    MediaAsset::factory()->create([
-        'source_post_id' => $post->id,
-        'kind' => MediaKind::ScreenRecording,
-        'disk' => 'local_media',
-        'storage_path' => 'media/'.$post->id.'/original/rec.mp4',
-        'mime' => 'video/mp4',
     ]);
 
     $data = manualAdapter()->fetchMetadata('https://insta/reel/B', null);
@@ -59,19 +67,10 @@ it('returns manual SourcePostData when a payload exists', function () {
 });
 
 it('returns the uploaded screen recording as media', function () {
-    Storage::fake('local_media');
-
-    $post = SourcePost::factory()->create([
+    manualPayloadPost([
         'platform' => Platform::Tiktok,
         'external_id' => 'REC123',
         'url' => 'https://tt/v/C',
-    ]);
-    MediaAsset::factory()->create([
-        'source_post_id' => $post->id,
-        'kind' => MediaKind::ScreenRecording,
-        'disk' => 'local_media',
-        'storage_path' => 'media/'.$post->id.'/original/rec.mp4',
-        'mime' => 'video/mp4',
     ]);
 
     $data = new SourcePostData(platform: Platform::Tiktok, externalId: 'REC123', url: 'https://tt/v/C');

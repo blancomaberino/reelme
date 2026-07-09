@@ -8,6 +8,7 @@ use App\Adapters\Data\MediaFetchResult;
 use App\Adapters\Data\SourcePostData;
 use App\Adapters\Exceptions\NeedsManualFallback;
 use App\Enums\MediaKind;
+use App\Models\MediaAsset;
 use App\Models\SourcePost;
 use App\Services\Media\MediaUrlService;
 
@@ -18,6 +19,10 @@ use App\Services\Media\MediaUrlService;
  * A "manual payload" is a user-pasted caption on the source_post plus an
  * uploaded `screen_recording` media_asset (via T-009's presigned upload). With
  * no payload yet, fetchMetadata throws NeedsManualFallback so the app prompts.
+ *
+ * NOTE: `source_post` is a shared reference entity with no user scope — this
+ * adapter has no user context and will return whatever recording is attached to
+ * a URL. The CALLER (T-016) must authorize the user before invoking the chain.
  */
 class ManualUploadAdapter implements SourceAdapter
 {
@@ -35,9 +40,9 @@ class ManualUploadAdapter implements SourceAdapter
 
     public function fetchMetadata(string $canonicalUrl, ?LinkedAccount $account): SourcePostData
     {
-        $post = $this->postWithManualPayload($canonicalUrl);
+        $post = $this->postByUrl($canonicalUrl);
 
-        if ($post === null) {
+        if ($post === null || $this->screenRecording($post) === null) {
             throw new NeedsManualFallback("No manual payload yet for [{$canonicalUrl}].");
         }
 
@@ -52,13 +57,8 @@ class ManualUploadAdapter implements SourceAdapter
 
     public function fetchMedia(SourcePostData $post, ?LinkedAccount $account): MediaFetchResult
     {
-        $asset = SourcePost::query()
-            ->where('platform', $post->platform)
-            ->where('external_id', $post->externalId)
-            ->first()
-            ?->mediaAssets()
-            ->where('kind', MediaKind::ScreenRecording)
-            ->first();
+        $model = $this->postByUrl($post->url);
+        $asset = $model !== null ? $this->screenRecording($model) : null;
 
         if ($asset === null) {
             return new MediaFetchResult;
@@ -74,18 +74,15 @@ class ManualUploadAdapter implements SourceAdapter
         ]);
     }
 
-    private function postWithManualPayload(string $canonicalUrl): ?SourcePost
+    private function postByUrl(string $canonicalUrl): ?SourcePost
     {
-        $post = SourcePost::query()->where('url', $canonicalUrl)->first();
+        return SourcePost::query()->where('url', $canonicalUrl)->first();
+    }
 
-        if ($post === null) {
-            return null;
-        }
-
-        $hasRecording = $post->mediaAssets()
+    private function screenRecording(SourcePost $post): ?MediaAsset
+    {
+        return $post->mediaAssets()
             ->where('kind', MediaKind::ScreenRecording)
-            ->exists();
-
-        return $hasRecording ? $post : null;
+            ->first();
     }
 }
