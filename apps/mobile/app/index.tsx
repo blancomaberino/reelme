@@ -1,9 +1,14 @@
 import { Redirect } from 'expo-router';
 
-/**
- * Entry route. Until the auth gate lands (T-010), boot straight into the tab
- * shell so the app is runnable.
- */
+import { useSessionStore } from '@/stores/session';
+
+/** Route the app based on the resolved auth status (splash covers `loading`). */
 export default function Index() {
-  return <Redirect href="/(main)/map" />;
+  const status = useSessionStore((s) => s.status);
+
+  if (status === 'loading') {
+    return null;
+  }
+
+  return <Redirect href={status === 'authed' ? '/(main)/map' : '/(auth)/welcome'} />;
 }

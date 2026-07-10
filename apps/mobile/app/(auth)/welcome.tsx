@@ -1,5 +1,31 @@
-import { PlaceholderScreen } from '@/components/placeholder-screen';
+import { Link } from 'expo-router';
+import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+
+import { Button } from '@/components/button';
 
 export default function WelcomeScreen() {
-  return <PlaceholderScreen title="Reelmap" subtitle="Share a food video → pin it on the map. (Onboarding — T-010)" />;
+  return (
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.hero}>
+        <Text style={styles.logo}>Reelmap</Text>
+        <Text style={styles.tagline}>Share a food video. Pin the place. Discover where the internet eats.</Text>
+      </View>
+      <View style={styles.actions}>
+        <Link href="/(auth)/register" asChild>
+          <Button title="Create account" />
+        </Link>
+        <Link href="/(auth)/login" asChild>
+          <Button title="Log in" variant="secondary" />
+        </Link>
+      </View>
+    </SafeAreaView>
+  );
 }
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, padding: 24, justifyContent: 'space-between' },
+  hero: { flex: 1, justifyContent: 'center', gap: 16 },
+  logo: { fontSize: 44, fontWeight: '800', color: '#208AEF' },
+  tagline: { fontSize: 18, lineHeight: 26, color: '#4b5563' },
+  actions: { gap: 12 },
+});
