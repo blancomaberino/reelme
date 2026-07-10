@@ -1,0 +1,19 @@
+{
+  "result": {
+    "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+    "name": "Lanzhou Noodle House",
+    "formatted_address": "Rua da Prata 12, 1100-052 Lisboa, Portugal",
+    "address_components": [
+      { "long_name": "12", "short_name": "12", "types": ["street_number"] },
+      { "long_name": "Rua da Prata", "short_name": "R. da Prata", "types": ["route"] },
+      { "long_name": "Lisboa", "short_name": "Lisboa", "types": ["locality", "political"] },
+      { "long_name": "Portugal", "short_name": "PT", "types": ["country", "political"] },
+      { "long_name": "1100-052", "short_name": "1100-052", "types": ["postal_code"] }
+    ],
+    "geometry": {
+      "location": { "lat": 38.710979, "lng": -9.137619 }
+    },
+    "types": ["restaurant", "food", "point_of_interest", "establishment"]
+  },
+  "status": "OK"
+}
