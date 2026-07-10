@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ShareStatus;
+use App\Jobs\ExtractPlaceData;
 use App\Jobs\FetchSourcePost;
 use App\Jobs\IngestShare;
 use App\Models\Share;
@@ -84,6 +85,48 @@ it('retries a failed share from its failed stage', function () {
 
     Bus::assertDispatched(FetchSourcePost::class); // chain head = failed stage
     expect($share->fresh()->status)->toBe(ShareStatus::Fetching);
+});
+
+it('retries from the extract stage back into fetching (the fetching→analyzing boundary)', function () {
+    // Guards the Pipeline::entryStatus/ExtractPlaceData::expectedStatus invariant:
+    // extract must re-enter at `fetching`, or ExtractPlaceData no-ops and the share
+    // publishes without extraction.
+    Bus::fake();
+    $user = User::factory()->create();
+    $share = Share::factory()->failed()->create(['user_id' => $user->id]);
+    ShareStageMetric::create(['share_id' => $share->id, 'stage' => 'extract', 'status' => 'failed', 'started_at' => now()]);
+
+    Sanctum::actingAs($user);
+    $this->postJson("/api/v1/shares/{$share->id}/retry")->assertOk();
+
+    Bus::assertDispatched(ExtractPlaceData::class); // chain head = extract stage
+    expect($share->fresh()->status)->toBe(ShareStatus::Fetching);
+});
+
+it('retries a review/fetch_unavailable share back into fetching', function () {
+    Bus::fake();
+    $user = User::factory()->create();
+    $share = Share::factory()->create([
+        'user_id' => $user->id,
+        'status' => ShareStatus::Review,
+        'failure_reason' => 'fetch_unavailable',
+    ]);
+
+    Sanctum::actingAs($user);
+    $this->postJson("/api/v1/shares/{$share->id}/retry")->assertOk();
+
+    Bus::assertDispatched(FetchSourcePost::class);
+    expect($share->fresh()->status)->toBe(ShareStatus::Fetching);
+});
+
+it('rejects an over-long URL extracted from shared_text with 422', function () {
+    Sanctum::actingAs(User::factory()->create());
+    $longUrl = 'https://example.com/'.str_repeat('a', 2100); // > 2048, only reachable via shared_text
+
+    $this->postJson('/api/v1/shares', ['shared_text' => "check this {$longUrl}"])
+        ->assertStatus(422);
+
+    expect(Share::count())->toBe(0);
 });
 
 it('409s a retry from a non-retryable state', function () {

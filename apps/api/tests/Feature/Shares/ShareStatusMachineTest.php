@@ -23,6 +23,36 @@ it('permits every legal transition and rejects every illegal one', function () {
     }
 });
 
+it('rejects known-illegal transitions (explicit edges, independent of the map)', function () {
+    // Hard-coded illegal edges so this does NOT just mirror transitions() — a
+    // wrong edit to the map can't silently make this pass.
+    $illegal = [
+        [ShareStatus::Pending, ShareStatus::Published],
+        [ShareStatus::Pending, ShareStatus::Analyzing],
+        [ShareStatus::Failed, ShareStatus::Published],
+        [ShareStatus::Published, ShareStatus::Fetching],
+        [ShareStatus::Rejected, ShareStatus::Fetching],
+    ];
+
+    foreach ($illegal as [$from, $to]) {
+        $share = Share::factory()->create(['status' => $from]);
+        expect(fn () => $share->transitionTo($to))->toThrow(InvalidShareTransition::class);
+    }
+});
+
+it('clears a stale failure_reason on a reason-less transition', function () {
+    // A share that failed, then retries: the retry transition passes no reason, so
+    // the stale code must be cleared — otherwise it later resurfaces to the client.
+    $share = Share::factory()->create([
+        'status' => ShareStatus::Failed,
+        'failure_reason' => 'fetch_unavailable',
+    ]);
+
+    expect($share->transitionTo(ShareStatus::Fetching))->toBeTrue()
+        ->and($share->fresh()->failure_reason)->toBeNull()
+        ->and($share->failure_reason)->toBeNull(); // in-memory too, not just the row
+});
+
 it('allows discard (→ rejected) from every non-terminal state', function () {
     // Pins the product rule directly (not the transition map): a user can always
     // discard an in-flight share. Regression guard for the DELETE /shares/{id}

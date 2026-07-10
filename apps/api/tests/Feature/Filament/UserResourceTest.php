@@ -1,9 +1,11 @@
 <?php
 
+use App\Filament\Resources\Users\Pages\CreateUser;
 use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
+use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
 
 // --- Panel access control ---
@@ -43,6 +45,51 @@ it('lists users and searches by username', function () {
         ->searchTable('findme')
         ->assertCanSeeTableRecords([$target])
         ->assertCanNotSeeTableRecords([$other]);
+});
+
+it('creates a user with a usable (hashed) password via the panel', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    Livewire::test(CreateUser::class)
+        ->fillForm([
+            'name' => 'New Person',
+            'username' => 'newperson',
+            'email' => 'new@example.com',
+            'password' => 'secret123!',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $user = User::where('email', 'new@example.com')->first();
+    expect($user)->not->toBeNull()
+        ->and(Hash::check('secret123!', $user->password))->toBeTrue()
+        ->and($user->is_public)->toBeTrue(); // default matches the DB default
+});
+
+it('requires a password when creating a user (no dead accounts)', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    Livewire::test(CreateUser::class)
+        ->fillForm(['name' => 'No Pass', 'username' => 'nopass', 'email' => 'nopass@example.com'])
+        ->call('create')
+        ->assertHasFormErrors(['password' => 'required']);
+
+    expect(User::where('email', 'nopass@example.com')->exists())->toBeFalse();
+});
+
+it('rejects a duplicate email on user creation with a validation error (not a 500)', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    User::factory()->create(['email' => 'taken@example.com']);
+
+    Livewire::test(CreateUser::class)
+        ->fillForm([
+            'name' => 'Dup',
+            'username' => 'dupuser',
+            'email' => 'taken@example.com',
+            'password' => 'secret123!',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['email']);
 });
 
 it('edits role flags and persists them', function () {

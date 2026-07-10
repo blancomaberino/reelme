@@ -51,11 +51,24 @@ class UrlCanonicalizer
      */
     private function expand(string $url): string
     {
-        $current = $url; // starting host is already allowlisted by the caller
+        $current = $url;   // starting host is already allowlisted by the caller
+        $pin = null;       // cURL --resolve entry pinning $current to a vetted IP
 
         for ($hop = 0; $hop < 3; $hop++) {
             try {
-                $response = Http::timeout(5)->withOptions(['allow_redirects' => false])->get($current);
+                // Pin the connection to the IP we validated for this redirect
+                // target, so the address cURL dials is the one we vetted. Without
+                // this, cURL re-resolves DNS at connect time and an attacker
+                // controlling the target's DNS can return a public IP during
+                // validation and 127.0.0.1 / 169.254.169.254 during the request
+                // (DNS rebinding). The first hop (trusted shortlink host) is left
+                // unpinned — only attacker-controlled redirect targets are pinned.
+                $response = Http::timeout(5)
+                    ->withOptions([
+                        'allow_redirects' => false,
+                        'curl' => $pin !== null ? [CURLOPT_RESOLVE => [$pin]] : [],
+                    ])
+                    ->get($current);
             } catch (ConnectionException) {
                 return $url;
             }
@@ -65,8 +78,9 @@ class UrlCanonicalizer
             }
 
             $location = $this->absoluteUrl($current, (string) $response->header('Location'));
+            $pin = $location !== null ? $this->pinnedIp($location) : null;
 
-            if ($location === null || ! $this->isPublicHttpUrl($location)) {
+            if ($location === null || $pin === null) {
                 return $current; // refuse to follow into a non-public / invalid target
             }
 
@@ -95,16 +109,24 @@ class UrlCanonicalizer
         return $prefix.(str_starts_with($location, '/') ? $location : "/{$location}");
     }
 
-    private function isPublicHttpUrl(string $url): bool
+    /**
+     * Resolve $url's host, reject it if ANY resolved IP is private/reserved, and
+     * return a cURL --resolve entry ("host:port:ip") that pins a connection to a
+     * vetted IP. Null means "do not connect" (non-http, denylisted, unresolvable,
+     * or private). Pinning is what makes the check rebinding-proof: validation and
+     * connection then use the same address.
+     */
+    private function pinnedIp(string $url): ?string
     {
         $parts = parse_url($url);
-        if (! in_array($parts['scheme'] ?? '', ['http', 'https'], true)) {
-            return false;
+        $scheme = $parts['scheme'] ?? '';
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            return null;
         }
 
         $host = strtolower($parts['host'] ?? '');
         if ($host === '' || in_array($host, ['localhost', 'metadata.google.internal'], true)) {
-            return false;
+            return null;
         }
 
         $ips = filter_var($host, FILTER_VALIDATE_IP) !== false
@@ -112,16 +134,18 @@ class UrlCanonicalizer
             : array_merge(gethostbynamel($host) ?: [], $this->aaaa($host));
 
         if ($ips === []) {
-            return false; // unresolvable → refuse
+            return null; // unresolvable → refuse
         }
 
         foreach ($ips as $ip) {
             if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-                return false; // private / reserved / loopback / link-local
+                return null; // private / reserved / loopback / link-local
             }
         }
 
-        return true;
+        $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
+
+        return "{$host}:{$port}:{$ips[0]}";
     }
 
     /**

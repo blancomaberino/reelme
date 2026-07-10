@@ -109,7 +109,14 @@ class ShareController extends Controller
         $last = $share->stageMetrics()->orderByDesc('id')->first();
         $stage = $last !== null && array_key_exists($last->stage, Pipeline::STAGES) ? $last->stage : 'fetch';
 
-        $share->transitionTo(Pipeline::entryStatus($stage));
+        // Only dispatch if we actually won the transition. transitionTo() uses an
+        // optimistic WHERE status = :expected guard and returns false when a
+        // concurrent retry already moved the row — dispatching regardless would
+        // enqueue a duplicate pipeline chain (double fetch/download/LLM cost).
+        if (! $share->transitionTo(Pipeline::entryStatus($stage))) {
+            abort(409, 'This share cannot be retried from its current state.');
+        }
+
         Bus::chain(Pipeline::chain($share->id, $stage))->dispatch();
 
         return $this->respondWithShare($share);
@@ -147,6 +154,10 @@ class ShareController extends Controller
 
         if ($url !== null) {
             $canonical = $this->canonicalizer->canonicalize($url);
+            // The `url` field is validated max:2048 to match source_posts.url, but a
+            // URL pulled out of `shared_text` (max:5000) or a shortlink expansion can
+            // exceed that — reject cleanly instead of letting Postgres 22001 → 500.
+            abort_if(mb_strlen($canonical->url) > 2048, 422, 'The resolved URL is too long.');
             // NOTE: source_posts.platform is NOT NULL with 4 fixed values (02 §3.4),
             // but an unknown-host URL has no platform — a data-model gap. We store a
             // placeholder (hint or instagram) that FetchSourcePost ignores (it

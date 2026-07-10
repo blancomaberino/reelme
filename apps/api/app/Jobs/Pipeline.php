@@ -27,12 +27,14 @@ final class Pipeline
     ];
 
     /**
-     * The status a stage runs under (retry resets the share here). fetch→transcribe
-     * happen while `fetching`; extract→publish while `analyzing`.
+     * The status a stage runs under (retry resets the share here). fetch→extract
+     * happen while `fetching` — `extract` is the boundary job that itself advances
+     * the share fetching → analyzing, so it must re-enter at `fetching` to match
+     * ExtractPlaceData::expectedStatus(). Only resolve→publish run under `analyzing`.
      */
     public static function entryStatus(string $stage): ShareStatus
     {
-        return in_array($stage, ['extract', 'resolve', 'publish'], true)
+        return in_array($stage, ['resolve', 'publish'], true)
             ? ShareStatus::Analyzing
             : ShareStatus::Fetching;
     }

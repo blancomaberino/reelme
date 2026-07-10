@@ -43,12 +43,17 @@ class MediaAssetFactory extends Factory
 
     public function keyframe(): static
     {
+        $ms = fake()->numberBetween(0, 60_000);
+
         return $this->state(fn () => [
             'kind' => MediaKind::Keyframe,
             'mime' => 'image/jpeg',
+            // Override the video default: a keyframe is a .jpg under frames/, not
+            // an .mp4 under original/ — keep the fixture consistent with its mime.
+            'storage_path' => 'media/'.fake()->uuid()."/frames/frame_0_{$ms}.jpg",
             'width' => 1080,
             'height' => 1920,
-            'frame_at_ms' => fake()->numberBetween(0, 60_000),
+            'frame_at_ms' => $ms,
         ]);
     }
 }

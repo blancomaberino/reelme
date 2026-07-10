@@ -85,10 +85,16 @@ class Share extends Model
 
         $from = $this->status;
 
-        $updates = ['status' => $to->value];
-        if ($failureReason !== null) {
-            $updates['failure_reason'] = $failureReason;
-        }
+        // Always write failure_reason: a reason-less transition (e.g. retry
+        // Review/Failed → Fetching) must CLEAR any stale reason, otherwise a
+        // share that later re-enters Review for a legit reason still surfaces the
+        // old error. Write updated_at too so the in-memory model matches the row
+        // the builder updates (status_history timestamps are serialized from it).
+        $updates = [
+            'status' => $to->value,
+            'failure_reason' => $failureReason,
+            'updated_at' => now(),
+        ];
         if ($to === ShareStatus::Published) {
             $updates['published_at'] = now();
         }
