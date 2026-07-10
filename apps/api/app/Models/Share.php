@@ -3,12 +3,24 @@
 namespace App\Models;
 
 use App\Enums\ShareStatus;
+use App\Events\ShareStatusChanged;
+use App\Exceptions\InvalidShareTransition;
 use Database\Factories\ShareFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property int $source_post_id
+ * @property ShareStatus $status
+ * @property string|null $failure_reason
+ * @property string|null $shared_via
+ * @property Carbon|null $published_at
+ */
 class Share extends Model
 {
     /** @use HasFactory<ShareFactory> */
@@ -46,5 +58,53 @@ class Share extends Model
     public function analysisRuns(): HasMany
     {
         return $this->hasMany(AnalysisRun::class);
+    }
+
+    /** @return HasMany<ShareStageMetric, $this> */
+    public function stageMetrics(): HasMany
+    {
+        return $this->hasMany(ShareStageMetric::class);
+    }
+
+    public function canTransitionTo(ShareStatus $to): bool
+    {
+        return in_array($to, $this->status->transitions(), true);
+    }
+
+    /**
+     * Move the share to a new status. Throws on an illegal transition
+     * (programming error). Uses an optimistic `WHERE status = :expected` guard;
+     * if another worker already moved the row, returns false so the caller (a
+     * pipeline job) can exit silently rather than double-process.
+     */
+    public function transitionTo(ShareStatus $to, ?string $failureReason = null): bool
+    {
+        if (! $this->canTransitionTo($to)) {
+            throw new InvalidShareTransition($this->status, $to);
+        }
+
+        $from = $this->status;
+
+        $updates = ['status' => $to->value];
+        if ($failureReason !== null) {
+            $updates['failure_reason'] = $failureReason;
+        }
+        if ($to === ShareStatus::Published) {
+            $updates['published_at'] = now();
+        }
+
+        $affected = static::query()
+            ->whereKey($this->getKey())
+            ->where('status', $from->value)
+            ->update($updates);
+
+        if ($affected === 0) {
+            return false;
+        }
+
+        $this->forceFill($updates)->syncOriginal();
+        event(new ShareStatusChanged($this, $from, $to));
+
+        return true;
     }
 }
