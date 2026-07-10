@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MeController;
+use App\Http\Controllers\Api\V1\ShareController;
+use App\Http\Controllers\MediaUploadController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -38,5 +40,21 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
+
+        // Shares (ingest). POST is rate-limited 10/min + 100/day (03 §1).
+        Route::post('/shares', [ShareController::class, 'store'])->middleware('throttle:shares');
+        Route::get('/shares', [ShareController::class, 'index']);
+        Route::get('/shares/{share}', [ShareController::class, 'show']);
+        Route::post('/shares/{share}/retry', [ShareController::class, 'retry']);
+        Route::delete('/shares/{share}', [ShareController::class, 'destroy']);
     });
 });
+
+// Signed local-dev media upload target (see MediaUrlService). Registered only
+// outside production — R2 uses native presigned uploads, so this route is never
+// legitimately signed in prod. Not a versioned API endpoint.
+if (! app()->isProduction()) {
+    Route::put('/media/upload', MediaUploadController::class)
+        ->middleware('signed')
+        ->name('media.upload');
+}

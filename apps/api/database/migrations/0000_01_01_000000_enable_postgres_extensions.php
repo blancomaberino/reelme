@@ -22,9 +22,10 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::statement('DROP EXTENSION IF EXISTS citext');
-        DB::statement('DROP EXTENSION IF EXISTS unaccent');
-        DB::statement('DROP EXTENSION IF EXISTS pg_trgm');
-        DB::statement('DROP EXTENSION IF EXISTS postgis');
+        // Intentionally a no-op: extensions are database-level, shared
+        // infrastructure. The postgis/postgis image also auto-installs
+        // postgis_topology/postgis_tiger_geocoder which depend on postgis, so a
+        // DROP would fail on rollback — and dropping extensions out from under
+        // other migrations/objects is never what a rollback wants.
     }
 };
