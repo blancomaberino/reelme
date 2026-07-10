@@ -1,16 +1,31 @@
 # Maestro E2E — T-010 auth flow against the live API.
 # See e2e/README.md for how to build the app and run this. Selectors target the
-# visible copy and the inputs' accessibilityLabels (src/components/text-field.tsx);
-# validate/adjust on the first Maestro run.
+# visible copy and the inputs' accessibilityLabels (src/components/text-field.tsx).
+#
+# Run: maestro --device <sim-udid> test auth-flow.yaml -e RUN=$(date +%s)
+# (a unique RUN keeps the registered email unique across runs).
 appId: pet.one.reelmap
-env:
-  # A fresh identity per run. Override at runtime: maestro test -e RUN=$(date +%s) ...
-  RUN: local
+# RUN must be supplied at runtime (`-e RUN=$(date +%s)`) to keep the registered
+# identity unique per run. A flow-level `env:` default is intentionally omitted —
+# in Maestro 2.6 it shadows the CLI `-e` override, which would reuse one identity
+# and hit "already taken" on the second run.
 tags:
   - auth
 ---
 - launchApp:
     clearState: true
+
+# expo-secure-store keeps the auth token in the iOS keychain, which survives
+# clearState. If a prior session is still signed in (app boots straight to the
+# tabs), sign out first so the flow always starts from a clean welcome screen.
+- runFlow:
+    when:
+      visible: "Map"
+    commands:
+      # Tab buttons expose a composite a11y label ("Profile, tab, 4 of 4"), and
+      # Maestro does a full-string regex match — so match with wildcards.
+      - tapOn: ".*Profile.*"
+      - tapOn: "Log out"
 
 # --- Welcome ---
 - assertVisible: "Reelmap"
@@ -33,18 +48,26 @@ tags:
     below: "Password"
 - inputText: "Sup3r-secret-${RUN}"
 - hideKeyboard
-- tapOn:
-    text: "Create account"
-    index: 1 # the submit button, not the header link
+# The register screen's header is "Create your account", so "Create account"
+# uniquely matches the submit button.
+- tapOn: "Create account"
 
-# --- Authenticated tabs ---
-- assertVisible:
-    id: "Profile" # tab bar label
+# iOS pops a "Save Password?" system dialog after a secure-field submit; it
+# covers the whole screen, so dismiss it before asserting anything underneath.
+- tapOn:
+    text: "Not Now"
     optional: true
-- tapOn: "Profile"
+
+# --- Authenticated tabs (register success → router.replace('/(main)/map')) ---
+# The Map placeholder title only renders once the API register call succeeds and
+# the session is authed, so this assertion also proves the live round-trip.
+- assertVisible: "Map"
+
+# Tab button a11y label is composite ("Profile, tab, 4 of 4") — match with regex.
+- tapOn: ".*Profile.*"
 - assertVisible: "Log out"
 
-# --- Logout returns to welcome ---
+# --- Logout returns to welcome (also clears the keychain token for re-runs) ---
 - tapOn: "Log out"
 - assertVisible: "Create account"
 - assertVisible: "Log in"
