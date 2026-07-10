@@ -1,7 +1,7 @@
 # T-006 — CI: GitHub Actions for api + mobile + contracts
 
-- **Phase:** M0 · **Estimate:** S · **Status:** see tasks.json
-- **Depends on:** T-002, T-004, T-005
+- **Phase:** M5 (reprioritized from M0 — see progress log) · **Estimate:** S · **Status:** see tasks.json
+- **Depends on:** T-002, T-004, T-005, **T-054, T-055** (gated behind the terminal launch tasks so it runs last)
 - **Target paths:** `.github/workflows/`
 - **Spec refs:** [01-architecture.md#environments-deployment](../01-architecture.md#environments-deployment)
 
@@ -78,3 +78,4 @@ gh run list --branch main --limit 1   # conclusion: success
   - Deviations from brief: (1) skipped the optional `expo prebuild --no-install` sanity step (adds minutes; typecheck+jest already cover the config-plugin surface — revisit if a native-module regression slips through). (2) no `expo prebuild`, so its `EXPO_NO_TELEMETRY` gotcha is moot. (3) **branch protection / required checks NOT added** — with path-filtered skips, required checks would hang "pending" on unrelated PRs; per CLAUDE.md, defer branch protection until the project gains collaborators, then add a `changes`-aware ruleset.
   - Gates reproduced green locally on `04543e4`: API Pint (138 files) / PHPStan (no errors) / Pest **120 passed**; contracts **5/5** (no drift); mobile lint / tsc / jest **19/19**. `/coderabbit` pass: actionlint clean, gitleaks clean, no `run:`/`ref:` injection surface, `pull_request` (not `_target`) so forks run secret-less. Zero 🔴; approval recorded for `04543e4`.
   - **Blocked on opening the PR from this session**: the `/coderabbit` `pr-gate.sh` PreToolUse hook resolves its repo via `git rev-parse --show-toplevel` in the *session cwd* — which is this **plans** repo, not the app repo. It therefore fails closed (dirty tree here + no receipt here) even though review/approval are valid in `~/Sites/reelmap`. Not routing around it: PR to be opened from an app-repo terminal. Branch is pushed. Acceptance (all-green-on-main) verifies once the PR CI runs and it merges.
+- **2026-07-10 (reprioritized to last)** — Per user request, moved this task to the **end of the queue**: `phase` M0 → M5 and `depends_on` extended with the terminal launch tasks **T-054, T-055** so the scheduler (lowest incomplete phase → deps-satisfied) surfaces it dead-last; nothing depends on T-006, so no successor is affected. The `ci.yml` implementation on `feat/t006-ci-github-actions` (`04543e4`) is untouched — only the plan ordering changed. **Trade-off recorded:** M0–M4 now proceed without the CI safety net that motivated placing this in M0; the local `/coderabbit` gate remains the per-PR quality guard in the meantime. Revisit if the lack of server-side CI starts letting regressions through.

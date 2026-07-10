@@ -45,12 +45,13 @@
       "agent": "executor"
     },
     {
-      "id": "T-006", "title": "CI: GitHub Actions for api + mobile + contracts", "phase": "M0", "status": "in_progress",
-      "depends_on": ["T-002", "T-004", "T-005"], "estimate": "S",
+      "id": "T-006", "title": "CI: GitHub Actions for api + mobile + contracts", "phase": "M5", "status": "in_progress",
+      "depends_on": ["T-002", "T-004", "T-005", "T-054", "T-055"], "estimate": "S",
       "paths": [".github/workflows/"],
       "spec_refs": ["01-architecture.md#environments-deployment"],
       "acceptance": ["api job: pint --test, phpstan, pest with Postgres+PostGIS service container", "mobile job: eslint, tsc --noEmit, jest", "contracts job: schema validation tests", "All green on main"],
-      "agent": "executor"
+      "agent": "executor",
+      "notes": "Reprioritized to the END of the queue (2026-07-10): moved M0 -> M5 and gated behind the terminal launch tasks (T-054, T-055) so the scheduler surfaces it dead-last. depends_on keeps the real build prereqs (T-002/T-004/T-005) too. NOTE the trade-off: earlier tasks now ship without a CI safety net (the M0 rationale). Implementation already exists and is reviewed on branch feat/t006-ci-github-actions (app repo, commit 04543e4); this only changes when it lands in the plan order."
     },
     {
       "id": "T-007", "title": "Redis + Horizon queue infrastructure", "phase": "M0", "status": "done",

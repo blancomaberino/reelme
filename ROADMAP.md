@@ -6,24 +6,24 @@
 
 | Phase | Name | Goal (one line) | Depends on |
 |-------|------|-----------------|------------|
-| M0 | Foundations | Monorepo, Laravel 13 API + Expo app scaffolds, auth, CI — a logged-in user on a phone talking to the API | — |
+| M0 | Foundations | Monorepo, Laravel 13 API + Expo app scaffolds, auth — a logged-in user on a phone talking to the API | — |
 | M1 | Ingest & Analyze | The core loop: share a reel from Instagram → async AI pipeline → confirmed place entry | M0 |
 | M2 | Map & Discovery | Places on a clustered map, place pages, tags, search, feed, dedup review | M1 |
 | M3 | Social | Public profiles, influencer identities & claiming, follows, notifications center | M2 |
 | M4 | Monetization | Restaurant claims & offers, QR redemptions with attribution, double-entry ledger, Stripe Connect payouts | M2 (M3 for influencer claiming) |
-| M5 | Hardening & Launch | Moderation, GDPR, observability, E2E tests, store submission, production deploy | M1–M4 |
+| M5 | Hardening & Launch | Moderation, GDPR, observability, E2E tests, store submission, production deploy, GitHub Actions CI (scheduled last) | M1–M4 |
 
 ## M0 — Foundations
 
-**Outcome:** a developer (or agent) can run the API and the mobile app locally; a user can register, log in, and see an authenticated home screen. CI is green.
+**Outcome:** a developer (or agent) can run the API and the mobile app locally; a user can register, log in, and see an authenticated home screen. Quality gates run locally (and via `/coderabbit` per PR); server-side CI is deferred to M5 (T-006).
 
-Scope: monorepo scaffold; Laravel 13 API (resolve latest stable versions at scaffold time); Postgres + PostGIS; Sanctum auth; Redis + Horizon; Filament admin; Expo app (latest SDK, expo-router, dev client); `packages/contracts` with the extraction JSON schema + generated TS types; S3/R2 storage config; GitHub Actions CI.
+Scope: monorepo scaffold; Laravel 13 API (resolve latest stable versions at scaffold time); Postgres + PostGIS; Sanctum auth; Redis + Horizon; Filament admin; Expo app (latest SDK, expo-router, dev client); `packages/contracts` with the extraction JSON schema + generated TS types; S3/R2 storage config. _(GitHub Actions CI (T-006) reprioritized to the end of the queue — see M5.)_
 
 **Exit criteria**
 - `apps/api`: `composer test` (Pest) green, `pint --test` and `phpstan` clean; `/api/v1/auth/*` + `/api/v1/me` working.
 - `apps/mobile`: `tsc --noEmit`, eslint, jest green; login/register flow works against local API on iOS simulator + Android emulator (dev client build).
 - `packages/contracts/extraction.schema.json` validates sample payloads in both PHP (API test) and TS (mobile test).
-- CI runs all of the above on every push.
+- Quality gates green locally on every task (server-side CI enforcement moved to M5 / T-006).
 
 ## M1 — Ingest & Analyze (the core loop)
 
@@ -72,11 +72,12 @@ Scope: place_claims + verification; offers CRUD (API, restaurant screens, Filame
 
 **Outcome:** production-ready: moderation + takedown, GDPR compliance, quotas/cost controls, observability, E2E suite, store submissions, deployed infrastructure.
 
-Scope: reports + moderation queue + DMCA flow; GDPR export/delete jobs + media retention enforcement (originals deleted post-analysis); per-user analysis quotas + cost dashboard; Sentry + Horizon alerting; Maestro E2E (share→publish); map load test; privacy policy + store checklists + EAS submit; Forge provisioning + Ollama host + runbooks.
+Scope: reports + moderation queue + DMCA flow; GDPR export/delete jobs + media retention enforcement (originals deleted post-analysis); per-user analysis quotas + cost dashboard; Sentry + Horizon alerting; Maestro E2E (share→publish); map load test; privacy policy + store checklists + EAS submit; Forge provisioning + Ollama host + runbooks; **GitHub Actions CI (T-006) — the final task in the queue**, gated behind T-054/T-055.
 
 **Exit criteria**
 - Maestro E2E green in CI against staging; account deletion fully purges user data (verified by test).
 - Apps submitted to TestFlight + Play internal track; staging + production environments documented in runbooks.
+- GitHub Actions CI (T-006) green on `main`: api (Pint/PHPStan/Pest on PostGIS+Redis), mobile (eslint/tsc/jest), contracts (schema + drift). _Scheduled last per request; note the tension with "Maestro E2E green in CI" above, which assumes CI exists earlier — flagged for revisit._
 
 ## Dependency graph (phase level)
 
