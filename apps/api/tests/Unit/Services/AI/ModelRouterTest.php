@@ -6,6 +6,7 @@ use App\Models\AnalysisRun;
 use App\Models\Share;
 use App\Models\User;
 use App\Services\AI\Contracts\AnalysisEngine;
+use App\Services\AI\CuratedModels;
 use App\Services\AI\Data\GenerationPart;
 use App\Services\AI\Data\GenerationRequest;
 use App\Services\AI\Data\ValidationOutcome;
@@ -14,6 +15,7 @@ use App\Services\AI\LocalEngine;
 use App\Services\AI\ModelRouter;
 use App\Services\AI\NullRemoteEngine;
 use App\Services\AI\OllamaClient;
+use App\Services\AI\SpendTracker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -39,7 +41,7 @@ function genRequest(): GenerationRequest
 
 function router(AnalysisEngine $remote): ModelRouter
 {
-    return new ModelRouter(new LocalEngine(new OllamaClient), $remote);
+    return new ModelRouter(new LocalEngine(new OllamaClient), $remote, new CuratedModels, new SpendTracker);
 }
 
 function fakeHealthy(): void
