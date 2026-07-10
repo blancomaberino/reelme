@@ -1,0 +1,50 @@
+# Maestro E2E — T-010 auth flow against the live API.
+# See e2e/README.md for how to build the app and run this. Selectors target the
+# visible copy and the inputs' accessibilityLabels (src/components/text-field.tsx);
+# validate/adjust on the first Maestro run.
+appId: pet.one.reelmap
+env:
+  # A fresh identity per run. Override at runtime: maestro test -e RUN=$(date +%s) ...
+  RUN: local
+tags:
+  - auth
+---
+- launchApp:
+    clearState: true
+
+# --- Welcome ---
+- assertVisible: "Reelmap"
+- assertVisible: "Create account"
+- assertVisible: "Log in"
+
+# --- Register ---
+- tapOn: "Create account"
+- assertVisible: "Create your account"
+- tapOn:
+    below: "Name"
+- inputText: "E2E ${RUN}"
+- tapOn:
+    below: "Username"
+- inputText: "e2e_${RUN}"
+- tapOn:
+    below: "Email"
+- inputText: "e2e_${RUN}@example.com"
+- tapOn:
+    below: "Password"
+- inputText: "Sup3r-secret-${RUN}"
+- hideKeyboard
+- tapOn:
+    text: "Create account"
+    index: 1 # the submit button, not the header link
+
+# --- Authenticated tabs ---
+- assertVisible:
+    id: "Profile" # tab bar label
+    optional: true
+- tapOn: "Profile"
+- assertVisible: "Log out"
+
+# --- Logout returns to welcome ---
+- tapOn: "Log out"
+- assertVisible: "Create account"
+- assertVisible: "Log in"

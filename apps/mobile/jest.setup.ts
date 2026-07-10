@@ -32,3 +32,17 @@ jest.mock('expo-router', () => {
 
 // Silence the reanimated/native-only warnings that don't affect logic tests.
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'), { virtual: true });
+
+// Safe-area context needs a provider at runtime; in tests, stub insets to 0 and
+// render the provider/view as passthroughs so screens mount without a provider.
+jest.mock('react-native-safe-area-context', () => {
+  const React = require('react');
+  const inset = { top: 0, right: 0, bottom: 0, left: 0 };
+  return {
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
+    SafeAreaView: ({ children, ...props }: { children: React.ReactNode }) =>
+      React.createElement(require('react-native').View, props, children),
+    useSafeAreaInsets: () => inset,
+    useSafeAreaFrame: () => ({ x: 0, y: 0, width: 390, height: 844 }),
+  };
+});

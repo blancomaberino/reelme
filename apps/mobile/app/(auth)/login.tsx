@@ -1,15 +1,15 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { useLogin } from '@/api/hooks/useAuth';
-import { AuthScreenLayout } from '@/components/auth-screen-layout';
+import { AuthScreenLayout, useAuthFormStyles } from '@/components/auth-screen-layout';
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
 import { formErrors } from '@/lib/form-errors';
-import { colors } from '@/theme/colors';
 
 export default function LoginScreen() {
+  const styles = useAuthFormStyles();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const login = useLogin();
@@ -27,7 +27,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <AuthScreenLayout title="Welcome back">
+    <AuthScreenLayout title="Welcome back" subtitle="Log in to pick up where you left off.">
       <TextField
         label="Email"
         value={email}
@@ -58,10 +58,3 @@ export default function LoginScreen() {
     </AuthScreenLayout>
   );
 }
-
-const styles = StyleSheet.create({
-  general: { color: colors.danger, fontSize: 14 },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 8 },
-  muted: { color: colors.muted },
-  link: { color: colors.primary, fontWeight: '600' },
-});
