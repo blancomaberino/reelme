@@ -15,8 +15,19 @@ jest.mock('expo-secure-store', () => {
 
 jest.mock('expo-device', () => ({ deviceName: 'jest-device' }));
 
-// expo-router: capture navigation; render Link/Redirect as passthrough.
-export const mockRouter = { replace: jest.fn(), push: jest.fn(), back: jest.fn() };
+// expo-router: the single canonical mock for the whole suite. A mock declared in
+// setupFilesAfterEnv always overrides a test file's own jest.mock('expo-router'),
+// so every test shares this one — it captures imperative navigation (router.*),
+// the entry Redirect target, and the Tabs wiring. Reset the capture fields in a
+// test's beforeEach as needed.
+export const mockRouter = {
+  replace: jest.fn(),
+  push: jest.fn(),
+  back: jest.fn(),
+  redirectHref: null as string | null,
+  initialRouteName: null as string | null,
+  tabNames: [] as string[],
+};
 jest.mock('expo-router', () => {
   const React = require('react');
   return {
@@ -24,9 +35,23 @@ jest.mock('expo-router', () => {
     useRouter: () => mockRouter,
     useSegments: () => [],
     Link: ({ children }: { children: React.ReactNode }) => children,
-    Redirect: () => null,
+    Redirect: ({ href }: { href: string }) => {
+      mockRouter.redirectHref = href;
+      return null;
+    },
     Stack: Object.assign(() => null, { Screen: () => null }),
-    Tabs: Object.assign(() => null, { Screen: () => null }),
+    Tabs: Object.assign(
+      ({ children, initialRouteName }: { children?: React.ReactNode; initialRouteName?: string }) => {
+        mockRouter.initialRouteName = initialRouteName ?? null;
+        return React.createElement(React.Fragment, null, children);
+      },
+      {
+        Screen: ({ name }: { name: string }) => {
+          mockRouter.tabNames.push(name);
+          return null;
+        },
+      },
+    ),
   };
 });
 
