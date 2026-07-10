@@ -23,6 +23,21 @@ it('permits every legal transition and rejects every illegal one', function () {
     }
 });
 
+it('allows discard (→ rejected) from every non-terminal state', function () {
+    // Pins the product rule directly (not the transition map): a user can always
+    // discard an in-flight share. Regression guard for the DELETE /shares/{id}
+    // 500 that fired from pending/fetching/analyzing/failed.
+    $nonTerminal = array_filter(ShareStatus::cases(), fn (ShareStatus $s): bool => ! $s->isTerminal());
+    expect($nonTerminal)->not->toBeEmpty();
+
+    foreach ($nonTerminal as $status) {
+        $share = Share::factory()->create(['status' => $status]);
+
+        expect($share->transitionTo(ShareStatus::Rejected, 'user_discarded'))->toBeTrue()
+            ->and($share->fresh()->status)->toBe(ShareStatus::Rejected);
+    }
+});
+
 it('returns false when another worker already moved the row (optimistic guard)', function () {
     $share = Share::factory()->create(['status' => ShareStatus::Pending]);
 

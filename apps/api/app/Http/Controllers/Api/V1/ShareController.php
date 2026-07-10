@@ -13,6 +13,7 @@ use App\Jobs\Pipeline;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Services\Ingestion\UrlCanonicalizer;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
@@ -32,18 +33,29 @@ class ShareController extends Controller
         [$post, $platform] = $this->resolveSourcePost($url, $request->string('source_hint')->value() ?: null);
 
         // Duplicate guard: one share per (user, source_post). Never a 2nd row.
+        // Fast path avoids the insert; the unique(user_id, source_post_id)
+        // constraint + catch below closes the TOCTOU race two concurrent shares
+        // of the same post would otherwise hit (common on a mobile double-tap /
+        // share-sheet double-fire) — the loser returns the idempotent replay
+        // instead of a 500.
         $existing = Share::where('user_id', $user->id)->where('source_post_id', $post->id)->first();
         if ($existing !== null) {
             return $this->created($existing, $url, $platform, idempotentReplay: true);
         }
 
-        $share = Share::query()->forceCreate([
-            'user_id' => $user->id,
-            'source_post_id' => $post->id,
-            'status' => ShareStatus::Pending->value,
-            'shared_via' => $request->string('shared_via')->value()
-                ?: ($url !== null ? 'share_sheet' : 'manual'),
-        ]);
+        try {
+            $share = Share::query()->forceCreate([
+                'user_id' => $user->id,
+                'source_post_id' => $post->id,
+                'status' => ShareStatus::Pending->value,
+                'shared_via' => $request->string('shared_via')->value()
+                    ?: ($url !== null ? 'share_sheet' : 'manual'),
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            $winner = Share::where('user_id', $user->id)->where('source_post_id', $post->id)->firstOrFail();
+
+            return $this->created($winner, $url, $platform, idempotentReplay: true);
+        }
 
         IngestShare::dispatch($share->id);
 

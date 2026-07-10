@@ -7,6 +7,7 @@ use App\Models\Share;
 use App\Models\ShareStageMetric;
 use App\Models\User;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 
 it('creates a pending share and dispatches the pipeline (202)', function () {
@@ -96,16 +97,65 @@ it('409s a retry from a non-retryable state', function () {
         ->assertJsonPath('error.code', 'conflict');
 });
 
-it('discards an unpublished share and 409s a published one', function () {
+it('discards an in-flight share from any non-terminal state', function (ShareStatus $status) {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+    $share = Share::factory()->create(['user_id' => $user->id, 'status' => $status]);
+
+    $this->deleteJson("/api/v1/shares/{$share->id}")
+        ->assertOk()
+        ->assertJsonPath('data.ok', true);
+
+    expect($share->fresh()->status)->toBe(ShareStatus::Rejected);
+})->with([
+    'pending' => [ShareStatus::Pending],
+    'fetching' => [ShareStatus::Fetching],
+    'analyzing' => [ShareStatus::Analyzing],
+    'review' => [ShareStatus::Review],
+    'failed' => [ShareStatus::Failed],
+]);
+
+it('409s discarding an already-published share', function () {
     $user = User::factory()->create();
     Sanctum::actingAs($user);
 
-    $review = Share::factory()->create(['user_id' => $user->id, 'status' => ShareStatus::Review]);
-    $this->deleteJson("/api/v1/shares/{$review->id}")->assertOk();
-    expect($review->fresh()->status)->toBe(ShareStatus::Rejected);
-
     $published = Share::factory()->published()->create(['user_id' => $user->id]);
     $this->deleteJson("/api/v1/shares/{$published->id}")->assertStatus(409);
+
+    expect($published->fresh()->status)->toBe(ShareStatus::Published);
+});
+
+it('returns the idempotent replay when a concurrent insert wins the create race', function () {
+    Bus::fake();
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+
+    // Deterministically reproduce the TOCTOU race: inject the "winning" row from a
+    // concurrent request between our duplicate-check and our insert, via the
+    // model's `creating` hook (fires once; DB::insert bypasses Eloquent events so
+    // there's no recursion). The controller's forceCreate then hits the unique
+    // constraint and must return the existing share, not a 500.
+    $injected = false;
+    Share::creating(function (Share $share) use (&$injected) {
+        if ($injected) {
+            return;
+        }
+        $injected = true;
+        DB::table('shares')->insert([
+            'user_id' => $share->user_id,
+            'source_post_id' => $share->source_post_id,
+            'status' => ShareStatus::Pending->value,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    });
+
+    $this->postJson('/api/v1/shares', ['url' => 'https://www.instagram.com/reel/RACE123/'])
+        ->assertStatus(202)
+        ->assertJsonPath('meta.idempotent_replay', true);
+
+    expect(Share::where('user_id', $user->id)->count())->toBe(1);
+    Bus::assertNotDispatched(IngestShare::class); // the loser must not enqueue a 2nd pipeline
 });
 
 it('applies rate-limit headers to POST /shares', function () {
