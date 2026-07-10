@@ -1,5 +1,7 @@
 # Reelmap
 
+[![CI](https://github.com/blancomaberino/reelme/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/blancomaberino/reelme/actions/workflows/ci.yml)
+
 Share an influencer's restaurant video (Instagram, X, TikTok, YouTube) straight from the platform's share sheet into Reelmap. The app fetches the post, analyzes the caption **and** the video with AI (local model first, OpenRouter fallback), extracts everything it can about the promoted place, and pins it on a map with full attribution. On top of that: Instagram-like accounts, public influencer maps, and a restaurant offer/redemption loop that pays influencers a revenue share per attributed visit.
 
 > The product spec and build plan live in a separate `plans/reelmap` repository. This repository holds the **application code only**.
