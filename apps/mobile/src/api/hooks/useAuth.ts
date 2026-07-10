@@ -1,0 +1,64 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import * as Device from 'expo-device';
+
+import { useSessionStore } from '@/stores/session';
+
+import { api } from '../client';
+import { queryKeys } from '../keys';
+import { clearToken, setToken } from '../token';
+import type { AuthResponse } from '../types';
+
+export type RegisterInput = { name: string; username: string; email: string; password: string };
+export type LoginInput = { email: string; password: string };
+
+// The API issues one token per device and revokes a same-named token, so a
+// stable device_name is required by the register/login contract (03 §2.1).
+function deviceName(): string {
+  return Device.deviceName ?? 'mobile';
+}
+
+async function authenticate(path: string, body: Record<string, unknown>): Promise<AuthResponse> {
+  const { data } = await api.post<{ data: AuthResponse }>(path, { ...body, device_name: deviceName() });
+  return data.data;
+}
+
+async function onAuthenticated(qc: ReturnType<typeof useQueryClient>, { token, user }: AuthResponse) {
+  await setToken(token);
+  useSessionStore.getState().setUser(user);
+  qc.setQueryData(queryKeys.me, user);
+}
+
+export function useRegister() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RegisterInput) => authenticate('/auth/register', input),
+    onSuccess: (res) => onAuthenticated(qc, res),
+  });
+}
+
+export function useLogin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: LoginInput) => authenticate('/auth/login', input),
+    onSuccess: (res) => onAuthenticated(qc, res),
+  });
+}
+
+export function useLogout() {
+  const qc = useQueryClient();
+  return useMutation({
+    // Clear locally even if the network call fails (device may be offline).
+    mutationFn: async () => {
+      try {
+        await api.post('/auth/logout');
+      } catch {
+        // ignore — we clear the session regardless
+      }
+    },
+    onSuccess: async () => {
+      await clearToken();
+      useSessionStore.getState().clear();
+      qc.clear();
+    },
+  });
+}
