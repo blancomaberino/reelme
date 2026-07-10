@@ -17,6 +17,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ShareController extends Controller
@@ -44,13 +45,18 @@ class ShareController extends Controller
         }
 
         try {
-            $share = Share::query()->forceCreate([
+            // Wrap the insert in its own transaction/savepoint: on Postgres a
+            // unique violation aborts the enclosing transaction, which would
+            // poison the recovery SELECT below. The savepoint rolls back just the
+            // failed insert, keeping the connection usable in the catch — correct
+            // whether or not an ambient transaction is open.
+            $share = DB::transaction(fn (): Share => Share::query()->forceCreate([
                 'user_id' => $user->id,
                 'source_post_id' => $post->id,
                 'status' => ShareStatus::Pending->value,
                 'shared_via' => $request->string('shared_via')->value()
                     ?: ($url !== null ? 'share_sheet' : 'manual'),
-            ]);
+            ]));
         } catch (UniqueConstraintViolationException) {
             $winner = Share::where('user_id', $user->id)->where('source_post_id', $post->id)->firstOrFail();
 
