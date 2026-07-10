@@ -43,14 +43,14 @@ Pure TS/JS/screen edits never need a rebuild — `npm start` picks them up.
 
 | Variable | Purpose |
 |----------|---------|
-| `EXPO_PUBLIC_API_URL` | Base URL of the Laravel API (the client appends `/api/v1`). **A device/simulator cannot reach `localhost`** — use the machine's LAN IP for the `development` profile (e.g. `http://192.168.1.16:8080`). |
+| `EXPO_PUBLIC_API_URL` | Base URL of the Laravel API (the client appends `/api/v1`). The `development` profile defaults to `http://localhost:8080` (works for the iOS simulator, which shares the host network). **A physical device or Android emulator cannot reach `localhost`** — override with the dev machine's LAN IP (e.g. `http://192.168.1.16:8080`; Android emulator uses `http://10.0.2.2:8080`) in your local `eas.json` or via `EXPO_PUBLIC_API_URL` when building. |
 | `APP_VARIANT` | `development` selects the dev app name + `.dev` bundle IDs (side-by-side install). |
 | `EAS_PROJECT_ID` | Injected into `extra.eas.projectId`; set once `eas init` has run (see below). |
 
 ## EAS
 
 `eas.json` defines three profiles per `05-mobile-app §6.2`:
-- **development** — `developmentClient`, internal, iOS simulator, `EXPO_PUBLIC_API_URL` = LAN IP of the dev API.
+- **development** — `developmentClient`, internal, iOS simulator, `EXPO_PUBLIC_API_URL` = `http://localhost:8080` (override with a LAN IP for physical devices — see Environment above).
 - **preview** — internal QA (TestFlight / APK), channel `preview`, staging URL.
 - **production** — `autoIncrement`, channel `production`, prod URL.
 
