@@ -22,8 +22,10 @@ export const api = axios.create({
 
 // Attach the bearer token ONLY to same-origin API calls (relative URLs). An
 // absolute URL would override baseURL and leak the token to another host.
+// The pattern mirrors axios's own isAbsoluteURL: the scheme is optional, so a
+// protocol-relative `//host` also counts as absolute (and skips baseURL).
 api.interceptors.request.use(async (config) => {
-  const isRelative = !/^https?:\/\//i.test(config.url ?? '');
+  const isRelative = !/^([a-z][a-z\d+\-.]*:)?\/\//i.test(config.url ?? '');
   if (isRelative) {
     const token = await getToken();
     if (token) {
@@ -36,7 +38,13 @@ api.interceptors.request.use(async (config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // A successful request means we're no longer throttled — clear the sticky flag.
+    if (useUiStore.getState().rateLimited) {
+      useUiStore.getState().setRateLimited(false);
+    }
+    return response;
+  },
   async (error: AxiosError<ApiErrorEnvelope>) => {
     // Scrub the bearer token from the error so it can never travel to a logger
     // or crash reporter attached later (the error object outlives this handler).
@@ -51,9 +59,15 @@ api.interceptors.response.use(
     const isAuthPath = url.startsWith('/auth/'); // never self-trigger on login/register/logout
 
     if (status === 401 && !isAuthPath) {
+      // Capture before clear() flips the status to 'guest'.
+      const bootstrapping = useSessionStore.getState().status === 'loading';
       await clearToken();
       useSessionStore.getState().clear();
-      router.replace('/(auth)/login');
+      // During bootstrap the root-layout gate + index own navigation; redirecting
+      // here would race them (login vs welcome). Only redirect a live session.
+      if (!bootstrapping) {
+        router.replace('/(auth)/login');
+      }
     }
 
     if (status === 422) {

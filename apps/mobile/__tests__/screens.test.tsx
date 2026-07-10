@@ -15,15 +15,20 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
   default: () => mockColorScheme(),
 }));
 
+let qc: QueryClient;
+
 function Providers({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
 beforeEach(() => {
+  // gcTime: 0 so no cache-GC timer keeps the jest worker alive after the test.
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
   mockColorScheme.mockReturnValue('light');
   useSessionStore.setState({ user: null, status: 'guest' });
 });
+
+afterEach(() => qc.clear());
 
 describe('auth screens render across color schemes', () => {
   it('welcome shows the brand and both entry CTAs', () => {

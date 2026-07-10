@@ -1,4 +1,10 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
+import { notifyManager } from '@tanstack/react-query';
+
+// Flush React Query notifications synchronously so no batching setTimeout lingers
+// past a test — that timer both fires act(...) warnings and blocks the worker exit.
+notifyManager.setScheduler((cb) => cb());
+
 // In-memory SecureStore (no native module in jest).
 jest.mock('expo-secure-store', () => {
   const store = new Map<string, string>();
@@ -14,6 +20,12 @@ jest.mock('expo-secure-store', () => {
 });
 
 jest.mock('expo-device', () => ({ deviceName: 'jest-device' }));
+
+// No native splash module in jest — the auth gate awaits these.
+jest.mock('expo-splash-screen', () => ({
+  preventAutoHideAsync: jest.fn(async () => {}),
+  hideAsync: jest.fn(async () => {}),
+}));
 
 // expo-router: the single canonical mock for the whole suite. A mock declared in
 // setupFilesAfterEnv always overrides a test file's own jest.mock('expo-router'),
