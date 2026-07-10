@@ -8,6 +8,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: IS_DEV ? 'Reelmap (Dev)' : 'Reelmap',
   slug: 'reelmap',
   scheme: 'reelmap',
+  owner: 'mindastic',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
@@ -31,9 +32,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   web: { output: 'static', favicon: './assets/images/favicon.png' },
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
-    // Set by `eas init` (requires an Expo login) — see apps/mobile/README.md.
-    eas: { projectId: process.env.EAS_PROJECT_ID },
+    // EAS project @mindastic/reelmap. Set manually because eas-cli 20.5's config
+    // writer can't modify a TS config under TypeScript 6.0 (it reads fine).
+    eas: { projectId: process.env.EAS_PROJECT_ID ?? '4d05e4d7-cfac-45d0-afbd-22ae34f69e32' },
   },
+  updates: { url: 'https://u.expo.dev/4d05e4d7-cfac-45d0-afbd-22ae34f69e32' },
+  runtimeVersion: { policy: 'appVersion' },
   plugins: [
     'expo-router',
     [
