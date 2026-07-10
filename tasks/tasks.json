@@ -45,7 +45,7 @@
       "agent": "executor"
     },
     {
-      "id": "T-006", "title": "CI: GitHub Actions for api + mobile + contracts", "phase": "M0", "status": "pending",
+      "id": "T-006", "title": "CI: GitHub Actions for api + mobile + contracts", "phase": "M0", "status": "in_progress",
       "depends_on": ["T-002", "T-004", "T-005"], "estimate": "S",
       "paths": [".github/workflows/"],
       "spec_refs": ["01-architecture.md#environments-deployment"],
