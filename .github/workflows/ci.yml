@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# One in-flight run per ref; a new push cancels the previous run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Detect which areas a PR touches so unrelated jobs skip. On `main` pushes
+  # every job runs regardless (see each job's `if`) — the M0 exit criterion.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+              - '.github/workflows/ci.yml'
+            contracts:
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/ci.yml'
+            mobile:
+              - 'apps/mobile/**'
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/ci.yml'
+
+  api:
+    name: API (Laravel)
+    needs: changes
+    if: ${{ needs.changes.outputs.api == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      # MUST be the postgis image — the first migration runs `CREATE EXTENSION
+      # postgis` (plus pg_trgm/unaccent/citext), which plain postgres lacks.
+      # Credentials/db match apps/api/phpunit.xml so only DB_HOST needs override.
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: testing
+          POSTGRES_USER: sail
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sail -d testing"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, pgsql, redis, gd, intl, zip, bcmath
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Prepare environment
+        run: cp .env.example .env
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Generate app key
+        run: php artisan key:generate
+
+      - name: Lint (Pint)
+        run: composer lint
+
+      - name: Static analysis (PHPStan)
+        run: composer stan
+
+      - name: Migrate database
+        run: php artisan migrate --force
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: testing
+          DB_USERNAME: sail
+          DB_PASSWORD: password
+
+      - name: Tests (Pest)
+        run: composer test
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: testing
+          DB_USERNAME: sail
+          DB_PASSWORD: password
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+
+  contracts:
+    name: Contracts
+    needs: changes
+    if: ${{ needs.changes.outputs.contracts == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Regenerate types and check for drift
+        run: |
+          npm run generate -w packages/contracts
+          git diff --exit-code packages/contracts/src/generated \
+            || { echo "::error::Generated contracts are stale. Run 'npm run generate -w packages/contracts' and commit."; exit 1; }
+
+      - name: Typecheck
+        run: npm run typecheck -w packages/contracts
+
+      - name: Tests (Jest)
+        run: npm test -w packages/contracts
+
+  mobile:
+    name: Mobile (Expo)
+    needs: changes
+    if: ${{ needs.changes.outputs.mobile == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint -w apps/mobile
+
+      - name: Typecheck
+        run: npm run typecheck -w apps/mobile
+
+      - name: Tests (Jest)
+        run: npm test -w apps/mobile -- --ci
