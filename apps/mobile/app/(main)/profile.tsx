@@ -4,6 +4,7 @@ import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { useLogout } from '@/api/hooks/useAuth';
 import { Button } from '@/components/button';
 import { useSessionStore } from '@/stores/session';
+import { colors } from '@/theme/colors';
 
 export default function ProfileScreen() {
   const user = useSessionStore((s) => s.user);
@@ -31,7 +32,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, padding: 24, justifyContent: 'space-between' },
   header: { marginTop: 24, gap: 4 },
   name: { fontSize: 28, fontWeight: '700' },
-  username: { fontSize: 16, color: '#6b7280' },
-  note: { flex: 1, marginTop: 24, color: '#6b7280' },
+  username: { fontSize: 16, color: colors.muted },
+  note: { flex: 1, marginTop: 24, color: colors.muted },
   footer: { gap: 12 },
 });

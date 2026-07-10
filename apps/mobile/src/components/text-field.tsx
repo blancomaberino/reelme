@@ -1,5 +1,7 @@
 import { StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
 
+import { colors } from '@/theme/colors';
+
 type Props = TextInputProps & {
   label: string;
   error?: string;
@@ -12,7 +14,7 @@ export function TextField({ label, error, style, ...props }: Props) {
       <TextInput
         accessibilityLabel={label}
         style={[styles.input, error ? styles.inputError : null, style]}
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor={colors.placeholder}
         autoCapitalize="none"
         {...props}
       />
@@ -23,16 +25,16 @@ export function TextField({ label, error, style, ...props }: Props) {
 
 const styles = StyleSheet.create({
   container: { gap: 6 },
-  label: { fontSize: 14, fontWeight: '500', color: '#374151' },
+  label: { fontSize: 14, fontWeight: '500', color: colors.text },
   input: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
   },
-  inputError: { borderColor: '#ef4444' },
-  error: { color: '#ef4444', fontSize: 13 },
+  inputError: { borderColor: colors.danger },
+  error: { color: colors.danger, fontSize: 13 },
 });

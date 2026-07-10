@@ -6,6 +6,8 @@ import {
   Text,
 } from 'react-native';
 
+import { colors } from '@/theme/colors';
+
 type Props = Omit<PressableProps, 'children'> & {
   title: string;
   variant?: 'primary' | 'secondary';
@@ -28,7 +30,7 @@ export function Button({ title, variant = 'primary', loading, disabled, style, .
       {...props}
     >
       {loading ? (
-        <ActivityIndicator color={isPrimary ? '#fff' : '#208AEF'} />
+        <ActivityIndicator color={isPrimary ? colors.white : colors.primary} />
       ) : (
         <Text style={[styles.text, isPrimary ? styles.textPrimary : styles.textSecondary]}>{title}</Text>
       )}
@@ -38,11 +40,11 @@ export function Button({ title, variant = 'primary', loading, disabled, style, .
 
 const styles = StyleSheet.create({
   base: { borderRadius: 12, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
-  primary: { backgroundColor: '#208AEF' },
-  secondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#208AEF' },
+  primary: { backgroundColor: colors.primary },
+  secondary: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.85 },
   text: { fontSize: 16, fontWeight: '600' },
-  textPrimary: { color: '#fff' },
-  textSecondary: { color: '#208AEF' },
+  textPrimary: { color: colors.white },
+  textSecondary: { color: colors.primary },
 });

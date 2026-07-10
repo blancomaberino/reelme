@@ -2,6 +2,7 @@ import { Link } from 'expo-router';
 import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
+import { colors } from '@/theme/colors';
 
 export default function WelcomeScreen() {
   return (
@@ -25,7 +26,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, padding: 24, justifyContent: 'space-between' },
   hero: { flex: 1, justifyContent: 'center', gap: 16 },
-  logo: { fontSize: 44, fontWeight: '800', color: '#208AEF' },
-  tagline: { fontSize: 18, lineHeight: 26, color: '#4b5563' },
+  logo: { fontSize: 44, fontWeight: '800', color: colors.primary },
+  tagline: { fontSize: 18, lineHeight: 26, color: colors.text },
   actions: { gap: 12 },
 });
