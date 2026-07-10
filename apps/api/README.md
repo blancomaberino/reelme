@@ -55,6 +55,19 @@ Point `.env` at your local hosts: `DB_HOST=127.0.0.1`, `REDIS_HOST=127.0.0.1`, `
 The analysis pipeline (M1) calls a local Ollama host. Under Sail the workers reach it at
 `OLLAMA_URL=http://host.docker.internal:11434`; with Herd use `http://127.0.0.1:11434`.
 
+## Queues & Horizon
+
+Jobs run on Redis queues supervised by [Horizon](https://laravel.com/docs/horizon). Queue names are canonical per `04-analysis-pipeline.md §1` (`ingest, fetch, media, transcribe, analyze, resolve, publish, notifications, default`) — a config test locks the set.
+
+```bash
+./vendor/bin/sail artisan horizon          # start supervisors (local)
+./vendor/bin/sail artisan horizon:terminate # graceful stop (deploys call this)
+```
+
+- Dashboard: **`/horizon`** — gated to `is_admin` users in all **non-local** environments (staging/production); Horizon leaves it open in `local` by default (dev only, tunnel-blocked by Sentinel). Guests and non-admins get 403.
+- Production runs Horizon as a Forge daemon, restarted on each deploy via `horizon:terminate` (01-architecture §7). The scheduler runs `horizon:snapshot` every 5 min for metrics.
+- `retry_after` (960s) is deliberately greater than the longest supervisor timeout (media = 900s) so long jobs are never re-delivered mid-flight.
+
 ## Response conventions
 
 - Success: `{"data": ..., "meta": {...}}`.
