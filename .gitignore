@@ -1,0 +1,3 @@
+# Claude Code tooling + nested app-repo worktrees live here — never track them.
+.claude/
+.DS_Store
