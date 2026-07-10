@@ -32,19 +32,28 @@ const USER = {
   created_at: null,
 };
 
+let qc: QueryClient;
+
+// gcTime: 0 so no cache-GC timer lingers past the test (otherwise the jest
+// worker can't exit gracefully); shared client is cleared in afterEach.
 function wrapper() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
 beforeEach(async () => {
+  qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  });
   mock = new AxiosMockAdapter(api);
   await clearToken();
   useSessionStore.setState({ user: null, status: 'loading' });
   jest.clearAllMocks();
 });
 
-afterEach(() => mock.restore());
+afterEach(() => {
+  qc.clear();
+  mock.restore();
+});
 
 it('login success stores the token and marks the session authed', async () => {
   mock.onPost('/auth/login').reply(200, { data: { token: 'tok_abc', user: USER }, meta: {} });
@@ -124,10 +133,11 @@ it('a 401 on an auth path does NOT trigger the global redirect', async () => {
   expect(mockRouter.replace).not.toHaveBeenCalled();
 });
 
-it('login screen renders the 422 field error and navigates on success', async () => {
+it('login screen renders the 422 field error, then navigates to the map on a successful retry', async () => {
   mock.onPost('/auth/login').replyOnce(422, {
     error: { message: 'Invalid', details: { email: ['These credentials do not match our records.'] } },
   });
+  mock.onPost('/auth/login').reply(200, { data: { token: 'tok_ok', user: USER }, meta: {} });
 
   render(<LoginScreen />, { wrapper: wrapper() });
 
@@ -136,4 +146,10 @@ it('login screen renders the 422 field error and navigates on success', async ()
   fireEvent.press(screen.getByRole('button', { name: 'Log in' }));
 
   expect(await screen.findByText(/do not match/i)).toBeOnTheScreen();
+
+  // Retry with a good password → the screen's onSuccess redirects into the tabs.
+  fireEvent.changeText(screen.getByLabelText('Password'), 'secret123!');
+  fireEvent.press(screen.getByRole('button', { name: 'Log in' }));
+
+  await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/(main)/map'));
 });
