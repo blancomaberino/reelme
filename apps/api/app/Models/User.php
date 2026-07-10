@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Database\Factories\UserFactory;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,10 +23,19 @@ use Laravel\Sanctum\HasApiTokens;
  */
 #[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'is_public', 'preferred_analysis_model'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+
+    /**
+     * Gate the Filament admin panel to admins — enforced in EVERY environment
+     * (the panel is session-authed and separate from the API's Sanctum tokens).
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return (bool) $this->is_admin;
+    }
 
     /**
      * @return array<string, string>

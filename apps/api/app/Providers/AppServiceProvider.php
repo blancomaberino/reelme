@@ -25,5 +25,11 @@ class AppServiceProvider extends ServiceProvider
         // Auth endpoints: 5/min per IP (03-api-design §1). The 429 renders through
         // ApiExceptionRenderer as a rate_limited error envelope with Retry-After.
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(5)->by($request->ip()));
+
+        // POST /shares: 10/min + 100/day per user (03 §1).
+        RateLimiter::for('shares', fn (Request $request) => [
+            Limit::perMinute(10)->by('shares:min:'.$request->user()?->id),
+            Limit::perDay(100)->by('shares:day:'.$request->user()?->id),
+        ]);
     }
 }
