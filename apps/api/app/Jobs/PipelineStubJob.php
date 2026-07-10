@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Enums\ShareStatus;
+use App\Jobs\Concerns\FailsShareOnError;
 use App\Jobs\Concerns\RecordsStageMetrics;
 use App\Models\Share;
 use Illuminate\Bus\Batchable;
@@ -11,7 +12,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Throwable;
 
 /**
  * Shared shape for the pipeline stages whose real work lands in later tasks
@@ -21,7 +21,7 @@ use Throwable;
  */
 abstract class PipelineStubJob implements ShouldQueue
 {
-    use Batchable, Dispatchable, InteractsWithQueue, Queueable, RecordsStageMetrics, SerializesModels;
+    use Batchable, Dispatchable, FailsShareOnError, InteractsWithQueue, Queueable, RecordsStageMetrics, SerializesModels;
 
     public int $tries = 3;
 
@@ -56,18 +56,10 @@ abstract class PipelineStubJob implements ShouldQueue
             return; // not our turn (or share parked/terminal) — exit silently
         }
 
-        $this->recordStage($share->id, $this->stage(), 'running');
+        $this->recordStage($share->id, $this->stage());
         $this->run($share);
     }
 
     /** No-op until the real stage lands. */
     protected function run(Share $share): void {}
-
-    public function failed(Throwable $e): void
-    {
-        $share = Share::find($this->shareId);
-        if ($share !== null && $share->canTransitionTo(ShareStatus::Failed)) {
-            $share->transitionTo(ShareStatus::Failed, 'unknown');
-        }
-    }
 }

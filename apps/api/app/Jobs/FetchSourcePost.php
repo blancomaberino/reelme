@@ -9,6 +9,7 @@ use App\Adapters\Exceptions\NeedsManualFallback;
 use App\Adapters\Exceptions\PostUnavailable;
 use App\Enums\FetchStatus;
 use App\Enums\ShareStatus;
+use App\Jobs\Concerns\FailsShareOnError;
 use App\Jobs\Concerns\RecordsStageMetrics;
 use App\Models\Influencer;
 use App\Models\Share;
@@ -19,7 +20,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Throwable;
 
 /**
  * Walks the adapter chain for the share's source_post URL; first successful
@@ -29,7 +29,7 @@ use Throwable;
  */
 class FetchSourcePost implements ShouldQueue
 {
-    use Batchable, Dispatchable, InteractsWithQueue, Queueable, RecordsStageMetrics, SerializesModels;
+    use Batchable, Dispatchable, FailsShareOnError, InteractsWithQueue, Queueable, RecordsStageMetrics, SerializesModels;
 
     public int $tries = 4;
 
@@ -65,7 +65,7 @@ class FetchSourcePost implements ShouldQueue
             return; // idempotent: already fetched
         }
 
-        $this->recordStage($share->id, 'fetch', 'running');
+        $this->recordStage($share->id, 'fetch');
 
         foreach ($registry->resolve($post->url) as $adapter) {
             try {
@@ -110,11 +110,8 @@ class FetchSourcePost implements ShouldQueue
         ])->save();
     }
 
-    public function failed(Throwable $e): void
+    protected function failureCode(): string
     {
-        $share = Share::find($this->shareId);
-        if ($share !== null && $share->canTransitionTo(ShareStatus::Failed)) {
-            $share->transitionTo(ShareStatus::Failed, 'fetch_unavailable');
-        }
+        return 'fetch_unavailable';
     }
 }

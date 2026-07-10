@@ -75,12 +75,8 @@ class ShareController extends Controller
     public function show(Request $request, Share $share): JsonResponse
     {
         $this->authorize('view', $share);
-        $share->load(self::RELATIONS);
 
-        return response()->json([
-            'data' => new ShareResource($share),
-            'meta' => ['poll_interval_ms' => $this->pollInterval($share->status)],
-        ]);
+        return $this->respondWithShare($share);
     }
 
     public function retry(Request $request, Share $share): JsonResponse
@@ -98,6 +94,11 @@ class ShareController extends Controller
         $share->transitionTo(Pipeline::entryStatus($stage));
         Bus::chain(Pipeline::chain($share->id, $stage))->dispatch();
 
+        return $this->respondWithShare($share);
+    }
+
+    private function respondWithShare(Share $share): JsonResponse
+    {
         $share->load(self::RELATIONS);
 
         return response()->json([
@@ -128,8 +129,13 @@ class ShareController extends Controller
 
         if ($url !== null) {
             $canonical = $this->canonicalizer->canonicalize($url);
+            // NOTE: source_posts.platform is NOT NULL with 4 fixed values (02 §3.4),
+            // but an unknown-host URL has no platform — a data-model gap. We store a
+            // placeholder (hint or instagram) that FetchSourcePost ignores (it
+            // re-resolves adapters by URL), and return the *real* (possibly null)
+            // platform to the client. TODO(T-024/ADR): nullable platform / `unknown`.
             $platform = $canonical->platform ?? $hintPlatform ?? Platform::Instagram;
-            $externalId = $canonical->externalId ?? substr(sha1($canonical->url), 0, 40);
+            $externalId = $canonical->externalId ?? sha1($canonical->url);
 
             $post = SourcePost::firstOrCreate(
                 ['platform' => $platform, 'external_id' => $externalId],
@@ -166,7 +172,7 @@ class ShareController extends Controller
 
     private function created(Share $share, ?string $url, ?Platform $platform, bool $idempotentReplay): JsonResponse
     {
-        $meta = ['poll_interval_ms' => 2000];
+        $meta = ['poll_interval_ms' => $this->pollInterval(ShareStatus::Pending)];
         if ($idempotentReplay) {
             $meta['idempotent_replay'] = true;
         }

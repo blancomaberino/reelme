@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Http;
 
 /**
  * Turns a raw shared URL into a CanonicalUrl: expands shortlinks (following a
- * bounded number of redirects), strips tracking params, and extracts the
- * platform post id. Used by both POST /shares (duplicate guard) and IngestShare
- * so both agree on the canonical form.
+ * bounded number of SSRF-checked redirects), strips tracking params, and
+ * extracts the platform post id. Used by POST /shares (ShareController) to
+ * resolve the source_post + duplicate guard.
  */
 class UrlCanonicalizer
 {
@@ -43,20 +43,98 @@ class UrlCanonicalizer
         return in_array($host, self::SHORTLINK_HOSTS, true);
     }
 
+    /**
+     * Expand a shortlink by following redirects MANUALLY, validating every hop's
+     * target against private/reserved IP ranges. Guzzle's auto-redirect would
+     * only gate the first host (allowlisted); a t.co / attacker redirect could
+     * otherwise reach 169.254.169.254, localhost, or internal services (SSRF).
+     */
     private function expand(string $url): string
     {
-        try {
-            $response = Http::timeout(5)
-                ->withOptions(['allow_redirects' => ['max' => 3, 'track_redirects' => true]])
-                ->get($url);
+        $current = $url; // starting host is already allowlisted by the caller
 
-            $chain = $response->handlerStats()['redirect_url'] ?? null;
-            $effective = $response->effectiveUri();
+        for ($hop = 0; $hop < 3; $hop++) {
+            try {
+                $response = Http::timeout(5)->withOptions(['allow_redirects' => false])->get($current);
+            } catch (ConnectionException) {
+                return $url;
+            }
 
-            return $chain ?? ($effective !== null ? (string) $effective : $url);
-        } catch (ConnectionException) {
-            return $url; // fall back to the shortlink; the adapter chain still resolves
+            if ($response->status() < 300 || $response->status() >= 400) {
+                return $current; // final destination
+            }
+
+            $location = $this->absoluteUrl($current, (string) $response->header('Location'));
+
+            if ($location === null || ! $this->isPublicHttpUrl($location)) {
+                return $current; // refuse to follow into a non-public / invalid target
+            }
+
+            $current = $location;
         }
+
+        return $current;
+    }
+
+    private function absoluteUrl(string $base, string $location): ?string
+    {
+        if ($location === '') {
+            return null;
+        }
+        if (preg_match('#^https?://#i', $location) === 1) {
+            return $location;
+        }
+
+        $parts = parse_url($base);
+        if (! isset($parts['scheme'], $parts['host'])) {
+            return null;
+        }
+
+        $prefix = "{$parts['scheme']}://{$parts['host']}".(isset($parts['port']) ? ":{$parts['port']}" : '');
+
+        return $prefix.(str_starts_with($location, '/') ? $location : "/{$location}");
+    }
+
+    private function isPublicHttpUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+        if (! in_array($parts['scheme'] ?? '', ['http', 'https'], true)) {
+            return false;
+        }
+
+        $host = strtolower($parts['host'] ?? '');
+        if ($host === '' || in_array($host, ['localhost', 'metadata.google.internal'], true)) {
+            return false;
+        }
+
+        $ips = filter_var($host, FILTER_VALIDATE_IP) !== false
+            ? [$host]
+            : array_merge(gethostbynamel($host) ?: [], $this->aaaa($host));
+
+        if ($ips === []) {
+            return false; // unresolvable → refuse
+        }
+
+        foreach ($ips as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                return false; // private / reserved / loopback / link-local
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function aaaa(string $host): array
+    {
+        $records = @dns_get_record($host, DNS_AAAA) ?: [];
+
+        return array_values(array_filter(array_map(
+            fn (array $r): ?string => isset($r['ipv6']) && is_string($r['ipv6']) ? $r['ipv6'] : null,
+            $records,
+        )));
     }
 
     private function stripTracking(string $url): string

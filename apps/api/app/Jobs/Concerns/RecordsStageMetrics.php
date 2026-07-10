@@ -10,15 +10,14 @@ use App\Models\ShareStageMetric;
  */
 trait RecordsStageMetrics
 {
-    protected function recordStage(int $shareId, string $stage, string $status, ?int $durationMs = null, int $attempt = 1): void
+    protected function recordStage(int $shareId, string $stage): void
     {
+        // duration/attempt columns exist for when real stages measure them (T-017+).
         ShareStageMetric::create([
             'share_id' => $shareId,
             'stage' => $stage,
-            'status' => $status,
+            'status' => 'running',
             'started_at' => now(),
-            'duration_ms' => $durationMs,
-            'attempt' => $attempt,
         ]);
     }
 }

@@ -31,9 +31,9 @@ enum ShareStatus: string
         };
     }
 
-    /** Fully terminal — no further transitions and not retryable. */
+    /** Fully terminal — no outgoing transitions (published/rejected). */
     public function isTerminal(): bool
     {
-        return $this === self::Published || $this === self::Rejected;
+        return $this->transitions() === [];
     }
 }

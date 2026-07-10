@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Enums\ShareStatus;
+use App\Jobs\Pipeline;
 use App\Models\Share;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -61,8 +62,9 @@ class ShareResource extends JsonResource
 
         $metrics = $this->stageMetrics->sortBy('id');
         foreach ($metrics as $metric) {
-            $status = $this->statusForStage($metric->stage);
-            if ($status !== null && end($history)['status'] !== $status->value) {
+            // Single source of truth for the stage→status partition (Pipeline).
+            $status = Pipeline::entryStatus($metric->stage);
+            if (end($history)['status'] !== $status->value) {
                 $history[] = ['status' => $status->value, 'at' => $metric->started_at?->toIso8601ZuluString()];
             }
         }
@@ -72,15 +74,6 @@ class ShareResource extends JsonResource
         }
 
         return $history;
-    }
-
-    private function statusForStage(string $stage): ?ShareStatus
-    {
-        return match ($stage) {
-            'ingest', 'fetch', 'download', 'prepare', 'transcribe' => ShareStatus::Fetching,
-            'extract', 'resolve', 'publish' => ShareStatus::Analyzing,
-            default => null,
-        };
     }
 
     /**
