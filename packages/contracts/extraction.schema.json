@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://reelmap.app/contracts/extraction.schema.json",
+  "title": "ReelmapExtraction",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["place", "influencer", "post", "evidence", "confidence"],
+  "properties": {
+    "place": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "category", "cuisines", "address", "geo", "price_range",
+                   "phone", "website", "opening_hours_text", "dishes", "vibe_tags", "dietary_tags"],
+      "properties": {
+        "name": { "type": ["string", "null"], "description": "Restaurant/venue name exactly as stated in the source. null if not identifiable." },
+        "category": {
+          "type": ["string", "null"],
+          "enum": ["restaurant", "cafe", "bar", "bakery", "street_food", "food_truck",
+                   "dessert", "market", "other", null]
+        },
+        "cuisines": { "type": "array", "items": { "type": "string" }, "description": "Lowercase cuisine labels, e.g. \"thai\", \"neapolitan pizza\". Empty if unstated." },
+        "address": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["street", "city", "region", "postal_code", "country"],
+          "properties": {
+            "street":      { "type": ["string", "null"] },
+            "city":        { "type": ["string", "null"] },
+            "region":      { "type": ["string", "null"], "description": "State/province/prefecture." },
+            "postal_code": { "type": ["string", "null"] },
+            "country":     { "type": ["string", "null"], "description": "ISO 3166-1 alpha-2 when confidently known, else full name, else null." }
+          }
+        },
+        "geo": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["lat", "lng"],
+          "properties": {
+            "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+            "lng": { "type": "number", "minimum": -180, "maximum": 180 }
+          },
+          "description": "Only when explicit coordinates appear in the source (e.g. geotag text). Never inferred."
+        },
+        "price_range": { "type": ["integer", "null"], "minimum": 1, "maximum": 4, "description": "1=$ … 4=$$$$. null if unstated." },
+        "phone":   { "type": ["string", "null"] },
+        "website": { "type": ["string", "null"], "format": "uri" },
+        "opening_hours_text": { "type": ["string", "null"], "description": "Verbatim hours text from the source, unparsed." },
+        "dishes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "shown_in_video"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "shown_in_video": { "type": "boolean", "description": "true only if the dish visibly appears in the keyframes/video." }
+            }
+          }
+        },
+        "vibe_tags":    { "type": "array", "items": { "type": "string" }, "description": "e.g. \"cozy\", \"date night\", \"counter seating\", \"late night\"." },
+        "dietary_tags": { "type": "array", "items": { "type": "string" }, "description": "e.g. \"vegan options\", \"halal\", \"gluten-free\". Only when stated or clearly shown." }
+      }
+    },
+    "influencer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "handle", "display_name"],
+      "properties": {
+        "platform":     { "type": ["string", "null"], "enum": ["instagram", "x", "tiktok", "youtube", null] },
+        "handle":       { "type": ["string", "null"] },
+        "display_name": { "type": ["string", "null"] }
+      }
+    },
+    "post": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "caption_summary", "is_sponsored_disclosure"],
+      "properties": {
+        "language": { "type": ["string", "null"], "description": "BCP-47 primary language of the post content, e.g. \"en\", \"pt-BR\"." },
+        "caption_summary": { "type": ["string", "null"], "maxLength": 500 },
+        "is_sponsored_disclosure": { "type": "boolean", "description": "true if #ad, #sponsored, paid-partnership label, or equivalent disclosure is present." }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caption_quotes", "transcript_quotes", "frame_refs"],
+      "properties": {
+        "caption_quotes":    { "type": "array", "items": { "type": "string" }, "description": "Verbatim caption substrings supporting the extraction." },
+        "transcript_quotes": { "type": "array", "items": { "type": "string" } },
+        "frame_refs":        { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 11 }, "description": "Indexes of supporting keyframes as provided in the prompt." }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overall", "per_field"],
+      "properties": {
+        "overall": { "type": "number", "minimum": 0, "maximum": 1 },
+        "per_field": {
+          "type": "object",
+          "description": "Map of dotted field path (e.g. \"place.name\", \"place.address.city\") to confidence 0-1.",
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}
