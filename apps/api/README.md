@@ -55,6 +55,15 @@ Point `.env` at your local hosts: `DB_HOST=127.0.0.1`, `REDIS_HOST=127.0.0.1`, `
 The analysis pipeline (M1) calls a local Ollama host. Under Sail the workers reach it at
 `OLLAMA_URL=http://host.docker.internal:11434`; with Herd use `http://127.0.0.1:11434`.
 
+## Admin panel (Filament)
+
+Ops tooling lives in a [Filament](https://filamentphp.com) panel at **`/admin`** — there is deliberately **no** `/api/v1/admin/*` REST surface (ADR-012). The panel is session-authed (web guard), separate from the API's Sanctum tokens.
+
+- Access is gated by `User::canAccessPanel()` → **`is_admin` in every environment**. Non-admins get 403, guests are redirected to `/admin/login`.
+- **Local admin**: `php artisan db:seed --class=AdminUserSeeder` creates `admin@reelmap.test` / `password`. **Never run in production.**
+- **Production admins**: promote an existing account with `php artisan app:make-admin {email}` (never the seeder).
+- **Ban** = soft delete + Sanctum token revocation (there is no `banned_at` column). A banned user's username/email stay **reserved** (the unique citext indexes have no `deleted_at` carve-out). Unban = restore. Admins cannot ban themselves.
+
 ## Queues & Horizon
 
 Jobs run on Redis queues supervised by [Horizon](https://laravel.com/docs/horizon). Queue names are canonical per `04-analysis-pipeline.md §1` (`ingest, fetch, media, transcribe, analyze, resolve, publish, notifications, default`) — a config test locks the set.
