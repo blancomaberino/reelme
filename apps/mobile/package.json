@@ -3,6 +3,9 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20.19.4"
+  },
   "scripts": {
     "start": "expo start --dev-client",
     "android": "expo run:android",
