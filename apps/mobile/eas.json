@@ -9,7 +9,7 @@
       "distribution": "internal",
       "env": {
         "APP_VARIANT": "development",
-        "EXPO_PUBLIC_API_URL": "http://192.168.1.16:8080"
+        "EXPO_PUBLIC_API_URL": "http://localhost:8080"
       },
       "ios": { "simulator": true }
     },

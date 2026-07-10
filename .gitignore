@@ -12,6 +12,11 @@ apps/api/storage/*.key
 apps/api/public/storage
 apps/api/.phpunit.cache
 
+# Filament published assets — republished by `filament:upgrade` (post-autoload-dump)
+apps/api/public/css/filament/
+apps/api/public/js/filament/
+apps/api/public/fonts/filament/
+
 # Expo / React Native prebuild artifacts (managed workflow regenerates these)
 .expo/
 apps/mobile/ios/
