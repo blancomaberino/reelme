@@ -95,14 +95,21 @@ class PublishShare extends PipelineStubJob
 
         // Materialize discovery tags from the as-published snapshot (T-031) —
         // before save() so cuisine_primary backfill and the Scout re-index (the
-        // searchable document embeds tag slugs) ride the same write.
-        app(TagMaterializer::class)->materialize(
-            $place,
-            $source->extraction_snapshot_json,
-            $source->analysisRun?->overall_confidence !== null
-                ? (float) $source->analysisRun->overall_confidence
-                : null,
-        );
+        // searchable document embeds tag slugs) ride the same write. NON-FATAL:
+        // the share is already Published (one-shot transition), so a throw here
+        // would permanently skip the counter/activation writes below on retry.
+        // Tags are recoverable via reelmap:tags:backfill; counters are not.
+        try {
+            app(TagMaterializer::class)->materialize(
+                $place,
+                $source->extraction_snapshot_json,
+                $source->analysisRun?->overall_confidence !== null
+                    ? (float) $source->analysisRun->overall_confidence
+                    : null,
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
 
         $place->shares_count = $sourceCount;
         $place->avg_extraction_confidence = $this->avgConfidence($place->id);

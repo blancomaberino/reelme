@@ -111,7 +111,7 @@ class MapController extends Controller
         $places = $this->baseQuery($request, $bbox, $filter, $userId)
             ->select('*')
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-            ->with(['primarySource.sourcePost.influencer', 'tags'])
+            ->with(['primarySource.sourcePost.influencer', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
             ->orderByDesc('shares_count')
             ->limit(self::PIN_CAP + 1)
             ->get();
@@ -198,7 +198,7 @@ class MapController extends Controller
                 ->whereIn('id', $singletonIds)
                 ->select('*')
                 ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-                ->with(['primarySource.sourcePost.influencer', 'tags'])
+                ->with(['primarySource.sourcePost.influencer', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
                 ->get()
                 ->map(fn (Place $p) => $this->pin($p))
                 ->all();

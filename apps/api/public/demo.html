@@ -125,18 +125,20 @@ async function api(path, opts = {}) {
 }
 
 // ── Search (T-031): federated places/tags/influencers ──────────────────────
-let searchTimer = null;
+let searchTimer = null, searchSeq = 0;
 document.getElementById("searchBox").addEventListener("input", (e) => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
-  if (q.length < 2) { document.getElementById("searchResults").innerHTML = ""; return; }
+  if (q.length < 2) { searchSeq++; document.getElementById("searchResults").innerHTML = ""; return; }
   searchTimer = setTimeout(() => runSearch(q), 250);
 });
 
 async function runSearch(q) {
+  const seq = ++searchSeq; // drop out-of-order responses
   const out = document.getElementById("searchResults");
   try {
     const { data } = await api(`/search?q=${encodeURIComponent(q)}`);
+    if (seq !== searchSeq) return;
     const places = (data.places || []).map(p =>
       `<div class="src"><a href="#" onclick="goToPlace(${Number(p.id)}, ${Number(p.lat)}, ${Number(p.lng)}); return false;">📍 ${esc(p.name)}</a>` +
       `${p.city ? ` <span class="muted">· ${esc(p.city)}</span>` : ""}</div>`).join("");
@@ -144,6 +146,7 @@ async function runSearch(q) {
     const infl = (data.influencers || []).map(i => `<div class="src muted">🎥 @${esc(i.handle)}</div>`).join("");
     out.innerHTML = (places + tags + infl) || '<div class="muted">No matches.</div>';
   } catch (err) {
+    if (seq !== searchSeq) return;
     out.innerHTML = `<div class="err">${esc(err.message)}</div>`;
   }
 }

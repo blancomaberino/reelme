@@ -33,22 +33,43 @@ it('prefix-matches ?q= against slug and name', function () {
 });
 
 it('orders by usage with ?popular=1 and paginates through ties', function () {
-    $hot = Tag::factory()->create(['slug' => 'zzz-hot']);   // alphabetically last, most used
-    $warm = Tag::factory()->create(['slug' => 'warm']);
-    $cold = Tag::factory()->create(['slug' => 'aaa-cold']);
+    // Creation order is deliberately NOT popularity order (asc or desc), so an
+    // id-ordered fall-through produces different pages.
+    $warm = Tag::factory()->create(['slug' => 'warm']);      // 1 use, id 1
+    $hot = Tag::factory()->create(['slug' => 'zzz-hot']);    // 3 uses, id 2
+    $tied = Tag::factory()->create(['slug' => 'tied']);      // 1 use, id 3
+    Tag::factory()->create(['slug' => 'aaa-cold']);          // 0 uses, id 4
 
     $places = Place::factory()->active()->atPoint(51.5, -0.13)->count(3)->create();
     $hot->places()->attach($places->pluck('id'));
     $warm->places()->attach($places->take(1)->pluck('id'));
+    $tied->places()->attach($places->take(1)->pluck('id'));
 
+    // The warm/tied tie (both count=1, id-desc tiebreak) crosses the boundary.
     $page1 = $this->getJson('/api/v1/tags?popular=1&limit=2')->assertOk();
-    expect(collect($page1->json('data'))->pluck('slug')->all())->toBe(['zzz-hot', 'warm'])
+    expect(collect($page1->json('data'))->pluck('slug')->all())->toBe(['zzz-hot', 'tied'])
         ->and($page1->json('data.0.places_count'))->toBe(3);
 
     $cursor = $page1->json('meta.pagination.next_cursor');
     $page2 = $this->getJson('/api/v1/tags?popular=1&limit=2&cursor='.urlencode($cursor))->assertOk();
-    expect(collect($page2->json('data'))->pluck('slug')->all())->toBe(['aaa-cold'])
+    expect(collect($page2->json('data'))->pluck('slug')->all())->toBe(['warm', 'aaa-cold'])
         ->and($page2->json('meta.pagination.next_cursor'))->toBeNull();
+});
+
+it('walks alpha pages via cursor without duplicates or gaps', function () {
+    foreach (['delta', 'alpha', 'charlie', 'bravo', 'echo'] as $slug) {
+        Tag::factory()->create(['slug' => $slug, 'name' => ucfirst($slug)]);
+    }
+
+    $page1 = $this->getJson('/api/v1/tags?limit=2')->assertOk();
+    expect(collect($page1->json('data'))->pluck('slug')->all())->toBe(['alpha', 'bravo']);
+
+    $page2 = $this->getJson('/api/v1/tags?limit=2&cursor='.urlencode($page1->json('meta.pagination.next_cursor')))->assertOk();
+    expect(collect($page2->json('data'))->pluck('slug')->all())->toBe(['charlie', 'delta']);
+
+    $page3 = $this->getJson('/api/v1/tags?limit=2&cursor='.urlencode($page2->json('meta.pagination.next_cursor')))->assertOk();
+    expect(collect($page3->json('data'))->pluck('slug')->all())->toBe(['echo'])
+        ->and($page3->json('meta.pagination.next_cursor'))->toBeNull();
 });
 
 it('rejects a cursor minted for the other tag ordering', function () {
@@ -75,4 +96,10 @@ it('treats LIKE metacharacters in ?q= as literals', function () {
     expect($this->getJson('/api/v1/tags?q='.urlencode('%'))->assertOk()->json('data'))->toBe([]);
     expect($this->getJson('/api/v1/tags?q='.urlencode('100% v'))->assertOk()->json('data'))
         ->toHaveCount(1);
+
+    // "_" must not act as a single-char wildcard either.
+    Tag::factory()->create(['name' => 'a_b', 'slug' => 'ab-lit']);
+    Tag::factory()->create(['name' => 'axb', 'slug' => 'axb']);
+    expect(collect($this->getJson('/api/v1/tags?q='.urlencode('a_'))->assertOk()->json('data'))->pluck('slug')->all())
+        ->toBe(['ab-lit']);
 });

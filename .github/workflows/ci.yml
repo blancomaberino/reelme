@@ -82,8 +82,10 @@ jobs:
           --health-retries 10
       # Real-engine search tests (@group meilisearch) — the default suite runs
       # the collection driver, so this only serves that group.
+      # v1.49 = what the dev compose stack currently runs (its `latest` volume);
+      # the ^1.16 PHP SDK is forward-compatible with it (verified live).
       meilisearch:
-        image: getmeili/meilisearch:v1.12
+        image: getmeili/meilisearch:v1.49
         ports:
           - 7700:7700
         env:

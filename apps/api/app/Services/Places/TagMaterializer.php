@@ -5,6 +5,7 @@ namespace App\Services\Places;
 use App\Enums\TagKind;
 use App\Models\Place;
 use App\Models\Tag;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Materializes first-class tags from a frozen extraction snapshot on publish
@@ -54,42 +55,29 @@ class TagMaterializer
         }
 
         if ($attach !== []) {
-            // syncWithoutDetaching is race-safe on the (place_id, tag_id) PK —
-            // two workers publishing to the same place must not blow up the
-            // publish job on a duplicate attach. It also updates the pivot of
-            // rows that already exist, so re-apply the max-confidence rule for
-            // any existing pivot that had a HIGHER confidence than this run.
-            $existing = $place->tags()
-                ->whereIn('tags.id', array_keys($attach))
-                ->get()
-                ->keyBy('id');
-
-            $sync = [];
+            // One atomic upsert: race-safe on the (place_id, tag_id) PK under
+            // concurrent publishes, keeps the MAX confidence (never downgrades,
+            // no read-then-write window), and never touches the provenance of
+            // an existing pivot (a manual/owner tag stays manual/owner).
+            $values = [];
+            $bindings = [];
             foreach ($attach as $tagId => $pivot) {
-                $current = $existing->get($tagId)?->getRelationValue('pivot');
-                if ($current === null) {
-                    $sync[$tagId] = $pivot;
-
-                    continue;
-                }
-                // Existing pivot: never downgrade confidence, never touch the
-                // provenance (a manual/owner tag stays manual/owner).
-                $confidence = $pivot['confidence'];
-                if ($current->confidence !== null
-                    && ($confidence === null || (float) $current->confidence >= (float) $confidence)) {
-                    $confidence = (float) $current->confidence;
-                }
-                $sync[$tagId] = ['confidence' => $confidence];
+                $values[] = '(?, ?, ?, ?)';
+                array_push($bindings, $place->id, $tagId, $pivot['source'], $pivot['confidence']);
             }
-
-            $place->tags()->syncWithoutDetaching($sync);
+            DB::statement(
+                'insert into place_tag (place_id, tag_id, source, confidence) values '.implode(', ', $values).'
+                 on conflict (place_id, tag_id) do update
+                 set confidence = nullif(greatest(coalesce(place_tag.confidence, -1), coalesce(excluded.confidence, -1)), -1)',
+                $bindings,
+            );
         }
 
-        if ($place->cuisine_primary === null && ($labels[TagKind::Cuisine->value][0] ?? null) !== null) {
-            $slug = Tag::makeSlug($labels[TagKind::Cuisine->value][0]);
-            if ($slug !== '') {
-                $place->cuisine_primary = $slug;
-            }
+        // Backfill the primary cuisine with the raw label, exactly like the
+        // resolver (PlaceResolver) does — one format for the exact-match
+        // filters — truncated to the column's varchar(64).
+        if ($place->cuisine_primary === null && ($label = trim($labels[TagKind::Cuisine->value][0] ?? '')) !== '') {
+            $place->cuisine_primary = mb_substr($label, 0, 64);
         }
     }
 

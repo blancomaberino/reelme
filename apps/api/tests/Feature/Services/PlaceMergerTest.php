@@ -3,6 +3,7 @@
 use App\Enums\PlaceStatus;
 use App\Models\Place;
 use App\Models\PlaceSource;
+use App\Models\Tag;
 use App\Services\Places\PlaceMerger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -84,4 +85,23 @@ it('follows the single-hop rule — merging into an already-merged place targets
 
     expect($newcomer->fresh()->merged_into_place_id)->toBe($survivor->id)
         ->and(PlaceSource::where('place_id', $survivor->id)->count())->toBe(1);
+});
+
+it('rehomes discovery tags to the winner and strips the tombstone (T-031)', function () {
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    $loser = Place::factory()->atPoint(51.5001, -0.1301)->create();
+
+    $shared = Tag::factory()->create(['slug' => 'ramen', 'name' => 'Ramen']);
+    $unique = Tag::factory()->create(['slug' => 'late-night', 'name' => 'Late Night']);
+    $winner->tags()->attach($shared->id, ['source' => 'extraction', 'confidence' => 0.5]);
+    $loser->tags()->attach($shared->id, ['source' => 'extraction', 'confidence' => 0.9]);
+    $loser->tags()->attach($unique->id, ['source' => 'manual', 'confidence' => null]);
+
+    app(PlaceMerger::class)->merge($winner, $loser);
+
+    $winnerTags = $winner->fresh()->tags()->get()->keyBy('slug');
+    expect($winnerTags->keys()->all())->toEqualCanonicalizing(['ramen', 'late-night'])
+        ->and((float) $winnerTags['ramen']->pivot->confidence)->toBe(0.9) // max wins
+        ->and($winnerTags['late-night']->pivot->source)->toBe('manual');
+    expect($loser->fresh()->tags()->count())->toBe(0);
 });

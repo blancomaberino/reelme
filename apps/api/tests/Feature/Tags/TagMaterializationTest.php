@@ -1,26 +1,16 @@
 <?php
 
 use App\Enums\TagKind;
-use App\Jobs\PublishShare;
-use App\Jobs\ResolvePlace;
 use App\Models\Place;
 use App\Models\Tag;
-use App\Services\Geo\FakeGeocoder;
 use App\Services\Places\TagMaterializer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-/** Publish a share end-to-end (resolve → publish) with the standard fixture snapshot. */
-function publishTaggedShare(float $confidence = 0.9): Place
-{
-    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult('ChIJtags', 51.5, -0.13)));
-    $share = analyzingShare(confidence: $confidence);
-    (new ResolvePlace($share->id))->handle();
-    (new PublishShare($share->id))->handle();
-
-    return Place::sole();
-}
+// publishTaggedShare() lives in tests/Helpers/PipelineHelpers.php (loaded via
+// Pest.php) — it is shared with the Search suite, so it must exist in every
+// parallel worker.
 
 it('materializes tags from the extraction snapshot on publish', function () {
     $place = publishTaggedShare();
@@ -55,8 +45,9 @@ it('maps every snapshot field to its tag kind and drops junk labels', function (
         ->and($byKind->get('diet')?->pluck('slug')->all())->toBe(['halal'])
         ->and($byKind->get('dish')?->pluck('slug')->all())->toBe(['beef-noodle-soup']);
 
-    // cuisine_primary backfilled from the first cuisine.
-    expect($place->cuisine_primary)->toBe('chinese');
+    // cuisine_primary backfilled from the first cuisine — RAW label (resolver
+    // parity, one format for the exact-match filters), not the slug.
+    expect($place->cuisine_primary)->toBe('Chinese');
 });
 
 it('keeps the max confidence when the same tag is re-attached', function () {
@@ -91,13 +82,16 @@ it('reuses one tag row per (kind, slug) across places', function () {
         ->and(Tag::where('slug', 'sushi')->first()->places()->count())->toBe(2);
 });
 
-it('backfills tags from existing snapshots via the command', function () {
+it('backfills tags from existing snapshots via the command, idempotently', function () {
     $place = publishTaggedShare();
     $place->tags()->detach(); // simulate a pre-T-031 place: sources exist, no tags
 
     $this->artisan('reelmap:tags:backfill')->assertSuccessful();
+    $this->artisan('reelmap:tags:backfill')->assertSuccessful(); // safe to re-run
 
-    expect($place->tags()->pluck('slug')->all())->toContain('chinese');
+    $pivot = $place->tags()->where('slug', 'chinese')->first()->pivot;
+    expect((float) $pivot->confidence)->toBe(0.9)
+        ->and($place->tags()->where('slug', 'chinese')->count())->toBe(1);
 });
 
 it('caps labels per kind (defense in depth against tag explosion)', function () {

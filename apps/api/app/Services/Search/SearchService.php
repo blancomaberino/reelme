@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Meilisearch\Client;
 use Meilisearch\Contracts\SearchQuery;
+use Meilisearch\Exceptions\ApiException;
 
 /**
  * Federated search (T-031, 03 §2.11). On the meilisearch driver all requested
@@ -74,8 +75,15 @@ class SearchService
 
         // Scout registers the Meilisearch client as a lazy container singleton
         // — resolving it here (not the engine's __call proxy) keeps the call typed.
-        /** @var array{results: list<array{indexUid: string, hits: list<array{id: int|string}>, processingTimeMs?: int}>} $response */
-        $response = app(Client::class)->multiSearch($queries);
+        try {
+            /** @var array{results: list<array{indexUid: string, hits: list<array{id: int|string}>, processingTimeMs?: int}>} $response */
+            $response = app(Client::class)->multiSearch($queries);
+        } catch (ApiException $e) {
+            if ($e->errorCode === 'index_not_found') {
+                return [[], 0]; // indexes not provisioned yet — run reelmap:search:reindex
+            }
+            throw $e;
+        }
 
         $byIndex = [];
         $tookMs = 0;

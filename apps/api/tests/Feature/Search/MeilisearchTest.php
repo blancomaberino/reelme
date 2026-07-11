@@ -38,10 +38,12 @@ beforeEach(function () {
     app(EngineManager::class)->forgetDrivers();
 
     $this->artisan('scout:sync-index-settings')->assertSuccessful();
-    waitForMeili($this->meili);
+    waitForMeili($this->meili, $this->prefix);
 });
 
 afterEach(function () {
+    // Config resets per test (fresh app); only the EXTERNAL index state must
+    // be cleaned up.
     if (isset($this->meili, $this->prefix)) {
         foreach (['places', 'tags', 'influencers'] as $table) {
             try {
@@ -51,16 +53,18 @@ afterEach(function () {
             }
         }
     }
-    config(['scout.driver' => 'collection', 'scout.prefix' => 'reelmap_testing_']);
-    app(EngineManager::class)->forgetDrivers();
 });
 
-/** Block until Meilisearch has drained its task queue (never sleep blindly). */
-function waitForMeili(Client $client): void
+/**
+ * Block until THIS run's indexes have drained their task queues — scoped by
+ * prefix so parallel workers sharing the server never wait on each other.
+ */
+function waitForMeili(Client $client, string $prefix): void
 {
-    foreach (range(1, 50) as $i) {
+    $indexUids = array_map(fn (string $t) => $prefix.$t, ['places', 'tags', 'influencers']);
+    foreach (range(1, 100) as $i) {
         $pending = $client->getTasks(
-            (new TasksQuery)->setStatuses(['enqueued', 'processing'])
+            (new TasksQuery)->setIndexUids($indexUids)->setStatuses(['enqueued', 'processing'])
         )->getResults();
         if ($pending === []) {
             return;
@@ -74,7 +78,7 @@ function waitForMeili(Client $client): void
 it('is typo-tolerant: "nodle" finds the noodle place', function () {
     Place::factory()->active()->atPoint(51.5117, -0.13)->create(['name' => 'Lanzhou Beef Noodle House']);
     Place::factory()->active()->atPoint(51.5, -0.14)->create(['name' => 'Sushi Corner']);
-    waitForMeili($this->meili);
+    waitForMeili($this->meili, $this->prefix);
 
     $names = collect($this->getJson('/api/v1/search?q=nodle&types=places')->assertOk()->json('data.places'))
         ->pluck('name');
@@ -85,7 +89,7 @@ it('is typo-tolerant: "nodle" finds the noodle place', function () {
 it('multi-searches every requested type in one call and reports took_ms', function () {
     Place::factory()->active()->atPoint(51.5117, -0.13)->create(['name' => 'Lanzhou Beef Noodle House']);
     Tag::factory()->create(['name' => 'Noodles', 'slug' => 'noodles']);
-    waitForMeili($this->meili);
+    waitForMeili($this->meili, $this->prefix);
 
     $res = $this->getJson('/api/v1/search?q=noodle')->assertOk();
 
@@ -96,7 +100,7 @@ it('multi-searches every requested type in one call and reports took_ms', functi
 
 it('indexes place documents with _geo and drops merged places on save', function () {
     $place = Place::factory()->active()->atPoint(38.7169, -9.1355)->create(['name' => 'Geo Cafe']);
-    waitForMeili($this->meili);
+    waitForMeili($this->meili, $this->prefix);
 
     $doc = $this->meili->index($this->prefix.'places')->getDocument((string) $place->id);
     expect($doc['_geo']['lat'])->toEqualWithDelta(38.7169, 0.0001)
@@ -106,7 +110,7 @@ it('indexes place documents with _geo and drops merged places on save', function
     $place->status = 'merged';
     $place->merged_into_place_id = $survivor->id;
     $place->save();
-    waitForMeili($this->meili);
+    waitForMeili($this->meili, $this->prefix);
 
     $names = collect($this->getJson('/api/v1/search?q=geo+cafe&types=places')->assertOk()->json('data.places'))
         ->pluck('name');
@@ -115,12 +119,17 @@ it('indexes place documents with _geo and drops merged places on save', function
 
 it('reindex command rebuilds indexes with settings idempotently', function () {
     Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Reindexed Ramen']);
-    waitForMeili($this->meili);
+    waitForMeili($this->meili, $this->prefix);
+
+    // Nuke the index so the settings present afterwards are attributable to
+    // the reindex command itself, not the beforeEach sync.
+    $this->meili->deleteIndex($this->prefix.'places');
+    waitForMeili($this->meili, $this->prefix);
 
     $this->artisan('reelmap:search:reindex')->assertSuccessful();
-    waitForMeili($this->meili);
+    waitForMeili($this->meili, $this->prefix);
     $this->artisan('reelmap:search:reindex')->assertSuccessful();
-    waitForMeili($this->meili);
+    waitForMeili($this->meili, $this->prefix);
 
     $settings = $this->meili->index($this->prefix.'places')->getSettings();
     expect($settings['filterableAttributes'])->toContain('price_range', 'tags', '_geo');

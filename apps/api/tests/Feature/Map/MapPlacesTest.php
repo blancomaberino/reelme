@@ -173,4 +173,8 @@ it('filters map pins by tags[] via the pivot (live since T-031)', function () {
     $names = collect($res->json('data.pins'))->pluck('name');
     expect($names)->toContain('Tagged')->not->toContain('Untagged');
     $res->assertJsonPath('meta.total_in_bbox', 1);
+
+    // The pin payload itself now carries the tag slugs (was [] until T-031).
+    $pin = collect($res->json('data.pins'))->firstWhere('name', 'Tagged');
+    expect($pin['tags'])->toBe(['ramen']);
 });

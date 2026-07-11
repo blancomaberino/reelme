@@ -43,6 +43,18 @@ class PlaceMerger
             DB::table('place_sources')->where('place_id', $loser->id)->update(['is_primary' => false]);
             DB::table('place_sources')->where('place_id', $loser->id)->update(['place_id' => $winner->id]);
 
+            // Rehome discovery tags too (T-031): the winner absorbs the loser's
+            // pivots (max-confidence on collision) and the tombstone sheds its
+            // rows so usage counts (?popular=1) never count dead places.
+            DB::statement(
+                'insert into place_tag (place_id, tag_id, source, confidence)
+                 select ?, tag_id, source, confidence from place_tag where place_id = ?
+                 on conflict (place_id, tag_id) do update
+                 set confidence = nullif(greatest(coalesce(place_tag.confidence, -1), coalesce(excluded.confidence, -1)), -1)',
+                [$winner->id, $loser->id],
+            );
+            DB::table('place_tag')->where('place_id', $loser->id)->delete();
+
             // Capture the loser's data, then tombstone it — releasing its unique
             // google_place_id before the survivor can claim it in the backfill.
             $donor = $loser->getAttributes();

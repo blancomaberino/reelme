@@ -222,6 +222,10 @@ it('filters by tags[] via the pivot (live since T-031)', function () {
 
     expect($names)->toContain('Tagged')->not->toContain('Untagged');
 
+    // Multiple slugs are OR'd — a place needs any one of them.
+    $ored = collect($this->getJson('/api/v1/places?tags[]=ramen&tags[]=sushi')->assertOk()->json('data'))->pluck('name');
+    expect($ored)->toContain('Tagged')->not->toContain('Untagged');
+
     // A slug matching nothing filters everything out (no longer a no-op).
     expect($this->getJson('/api/v1/places?tags[]=nope')->assertOk()->json('data'))->toBe([]);
 });

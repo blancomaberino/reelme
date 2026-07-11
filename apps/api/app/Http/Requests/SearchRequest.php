@@ -46,8 +46,10 @@ class SearchRequest extends FormRequest
      */
     public function types(): array
     {
-        $raw = (string) $this->query('types', '');
-        if (trim($raw) === '') {
+        // Non-string input (types[]=…) falls back to the default here; the
+        // `string` rule independently rejects it with a 422.
+        $raw = $this->query('types');
+        if (! is_string($raw) || trim($raw) === '') {
             return self::ALLOWED_TYPES;
         }
 

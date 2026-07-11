@@ -14,8 +14,12 @@ use App\Adapters\AdapterRegistry;
 use App\Enums\AnalysisEngine;
 use App\Enums\AnalysisStatus;
 use App\Enums\ShareStatus;
+use App\Jobs\PublishShare;
+use App\Jobs\ResolvePlace;
 use App\Models\AnalysisRun;
+use App\Models\Place;
 use App\Models\Share;
+use App\Services\Geo\FakeGeocoder;
 use App\Services\Geo\Geocoder;
 use App\Services\Geo\GeocodeResult;
 use Tests\Support\FakeInstagramAdapter;
@@ -83,4 +87,15 @@ function useFakeInstagram(): void
 {
     config(['ingestion.chains.instagram' => [FakeInstagramAdapter::class]]);
     app()->forgetInstance(AdapterRegistry::class);
+}
+
+/** Publish a share end-to-end (resolve → publish) with the standard fixture snapshot. */
+function publishTaggedShare(float $confidence = 0.9): Place
+{
+    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult('ChIJtags', 51.5, -0.13)));
+    $share = analyzingShare(confidence: $confidence);
+    (new ResolvePlace($share->id))->handle();
+    (new PublishShare($share->id))->handle();
+
+    return Place::sole();
 }
