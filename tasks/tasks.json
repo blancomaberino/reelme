@@ -553,7 +553,7 @@
       "id": "T-023",
       "title": "Places + place_sources migrations and ResolvePlace job (dedup)",
       "phase": "M1",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-021",
         "T-022"
