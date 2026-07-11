@@ -31,4 +31,27 @@ return [
     // on them) and documented in docs/media-retention.md. Originals vs derived
     // live on distinct disks/roots so the M5 deletion job + R2 lifecycle rule can
     // key off the `originals` prefix.
+
+    /*
+    |--------------------------------------------------------------------------
+    | Media processing (T-017 — DownloadMedia / PrepareMedia)
+    |--------------------------------------------------------------------------
+    | Binary paths are configurable so CI/containers can point at their own
+    | ffmpeg. Caps bound download cost; keyframe params drive the extraction.
+    */
+    'ffmpeg_bin' => env('MEDIA_FFMPEG_BIN', 'ffmpeg'),
+    'ffprobe_bin' => env('MEDIA_FFPROBE_BIN', 'ffprobe'),
+
+    // Hard caps enforced by DownloadMedia (→ failure code media_too_large).
+    'max_download_bytes' => (int) env('MEDIA_MAX_DOWNLOAD_BYTES', 500 * 1024 * 1024),
+    'max_duration_ms' => (int) env('MEDIA_MAX_DURATION_MS', 15 * 60 * 1000),
+
+    // Keyframe extraction (PrepareMedia): scene-change threshold, hard frame cap,
+    // the <min_scene_frames fallback to uniform sampling, and output sizing.
+    'scene_threshold' => (float) env('MEDIA_SCENE_THRESHOLD', 0.3),
+    'max_keyframes' => (int) env('MEDIA_MAX_KEYFRAMES', 12),
+    'min_scene_frames' => (int) env('MEDIA_MIN_SCENE_FRAMES', 4),
+    'keyframe_longest_edge' => (int) env('MEDIA_KEYFRAME_EDGE', 1024),
+    'thumbnail_edge' => (int) env('MEDIA_THUMBNAIL_EDGE', 640),
+    'audio_sample_rate' => (int) env('MEDIA_AUDIO_SAMPLE_RATE', 16000),
 ];

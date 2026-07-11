@@ -97,6 +97,9 @@ jobs:
           key: composer-${{ runner.os }}-${{ hashFiles('apps/api/composer.lock') }}
           restore-keys: composer-${{ runner.os }}-
 
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Prepare environment
         run: cp .env.example .env
 
