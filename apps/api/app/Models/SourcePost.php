@@ -41,6 +41,7 @@ class SourcePost extends Model
             'privacy' => PostPrivacy::class,
             'fetch_status' => FetchStatus::class,
             'oembed_json' => 'array',
+            'transcript_json' => 'array',
             'posted_at' => 'datetime',
             'fetched_at' => 'datetime',
         ];

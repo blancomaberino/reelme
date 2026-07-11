@@ -1,0 +1,10 @@
+{
+  "task": "transcribe",
+  "language": "portuguese",
+  "duration": 5.0,
+  "text": "Melhor restaurante de Lisboa.",
+  "segments": [
+    { "id": 0, "start": 0.0, "end": 2.5, "text": " Melhor restaurante" },
+    { "id": 1, "start": 2.5, "end": 5.0, "text": " de Lisboa." }
+  ]
+}
