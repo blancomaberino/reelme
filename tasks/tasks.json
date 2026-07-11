@@ -2,478 +2,1453 @@
   "$schema_note": "Task graph for Reelmap. An agent picks the lowest incomplete phase, then any task whose depends_on are all status=done. Each task has a companion file tasks/<id>-*.md with full context. Update status here (single source of truth): pending | in_progress | done | blocked.",
   "project": "reelmap",
   "version": 1,
-  "estimate_scale": {"S": "≤ half day", "M": "1-2 days", "L": "3-5 days"},
+  "estimate_scale": {
+    "S": "≤ half day",
+    "M": "1-2 days",
+    "L": "3-5 days"
+  },
   "tasks": [
     {
-      "id": "T-001", "title": "Monorepo scaffold and tooling", "phase": "M0", "status": "done",
-      "depends_on": [], "estimate": "S",
-      "paths": ["/", "apps/", "packages/", ".github/"],
-      "spec_refs": ["01-architecture.md#monorepo-file-structure"],
-      "acceptance": ["Repo has apps/api, apps/mobile, packages/contracts dirs with placeholder READMEs", "Root README explains layout and local setup", "Git initialized with sensible .gitignore for Laravel + Expo"],
+      "id": "T-001",
+      "title": "Monorepo scaffold and tooling",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [],
+      "estimate": "S",
+      "paths": [
+        "/",
+        "apps/",
+        "packages/",
+        ".github/"
+      ],
+      "spec_refs": [
+        "01-architecture.md#monorepo-file-structure"
+      ],
+      "acceptance": [
+        "Repo has apps/api, apps/mobile, packages/contracts dirs with placeholder READMEs",
+        "Root README explains layout and local setup",
+        "Git initialized with sensible .gitignore for Laravel + Expo"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-002", "title": "Laravel 13 API scaffold with quality tooling", "phase": "M0", "status": "done",
-      "depends_on": ["T-001"], "estimate": "M",
-      "paths": ["apps/api/"],
-      "spec_refs": ["01-architecture.md#tech-stack", "07-risks-decisions.md#adr"],
-      "acceptance": ["Resolve latest stable versions (Laravel 13.x, PHP 8.4+) at install time", "Pest, Pint, Larastan installed and passing on fresh scaffold", "Local env boots via Sail or Herd with .env.example documented", "/api/v1/health endpoint returns ok"],
+      "id": "T-002",
+      "title": "Laravel 13 API scaffold with quality tooling",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [
+        "T-001"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/"
+      ],
+      "spec_refs": [
+        "01-architecture.md#tech-stack",
+        "07-risks-decisions.md#adr"
+      ],
+      "acceptance": [
+        "Resolve latest stable versions (Laravel 13.x, PHP 8.4+) at install time",
+        "Pest, Pint, Larastan installed and passing on fresh scaffold",
+        "Local env boots via Sail or Herd with .env.example documented",
+        "/api/v1/health endpoint returns ok"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-003", "title": "Postgres + PostGIS + base users migration + Sanctum auth API", "phase": "M0", "status": "done",
-      "depends_on": ["T-002"], "estimate": "M",
-      "paths": ["apps/api/database/migrations/", "apps/api/app/Http/Controllers/Auth/", "apps/api/routes/api.php"],
-      "spec_refs": ["02-data-model.md#users", "03-api-design.md#auth"],
-      "acceptance": ["PostGIS extension enabled in migration", "users table per data model (roles, username, avatar, bio)", "POST /auth/register, /auth/login, /auth/logout, GET /me with Sanctum tokens", "Pest feature tests cover happy + failure paths"],
+      "id": "T-003",
+      "title": "Postgres + PostGIS + base users migration + Sanctum auth API",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [
+        "T-002"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Http/Controllers/Auth/",
+        "apps/api/routes/api.php"
+      ],
+      "spec_refs": [
+        "02-data-model.md#users",
+        "03-api-design.md#auth"
+      ],
+      "acceptance": [
+        "PostGIS extension enabled in migration",
+        "users table per data model (roles, username, avatar, bio)",
+        "POST /auth/register, /auth/login, /auth/logout, GET /me with Sanctum tokens",
+        "Pest feature tests cover happy + failure paths"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-004", "title": "Expo app scaffold (latest SDK, expo-router, TypeScript)", "phase": "M0", "status": "done",
-      "depends_on": ["T-001"], "estimate": "M",
-      "paths": ["apps/mobile/"],
-      "spec_refs": ["05-mobile-app.md#app-architecture"],
-      "acceptance": ["Latest Expo SDK, expo-router tabs skeleton (Map/Feed/Share/Profile)", "TypeScript strict, eslint, jest configured and green", "Runs on iOS simulator and Android emulator", "EAS project configured with development/preview/production build profiles"],
+      "id": "T-004",
+      "title": "Expo app scaffold (latest SDK, expo-router, TypeScript)",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [
+        "T-001"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#app-architecture"
+      ],
+      "acceptance": [
+        "Latest Expo SDK, expo-router tabs skeleton (Map/Feed/Share/Profile)",
+        "TypeScript strict, eslint, jest configured and green",
+        "Runs on iOS simulator and Android emulator",
+        "EAS project configured with development/preview/production build profiles"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-005", "title": "packages/contracts: extraction JSON schema + generated TS types + PHP validator", "phase": "M0", "status": "done",
-      "depends_on": ["T-001"], "estimate": "M",
-      "paths": ["packages/contracts/"],
-      "spec_refs": ["04-analysis-pipeline.md#extraction-json-schema"],
-      "acceptance": ["extraction.schema.json matches 04-analysis-pipeline.md exactly", "TS types generated (json-schema-to-typescript) via npm script", "PHP-side validation helper (opis/json-schema or similar) usable from apps/api", "Round-trip test: sample payload validates in both PHP and TS"],
+      "id": "T-005",
+      "title": "packages/contracts: extraction JSON schema + generated TS types + PHP validator",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [
+        "T-001"
+      ],
+      "estimate": "M",
+      "paths": [
+        "packages/contracts/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#extraction-json-schema"
+      ],
+      "acceptance": [
+        "extraction.schema.json matches 04-analysis-pipeline.md exactly",
+        "TS types generated (json-schema-to-typescript) via npm script",
+        "PHP-side validation helper (opis/json-schema or similar) usable from apps/api",
+        "Round-trip test: sample payload validates in both PHP and TS"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-006", "title": "CI: GitHub Actions for api + mobile + contracts", "phase": "M5", "status": "in_progress",
-      "depends_on": ["T-002", "T-004", "T-005", "T-054", "T-055"], "estimate": "S",
-      "paths": [".github/workflows/"],
-      "spec_refs": ["01-architecture.md#environments-deployment"],
-      "acceptance": ["api job: pint --test, phpstan, pest with Postgres+PostGIS service container", "mobile job: eslint, tsc --noEmit, jest", "contracts job: schema validation tests", "All green on main"],
+      "id": "T-006",
+      "title": "CI: GitHub Actions for api + mobile + contracts",
+      "phase": "M5",
+      "status": "in_progress",
+      "depends_on": [
+        "T-002",
+        "T-004",
+        "T-005",
+        "T-054",
+        "T-055"
+      ],
+      "estimate": "S",
+      "paths": [
+        ".github/workflows/"
+      ],
+      "spec_refs": [
+        "01-architecture.md#environments-deployment"
+      ],
+      "acceptance": [
+        "api job: pint --test, phpstan, pest with Postgres+PostGIS service container",
+        "mobile job: eslint, tsc --noEmit, jest",
+        "contracts job: schema validation tests",
+        "All green on main"
+      ],
       "agent": "executor",
       "notes": "Reprioritized to the END of the queue (2026-07-10): moved M0 -> M5 and gated behind the terminal launch tasks (T-054, T-055) so the scheduler surfaces it dead-last. depends_on keeps the real build prereqs (T-002/T-004/T-005) too. NOTE the trade-off: earlier tasks now ship without a CI safety net (the M0 rationale). Implementation already exists and is reviewed on branch feat/t006-ci-github-actions (app repo, commit 04543e4); this only changes when it lands in the plan order."
     },
     {
-      "id": "T-007", "title": "Redis + Horizon queue infrastructure", "phase": "M0", "status": "done",
-      "depends_on": ["T-002"], "estimate": "S",
-      "paths": ["apps/api/config/horizon.php", "apps/api/config/queue.php"],
-      "spec_refs": ["01-architecture.md#system-components"],
-      "acceptance": ["Horizon installed, dashboard auth-gated to admins", "Queues defined: ingest, media, analysis, notifications with sensible balancing", "Sample queued job test passes"],
+      "id": "T-007",
+      "title": "Redis + Horizon queue infrastructure",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [
+        "T-002"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/config/horizon.php",
+        "apps/api/config/queue.php"
+      ],
+      "spec_refs": [
+        "01-architecture.md#system-components"
+      ],
+      "acceptance": [
+        "Horizon installed, dashboard auth-gated to admins",
+        "Queues defined: ingest, media, analysis, notifications with sensible balancing",
+        "Sample queued job test passes"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-008", "title": "Filament admin panel scaffold + Users resource", "phase": "M0", "status": "done",
-      "depends_on": ["T-003"], "estimate": "S",
-      "paths": ["apps/api/app/Filament/"],
-      "spec_refs": ["01-architecture.md#tech-stack"],
-      "acceptance": ["Filament (latest) installed at /admin, restricted to role=admin", "Users resource: list, search, edit roles, ban"],
+      "id": "T-008",
+      "title": "Filament admin panel scaffold + Users resource",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [
+        "T-003"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Filament/"
+      ],
+      "spec_refs": [
+        "01-architecture.md#tech-stack"
+      ],
+      "acceptance": [
+        "Filament (latest) installed at /admin, restricted to role=admin",
+        "Users resource: list, search, edit roles, ban"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-009", "title": "Object storage (S3/R2) + media disk config", "phase": "M0", "status": "done",
-      "depends_on": ["T-002"], "estimate": "S",
-      "paths": ["apps/api/config/filesystems.php"],
-      "spec_refs": ["01-architecture.md#system-components", "07-risks-decisions.md#media-retention"],
-      "acceptance": ["media disk configured for R2/S3 with local fallback for dev", "Signed URL generation tested", "Lifecycle note: originals bucket vs derived (keyframes/thumbnails) bucket"],
+      "id": "T-009",
+      "title": "Object storage (S3/R2) + media disk config",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [
+        "T-002"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/config/filesystems.php"
+      ],
+      "spec_refs": [
+        "01-architecture.md#system-components",
+        "07-risks-decisions.md#media-retention"
+      ],
+      "acceptance": [
+        "media disk configured for R2/S3 with local fallback for dev",
+        "Signed URL generation tested",
+        "Lifecycle note: originals bucket vs derived (keyframes/thumbnails) bucket"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-010", "title": "Mobile auth flow: register/login screens, token storage, API client", "phase": "M0", "status": "done",
-      "depends_on": ["T-003", "T-004"], "estimate": "M",
-      "paths": ["apps/mobile/app/(auth)/", "apps/mobile/src/api/", "apps/mobile/src/stores/"],
-      "spec_refs": ["05-mobile-app.md#app-architecture", "03-api-design.md#auth"],
-      "acceptance": ["Register/login/logout against local API", "Token in expo-secure-store, auto-attach via client interceptor, 401 handling", "TanStack Query + zustand session store wired", "Component tests for auth screens"],
+      "id": "T-010",
+      "title": "Mobile auth flow: register/login screens, token storage, API client",
+      "phase": "M0",
+      "status": "done",
+      "depends_on": [
+        "T-003",
+        "T-004"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/(auth)/",
+        "apps/mobile/src/api/",
+        "apps/mobile/src/stores/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#app-architecture",
+        "03-api-design.md#auth"
+      ],
+      "acceptance": [
+        "Register/login/logout against local API",
+        "Token in expo-secure-store, auto-attach via client interceptor, 401 handling",
+        "TanStack Query + zustand session store wired",
+        "Component tests for auth screens"
+      ],
       "agent": "executor"
     },
-
     {
-      "id": "T-011", "title": "Migrations: influencers, source_posts, shares, media_assets, analysis_runs", "phase": "M1", "status": "done",
-      "depends_on": ["T-003"], "estimate": "M",
-      "paths": ["apps/api/database/migrations/", "apps/api/app/Models/", "apps/api/app/Enums/"],
-      "spec_refs": ["02-data-model.md"],
-      "acceptance": ["Tables + PHP-backed enums exactly per 02-data-model.md", "Model relations + factories for all five entities", "Unique constraint source_posts(platform, external_id)", "Pest model tests"],
+      "id": "T-011",
+      "title": "Migrations: influencers, source_posts, shares, media_assets, analysis_runs",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-003"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/",
+        "apps/api/app/Enums/"
+      ],
+      "spec_refs": [
+        "02-data-model.md"
+      ],
+      "acceptance": [
+        "Tables + PHP-backed enums exactly per 02-data-model.md",
+        "Model relations + factories for all five entities",
+        "Unique constraint source_posts(platform, external_id)",
+        "Pest model tests"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-012", "title": "SourceAdapter contract + registry + ManualUploadAdapter", "phase": "M1", "status": "done",
-      "depends_on": ["T-011", "T-009"], "estimate": "M",
-      "paths": ["apps/api/app/Adapters/"],
-      "spec_refs": ["04-analysis-pipeline.md#sourceadapter-contract"],
-      "acceptance": ["SourceAdapter interface per spec (supports, fetchMetadata, fetchMedia, requiresAuth)", "AdapterRegistry resolves adapter by URL", "ManualUploadAdapter: accepts user-pasted caption + uploaded screen recording", "Unit tests with fake URLs"],
+      "id": "T-012",
+      "title": "SourceAdapter contract + registry + ManualUploadAdapter",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-011",
+        "T-009"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Adapters/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#sourceadapter-contract"
+      ],
+      "acceptance": [
+        "SourceAdapter interface per spec (supports, fetchMetadata, fetchMedia, requiresAuth)",
+        "AdapterRegistry resolves adapter by URL",
+        "ManualUploadAdapter: accepts user-pasted caption + uploaded screen recording",
+        "Unit tests with fake URLs"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-013", "title": "Instagram adapter: oEmbed + yt-dlp fetcher for public posts", "phase": "M1", "status": "pending",
-      "depends_on": ["T-012"], "estimate": "L",
-      "paths": ["apps/api/app/Adapters/InstagramAdapter.php"],
-      "spec_refs": ["04-analysis-pipeline.md#sourceadapter-contract", "01-architecture.md#per-platform-ingestion", "07-risks-decisions.md"],
-      "acceptance": ["Public reel URL → caption, author handle, media file downloaded to storage", "Fallback chain: oEmbed → yt-dlp fetcher → raise NeedsManualFallback", "HTTP fixtures-based tests (no live calls in CI)", "Failure taxonomy mapped to shares.failure_reason"],
+      "id": "T-013",
+      "title": "Instagram adapter: oEmbed + yt-dlp fetcher for public posts",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-012"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Adapters/InstagramAdapter.php"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#sourceadapter-contract",
+        "01-architecture.md#per-platform-ingestion",
+        "07-risks-decisions.md"
+      ],
+      "acceptance": [
+        "Public reel URL → caption, author handle, media file downloaded to storage",
+        "Fallback chain: oEmbed → yt-dlp fetcher → raise NeedsManualFallback",
+        "HTTP fixtures-based tests (no live calls in CI)",
+        "Failure taxonomy mapped to shares.failure_reason"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-014", "title": "X, TikTok, YouTube adapters (public posts)", "phase": "M1", "status": "pending",
-      "depends_on": ["T-012"], "estimate": "M",
-      "paths": ["apps/api/app/Adapters/"],
-      "spec_refs": ["01-architecture.md#per-platform-ingestion"],
-      "acceptance": ["Each adapter resolves caption/author/media for public post URLs via oEmbed/yt-dlp", "Graceful NeedsManualFallback on failure", "Fixture tests per platform"],
+      "id": "T-014",
+      "title": "X, TikTok, YouTube adapters (public posts)",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-012"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Adapters/"
+      ],
+      "spec_refs": [
+        "01-architecture.md#per-platform-ingestion"
+      ],
+      "acceptance": [
+        "Each adapter resolves caption/author/media for public post URLs via oEmbed/yt-dlp",
+        "Graceful NeedsManualFallback on failure",
+        "Fixture tests per platform"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-015", "title": "platform_accounts + Instagram OAuth linking (API)", "phase": "M1", "status": "pending",
-      "depends_on": ["T-011"], "estimate": "M",
-      "paths": ["apps/api/database/migrations/", "apps/api/app/Http/Controllers/PlatformAccountController.php"],
-      "spec_refs": ["02-data-model.md#platform_accounts", "03-api-design.md#platform-accounts"],
-      "acceptance": ["platform_accounts table with encrypted token columns (Laravel encrypted casts)", "OAuth link/unlink endpoints using Socialite (Instagram provider)", "InstagramAdapter uses linked token when post is private and sharer authorized it", "Tests with fake OAuth"],
+      "id": "T-015",
+      "title": "platform_accounts + Instagram OAuth linking (API)",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-011"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Http/Controllers/PlatformAccountController.php"
+      ],
+      "spec_refs": [
+        "02-data-model.md#platform_accounts",
+        "03-api-design.md#platform-accounts"
+      ],
+      "acceptance": [
+        "platform_accounts table with encrypted token columns (Laravel encrypted casts)",
+        "OAuth link/unlink endpoints using Socialite (Instagram provider)",
+        "InstagramAdapter uses linked token when post is private and sharer authorized it",
+        "Tests with fake OAuth"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-016", "title": "Shares API + status machine + IngestShare job chain skeleton", "phase": "M1", "status": "done",
-      "depends_on": ["T-011", "T-012", "T-007"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/ShareController.php", "apps/api/app/Jobs/"],
-      "spec_refs": ["03-api-design.md#shares", "04-analysis-pipeline.md#overview"],
-      "acceptance": ["POST /shares (url or manual payload) creates share pending + dispatches chain", "GET /shares/{id} returns status + stage progress + latest analysis_run summary", "POST /shares/{id}/retry re-runs from failed stage", "Status transitions enforced by a small state machine, invalid transitions rejected", "Duplicate URL by same user returns existing share"],
+      "id": "T-016",
+      "title": "Shares API + status machine + IngestShare job chain skeleton",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-011",
+        "T-012",
+        "T-007"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/ShareController.php",
+        "apps/api/app/Jobs/"
+      ],
+      "spec_refs": [
+        "03-api-design.md#shares",
+        "04-analysis-pipeline.md#overview"
+      ],
+      "acceptance": [
+        "POST /shares (url or manual payload) creates share pending + dispatches chain",
+        "GET /shares/{id} returns status + stage progress + latest analysis_run summary",
+        "POST /shares/{id}/retry re-runs from failed stage",
+        "Status transitions enforced by a small state machine, invalid transitions rejected",
+        "Duplicate URL by same user returns existing share"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-017", "title": "DownloadMedia + PrepareMedia jobs (ffmpeg keyframes, audio extract)", "phase": "M1", "status": "done",
-      "depends_on": ["T-016", "T-009"], "estimate": "M",
-      "paths": ["apps/api/app/Jobs/DownloadMedia.php", "apps/api/app/Jobs/PrepareMedia.php", "apps/api/app/Services/Media/"],
-      "spec_refs": ["04-analysis-pipeline.md"],
-      "acceptance": ["ffmpeg scene-detection keyframes (max 12) + thumbnail + audio wav extracted, stored as media_assets", "sha256 dedup of identical media", "Idempotent re-runs", "Test with a small fixture video"],
+      "id": "T-017",
+      "title": "DownloadMedia + PrepareMedia jobs (ffmpeg keyframes, audio extract)",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-016",
+        "T-009"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Jobs/DownloadMedia.php",
+        "apps/api/app/Jobs/PrepareMedia.php",
+        "apps/api/app/Services/Media/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md"
+      ],
+      "acceptance": [
+        "ffmpeg scene-detection keyframes (max 12) + thumbnail + audio wav extracted, stored as media_assets",
+        "sha256 dedup of identical media",
+        "Idempotent re-runs",
+        "Test with a small fixture video"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-018", "title": "TranscribeAudio job (Whisper local, OpenRouter/API fallback)", "phase": "M1", "status": "done",
-      "depends_on": ["T-017"], "estimate": "M",
-      "paths": ["apps/api/app/Jobs/TranscribeAudio.php", "apps/api/app/Services/Transcription/"],
-      "spec_refs": ["04-analysis-pipeline.md#model-orchestration"],
-      "acceptance": ["whisper.cpp (or Ollama whisper) transcription with language detection", "Fallback to hosted transcription when local unavailable", "Transcript persisted on source_post or analysis input payload", "Silent/no-audio videos handled gracefully"],
+      "id": "T-018",
+      "title": "TranscribeAudio job (Whisper local, OpenRouter/API fallback)",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-017"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Jobs/TranscribeAudio.php",
+        "apps/api/app/Services/Transcription/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#model-orchestration"
+      ],
+      "acceptance": [
+        "whisper.cpp (or Ollama whisper) transcription with language detection",
+        "Fallback to hosted transcription when local unavailable",
+        "Transcript persisted on source_post or analysis input payload",
+        "Silent/no-audio videos handled gracefully"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-019", "title": "ModelRouter: Ollama client, health check, fallback policy", "phase": "M1", "status": "done",
-      "depends_on": ["T-011"], "estimate": "M",
-      "paths": ["apps/api/app/Services/AI/ModelRouter.php", "apps/api/app/Services/AI/OllamaClient.php"],
-      "spec_refs": ["04-analysis-pipeline.md#model-orchestration"],
-      "acceptance": ["Ollama client (configurable OLLAMA_URL): generate with images, list models", "Health check + timeout; fallback triggers per spec (unreachable, error, invalid JSON x2, confidence < 0.5)", "Every attempt recorded as analysis_run with engine/model/cost/tokens", "Unit tests with fake HTTP"],
+      "id": "T-019",
+      "title": "ModelRouter: Ollama client, health check, fallback policy",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-011"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/AI/ModelRouter.php",
+        "apps/api/app/Services/AI/OllamaClient.php"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#model-orchestration"
+      ],
+      "acceptance": [
+        "Ollama client (configurable OLLAMA_URL): generate with images, list models",
+        "Health check + timeout; fallback triggers per spec (unreachable, error, invalid JSON x2, confidence < 0.5)",
+        "Every attempt recorded as analysis_run with engine/model/cost/tokens",
+        "Unit tests with fake HTTP"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-020", "title": "OpenRouter client + GET /models + per-user model preference", "phase": "M1", "status": "done",
-      "depends_on": ["T-019"], "estimate": "M",
-      "paths": ["apps/api/app/Services/AI/OpenRouterClient.php", "apps/api/app/Http/Controllers/ModelController.php"],
-      "spec_refs": ["04-analysis-pipeline.md#model-orchestration", "03-api-design.md#analysis"],
-      "acceptance": ["OpenRouter chat completions with image inputs + cost extraction from response", "GET /models merges Ollama tags + curated OpenRouter vision models with pricing", "users.preferred_model setting (default auto) respected by ModelRouter", "Per-run max cost + per-user daily quota enforced"],
+      "id": "T-020",
+      "title": "OpenRouter client + GET /models + per-user model preference",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-019"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/AI/OpenRouterClient.php",
+        "apps/api/app/Http/Controllers/ModelController.php"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#model-orchestration",
+        "03-api-design.md#analysis"
+      ],
+      "acceptance": [
+        "OpenRouter chat completions with image inputs + cost extraction from response",
+        "GET /models merges Ollama tags + curated OpenRouter vision models with pricing",
+        "users.preferred_model setting (default auto) respected by ModelRouter",
+        "Per-run max cost + per-user daily quota enforced"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-021", "title": "ExtractPlaceData job: multimodal prompt, schema validation, repair loop", "phase": "M1", "status": "pending",
-      "depends_on": ["T-018", "T-019", "T-020", "T-005"], "estimate": "L",
-      "paths": ["apps/api/app/Jobs/ExtractPlaceData.php", "apps/api/app/Services/AI/Prompts/"],
-      "spec_refs": ["04-analysis-pipeline.md#prompting-strategy", "04-analysis-pipeline.md#extraction-json-schema"],
-      "acceptance": ["Prompt assembles keyframes + caption + transcript per spec template", "Output validated against packages/contracts extraction.schema.json; 2-attempt repair loop", "result_json + overall_confidence stored on analysis_run; share → review or next stage by confidence gate", "Golden-file tests: fixture inputs → valid schema output with fake model"],
+      "id": "T-021",
+      "title": "ExtractPlaceData job: multimodal prompt, schema validation, repair loop",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-018",
+        "T-019",
+        "T-020",
+        "T-005"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Jobs/ExtractPlaceData.php",
+        "apps/api/app/Services/AI/Prompts/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#prompting-strategy",
+        "04-analysis-pipeline.md#extraction-json-schema"
+      ],
+      "acceptance": [
+        "Prompt assembles keyframes + caption + transcript per spec template",
+        "Output validated against packages/contracts extraction.schema.json; 2-attempt repair loop",
+        "result_json + overall_confidence stored on analysis_run; share → review or next stage by confidence gate",
+        "Golden-file tests: fixture inputs → valid schema output with fake model"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-022", "title": "Geocoder contract + Google Places implementation", "phase": "M1", "status": "done",
-      "depends_on": ["T-011"], "estimate": "M",
-      "paths": ["apps/api/app/Services/Geo/"],
-      "spec_refs": ["04-analysis-pipeline.md#resolveplace", "07-risks-decisions.md#adr"],
-      "acceptance": ["Geocoder interface: findPlace(name, hints) → google_place_id, address, latlng, confidence", "Google Places implementation + NullGeocoder for tests", "Response caching to control API cost", "Fixture tests"],
+      "id": "T-022",
+      "title": "Geocoder contract + Google Places implementation",
+      "phase": "M1",
+      "status": "done",
+      "depends_on": [
+        "T-011"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/Geo/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#resolveplace",
+        "07-risks-decisions.md#adr"
+      ],
+      "acceptance": [
+        "Geocoder interface: findPlace(name, hints) → google_place_id, address, latlng, confidence",
+        "Google Places implementation + NullGeocoder for tests",
+        "Response caching to control API cost",
+        "Fixture tests"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-023", "title": "Places + place_sources migrations and ResolvePlace job (dedup)", "phase": "M1", "status": "pending",
-      "depends_on": ["T-021", "T-022"], "estimate": "L",
-      "paths": ["apps/api/database/migrations/", "apps/api/app/Jobs/ResolvePlace.php", "apps/api/app/Services/Places/PlaceResolver.php"],
-      "spec_refs": ["02-data-model.md#places", "04-analysis-pipeline.md#resolveplace"],
-      "acceptance": ["places (PostGIS point + GIST index) and place_sources tables per data model", "Dedup decision tree per spec: google_place_id → geo+name fuzzy (<75m, ≥0.85) → create pending → ambiguous to review", "Merging support: merged_into_place_id + place_sources rehoming", "Tests cover each branch of the tree"],
+      "id": "T-023",
+      "title": "Places + place_sources migrations and ResolvePlace job (dedup)",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-021",
+        "T-022"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Jobs/ResolvePlace.php",
+        "apps/api/app/Services/Places/PlaceResolver.php"
+      ],
+      "spec_refs": [
+        "02-data-model.md#places",
+        "04-analysis-pipeline.md#resolveplace"
+      ],
+      "acceptance": [
+        "places (PostGIS point + GIST index) and place_sources tables per data model",
+        "Dedup decision tree per spec: google_place_id → geo+name fuzzy (<75m, ≥0.85) → create pending → ambiguous to review",
+        "Merging support: merged_into_place_id + place_sources rehoming",
+        "Tests cover each branch of the tree"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-024", "title": "Review + publish flow: PATCH share extraction corrections, PublishShare job", "phase": "M1", "status": "pending",
-      "depends_on": ["T-023", "T-016"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/ShareController.php", "apps/api/app/Jobs/PublishShare.php"],
-      "spec_refs": ["03-api-design.md#shares", "04-analysis-pipeline.md#user-review-step"],
-      "acceptance": ["PATCH /shares/{id} accepts corrected extraction (validated against schema) + confirms", "Corrections persisted alongside original (ground truth) on place_source snapshot", "PublishShare: share → published, place activated, counters updated", "Feature tests: auto-publish path (high confidence) and review path"],
+      "id": "T-024",
+      "title": "Review + publish flow: PATCH share extraction corrections, PublishShare job",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-023",
+        "T-016"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/ShareController.php",
+        "apps/api/app/Jobs/PublishShare.php"
+      ],
+      "spec_refs": [
+        "03-api-design.md#shares",
+        "04-analysis-pipeline.md#user-review-step"
+      ],
+      "acceptance": [
+        "PATCH /shares/{id} accepts corrected extraction (validated against schema) + confirms",
+        "Corrections persisted alongside original (ground truth) on place_source snapshot",
+        "PublishShare: share → published, place activated, counters updated",
+        "Feature tests: auto-publish path (high confidence) and review path"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-025", "title": "Mobile: share-intent receiver + ShareIngest screen", "phase": "M1", "status": "pending",
-      "depends_on": ["T-010", "T-016"], "estimate": "L",
-      "paths": ["apps/mobile/app/share/", "apps/mobile/app.config.ts"],
-      "spec_refs": ["05-mobile-app.md#share-sheet-ingestion-flow"],
-      "acceptance": ["expo-share-intent config plugin: app appears in iOS + Android share sheets for URLs/text", "Shared URL opens ShareIngest screen prefilled (cold start handled)", "Submits POST /shares; duplicate + private-post (link account or manual fallback) flows implemented", "Manual fallback UI: paste URL + caption + upload screen recording", "Requires dev-client build — documented"],
+      "id": "T-025",
+      "title": "Mobile: share-intent receiver + ShareIngest screen",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-010",
+        "T-016"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/mobile/app/share/",
+        "apps/mobile/app.config.ts"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#share-sheet-ingestion-flow"
+      ],
+      "acceptance": [
+        "expo-share-intent config plugin: app appears in iOS + Android share sheets for URLs/text",
+        "Shared URL opens ShareIngest screen prefilled (cold start handled)",
+        "Submits POST /shares; duplicate + private-post (link account or manual fallback) flows implemented",
+        "Manual fallback UI: paste URL + caption + upload screen recording",
+        "Requires dev-client build — documented"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-026", "title": "Mobile: AnalysisStatus + ExtractionReview screens", "phase": "M1", "status": "pending",
-      "depends_on": ["T-025", "T-024"], "estimate": "L",
-      "paths": ["apps/mobile/app/share/"],
-      "spec_refs": ["05-mobile-app.md#screen-inventory", "04-analysis-pipeline.md#user-review-step"],
-      "acceptance": ["Status screen polls GET /shares/{id} with stage progress UI, terminal states handled (published/failed/review)", "Review screen: editable form of all extracted fields + draggable map pin, submit PATCH", "Failure states show retry", "Component tests for both screens"],
+      "id": "T-026",
+      "title": "Mobile: AnalysisStatus + ExtractionReview screens",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-025",
+        "T-024"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/mobile/app/share/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#screen-inventory",
+        "04-analysis-pipeline.md#user-review-step"
+      ],
+      "acceptance": [
+        "Status screen polls GET /shares/{id} with stage progress UI, terminal states handled (published/failed/review)",
+        "Review screen: editable form of all extracted fields + draggable map pin, submit PATCH",
+        "Failure states show retry",
+        "Component tests for both screens"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-027", "title": "Devices + push notifications (analysis done / review needed)", "phase": "M1", "status": "pending",
-      "depends_on": ["T-016", "T-010"], "estimate": "M",
-      "paths": ["apps/api/app/Models/Device.php", "apps/api/app/Notifications/", "apps/mobile/src/notifications/"],
-      "spec_refs": ["02-data-model.md#devices", "05-mobile-app.md#push-notifications"],
-      "acceptance": ["devices table + POST /devices registering Expo push tokens", "Expo push channel notification on share published/review/failed, deep-links to the share", "Mobile permission request + foreground handling"],
+      "id": "T-027",
+      "title": "Devices + push notifications (analysis done / review needed)",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-016",
+        "T-010"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Models/Device.php",
+        "apps/api/app/Notifications/",
+        "apps/mobile/src/notifications/"
+      ],
+      "spec_refs": [
+        "02-data-model.md#devices",
+        "05-mobile-app.md#push-notifications"
+      ],
+      "acceptance": [
+        "devices table + POST /devices registering Expo push tokens",
+        "Expo push channel notification on share published/review/failed, deep-links to the share",
+        "Mobile permission request + foreground handling"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-028", "title": "M1 integration test: full pipeline with fakes + failure taxonomy", "phase": "M1", "status": "pending",
-      "depends_on": ["T-024", "T-013", "T-017", "T-018"], "estimate": "M",
-      "paths": ["apps/api/tests/Feature/Pipeline/"],
-      "spec_refs": ["04-analysis-pipeline.md", "ROADMAP.md#m1"],
-      "acceptance": ["End-to-end feature test: fake adapter + fake models drive share pending→published, place created with geo point", "Fallback test: local engine failing → openrouter run recorded", "Each pipeline stage failure produces correct share.failure_reason", "Runs in CI without network"],
+      "id": "T-028",
+      "title": "M1 integration test: full pipeline with fakes + failure taxonomy",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-024",
+        "T-013",
+        "T-017",
+        "T-018"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/tests/Feature/Pipeline/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md",
+        "ROADMAP.md#m1"
+      ],
+      "acceptance": [
+        "End-to-end feature test: fake adapter + fake models drive share pending→published, place created with geo point",
+        "Fallback test: local engine failing → openrouter run recorded",
+        "Each pipeline stage failure produces correct share.failure_reason",
+        "Runs in CI without network"
+      ],
       "agent": "executor"
     },
-
     {
-      "id": "T-029", "title": "Map API: bbox query with clustering", "phase": "M2", "status": "pending",
-      "depends_on": ["T-023"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/MapController.php"],
-      "spec_refs": ["03-api-design.md#map", "02-data-model.md#places"],
-      "acceptance": ["GET /map/places?bbox&zoom returns clusters (server-side grid/geohash clustering) or pins by zoom", "PostGIS ST_Within query with GIST index, p95 < 300ms with 10k seeded places (seeder included)", "Filters: cuisine, price_range, tags, following_only stub", "Feature + performance smoke tests"],
+      "id": "T-029",
+      "title": "Map API: bbox query with clustering",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-023"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/MapController.php"
+      ],
+      "spec_refs": [
+        "03-api-design.md#map",
+        "02-data-model.md#places"
+      ],
+      "acceptance": [
+        "GET /map/places?bbox&zoom returns clusters (server-side grid/geohash clustering) or pins by zoom",
+        "PostGIS ST_Within query with GIST index, p95 < 300ms with 10k seeded places (seeder included)",
+        "Filters: cuisine, price_range, tags, following_only stub",
+        "Feature + performance smoke tests"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-030", "title": "Places API: index/show with filters + sources + attribution", "phase": "M2", "status": "pending",
-      "depends_on": ["T-023"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/PlaceController.php", "apps/api/app/Http/Resources/"],
-      "spec_refs": ["03-api-design.md#places"],
-      "acceptance": ["GET /places (cursor paginated, filters) and GET /places/{slug}", "Show includes place_sources with source_post link-outs, influencer, sharer attribution", "API Resources shaped per 03-api-design.md envelope"],
+      "id": "T-030",
+      "title": "Places API: index/show with filters + sources + attribution",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-023"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/PlaceController.php",
+        "apps/api/app/Http/Resources/"
+      ],
+      "spec_refs": [
+        "03-api-design.md#places"
+      ],
+      "acceptance": [
+        "GET /places (cursor paginated, filters) and GET /places/{slug}",
+        "Show includes place_sources with source_post link-outs, influencer, sharer attribution",
+        "API Resources shaped per 03-api-design.md envelope"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-031", "title": "Tags + Scout/Meilisearch search", "phase": "M2", "status": "pending",
-      "depends_on": ["T-023"], "estimate": "M",
-      "paths": ["apps/api/app/Models/Tag.php", "apps/api/config/scout.php"],
-      "spec_refs": ["02-data-model.md#tags", "03-api-design.md#tags-search"],
-      "acceptance": ["tags + place_tag with kind enum (cuisine,vibe,dish,diet,other), populated from extraction results on publish", "Places indexed in Meilisearch via Scout; GET /search covers places, tags, influencers", "Reindex command + tests"],
+      "id": "T-031",
+      "title": "Tags + Scout/Meilisearch search",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-023"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Models/Tag.php",
+        "apps/api/config/scout.php"
+      ],
+      "spec_refs": [
+        "02-data-model.md#tags",
+        "03-api-design.md#tags-search"
+      ],
+      "acceptance": [
+        "tags + place_tag with kind enum (cuisine,vibe,dish,diet,other), populated from extraction results on publish",
+        "Places indexed in Meilisearch via Scout; GET /search covers places, tags, influencers",
+        "Reindex command + tests"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-032", "title": "Mobile: Map screen with clustering and viewport fetch", "phase": "M2", "status": "pending",
-      "depends_on": ["T-029", "T-010"], "estimate": "L",
-      "paths": ["apps/mobile/app/(tabs)/map.tsx", "apps/mobile/src/components/map/"],
-      "spec_refs": ["05-mobile-app.md#map-ux"],
-      "acceptance": ["react-native-maps with debounced viewport-driven fetching, cluster markers", "Marker tap → bottom-sheet place preview → navigate to detail", "Filter bar (cuisine/price/tags)", "No re-render storms: memoized markers verified"],
+      "id": "T-032",
+      "title": "Mobile: Map screen with clustering and viewport fetch",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-029",
+        "T-010"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/mobile/app/(tabs)/map.tsx",
+        "apps/mobile/src/components/map/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#map-ux"
+      ],
+      "acceptance": [
+        "react-native-maps with debounced viewport-driven fetching, cluster markers",
+        "Marker tap → bottom-sheet place preview → navigate to detail",
+        "Filter bar (cuisine/price/tags)",
+        "No re-render storms: memoized markers verified"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-033", "title": "Mobile: Place detail screen", "phase": "M2", "status": "pending",
-      "depends_on": ["T-030", "T-010"], "estimate": "M",
-      "paths": ["apps/mobile/app/place/[slug].tsx"],
-      "spec_refs": ["05-mobile-app.md#screen-inventory"],
-      "acceptance": ["Shows extracted info, tags, price, hours, address with mini-map", "Source videos section: thumbnail + link-out to original post, influencer + sharer attribution", "Directions + share buttons"],
+      "id": "T-033",
+      "title": "Mobile: Place detail screen",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-030",
+        "T-010"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/place/[slug].tsx"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#screen-inventory"
+      ],
+      "acceptance": [
+        "Shows extracted info, tags, price, hours, address with mini-map",
+        "Source videos section: thumbnail + link-out to original post, influencer + sharer attribution",
+        "Directions + share buttons"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-034", "title": "Feed API + mobile Feed and Search screens", "phase": "M2", "status": "pending",
-      "depends_on": ["T-030", "T-031"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/FeedController.php", "apps/mobile/app/(tabs)/feed.tsx", "apps/mobile/app/search.tsx"],
-      "spec_refs": ["03-api-design.md#feed", "05-mobile-app.md#screen-inventory"],
-      "acceptance": ["GET /feed: recent published shares (cursor), later personalized by follows", "Feed screen with pull-to-refresh + infinite scroll", "Search screen against GET /search"],
+      "id": "T-034",
+      "title": "Feed API + mobile Feed and Search screens",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-030",
+        "T-031"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/FeedController.php",
+        "apps/mobile/app/(tabs)/feed.tsx",
+        "apps/mobile/app/search.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#feed",
+        "05-mobile-app.md#screen-inventory"
+      ],
+      "acceptance": [
+        "GET /feed: recent published shares (cursor), later personalized by follows",
+        "Feed screen with pull-to-refresh + infinite scroll",
+        "Search screen against GET /search"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-035", "title": "Filament: places dedup/merge review queue", "phase": "M2", "status": "pending",
-      "depends_on": ["T-023", "T-008"], "estimate": "M",
-      "paths": ["apps/api/app/Filament/Resources/"],
-      "spec_refs": ["02-data-model.md#dedup", "ROADMAP.md#m2"],
-      "acceptance": ["Filament resource lists pending/ambiguous places with candidate duplicates side-by-side", "Merge action (rehomes place_sources) + unmerge/undo", "Shares and analysis_runs browsable for debugging"],
-      "agent": "executor"
-    },
-
-    {
-      "id": "T-036", "title": "Public profiles API: users + influencers", "phase": "M3", "status": "pending",
-      "depends_on": ["T-030"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/ProfileController.php", "apps/api/app/Http/Controllers/InfluencerController.php"],
-      "spec_refs": ["03-api-design.md#users-influencers"],
-      "acceptance": ["GET /users/{username}: profile + their published shares", "GET /influencers/{id}: profile + places they promoted + public map data", "Privacy: only published content exposed"],
-      "agent": "executor"
-    },
-    {
-      "id": "T-037", "title": "Follows API + following filters", "phase": "M3", "status": "pending",
-      "depends_on": ["T-036"], "estimate": "M",
-      "paths": ["apps/api/app/Models/Follow.php", "apps/api/app/Http/Controllers/FollowController.php"],
-      "spec_refs": ["02-data-model.md#follows", "03-api-design.md#follows"],
-      "acceptance": ["Polymorphic follows (user or influencer) with follow/unfollow endpoints", "following_only=true works on /map/places and /feed", "Follow triggers notification", "Counter caches"],
-      "agent": "executor"
-    },
-    {
-      "id": "T-038", "title": "Influencer claiming flow", "phase": "M3", "status": "pending",
-      "depends_on": ["T-036", "T-015"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/InfluencerClaimController.php"],
-      "spec_refs": ["06-monetization.md#influencer-program", "02-data-model.md#influencers"],
-      "acceptance": ["Claim via matching linked platform_account handle OR bio-code verification per spec", "Claimed influencer linked to user (claimed_by_user_id), user gains influencer role", "Rejection + admin override in Filament", "Tests for both verification methods"],
+      "id": "T-035",
+      "title": "Filament: places dedup/merge review queue",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-023",
+        "T-008"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Filament/Resources/"
+      ],
+      "spec_refs": [
+        "02-data-model.md#dedup",
+        "ROADMAP.md#m2"
+      ],
+      "acceptance": [
+        "Filament resource lists pending/ambiguous places with candidate duplicates side-by-side",
+        "Merge action (rehomes place_sources) + unmerge/undo",
+        "Shares and analysis_runs browsable for debugging"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-039", "title": "Mobile: profile, influencer public map, settings screens", "phase": "M3", "status": "pending",
-      "depends_on": ["T-036", "T-037", "T-038", "T-020"], "estimate": "L",
-      "paths": ["apps/mobile/app/(tabs)/profile.tsx", "apps/mobile/app/user/", "apps/mobile/app/influencer/", "apps/mobile/app/settings/"],
-      "spec_refs": ["05-mobile-app.md#screen-inventory"],
-      "acceptance": ["Own profile + edit; public user profile; influencer profile with their map + shares + follow button", "Influencer claim flow UI", "Settings: AI model preference picker (GET /models), account management, GDPR export/delete entry points"],
+      "id": "T-036",
+      "title": "Public profiles API: users + influencers",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-030"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/ProfileController.php",
+        "apps/api/app/Http/Controllers/InfluencerController.php"
+      ],
+      "spec_refs": [
+        "03-api-design.md#users-influencers"
+      ],
+      "acceptance": [
+        "GET /users/{username}: profile + their published shares",
+        "GET /influencers/{id}: profile + places they promoted + public map data",
+        "Privacy: only published content exposed"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-040", "title": "Notification center (API + mobile)", "phase": "M3", "status": "pending",
-      "depends_on": ["T-027", "T-037"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/NotificationController.php", "apps/mobile/app/notifications.tsx"],
-      "spec_refs": ["03-api-design.md#notifications", "05-mobile-app.md#push-notifications"],
-      "acceptance": ["Database notifications listed via GET /notifications, mark-read", "Types: analysis done/review, follow, redemption, payout", "Mobile list screen with deep links + badge count"],
+      "id": "T-037",
+      "title": "Follows API + following filters",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-036"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Models/Follow.php",
+        "apps/api/app/Http/Controllers/FollowController.php"
+      ],
+      "spec_refs": [
+        "02-data-model.md#follows",
+        "03-api-design.md#follows"
+      ],
+      "acceptance": [
+        "Polymorphic follows (user or influencer) with follow/unfollow endpoints",
+        "following_only=true works on /map/places and /feed",
+        "Follow triggers notification",
+        "Counter caches"
+      ],
       "agent": "executor"
     },
-
     {
-      "id": "T-041", "title": "Place claims: restaurant verification (API + Filament)", "phase": "M4", "status": "pending",
-      "depends_on": ["T-030", "T-008"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/PlaceClaimController.php", "apps/api/app/Filament/Resources/"],
-      "spec_refs": ["06-monetization.md#restaurant-program", "02-data-model.md#place_claims"],
-      "acceptance": ["POST /places/{id}/claim with verification evidence per spec (phone/website/doc)", "Filament approval queue; approval grants restaurant_owner role scoped to place", "Claimed place badge on place API"],
+      "id": "T-038",
+      "title": "Influencer claiming flow",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-036",
+        "T-015"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/InfluencerClaimController.php"
+      ],
+      "spec_refs": [
+        "06-monetization.md#influencer-program",
+        "02-data-model.md#influencers"
+      ],
+      "acceptance": [
+        "Claim via matching linked platform_account handle OR bio-code verification per spec",
+        "Claimed influencer linked to user (claimed_by_user_id), user gains influencer role",
+        "Rejection + admin override in Filament",
+        "Tests for both verification methods"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-042", "title": "Offers CRUD (API + Filament + restaurant mobile screens)", "phase": "M4", "status": "pending",
-      "depends_on": ["T-041"], "estimate": "L",
-      "paths": ["apps/api/app/Http/Controllers/OfferController.php", "apps/mobile/app/restaurant/"],
-      "spec_refs": ["06-monetization.md#restaurant-program", "03-api-design.md#offers"],
-      "acceptance": ["Offers per data model: discount type/value, validity window, quota, terms, status", "Owner-only management endpoints + mobile management screens", "Diners browse active offers on place detail + offers list", "Quota + validity enforced"],
+      "id": "T-039",
+      "title": "Mobile: profile, influencer public map, settings screens",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-036",
+        "T-037",
+        "T-038",
+        "T-020"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/mobile/app/(tabs)/profile.tsx",
+        "apps/mobile/app/user/",
+        "apps/mobile/app/influencer/",
+        "apps/mobile/app/settings/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#screen-inventory"
+      ],
+      "acceptance": [
+        "Own profile + edit; public user profile; influencer profile with their map + shares + follow button",
+        "Influencer claim flow UI",
+        "Settings: AI model preference picker (GET /models), account management, GDPR export/delete entry points"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-043", "title": "Redemptions: issue code/QR + verify endpoint + anti-fraud", "phase": "M4", "status": "pending",
-      "depends_on": ["T-042"], "estimate": "L",
-      "paths": ["apps/api/app/Http/Controllers/RedemptionController.php", "apps/api/app/Services/Redemptions/"],
-      "spec_refs": ["06-monetization.md#attribution-redemption-flow", "02-data-model.md#redemptions"],
-      "acceptance": ["POST /offers/{id}/redemptions issues unique code + QR payload with expiry, attributed to influencer_id + share_id from the diner's referral context", "POST /redemptions/verify (restaurant-authenticated) marks redeemed exactly once (DB-level guard)", "Anti-fraud per spec: one active per user/offer, geofence at verify, velocity limits — each covered by tests"],
+      "id": "T-040",
+      "title": "Notification center (API + mobile)",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-027",
+        "T-037"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/NotificationController.php",
+        "apps/mobile/app/notifications.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#notifications",
+        "05-mobile-app.md#push-notifications"
+      ],
+      "acceptance": [
+        "Database notifications listed via GET /notifications, mark-read",
+        "Types: analysis done/review, follow, redemption, payout",
+        "Mobile list screen with deep links + badge count"
+      ],
+      "agent": "executor"
+    },
+    {
+      "id": "T-041",
+      "title": "Place claims: restaurant verification (API + Filament)",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-030",
+        "T-008"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/PlaceClaimController.php",
+        "apps/api/app/Filament/Resources/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#restaurant-program",
+        "02-data-model.md#place_claims"
+      ],
+      "acceptance": [
+        "POST /places/{id}/claim with verification evidence per spec (phone/website/doc)",
+        "Filament approval queue; approval grants restaurant_owner role scoped to place",
+        "Claimed place badge on place API"
+      ],
+      "agent": "executor"
+    },
+    {
+      "id": "T-042",
+      "title": "Offers CRUD (API + Filament + restaurant mobile screens)",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-041"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Http/Controllers/OfferController.php",
+        "apps/mobile/app/restaurant/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#restaurant-program",
+        "03-api-design.md#offers"
+      ],
+      "acceptance": [
+        "Offers per data model: discount type/value, validity window, quota, terms, status",
+        "Owner-only management endpoints + mobile management screens",
+        "Diners browse active offers on place detail + offers list",
+        "Quota + validity enforced"
+      ],
+      "agent": "executor"
+    },
+    {
+      "id": "T-043",
+      "title": "Redemptions: issue code/QR + verify endpoint + anti-fraud",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-042"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Http/Controllers/RedemptionController.php",
+        "apps/api/app/Services/Redemptions/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#attribution-redemption-flow",
+        "02-data-model.md#redemptions"
+      ],
+      "acceptance": [
+        "POST /offers/{id}/redemptions issues unique code + QR payload with expiry, attributed to influencer_id + share_id from the diner's referral context",
+        "POST /redemptions/verify (restaurant-authenticated) marks redeemed exactly once (DB-level guard)",
+        "Anti-fraud per spec: one active per user/offer, geofence at verify, velocity limits — each covered by tests"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-044", "title": "Double-entry ledger service + entries on redemption", "phase": "M4", "status": "pending",
-      "depends_on": ["T-043"], "estimate": "L",
-      "paths": ["apps/api/app/Services/Ledger/", "apps/api/database/migrations/"],
-      "spec_refs": ["06-monetization.md#revenue-share-mechanics", "02-data-model.md#ledger_entries"],
-      "acceptance": ["ledger_entries per data model with idempotency_key", "LedgerService::record() writes balanced transactions atomically; imbalance throws", "Redemption verified → restaurant fee, influencer share, platform margin entries per configured split", "Balance queries per account/user; invariant test: sum(debits)=sum(credits)"],
+      "id": "T-044",
+      "title": "Double-entry ledger service + entries on redemption",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-043"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Services/Ledger/",
+        "apps/api/database/migrations/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#revenue-share-mechanics",
+        "02-data-model.md#ledger_entries"
+      ],
+      "acceptance": [
+        "ledger_entries per data model with idempotency_key",
+        "LedgerService::record() writes balanced transactions atomically; imbalance throws",
+        "Redemption verified → restaurant fee, influencer share, platform margin entries per configured split",
+        "Balance queries per account/user; invariant test: sum(debits)=sum(credits)"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-045", "title": "Stripe Connect Express: onboarding, payouts, webhooks", "phase": "M4", "status": "pending",
-      "depends_on": ["T-044", "T-038"], "estimate": "L",
-      "paths": ["apps/api/app/Services/Payments/", "apps/api/app/Http/Controllers/StripeWebhookController.php"],
-      "spec_refs": ["06-monetization.md#revenue-share-mechanics", "03-api-design.md#webhooks"],
-      "acceptance": ["Connect Express onboarding link generation + account status tracking", "Payout request: min threshold check, ledger hold entry, Stripe transfer (test mode), payout record", "Webhooks: account.updated, transfer/payout events reconcile ledger", "Signature verification + idempotent webhook handling, tested with stripe-mock/fixtures"],
+      "id": "T-045",
+      "title": "Stripe Connect Express: onboarding, payouts, webhooks",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-044",
+        "T-038"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Services/Payments/",
+        "apps/api/app/Http/Controllers/StripeWebhookController.php"
+      ],
+      "spec_refs": [
+        "06-monetization.md#revenue-share-mechanics",
+        "03-api-design.md#webhooks"
+      ],
+      "acceptance": [
+        "Connect Express onboarding link generation + account status tracking",
+        "Payout request: min threshold check, ledger hold entry, Stripe transfer (test mode), payout record",
+        "Webhooks: account.updated, transfer/payout events reconcile ledger",
+        "Signature verification + idempotent webhook handling, tested with stripe-mock/fixtures"
+      ],
       "agent": "executor-high"
     },
     {
-      "id": "T-046", "title": "Wallet API + mobile wallet/earnings screens", "phase": "M4", "status": "pending",
-      "depends_on": ["T-045"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/WalletController.php", "apps/mobile/app/(tabs)/wallet.tsx"],
-      "spec_refs": ["03-api-design.md#wallet", "05-mobile-app.md#screen-inventory"],
-      "acceptance": ["GET /wallet: balance, ledger history, payout status; POST /wallet/payouts", "Mobile: balance, history list, payout request, Stripe onboarding webview", "Wallet tab only for influencer/restaurant roles"],
+      "id": "T-046",
+      "title": "Wallet API + mobile wallet/earnings screens",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-045"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/WalletController.php",
+        "apps/mobile/app/(tabs)/wallet.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#wallet",
+        "05-mobile-app.md#screen-inventory"
+      ],
+      "acceptance": [
+        "GET /wallet: balance, ledger history, payout status; POST /wallet/payouts",
+        "Mobile: balance, history list, payout request, Stripe onboarding webview",
+        "Wallet tab only for influencer/restaurant roles"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-047", "title": "Mobile: offers, redemption display, restaurant QR-verify screens", "phase": "M4", "status": "pending",
-      "depends_on": ["T-043"], "estimate": "L",
-      "paths": ["apps/mobile/app/offers/", "apps/mobile/app/restaurant/verify.tsx"],
-      "spec_refs": ["05-mobile-app.md#screen-inventory", "06-monetization.md#attribution-redemption-flow"],
-      "acceptance": ["Diner: browse offers, redeem → code + QR screen with expiry countdown", "Restaurant: camera QR scan (expo-camera) or manual code entry → verify → success/failure states", "Geolocation permission for geofence check at verify"],
+      "id": "T-047",
+      "title": "Mobile: offers, redemption display, restaurant QR-verify screens",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-043"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/mobile/app/offers/",
+        "apps/mobile/app/restaurant/verify.tsx"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#screen-inventory",
+        "06-monetization.md#attribution-redemption-flow"
+      ],
+      "acceptance": [
+        "Diner: browse offers, redeem → code + QR screen with expiry countdown",
+        "Restaurant: camera QR scan (expo-camera) or manual code entry → verify → success/failure states",
+        "Geolocation permission for geofence check at verify"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-048", "title": "Influencer dashboard metrics + M4 loop integration test", "phase": "M4", "status": "pending",
-      "depends_on": ["T-046", "T-047"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/InfluencerDashboardController.php", "apps/api/tests/Feature/Monetization/"],
-      "spec_refs": ["06-monetization.md#influencer-program", "ROADMAP.md#m4"],
-      "acceptance": ["Dashboard endpoint: shares→views→redemptions funnel + earnings by place", "Full-loop feature test per M4 exit criteria (offer→redeem→verify→balanced ledger→payout in test mode)", "Unclaimed influencer earnings accrue to escrow account per spec"],
-      "agent": "executor"
-    },
-
-    {
-      "id": "T-049", "title": "Moderation: reports, Filament queue, takedown/DMCA flow", "phase": "M5", "status": "pending",
-      "depends_on": ["T-030", "T-008"], "estimate": "M",
-      "paths": ["apps/api/app/Http/Controllers/ReportController.php", "apps/api/app/Filament/Resources/"],
-      "spec_refs": ["02-data-model.md#reports", "07-risks-decisions.md#risk-register"],
-      "acceptance": ["POST /reports on shares/places/users with reason enum", "Filament moderation queue: hide/remove/ban actions with audit trail", "Takedown flow: influencer/rightsholder request → share unpublished + place_source removed", "In-app report entry points (mobile)"],
-      "agent": "executor"
-    },
-    {
-      "id": "T-050", "title": "GDPR: export/delete jobs + media retention enforcement", "phase": "M5", "status": "pending",
-      "depends_on": ["T-024", "T-015"], "estimate": "M",
-      "paths": ["apps/api/app/Jobs/Gdpr/", "apps/api/app/Console/Commands/"],
-      "spec_refs": ["07-risks-decisions.md", "00-product-spec.md#nfr"],
-      "acceptance": ["Account deletion purges user data, tokens, devices; anonymizes attributions (test-verified)", "Data export job produces downloadable archive", "Scheduled command deletes original videos post-analysis (retention per ADR), keyframes/thumbnails kept", "platform_accounts tokens encrypted-at-rest audit"],
-      "agent": "executor"
-    },
-    {
-      "id": "T-051", "title": "Quotas, rate limits, AI cost dashboard", "phase": "M5", "status": "pending",
-      "depends_on": ["T-020", "T-008"], "estimate": "S",
-      "paths": ["apps/api/app/Http/Middleware/", "apps/api/app/Filament/Widgets/"],
-      "spec_refs": ["00-product-spec.md#nfr", "04-analysis-pipeline.md#observability"],
-      "acceptance": ["Per-user daily share/analysis quotas + API rate limits with clear 429 responses", "Filament widget: analysis cost by engine/model/day from analysis_runs", "Quota exceeded surfaces friendly mobile error"],
+      "id": "T-048",
+      "title": "Influencer dashboard metrics + M4 loop integration test",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-046",
+        "T-047"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/InfluencerDashboardController.php",
+        "apps/api/tests/Feature/Monetization/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#influencer-program",
+        "ROADMAP.md#m4"
+      ],
+      "acceptance": [
+        "Dashboard endpoint: shares→views→redemptions funnel + earnings by place",
+        "Full-loop feature test per M4 exit criteria (offer→redeem→verify→balanced ledger→payout in test mode)",
+        "Unclaimed influencer earnings accrue to escrow account per spec"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-052", "title": "Observability: Sentry, Horizon alerts, stage metrics", "phase": "M5", "status": "pending",
-      "depends_on": ["T-028"], "estimate": "S",
-      "paths": ["apps/api/", "apps/mobile/"],
-      "spec_refs": ["04-analysis-pipeline.md#observability"],
-      "acceptance": ["Sentry wired in API and mobile (sentry-expo) with release tagging", "Pipeline stage timing metrics logged; Horizon failure notifications", "Runbook section: common failure taxonomy → remediation"],
+      "id": "T-049",
+      "title": "Moderation: reports, Filament queue, takedown/DMCA flow",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-030",
+        "T-008"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/ReportController.php",
+        "apps/api/app/Filament/Resources/"
+      ],
+      "spec_refs": [
+        "02-data-model.md#reports",
+        "07-risks-decisions.md#risk-register"
+      ],
+      "acceptance": [
+        "POST /reports on shares/places/users with reason enum",
+        "Filament moderation queue: hide/remove/ban actions with audit trail",
+        "Takedown flow: influencer/rightsholder request → share unpublished + place_source removed",
+        "In-app report entry points (mobile)"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-053", "title": "E2E: Maestro share→publish flow + map load test", "phase": "M5", "status": "pending",
-      "depends_on": ["T-026", "T-032"], "estimate": "M",
-      "paths": ["apps/mobile/.maestro/", "apps/api/tests/Load/"],
-      "spec_refs": ["05-mobile-app.md#testing", "ROADMAP.md#m5"],
-      "acceptance": ["Maestro flow: login → paste URL share → (mocked API) status → review → published place visible on map; runs in CI against staging", "Map bbox endpoint load test at 10k places documented with results"],
+      "id": "T-050",
+      "title": "GDPR: export/delete jobs + media retention enforcement",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-024",
+        "T-015"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Jobs/Gdpr/",
+        "apps/api/app/Console/Commands/"
+      ],
+      "spec_refs": [
+        "07-risks-decisions.md",
+        "00-product-spec.md#nfr"
+      ],
+      "acceptance": [
+        "Account deletion purges user data, tokens, devices; anonymizes attributions (test-verified)",
+        "Data export job produces downloadable archive",
+        "Scheduled command deletes original videos post-analysis (retention per ADR), keyframes/thumbnails kept",
+        "platform_accounts tokens encrypted-at-rest audit"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-054", "title": "Store readiness: policies, review checklist, EAS submit", "phase": "M5", "status": "pending",
-      "depends_on": ["T-049", "T-050"], "estimate": "M",
-      "paths": ["apps/mobile/", "docs/"],
-      "spec_refs": ["07-risks-decisions.md#risk-register", "05-mobile-app.md#expo-eas-workflow"],
-      "acceptance": ["Privacy policy + terms hosted; app privacy questionnaires answered (both stores)", "Apple UGC requirements met: report, block, moderation contact; account deletion in-app", "EAS production builds submitted to TestFlight + Play internal track"],
+      "id": "T-051",
+      "title": "Quotas, rate limits, AI cost dashboard",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-020",
+        "T-008"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Http/Middleware/",
+        "apps/api/app/Filament/Widgets/"
+      ],
+      "spec_refs": [
+        "00-product-spec.md#nfr",
+        "04-analysis-pipeline.md#observability"
+      ],
+      "acceptance": [
+        "Per-user daily share/analysis quotas + API rate limits with clear 429 responses",
+        "Filament widget: analysis cost by engine/model/day from analysis_runs",
+        "Quota exceeded surfaces friendly mobile error"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-055", "title": "Production deploy: Forge provisioning, Ollama host, runbooks", "phase": "M5", "status": "pending",
-      "depends_on": ["T-052"], "estimate": "M",
-      "paths": ["docs/runbooks/", "apps/api/"],
-      "spec_refs": ["01-architecture.md#environments-deployment"],
-      "acceptance": ["Staging + production provisioned (Forge or equivalent): app server, Postgres+PostGIS, Redis, Meilisearch, Horizon daemon, scheduler, ffmpeg/yt-dlp installed", "Ollama host reachable from workers with OLLAMA_URL config + fallback verified in staging", "Zero-downtime deploy script; backup + restore runbook tested once"],
+      "id": "T-052",
+      "title": "Observability: Sentry, Horizon alerts, stage metrics",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-028"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/",
+        "apps/mobile/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#observability"
+      ],
+      "acceptance": [
+        "Sentry wired in API and mobile (sentry-expo) with release tagging",
+        "Pipeline stage timing metrics logged; Horizon failure notifications",
+        "Runbook section: common failure taxonomy → remediation"
+      ],
       "agent": "executor"
     },
     {
-      "id": "T-056", "title": "M1 review follow-up: ingestion pipeline failure/retry test coverage", "phase": "M1", "status": "pending",
-      "depends_on": ["T-016"], "estimate": "S",
-      "paths": ["apps/api/tests/Feature/Shares/", "apps/api/tests/Unit/Adapters/", "apps/api/tests/Feature/Media/"],
-      "spec_refs": ["04-analysis-pipeline.md#overview"],
-      "acceptance": ["FetchSourcePost: FetchFailed(retryAfter) releases/backs off; chain-advance path (first adapter throws, later succeeds) asserted", "FailsShareOnError::failed() terminal path tested (Fetching->Failed with reason; already-terminal share is a no-op)", "UrlCanonicalizer positive shortlink expansion + ConnectionException branch + relative Location tested (no live network)", "MediaUploadController 413 over-cap branch and ManualUploadAdapter empty-result branch tested", "Coverage on these paths does not regress"],
+      "id": "T-053",
+      "title": "E2E: Maestro share→publish flow + map load test",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-026",
+        "T-032"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/.maestro/",
+        "apps/api/tests/Load/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#testing",
+        "ROADMAP.md#m5"
+      ],
+      "acceptance": [
+        "Maestro flow: login → paste URL share → (mocked API) status → review → published place visible on map; runs in CI against staging",
+        "Map bbox endpoint load test at 10k places documented with results"
+      ],
+      "agent": "executor"
+    },
+    {
+      "id": "T-054",
+      "title": "Store readiness: policies, review checklist, EAS submit",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-049",
+        "T-050"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/",
+        "docs/"
+      ],
+      "spec_refs": [
+        "07-risks-decisions.md#risk-register",
+        "05-mobile-app.md#expo-eas-workflow"
+      ],
+      "acceptance": [
+        "Privacy policy + terms hosted; app privacy questionnaires answered (both stores)",
+        "Apple UGC requirements met: report, block, moderation contact; account deletion in-app",
+        "EAS production builds submitted to TestFlight + Play internal track"
+      ],
+      "agent": "executor"
+    },
+    {
+      "id": "T-055",
+      "title": "Production deploy: Forge provisioning, Ollama host, runbooks",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-052"
+      ],
+      "estimate": "M",
+      "paths": [
+        "docs/runbooks/",
+        "apps/api/"
+      ],
+      "spec_refs": [
+        "01-architecture.md#environments-deployment"
+      ],
+      "acceptance": [
+        "Staging + production provisioned (Forge or equivalent): app server, Postgres+PostGIS, Redis, Meilisearch, Horizon daemon, scheduler, ffmpeg/yt-dlp installed",
+        "Ollama host reachable from workers with OLLAMA_URL config + fallback verified in staging",
+        "Zero-downtime deploy script; backup + restore runbook tested once"
+      ],
+      "agent": "executor"
+    },
+    {
+      "id": "T-056",
+      "title": "M1 review follow-up: ingestion pipeline failure/retry test coverage",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-016"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/tests/Feature/Shares/",
+        "apps/api/tests/Unit/Adapters/",
+        "apps/api/tests/Feature/Media/"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#overview"
+      ],
+      "acceptance": [
+        "FetchSourcePost: FetchFailed(retryAfter) releases/backs off; chain-advance path (first adapter throws, later succeeds) asserted",
+        "FailsShareOnError::failed() terminal path tested (Fetching->Failed with reason; already-terminal share is a no-op)",
+        "UrlCanonicalizer positive shortlink expansion + ConnectionException branch + relative Location tested (no live network)",
+        "MediaUploadController 413 over-cap branch and ManualUploadAdapter empty-result branch tested",
+        "Coverage on these paths does not regress"
+      ],
       "agent": "executor",
       "notes": "Deferred from the PR #10 review (T-007..T-016). These are real coverage gaps the review surfaced; all fakes/fixtures, no network."
     },
     {
-      "id": "T-057", "title": "M1 review follow-up: ingestion/media hardening", "phase": "M1", "status": "pending",
-      "depends_on": ["T-016", "T-009"], "estimate": "S",
-      "paths": ["apps/api/app/Http/Controllers/MediaUploadController.php", "apps/api/app/Services/Media/MediaPaths.php", "apps/api/app/Services/Ingestion/UrlCanonicalizer.php"],
-      "spec_refs": ["07-risks-decisions.md#risk-register"],
-      "acceptance": ["MediaUploadController (dev upload route): stream to disk with a hard byte cap instead of buffering getContent(); reject missing/chunked Content-Length rather than trusting the header", "MediaPaths::original() sanitizes the $ext segment so a caller-derived extension can't inject path separators", "UrlCanonicalizer SSRF: consider pinning across all resolved A/AAAA IPs (not just the first) and document the IPv6 pin behaviour"],
+      "id": "T-057",
+      "title": "M1 review follow-up: ingestion/media hardening",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-016",
+        "T-009"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Http/Controllers/MediaUploadController.php",
+        "apps/api/app/Services/Media/MediaPaths.php",
+        "apps/api/app/Services/Ingestion/UrlCanonicalizer.php"
+      ],
+      "spec_refs": [
+        "07-risks-decisions.md#risk-register"
+      ],
+      "acceptance": [
+        "MediaUploadController (dev upload route): stream to disk with a hard byte cap instead of buffering getContent(); reject missing/chunked Content-Length rather than trusting the header",
+        "MediaPaths::original() sanitizes the $ext segment so a caller-derived extension can't inject path separators",
+        "UrlCanonicalizer SSRF: consider pinning across all resolved A/AAAA IPs (not just the first) and document the IPv6 pin behaviour"
+      ],
       "agent": "executor",
       "notes": "Deferred from the PR #10 review. Low-severity hardening; the dev upload route is not registered in production."
     },
     {
-      "id": "T-058", "title": "M1 review follow-up: fixture & config polish", "phase": "M1", "status": "pending",
-      "depends_on": ["T-016"], "estimate": "S",
-      "paths": ["apps/api/database/factories/", "apps/api/database/migrations/", "apps/api/config/horizon.php", "apps/api/app/Console/Commands/MakeAdmin.php"],
-      "spec_refs": ["02-data-model.md"],
-      "acceptance": ["Drop the redundant standalone index on media_assets.sha256 (covered by the composite unique index)", "MediaAssetFactory default disk aligns with config('media.disk') / dev default instead of hardcoded 's3'", "AnalysisRunFactory::openrouter() sets a coherent status or is documented as compose-only (no 'queued run that already cost money')", "Horizon LongWait thresholds cover the media/analyze queues, not just redis:default", "MakeAdmin: decide + implement explicit handling for a soft-deleted (banned) target user"],
+      "id": "T-058",
+      "title": "M1 review follow-up: fixture & config polish",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-016"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/database/factories/",
+        "apps/api/database/migrations/",
+        "apps/api/config/horizon.php",
+        "apps/api/app/Console/Commands/MakeAdmin.php"
+      ],
+      "spec_refs": [
+        "02-data-model.md"
+      ],
+      "acceptance": [
+        "Drop the redundant standalone index on media_assets.sha256 (covered by the composite unique index)",
+        "MediaAssetFactory default disk aligns with config('media.disk') / dev default instead of hardcoded 's3'",
+        "AnalysisRunFactory::openrouter() sets a coherent status or is documented as compose-only (no 'queued run that already cost money')",
+        "Horizon LongWait thresholds cover the media/analyze queues, not just redis:default",
+        "MakeAdmin: decide + implement explicit handling for a soft-deleted (banned) target user"
+      ],
       "agent": "executor",
       "notes": "Deferred from the PR #10 review. Cosmetic/consistency; no behavioural risk."
     }
