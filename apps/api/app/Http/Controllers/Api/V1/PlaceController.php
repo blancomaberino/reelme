@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Public places surface (T-030, 03 §2.6): browse index with filters, place
@@ -223,7 +224,14 @@ class PlaceController extends Controller
             default: // recent
                 $query->orderByDesc('created_at')->orderByDesc('id');
                 if ($cursor !== null) {
-                    $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [(string) $cursor[0], (int) $cursor[1]]);
+                    // The key binds into a ?::timestamp cast — a non-timestamp
+                    // string would be a Postgres error (500), so shape-check it
+                    // here and answer 422 like every other malformed cursor.
+                    $ts = (string) $cursor[0];
+                    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/', $ts) !== 1) {
+                        throw ValidationException::withMessages(['cursor' => ['The cursor is malformed.']]);
+                    }
+                    $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, (int) $cursor[1]]);
                 }
         }
     }

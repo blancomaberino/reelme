@@ -102,6 +102,14 @@ it('rejects a garbage cursor with 422, not 500', function () {
         ->assertJsonPath('error.code', 'validation_failed');
 });
 
+it('rejects a structurally-valid recent cursor whose key is not a timestamp', function () {
+    $crafted = rtrim(strtr(base64_encode((string) json_encode(['s' => 'recent', 'k' => ['not-a-date', 1]])), '+/', '-_'), '=');
+
+    $this->getJson('/api/v1/places?sort=recent&cursor='.urlencode($crafted))
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed');
+});
+
 it('filters by q on normalized name (prefix and fuzzy)', function () {
     Place::factory()->active()->atPoint(38.7, -9.1)->create(['name' => 'Lanzhou Beef Noodle House']);
     Place::factory()->active()->atPoint(38.7, -9.1)->create(['name' => 'Sushi Corner']);
