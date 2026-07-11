@@ -2,6 +2,7 @@
 
 use App\Adapters\AdapterRegistry;
 use App\Enums\FetchStatus;
+use App\Enums\PlaceStatus;
 use App\Enums\Platform;
 use App\Enums\ShareStatus;
 use App\Jobs\FetchSourcePost;
@@ -98,10 +99,12 @@ it('runs the full pipeline to a resolved place (sync queue + fakes)', function (
         ->assertStatus(202);
 
     $share = Share::latest('id')->first();
-    expect($share->status)->toBe(ShareStatus::Analyzing) // publish (T-024) is still a no-op stub
-        ->and($share->stageMetrics()->pluck('stage')->all())->toContain('ingest', 'fetch', 'extract', 'resolve');
+    expect($share->status)->toBe(ShareStatus::Published) // T-024: publish is now a real terminal stage
+        ->and($share->published_place_source_id)->not->toBeNull()
+        ->and($share->stageMetrics()->pluck('stage')->all())->toContain('ingest', 'fetch', 'extract', 'resolve', 'publish');
 
     $place = Place::sole();
     expect($place->google_place_id)->toBe('ChIJpipeline')
+        ->and($place->status)->toBe(PlaceStatus::Pending) // single unverified source stays pending
         ->and(PlaceSource::where('share_id', $share->id)->where('place_id', $place->id)->exists())->toBeTrue();
 });

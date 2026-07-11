@@ -7,18 +7,21 @@ use App\Enums\Platform;
 use App\Enums\ShareStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreShareRequest;
+use App\Http\Requests\UpdateShareRequest;
 use App\Http\Resources\ShareResource;
 use App\Jobs\IngestShare;
 use App\Jobs\Pipeline;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Services\Ingestion\UrlCanonicalizer;
+use App\Support\Contracts\ExtractionSchema;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ShareController extends Controller
 {
@@ -120,6 +123,176 @@ class ShareController extends Controller
         Bus::chain(Pipeline::chain($share->id, $stage))->dispatch();
 
         return $this->respondWithShare($share);
+    }
+
+    /**
+     * PATCH /shares/{id} — apply a reviewer's corrected extraction and optionally
+     * confirm publication (04 §7). Owner-only, valid only while `review`.
+     */
+    public function update(UpdateShareRequest $request, Share $share): JsonResponse
+    {
+        $this->authorize('update', $share);
+
+        abort_unless($share->status === ShareStatus::Review, 409, 'This share can only be corrected while in review.');
+
+        $run = $share->analysisRun;
+        $original = $run !== null ? ($run->result_json ?? []) : [];
+
+        $extraction = $request->input('extraction');
+        $merged = is_array($extraction) ? $this->deepMerge($original, $extraction) : $original;
+
+        $candidate = $request->input('place_candidate');
+        if (is_array($candidate)) {
+            $merged = $this->applyCandidate($share, $merged, $candidate);
+        }
+
+        // The whole merged payload must satisfy the full schema (additionalProperties
+        // is false) — merging onto the complete original keeps required keys intact.
+        $result = ExtractionSchema::validate($merged);
+        if (! $result->isValid()) {
+            $errors = ExtractionSchema::errors($result);
+
+            throw ValidationException::withMessages(
+                $errors !== [] ? $errors : ['extraction' => ['The corrected extraction is invalid.']],
+            );
+        }
+
+        $share->corrected_extraction_json = $merged;
+        $share->save();
+
+        $this->recordCorrections($share, $original, $merged);
+
+        if ($request->input('action') === 'publish') {
+            $share->user_confirmed = true;
+            $share->save();
+
+            // Only dispatch the resolve→publish chain if we actually won the guard.
+            if ($share->transitionTo(ShareStatus::Analyzing)) {
+                Bus::chain(Pipeline::chain($share->id, 'resolve'))->dispatch();
+            }
+        }
+
+        return $this->respondWithShare($share);
+    }
+
+    /**
+     * Fold a candidate override into the payload. A manual `{lat,lng}` pin becomes
+     * `place.geo` (valid per schema); a `place_id` pick is stashed on
+     * `review_meta_json` so ResolvePlace attaches straight to that place — but only
+     * after checking the id is one the review actually offered, so a share can't be
+     * attached to (and skew the counters of) an arbitrary canonical place.
+     *
+     * @param  array<string, mixed>  $merged
+     * @param  array<string, mixed>  $candidate
+     * @return array<string, mixed>
+     */
+    private function applyCandidate(Share $share, array $merged, array $candidate): array
+    {
+        if (isset($candidate['lat'], $candidate['lng'])) {
+            $place = is_array($merged['place'] ?? null) ? $merged['place'] : [];
+            $place['geo'] = ['lat' => (float) $candidate['lat'], 'lng' => (float) $candidate['lng']];
+            $merged['place'] = $place;
+        }
+
+        if (isset($candidate['place_id'])) {
+            $pickedId = (int) $candidate['place_id'];
+            $meta = is_array($share->review_meta_json) ? $share->review_meta_json : [];
+            $offered = array_map(
+                fn ($c): int => (int) ($c['place_id'] ?? 0),
+                is_array($meta['candidates'] ?? null) ? $meta['candidates'] : [],
+            );
+
+            if (! in_array($pickedId, $offered, true)) {
+                throw ValidationException::withMessages([
+                    'place_candidate.place_id' => ['The selected place is not among the review candidates.'],
+                ]);
+            }
+
+            $meta['picked_place_id'] = $pickedId;
+            $share->review_meta_json = $meta;
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Recursively overlay `$override` on `$base`: nested objects merge key-by-key,
+     * while scalars and lists (dishes, tags) replace wholesale.
+     *
+     * @param  array<string, mixed>  $base
+     * @param  array<string, mixed>  $override
+     * @return array<string, mixed>
+     */
+    private function deepMerge(array $base, array $override): array
+    {
+        foreach ($override as $key => $value) {
+            // A non-list array is a non-empty associative map → merge recursively;
+            // scalars, lists (dishes, tags), and empty arrays replace wholesale.
+            if (is_array($value) && ! array_is_list($value)
+                && isset($base[$key]) && is_array($base[$key])) {
+                $base[$key] = $this->deepMerge($base[$key], $value);
+            } else {
+                $base[$key] = $value;
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * Diff the original vs corrected payload per dotted leaf path and persist one
+     * share_corrections row per changed leaf (jsonb model/user values). Replaces
+     * any prior corrections for the share so a repeated PATCH stays idempotent.
+     *
+     * @param  array<string, mixed>  $original
+     * @param  array<string, mixed>  $merged
+     */
+    private function recordCorrections(Share $share, array $original, array $merged): void
+    {
+        $before = $this->flattenLeaves($original);
+        $after = $this->flattenLeaves($merged);
+
+        $rows = [];
+        foreach ($after as $path => $value) {
+            if (mb_strlen($path) > 120) {
+                continue; // beyond the field_path column — skip rather than truncate the key
+            }
+            if (! array_key_exists($path, $before) || $before[$path] !== $value) {
+                $rows[] = [
+                    'field_path' => $path,
+                    'model_value' => $before[$path] ?? null,
+                    'user_value' => $value,
+                ];
+            }
+        }
+
+        $share->corrections()->delete();
+        foreach ($rows as $row) {
+            $share->corrections()->create($row);
+        }
+    }
+
+    /**
+     * Flatten a decoded payload into `dotted.path => leaf`. Associative maps
+     * recurse; scalars, lists, and empty arrays are leaves (compared wholesale).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function flattenLeaves(array $data, string $prefix = ''): array
+    {
+        $out = [];
+        foreach ($data as $key => $value) {
+            $path = $prefix === '' ? (string) $key : "{$prefix}.{$key}";
+            // Recurse into associative maps only; lists and scalars stay leaves.
+            if (is_array($value) && ! array_is_list($value)) {
+                $out += $this->flattenLeaves($value, $path);
+            } else {
+                $out[$path] = $value;
+            }
+        }
+
+        return $out;
     }
 
     private function respondWithShare(Share $share): JsonResponse
