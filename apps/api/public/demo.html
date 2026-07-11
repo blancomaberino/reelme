@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reelmap — demo</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  :root { --bg:#0e0f13; --panel:#171922; --line:#262a37; --fg:#e7e9ee; --mut:#9aa0ae; --acc:#ff5a5f; --ok:#39d98a; --warn:#ffcf5c; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  #app { display:grid; grid-template-columns:360px 1fr; height:100%; }
+  #side { border-right:1px solid var(--line); overflow-y:auto; padding:18px; background:var(--panel); }
+  #map { height:100%; }
+  h1 { font-size:18px; margin:0 0 2px; letter-spacing:-0.02em; }
+  h1 span { color:var(--acc); }
+  .sub { color:var(--mut); font-size:12px; margin-bottom:18px; }
+  .card { border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; background:#12141c; }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--mut); margin:0 0 10px; }
+  label { display:block; font-size:12px; color:var(--mut); margin:8px 0 4px; }
+  input, button { width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--line); background:#0d0f16; color:var(--fg); font-size:13px; }
+  button { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:600; cursor:pointer; margin-top:12px; }
+  button.ghost { background:transparent; border-color:var(--line); color:var(--fg); font-weight:500; }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  .pill { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--mut); }
+  .pill.published { color:var(--ok); border-color:#1e5c40; }
+  .pill.review { color:var(--warn); border-color:#5c4d1e; }
+  .pill.failed { color:var(--acc); border-color:#5c2222; }
+  .share { border-top:1px solid var(--line); padding:10px 0; font-size:13px; }
+  .share:first-child { border-top:0; }
+  .share .u { color:var(--mut); font-size:11px; word-break:break-all; }
+  .muted { color:var(--mut); font-size:12px; }
+  .err { color:var(--acc); font-size:12px; margin-top:8px; min-height:16px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <h1>Reel<span>map</span></h1>
+    <div class="sub">Share a link → we extract the place → it lands on the map.</div>
+
+    <div class="card" id="authCard">
+      <h2>1 · Sign in</h2>
+      <div class="row">
+        <input id="email" type="email" placeholder="email" autocomplete="username">
+        <input id="password" type="password" placeholder="password" autocomplete="current-password">
+      </div>
+      <div class="row">
+        <button id="loginBtn" class="ghost">Log in</button>
+        <button id="registerBtn">Register</button>
+      </div>
+      <div class="err" id="authErr"></div>
+    </div>
+
+    <div class="card hidden" id="whoCard">
+      <h2>Signed in</h2>
+      <div class="muted" id="whoLine"></div>
+      <button id="logoutBtn" class="ghost">Log out</button>
+    </div>
+
+    <div class="card hidden" id="submitCard">
+      <h2>2 · Share a link</h2>
+      <label>Post URL</label>
+      <input id="url" type="url" placeholder="https://www.instagram.com/reel/…">
+      <label>Caption / description (used when we can't fetch the post)</label>
+      <input id="caption" type="text" placeholder="Best tacos in Lisbon — Time Out Market">
+      <button id="submitBtn">Submit</button>
+      <div class="err" id="submitErr"></div>
+    </div>
+
+    <div class="card hidden" id="sharesCard">
+      <h2>3 · Your shares</h2>
+      <div id="shares"><div class="muted">None yet.</div></div>
+    </div>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+// Served from the same Laravel origin, so the API base is relative.
+const API = "/api/v1";
+let token = localStorage.getItem("reelmap_token") || null;
+let pollTimer = null;
+const markers = L.layerGroup();
+
+// ── Map ───────────────────────────────────────────────────────────────────
+const map = L.map("map", { zoomControl:true }).setView([38.72, -9.14], 12); // Lisbon
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:"abcd", maxZoom:20,
+}).addTo(map);
+markers.addTo(map);
+map.on("moveend", loadPlaces);
+
+async function api(path, opts = {}) {
+  const headers = { "Accept":"application/json", "Content-Type":"application/json", ...(opts.headers||{}) };
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch(API + path, { ...opts, headers });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body?.error?.message || res.statusText), { body, status: res.status });
+  return body;
+}
+
+// ── Map: load places in the current viewport ───────────────────────────────
+async function loadPlaces() {
+  const b = map.getBounds();
+  const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(n => n.toFixed(6)).join(",");
+  try {
+    const { data } = await api(`/map/places?bbox=${bbox}&zoom=${Math.round(map.getZoom())}`);
+    markers.clearLayers();
+    for (const p of (data.pins || [])) {
+      L.marker([p.lat, p.lng]).addTo(markers)
+        .bindPopup(`<b>${esc(p.name)}</b><br>${esc(p.category||"")} ${p.city?("· "+esc(p.city)):""}` +
+          `<br><small>${esc(p.source_count)} share(s) · ${esc(p.status)}</small>`);
+    }
+    for (const c of (data.clusters || [])) {
+      L.marker([c.lat, c.lng], { icon: clusterIcon(c.count) }).addTo(markers)
+        .bindTooltip(`${c.count} places`)
+        .on("click", () => { const b = c.expand?.bbox; if (b) map.fitBounds([[b[1],b[0]],[b[3],b[2]]]); });
+    }
+  } catch (e) { /* map stays as-is on transient errors */ }
+}
+
+function clusterIcon(count) {
+  return L.divIcon({ className:"", html:`<div style="background:#ff5a5f;color:#fff;border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;border:2px solid #fff">${count}</div>`, iconSize:[34,34] });
+}
+const esc = s => String(s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+async function auth(kind) {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  document.getElementById("authErr").textContent = "";
+  try {
+    const payload = kind === "register"
+      ? { name: email.split("@")[0] || "Demo", email, password, password_confirmation: password, device_name: "web-demo" }
+      : { email, password, device_name: "web-demo" };
+    const body = await api(`/auth/${kind}`, { method:"POST", body: JSON.stringify(payload) });
+    token = body?.data?.token || body?.token;
+    if (!token) throw new Error("No token in response");
+    localStorage.setItem("reelmap_token", token);
+    await afterAuth();
+  } catch (e) { document.getElementById("authErr").textContent = e.message; }
+}
+
+async function afterAuth() {
+  try {
+    const me = await api("/me");
+    const u = me?.data?.user || me?.data || me;
+    document.getElementById("whoLine").textContent = u?.email || "signed in";
+  } catch { /* token may be stale */ token = null; localStorage.removeItem("reelmap_token"); }
+  const on = !!token;
+  document.getElementById("authCard").classList.toggle("hidden", on);
+  ["whoCard","submitCard","sharesCard"].forEach(id => document.getElementById(id).classList.toggle("hidden", !on));
+  if (on) { refreshShares(); loadPlaces(); }
+}
+
+function logout() { token = null; localStorage.removeItem("reelmap_token"); clearInterval(pollTimer); afterAuth(); }
+
+// ── Submit a share ─────────────────────────────────────────────────────────
+async function submitShare() {
+  const url = document.getElementById("url").value.trim();
+  const caption = document.getElementById("caption").value.trim();
+  const btn = document.getElementById("submitBtn");
+  document.getElementById("submitErr").textContent = "";
+  if (!url && !caption) { document.getElementById("submitErr").textContent = "Enter a URL or a caption."; return; }
+  btn.disabled = true; btn.textContent = "Submitting…";
+  try {
+    // The caption is the content the pipeline extracts from (platform posts
+    // can't be fetched locally); the url is kept only as a reference.
+    await api("/shares", { method:"POST", body: JSON.stringify({ url: url || undefined, caption: caption || undefined }) });
+    document.getElementById("url").value = ""; document.getElementById("caption").value = "";
+    startPolling();
+  } catch (e) { document.getElementById("submitErr").textContent = e.body?.error?.message || e.message; }
+  finally { btn.disabled = false; btn.textContent = "Submit"; }
+}
+
+// ── Shares list + polling ──────────────────────────────────────────────────
+async function refreshShares() {
+  try {
+    const { data } = await api("/shares?limit=10");
+    const el = document.getElementById("shares");
+    if (!data.length) { el.innerHTML = '<div class="muted">None yet.</div>'; return; }
+    el.innerHTML = data.map(s => {
+      const st = s.status;
+      const place = s.place ? `<br>📍 ${esc(s.place.name)}` : "";
+      return `<div class="share"><span class="pill ${esc(st)}">${esc(st)}</span> <span class="u">${esc(s.url||s.source_post?.url||"manual")}</span>${place}</div>`;
+    }).join("");
+    // If anything published, refresh the map so the new pin shows.
+    if (data.some(s => s.status === "published")) loadPlaces();
+    // Stop polling once nothing is in-flight.
+    const inflight = data.some(s => ["pending","fetching","analyzing"].includes(s.status));
+    if (!inflight && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  } catch { /* keep last render */ }
+}
+
+function startPolling() {
+  refreshShares();
+  clearInterval(pollTimer);
+  pollTimer = setInterval(refreshShares, 2500);
+}
+
+// ── Wire up ────────────────────────────────────────────────────────────────
+document.getElementById("loginBtn").onclick = () => auth("login");
+document.getElementById("registerBtn").onclick = () => auth("register");
+document.getElementById("logoutBtn").onclick = logout;
+document.getElementById("submitBtn").onclick = submitShare;
+afterAuth();
+</script>
+</body>
+</html>

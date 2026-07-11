@@ -33,8 +33,9 @@ class ShareController extends Controller
     {
         $user = $request->user();
         $url = $this->extractUrl($request);
+        $caption = $request->string('caption')->value() ?: null;
 
-        [$post, $platform] = $this->resolveSourcePost($url, $request->string('source_hint')->value() ?: null);
+        [$post, $platform] = $this->resolveSourcePost($url, $request->string('source_hint')->value() ?: null, $caption);
 
         // Duplicate guard: one share per (user, source_post). Never a 2nd row.
         // Fast path avoids the insert; the unique(user_id, source_post_id)
@@ -321,9 +322,30 @@ class ShareController extends Controller
     /**
      * @return array{0: SourcePost, 1: ?Platform}
      */
-    private function resolveSourcePost(?string $url, ?string $hint): array
+    private function resolveSourcePost(?string $url, ?string $hint, ?string $caption = null): array
     {
         $hintPlatform = $hint !== null ? Platform::tryFrom($hint) : null;
+
+        // Manual text share: a pasted caption IS the content. Store it pre-fetched
+        // (any URL is kept only as a reference) so FetchSourcePost no-ops and the
+        // pipeline extracts from the caption directly — the fetch-free demo path.
+        // NOTE: each submission mints a fresh external_id, so the (user,source_post)
+        // dedup guard can't fire — a resubmitted caption creates a new run/pin. Fine
+        // for the demo; ResolvePlace still dedups the resulting *place* by geo+name.
+        if ($caption !== null) {
+            $externalId = 'manual-'.Str::ulid();
+
+            $post = SourcePost::forceCreate([
+                'platform' => ($hintPlatform ?? Platform::Instagram)->value,
+                'external_id' => $externalId,
+                'url' => $url !== null ? mb_substr($url, 0, 2048) : "manual://{$externalId}",
+                'caption' => $caption,
+                'fetch_status' => FetchStatus::Fetched->value,
+                'fetched_at' => now(),
+            ]);
+
+            return [$post, $hintPlatform];
+        }
 
         if ($url !== null) {
             $canonical = $this->canonicalizer->canonicalize($url);

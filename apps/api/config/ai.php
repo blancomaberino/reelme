@@ -98,4 +98,9 @@ return [
 
     // Confidence below this escalates a local result to the remote engine (04 §3).
     'min_confidence' => (float) env('AI_MIN_CONFIDENCE', 0.5),
+
+    // A valid extraction whose overall confidence is below this is parked for
+    // human review instead of auto-continuing to publish (04 §5/§7). Lower it in
+    // demo/dev where a small local model reports honest-but-modest confidence.
+    'min_publish_confidence' => (float) env('AI_MIN_PUBLISH_CONFIDENCE', 0.75),
 ];
