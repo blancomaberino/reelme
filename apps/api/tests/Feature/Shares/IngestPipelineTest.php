@@ -17,13 +17,9 @@ use App\Services\Geo\GeocodeResult;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
-use Tests\Support\FakeInstagramAdapter;
 
-function useFakeInstagram(): void
-{
-    config(['ingestion.chains.instagram' => [FakeInstagramAdapter::class]]);
-    app()->forgetInstance(AdapterRegistry::class);
-}
+// useFakeInstagram() lives in tests/Helpers/PipelineHelpers.php (loaded via
+// Pest.php) so sibling suites can use it under --parallel.
 
 it('IngestShare moves pending → fetching and dispatches the chain', function () {
     Bus::fake();

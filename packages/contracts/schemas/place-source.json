@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/place-source.json",
+  "title": "PlaceSource",
+  "description": "One attribution row of GET /api/v1/places/{slug}/sources and the ?include=sources embed (T-030): original post link-out, influencer and (public-only) sharer attribution, extraction highlights.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "is_primary", "source_post", "influencer", "sharer", "highlights"],
+  "properties": {
+    "id": { "type": "string" },
+    "is_primary": { "type": "boolean" },
+    "source_post": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["platform", "url", "caption", "posted_at", "thumbnail_url"],
+      "properties": {
+        "platform": { "type": "string" },
+        "url": { "type": ["string", "null"] },
+        "caption": { "type": ["string", "null"] },
+        "posted_at": { "type": ["string", "null"], "format": "date-time" },
+        "thumbnail_url": { "type": ["string", "null"] }
+      }
+    },
+    "influencer": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "platform", "handle", "display_name", "avatar_url"],
+      "properties": {
+        "id": { "type": "string" },
+        "platform": { "type": "string" },
+        "handle": { "type": "string" },
+        "display_name": { "type": ["string", "null"] },
+        "avatar_url": { "type": ["string", "null"] }
+      }
+    },
+    "sharer": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "username", "name", "avatar_path"],
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "name": { "type": ["string", "null"] },
+        "avatar_path": { "type": ["string", "null"] }
+      }
+    },
+    "highlights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dishes", "tags"],
+      "properties": {
+        "dishes": { "type": "array", "items": { "type": "string" } },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -8,6 +8,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $source_post_id
+ * @property MediaKind $kind
+ * @property string $storage_path
+ * @property string $disk
+ */
 class MediaAsset extends Model
 {
     /** @use HasFactory<MediaAssetFactory> */

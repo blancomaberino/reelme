@@ -1,11 +1,8 @@
 <?php
 
-use App\Enums\AnalysisEngine;
-use App\Enums\AnalysisStatus;
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
 use App\Jobs\ResolvePlace;
-use App\Models\AnalysisRun;
 use App\Models\Place;
 use App\Models\PlaceSource;
 use App\Models\Share;
@@ -18,64 +15,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-/**
- * @param  list<array<string, mixed>>  $reviews
- */
-function geoResult(string $gpid, float $lat, float $lng, float $score = 0.9, string $name = 'Lanzhou Beef Noodle House', ?float $rating = null, ?int $ratingCount = null, array $reviews = []): GeocodeResult
-{
-    return new GeocodeResult(
-        googlePlaceId: $gpid,
-        canonicalName: $name,
-        formattedAddress: "{$name}, London, UK",
-        addressComponents: [
-            ['long_name' => 'United Kingdom', 'short_name' => 'GB', 'types' => ['country', 'political']],
-            ['long_name' => 'London', 'short_name' => 'London', 'types' => ['locality', 'political']],
-        ],
-        lat: $lat,
-        lng: $lng,
-        types: ['restaurant'],
-        score: $score,
-        rating: $rating,
-        ratingCount: $ratingCount,
-        reviews: $reviews,
-    );
-}
-
-function analyzingShare(string $placeName = 'Lanzhou Beef Noodle House', float $confidence = 0.9): Share
-{
-    $share = Share::factory()->create(['status' => ShareStatus::Analyzing]);
-    $run = AnalysisRun::create([
-        'share_id' => $share->id,
-        'engine' => AnalysisEngine::Local,
-        'model' => 'test-model',
-        'status' => AnalysisStatus::Succeeded,
-        'overall_confidence' => $confidence,
-        'result_json' => [
-            'place' => [
-                'name' => $placeName,
-                'address' => ['street' => '45 Gerrard St', 'city' => 'London', 'region' => 'England', 'postal_code' => null, 'country' => 'GB'],
-                'geo' => null,
-                'cuisines' => ['chinese'],
-                'price_range' => 2,
-                'phone' => null,
-                'website' => null,
-            ],
-            'post' => ['language' => 'en'],
-            'confidence' => ['overall' => $confidence],
-        ],
-        'started_at' => now(),
-        'finished_at' => now(),
-    ]);
-    $share->analysis_run_id = $run->id;
-    $share->save();
-
-    return $share;
-}
-
-function bindGeocoder(Geocoder $geocoder): void
-{
-    app()->instance(Geocoder::class, $geocoder);
-}
+// geoResult(), analyzingShare(), bindGeocoder() live in tests/Helpers/PipelineHelpers.php
+// (loaded via Pest.php) so sibling suites can use them under --parallel.
 
 it('attaches to an existing place on an exact google_place_id match', function () {
     $existing = Place::factory()->atPoint(51.5117, -0.1300)->withGooglePlaceId('ChIJexisting')->create(['name' => 'Old Name']);

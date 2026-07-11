@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/place-summary.json",
+  "title": "PlaceSummary",
+  "description": "One row of GET /api/v1/places (T-030) — the browse/list card.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "name", "slug", "status", "lat", "lng", "category", "price_range",
+    "city", "country_code", "source_count", "rating", "distance_m", "created_at"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "slug": { "type": "string" },
+    "status": { "type": "string", "enum": ["pending", "active"] },
+    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+    "lng": { "type": "number", "minimum": -180, "maximum": 180 },
+    "category": { "type": ["string", "null"] },
+    "price_range": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
+    "city": { "type": ["string", "null"] },
+    "country_code": { "type": "string" },
+    "source_count": { "type": "integer", "minimum": 0 },
+    "rating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["google"],
+      "properties": {
+        "google": { "$ref": "#/definitions/ratingBlock" }
+      }
+    },
+    "distance_m": { "type": ["number", "null"], "minimum": 0 },
+    "created_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "definitions": {
+    "ratingBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "count"],
+      "properties": {
+        "value": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
+        "count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

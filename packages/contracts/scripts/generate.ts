@@ -1,43 +1,58 @@
 /**
- * Generates TypeScript types from the canonical JSON Schema.
+ * Generates TypeScript types from the canonical JSON Schemas.
  *
  *   npm run generate -w packages/contracts
  *
- * The output (src/generated/extraction.ts) is COMMITTED; the mobile app and the
- * CI drift check depend on it. Never hand-edit the generated file — edit the
- * schema and regenerate.
+ * Inputs: extraction.schema.json (the pipeline contract) plus every
+ * schemas/*.json API payload schema. The output (src/generated/*.ts) is
+ * COMMITTED; the mobile app and the CI drift check depend on it. Never
+ * hand-edit a generated file — edit the schema and regenerate.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { compileFromFile } from 'json-schema-to-typescript';
 
 const ROOT = join(__dirname, '..');
 const SCHEMA = join(ROOT, 'extraction.schema.json');
-// Output path is overridable so the drift test can generate to a temp file
+const SCHEMAS_DIR = join(ROOT, 'schemas');
+// Output dir is overridable so the drift test can generate to a temp dir
 // without clobbering the committed types.
-const OUT = process.env.CONTRACTS_OUT ?? join(ROOT, 'src', 'generated', 'extraction.ts');
+const OUT_DIR = process.env.CONTRACTS_OUT_DIR ?? join(ROOT, 'src', 'generated');
+// Back-compat with the original single-file override used by the drift test.
+const EXTRACTION_OUT = process.env.CONTRACTS_OUT ?? join(OUT_DIR, 'extraction.ts');
 
-const BANNER = `/**
+const BANNER = (source: string) => `/**
  * GENERATED — do not edit; run \`npm run generate\` in packages/contracts.
- * Source of truth: packages/contracts/extraction.schema.json
+ * Source of truth: packages/contracts/${source}
  */
 `;
 
-async function generate(): Promise<string> {
-  const body = await compileFromFile(SCHEMA, {
+async function compileSchema(file: string, source: string): Promise<string> {
+  const body = await compileFromFile(file, {
     additionalProperties: false,
     bannerComment: '',
     style: { singleQuote: true },
+    cwd: dirname(file),
   });
-  return BANNER + body;
+  return BANNER(source) + body;
 }
 
 async function main(): Promise<void> {
-  const output = await generate();
-  mkdirSync(dirname(OUT), { recursive: true });
-  writeFileSync(OUT, output);
+  mkdirSync(OUT_DIR, { recursive: true });
+  mkdirSync(dirname(EXTRACTION_OUT), { recursive: true });
+
+  writeFileSync(EXTRACTION_OUT, await compileSchema(SCHEMA, 'extraction.schema.json'));
   // eslint-disable-next-line no-console
-  console.log(`Wrote ${OUT}`);
+  console.log(`Wrote ${EXTRACTION_OUT}`);
+
+  const apiSchemas = readdirSync(SCHEMAS_DIR).filter((f) => f.endsWith('.json')).sort();
+  for (const file of apiSchemas) {
+    const stem = basename(file, '.json').replace(/[^a-z0-9-]/gi, '');
+    const out = join(OUT_DIR, `${stem}.ts`);
+    writeFileSync(out, await compileSchema(join(SCHEMAS_DIR, file), `schemas/${file}`));
+    // eslint-disable-next-line no-console
+    console.log(`Wrote ${out}`);
+  }
 }
 
 if (require.main === module) {

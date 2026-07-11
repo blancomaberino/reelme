@@ -82,6 +82,17 @@ class Place extends Model
         });
     }
 
+    /**
+     * Public routes bind by slug (canonical, T-030) but numeric ids keep
+     * working — map pins and existing clients address places by id.
+     */
+    public function resolveRouteBinding($value, $field = null): ?Place
+    {
+        $field ??= ctype_digit((string) $value) ? 'id' : 'slug';
+
+        return $this->where($field, $value)->first();
+    }
+
     /** @return HasMany<PlaceSource, $this> */
     public function sources(): HasMany
     {

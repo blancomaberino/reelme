@@ -70,7 +70,7 @@ it('aggregates deduped tags + dishes and lists contributing sources', function (
         ],
     ], 'tiktok', 'street.eats', 'Street Eats');
 
-    $res = $this->getJson("/api/v1/places/{$place->id}")->assertOk();
+    $res = $this->getJson("/api/v1/places/{$place->id}?include=sources")->assertOk();
 
     $res->assertJsonPath('data.id', (string) $place->id)
         ->assertJsonPath('data.name', 'Lanzhou Beef Noodle House')
@@ -91,12 +91,42 @@ it('aggregates deduped tags + dishes and lists contributing sources', function (
 
     expect($data['sources'])->toHaveCount(2);
     // Primary source first.
-    expect($data['sources'][0]['account'])->toBe('noodle.hunter')
-        ->and($data['sources'][0]['reel_url'])->toBe('https://example.test/noodle.hunter/reel')
-        ->and($data['sources'][0]['platform'])->toBe('instagram')
-        ->and($data['sources'][0]['account_name'])->toBe('Noodle Hunter')
-        ->and($data['sources'][0]['shared_at'])->not->toBeNull();
-    expect(collect($data['sources'])->pluck('platform')->all())->toContain('tiktok');
+    expect($data['sources'][0]['is_primary'])->toBeTrue()
+        ->and($data['sources'][0]['influencer']['handle'])->toBe('noodle.hunter')
+        ->and($data['sources'][0]['influencer']['display_name'])->toBe('Noodle Hunter')
+        ->and($data['sources'][0]['source_post']['url'])->toBe('https://example.test/noodle.hunter/reel')
+        ->and($data['sources'][0]['source_post']['platform'])->toBe('instagram')
+        ->and($data['sources'][0]['source_post']['posted_at'])->not->toBeNull();
+    expect(collect($data['sources'])->pluck('source_post.platform')->all())->toContain('tiktok');
+});
+
+it('binds by slug (canonical) as well as by numeric id', function () {
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Slug Cafe']);
+
+    $this->getJson("/api/v1/places/{$place->slug}")
+        ->assertOk()
+        ->assertJsonPath('data.id', (string) $place->id)
+        ->assertJsonPath('data.slug', $place->slug);
+});
+
+it('omits sources without include and rejects unknown includes', function () {
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+
+    $this->getJson("/api/v1/places/{$place->id}")
+        ->assertOk()
+        ->assertJsonMissingPath('data.sources');
+
+    $this->getJson("/api/v1/places/{$place->id}?include=bogus")
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed');
+});
+
+it('accepts include=offers as an empty list until M4', function () {
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+
+    $this->getJson("/api/v1/places/{$place->id}?include=offers")
+        ->assertOk()
+        ->assertJsonPath('data.offers', []);
 });
 
 it('surfaces the Google rating block and cached review snippets', function () {
@@ -144,15 +174,31 @@ it('404s for a missing place id', function () {
     $this->getJson('/api/v1/places/999999')->assertStatus(404);
 });
 
-it('404s a merged/tombstoned place (hidden from every public surface)', function () {
-    $survivor = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+it('redirects a merged place to its survivor with meta.redirected_from', function () {
+    $survivor = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Survivor']);
     $merged = Place::factory()->atPoint(51.5, -0.13)->create([
         'status' => 'merged',
         'merged_into_place_id' => $survivor->id,
     ]);
 
-    $this->getJson("/api/v1/places/{$merged->id}")->assertStatus(404);
-    $this->getJson("/api/v1/places/{$survivor->id}")->assertOk();
+    $this->getJson("/api/v1/places/{$merged->id}")
+        ->assertOk()
+        ->assertJsonPath('data.id', (string) $survivor->id)
+        ->assertJsonPath('meta.redirected_from', $merged->slug);
+
+    $this->getJson("/api/v1/places/{$survivor->id}")
+        ->assertOk()
+        ->assertJsonMissingPath('meta.redirected_from');
+});
+
+it('404s when a merged chain is not resolvable in a single hop', function () {
+    $mid = Place::factory()->atPoint(51.5, -0.13)->create(['status' => 'merged']);
+    $head = Place::factory()->atPoint(51.5, -0.13)->create([
+        'status' => 'merged',
+        'merged_into_place_id' => $mid->id,
+    ]);
+
+    $this->getJson("/api/v1/places/{$head->id}")->assertStatus(404);
 });
 
 it('exposes rate-limit headers', function () {

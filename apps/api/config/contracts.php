@@ -19,4 +19,11 @@ return [
         'CONTRACTS_EXAMPLES_PATH',
         base_path('../../packages/contracts/examples'),
     ),
+
+    // API payload schemas (place.json, place-summary.json, …) — contract-tested
+    // against live resource output (T-030).
+    'schemas_path' => env(
+        'CONTRACTS_SCHEMAS_PATH',
+        base_path('../../packages/contracts/schemas'),
+    ),
 ];

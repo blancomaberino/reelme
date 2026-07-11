@@ -3,7 +3,6 @@
 namespace App\Http\Resources;
 
 use App\Models\Place;
-use App\Models\PlaceSource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -13,10 +12,26 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * contributing place_source; `rating.google` mirrors Google Places while
  * `rating.app` is the native review average.
  *
+ * `?include=sources` embeds the attribution list (PlaceSourceResource shape);
+ * `?include=offers` is accepted-but-empty until M4 (T-030).
+ *
  * @mixin Place
  */
 class PlaceResource extends JsonResource
 {
+    /** @var list<string> */
+    private array $includes = [];
+
+    /**
+     * @param  list<string>  $includes
+     */
+    public function withIncludes(array $includes): static
+    {
+        $this->includes = $includes;
+
+        return $this;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -37,6 +52,8 @@ class PlaceResource extends JsonResource
             'city' => $this->city,
             'country_code' => $this->country_code,
             'address' => $this->formattedAddress(),
+            'google_place_id' => $this->google_place_id,
+            'opening_hours' => $this->opening_hours_json,
             'phone' => $this->phone,
             'website' => $this->website,
             'cuisines' => $tags['cuisines'],
@@ -55,7 +72,16 @@ class PlaceResource extends JsonResource
                 ],
             ],
             'google_reviews' => $this->google_reviews_json ?? [],
-            'sources' => $this->sourcePayload(),
+            'sources' => $this->when(
+                in_array('sources', $this->includes, true),
+                fn () => PlaceSourceResource::collection(
+                    $this->sources->sortBy([['is_primary', 'desc'], ['id', 'asc']])->values()
+                ),
+            ),
+            'offers' => $this->when(
+                in_array('offers', $this->includes, true),
+                [], // offers ship in M4 — the include is accepted-but-empty (03 §2.6)
+            ),
         ];
     }
 
@@ -78,32 +104,5 @@ class PlaceResource extends JsonResource
         }
 
         return round((float) $this->reviews->avg('rating'), 1);
-    }
-
-    /**
-     * Contributing sources, primary first then by id — one entry per place_source
-     * with its reel URL and crediting influencer.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function sourcePayload(): array
-    {
-        return $this->sources
-            ->sortBy([['is_primary', 'desc'], ['id', 'asc']])
-            ->map(function (PlaceSource $source): array {
-                $post = $source->sourcePost;
-                $influencer = $post?->influencer;
-
-                return [
-                    'reel_url' => $post?->url,
-                    'platform' => $post?->platform->value,
-                    'account' => $influencer?->handle,
-                    'account_name' => $influencer?->display_name,
-                    'confidence' => null,
-                    'shared_at' => $post?->posted_at?->toIso8601ZuluString(),
-                ];
-            })
-            ->values()
-            ->all();
     }
 }
