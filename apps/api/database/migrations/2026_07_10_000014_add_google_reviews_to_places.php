@@ -9,6 +9,11 @@ use Illuminate\Support\Facades\Schema;
  * caches the (max 5) review snippets Google returns with Place Details; the scalar
  * rating + count back the "Google rating" block. Native user reviews live in the
  * separate `reviews` table — these three columns are the third-party mirror only.
+ *
+ * TODO(T-059, ToS): Google Places policy restricts caching Places content (author
+ * name + review text) beyond ~30 days. Before production, add a refresh/expiry
+ * policy (re-fetch on staleness) or store only the aggregate rating+count, not the
+ * author/text. Acceptable as a demo mirror for now.
  */
 return new class extends Migration
 {

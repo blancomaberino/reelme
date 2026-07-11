@@ -144,7 +144,7 @@ function clusterIcon(count) {
 const esc = s => String(s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const safeUrl = u => /^https?:\/\//i.test(u||"") ? u : "#";   // block javascript:/data: in hrefs
 const money = n => n ? "$".repeat(n) : "";
-const starStr = v => v == null ? "" : "★".repeat(Math.round(v)) + "☆".repeat(5 - Math.round(v));
+const starStr = v => { if (v == null) return ""; const n = Math.max(0, Math.min(5, Math.round(v))); return "★".repeat(n) + "☆".repeat(5 - n); };
 
 // ── Place detail panel (click a pin) ────────────────────────────────────────
 async function showPlace(id) {

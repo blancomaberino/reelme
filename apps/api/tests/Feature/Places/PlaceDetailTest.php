@@ -144,6 +144,17 @@ it('404s for a missing place id', function () {
     $this->getJson('/api/v1/places/999999')->assertStatus(404);
 });
 
+it('404s a merged/tombstoned place (hidden from every public surface)', function () {
+    $survivor = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    $merged = Place::factory()->atPoint(51.5, -0.13)->create([
+        'status' => 'merged',
+        'merged_into_place_id' => $survivor->id,
+    ]);
+
+    $this->getJson("/api/v1/places/{$merged->id}")->assertStatus(404);
+    $this->getJson("/api/v1/places/{$survivor->id}")->assertOk();
+});
+
 it('exposes rate-limit headers', function () {
     $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
 

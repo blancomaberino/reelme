@@ -22,8 +22,8 @@ return new class extends Migration
             $table->text('body')->nullable();
             $table->timestampsTz();
 
+            // The unique(place_id, user_id) index already serves place_id lookups.
             $table->unique(['place_id', 'user_id']);
-            $table->index('place_id');
         });
 
         DB::statement('ALTER TABLE reviews ADD CONSTRAINT reviews_rating_range_check CHECK (rating BETWEEN 1 AND 5)');
