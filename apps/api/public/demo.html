@@ -137,16 +137,28 @@ async function auth(kind) {
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value;
   document.getElementById("authErr").textContent = "";
+  if (kind === "register" && password.length < 8) {
+    document.getElementById("authErr").textContent = "Password must be at least 8 characters.";
+    return;
+  }
   try {
+    // Register needs a unique handle: derive one from the email + a random suffix.
+    const stem = (email.split("@")[0] || "user").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 20) || "user";
+    const username = (stem.length >= 3 ? stem : "user") + "_" + Math.random().toString(36).slice(2, 7);
     const payload = kind === "register"
-      ? { name: email.split("@")[0] || "Demo", email, password, password_confirmation: password, device_name: "web-demo" }
+      ? { name: stem, username, email, password, device_name: "web-demo" }
       : { email, password, device_name: "web-demo" };
     const body = await api(`/auth/${kind}`, { method:"POST", body: JSON.stringify(payload) });
     token = body?.data?.token || body?.token;
     if (!token) throw new Error("No token in response");
     localStorage.setItem("reelmap_token", token);
     await afterAuth();
-  } catch (e) { document.getElementById("authErr").textContent = e.message; }
+  } catch (e) {
+    // Surface field-level validation details, not just the summary.
+    const details = e.body?.error?.details;
+    const first = details && Object.values(details)[0]?.[0];
+    document.getElementById("authErr").textContent = first || e.message;
+  }
 }
 
 async function afterAuth() {

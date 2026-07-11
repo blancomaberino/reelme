@@ -75,6 +75,23 @@ it('sends base64 images and format json on chat, mapping token counts', function
     });
 });
 
+it('passes the JSON Schema as `format` for grammar-constrained structured output', function () {
+    Http::fake(['*/api/chat' => Http::response(['message' => ['content' => '{"ok":true}']])]);
+
+    $schema = ['type' => 'object', 'required' => ['place'], 'additionalProperties' => false];
+    $request = new GenerationRequest(
+        systemPrompt: 'extract',
+        userParts: [GenerationPart::text('caption')],
+        jsonSchema: $schema,
+    );
+
+    client()->chat($request, 'gemma4:latest');
+
+    // Small local models can't reliably hit a strict schema from a prompt alone;
+    // Ollama grammar-constrains generation when `format` is the schema itself.
+    Http::assertSent(fn (Request $r) => $r->data()['format'] === $schema);
+});
+
 it('defaults absent token counts to null (cached prompt)', function () {
     Http::fake(['*/api/chat' => Http::response([
         'message' => ['content' => '{}'],

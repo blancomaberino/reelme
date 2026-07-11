@@ -39,5 +39,11 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Pin AI knobs so tests are deterministic regardless of a local .env
+             (e.g. demo overrides for a pulled model / lower publish threshold). -->
+        <env name="OLLAMA_VISION_MODEL" value="qwen2.5-vl:7b"/>
+        <env name="OLLAMA_TEXT_MODEL" value="qwen2.5:14b"/>
+        <env name="AI_MIN_CONFIDENCE" value="0.5"/>
+        <env name="AI_MIN_PUBLISH_CONFIDENCE" value="0.75"/>
     </php>
 </phpunit>
