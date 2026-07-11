@@ -6,8 +6,13 @@ use App\Enums\Platform;
 use App\Enums\ShareStatus;
 use App\Jobs\FetchSourcePost;
 use App\Jobs\IngestShare;
+use App\Models\Place;
+use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\User;
+use App\Services\Geo\FakeGeocoder;
+use App\Services\Geo\GeocodeResult;
+use App\Services\Geo\Geocoder;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
@@ -66,7 +71,7 @@ it('parks the share in review when the chain needs manual fallback', function ()
         ->and($share->fresh()->failure_reason)->toBe('fetch_unavailable');
 });
 
-it('runs the full pipeline skeleton to analyzing (sync queue + fake adapter)', function () {
+it('runs the full pipeline to a resolved place (sync queue + fakes)', function () {
     useFakeInstagram();
     Sanctum::actingAs(User::factory()->create());
 
@@ -80,12 +85,23 @@ it('runs the full pipeline skeleton to analyzing (sync queue + fake adapter)', f
             'eval_count' => 5,
         ]),
     ]);
+    // Fake the geocoder so ResolvePlace pins the extracted place (name from valid.json).
+    app()->instance(Geocoder::class, (new FakeGeocoder)->seed(
+        'Lanzhou Beef Noodle House',
+        new GeocodeResult('ChIJpipeline', 'Lanzhou Beef Noodle House', '45 Gerrard St, London', [
+            ['long_name' => 'United Kingdom', 'short_name' => 'GB', 'types' => ['country', 'political']],
+        ], 51.5117, -0.1300, ['restaurant'], 0.92),
+    ));
 
     // QUEUE_CONNECTION=sync in tests, so the whole chain runs during the request.
     $this->postJson('/api/v1/shares', ['url' => 'https://www.instagram.com/reel/FULL/'])
         ->assertStatus(202);
 
     $share = Share::latest('id')->first();
-    expect($share->status)->toBe(ShareStatus::Analyzing)
-        ->and($share->stageMetrics()->pluck('stage')->all())->toContain('ingest', 'fetch', 'extract');
+    expect($share->status)->toBe(ShareStatus::Analyzing) // publish (T-024) is still a no-op stub
+        ->and($share->stageMetrics()->pluck('stage')->all())->toContain('ingest', 'fetch', 'extract', 'resolve');
+
+    $place = Place::sole();
+    expect($place->google_place_id)->toBe('ChIJpipeline')
+        ->and(PlaceSource::where('share_id', $share->id)->where('place_id', $place->id)->exists())->toBeTrue();
 });

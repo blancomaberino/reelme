@@ -20,6 +20,8 @@ use Illuminate\Support\Carbon;
  * @property ShareStatus $status
  * @property string|null $failure_reason
  * @property string|null $review_reason
+ * @property array<string, mixed>|null $review_meta_json
+ * @property int|null $published_place_source_id
  * @property string|null $shared_via
  * @property Carbon|null $published_at
  */
@@ -40,6 +42,7 @@ class Share extends Model
     {
         return [
             'status' => ShareStatus::class,
+            'review_meta_json' => 'array',
             'published_at' => 'datetime',
         ];
     }
