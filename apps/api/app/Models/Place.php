@@ -55,6 +55,7 @@ class Place extends Model
         'price_range', 'phone', 'website', 'opening_hours_json', 'status',
         'merged_into_place_id', 'shares_count', 'avg_extraction_confidence',
         'normalized_name', 'google_rating', 'google_rating_count', 'google_reviews_json',
+        'google_reviews_synced_at',
     ];
 
     /**
@@ -71,6 +72,7 @@ class Place extends Model
             'google_rating' => 'decimal:1',
             'google_rating_count' => 'integer',
             'google_reviews_json' => 'array',
+            'google_reviews_synced_at' => 'datetime',
         ];
     }
 

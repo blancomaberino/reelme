@@ -185,6 +185,9 @@ class PlaceResolver
             'google_rating' => $geo->rating,
             'google_rating_count' => $geo->ratingCount,
             'google_reviews_json' => $geo->reviews,
+            // ToS clock: cached Places review content must be refreshed or
+            // dropped ~30 days after capture (reelmap:google:refresh-stale).
+            'google_reviews_synced_at' => $geo->reviews !== [] ? now() : null,
             'status' => PlaceStatus::Pending,
         ]);
         $model->setPoint($geo->lat, $geo->lng);
@@ -208,6 +211,7 @@ class PlaceResolver
         $place->google_rating = (string) $geo->rating;
         $place->google_rating_count = $geo->ratingCount;
         $place->google_reviews_json = $geo->reviews;
+        $place->google_reviews_synced_at = $geo->reviews !== [] ? now() : null;
 
         return true;
     }

@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\PlaceController;
+use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\ShareController;
 use App\Http\Controllers\Api\V1\TagController;
@@ -47,6 +48,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/tags', [TagController::class, 'index'])->middleware('throttle:map');
     Route::get('/search', SearchController::class)->middleware('throttle:map');
 
+    // Native reviews (T-059): public read; writes are authenticated below.
+    Route::get('/places/{place}/reviews', [ReviewController::class, 'index'])->middleware('throttle:map');
+
     // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
     Route::prefix('auth')->middleware('throttle:auth')->group(function () {
         Route::post('/register', RegisterController::class);
@@ -75,6 +79,13 @@ Route::prefix('v1')->group(function () {
         Route::patch('/shares/{share}', [ShareController::class, 'update']);
         Route::post('/shares/{share}/retry', [ShareController::class, 'retry']);
         Route::delete('/shares/{share}', [ShareController::class, 'destroy']);
+
+        // Native reviews (T-059): one review per (place, user). POST creates
+        // (409 on duplicate), PUT upserts, DELETE removes the caller's own.
+        Route::post('/places/{place}/reviews', [ReviewController::class, 'store']);
+        Route::put('/places/{place}/reviews', [ReviewController::class, 'upsert']);
+        Route::delete('/places/{place}/reviews', [ReviewController::class, 'destroy']);
+        Route::post('/reviews/{review}/report', [ReviewController::class, 'report']);
     });
 });
 

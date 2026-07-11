@@ -45,6 +45,10 @@
   #detail .chip { display:inline-block; font-size:11px; padding:3px 9px; border-radius:999px; border:1px solid var(--line); margin:2px 4px 2px 0; color:var(--fg); }
   .rev, .src { border-top:1px solid var(--line); padding:9px 0; font-size:12px; }
   .src a { color:var(--acc); text-decoration:none; }
+  .revform { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+  .revform select, .revform input { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:7px 9px; font-size:12px; }
+  .revform input { flex:1; min-width:120px; }
+  .revform button { font-size:12px; padding:7px 12px; }
 </style>
 </head>
 <body>
@@ -190,7 +194,7 @@ async function showPlace(id) {
   el.classList.add("open");
   el.innerHTML = '<span class="close" onclick="closeDetail()">✕</span><div class="muted">Loading…</div>';
   try {
-    const { data: p } = await api(`/places/${id}?include=sources`);
+    const { data: p } = await api(`/places/${id}?include=sources,reviews`);
     el.innerHTML = renderPlace(p);
   } catch (e) {
     el.innerHTML = `<span class="close" onclick="closeDetail()">✕</span><div class="err">${esc(e.message)}</div>`;
@@ -219,6 +223,20 @@ function renderPlace(p) {
   const reviews = (p.google_reviews || []).slice(0, 3).map(r =>
     `<div class="rev"><span class="stars">${starStr(r.rating)}</span> <b>${esc(r.author || "")}</b>` +
     `<br>${esc((r.text || "").slice(0, 220))}</div>`).join("");
+  const appReviews = (p.reviews || []).map(r =>
+    `<div class="rev"><span class="stars">${starStr(r.rating)}</span> <b>${esc(r.author ? r.author.username : "anonymous")}</b>` +
+    `${r.is_own ? ' <span class="muted">(you)</span>' : ""}` +
+    `${r.body ? `<br>${esc(r.body.slice(0, 220))}` : ""}</div>`).join("");
+  const own = (p.reviews || []).find(r => r.is_own);
+  const reviewForm = token ? `
+    <div class="revform">
+      <select id="revRating">${[5,4,3,2,1].map(n =>
+        `<option value="${n}"${own && own.rating === n ? " selected" : ""}>${"★".repeat(n)}</option>`).join("")}</select>
+      <input id="revBody" type="text" placeholder="Say something (optional)" value="${own && own.body ? esc(own.body) : ""}">
+      <button onclick="submitReview(${Number(p.id)})">${own ? "Update" : "Review"}</button>
+      ${own ? `<button class="ghost" onclick="deleteReview(${Number(p.id)})">Delete</button>` : ""}
+      <div class="err" id="revErr"></div>
+    </div>` : '<div class="muted">Log in to leave a review.</div>';
   return `<span class="close" onclick="closeDetail()">✕</span>
     <h2>${esc(p.name)}</h2>
     <div class="muted">${esc([p.category, p.city, p.country_code].filter(Boolean).join(" · "))} ${money(p.price_range)}</div>
@@ -226,7 +244,31 @@ function renderPlace(p) {
     ${tags ? `<h3>Tags</h3>${tags}` : ""}
     ${dishes ? `<h3>Dishes seen</h3>${dishes}` : ""}
     ${sources ? `<h3>Shared in (${p.source_count})</h3>${sources}` : ""}
+    <h3>Reviews</h3>${appReviews || '<div class="muted">No reviews yet — be the first.</div>'}${reviewForm}
     ${reviews ? `<h3>Google reviews</h3>${reviews}` : ""}`;
+}
+
+async function submitReview(placeId) {
+  const rating = Number(document.getElementById("revRating").value);
+  const body = document.getElementById("revBody").value.trim();
+  try {
+    await api(`/places/${placeId}/reviews`, {
+      method: "PUT",
+      body: JSON.stringify({ rating, body: body || null }),
+    });
+    showPlace(placeId); // re-render with the fresh aggregate
+  } catch (e) {
+    document.getElementById("revErr").textContent = e.message;
+  }
+}
+
+async function deleteReview(placeId) {
+  try {
+    await api(`/places/${placeId}/reviews`, { method: "DELETE" });
+    showPlace(placeId);
+  } catch (e) {
+    document.getElementById("revErr").textContent = e.message;
+  }
 }
 
 // ── Auth ───────────────────────────────────────────────────────────────────
