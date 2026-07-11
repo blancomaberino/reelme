@@ -82,10 +82,13 @@ Route::prefix('v1')->group(function () {
 
         // Native reviews (T-059): one review per (place, user). POST creates
         // (409 on duplicate), PUT upserts, DELETE removes the caller's own.
-        Route::post('/places/{place}/reviews', [ReviewController::class, 'store']);
-        Route::put('/places/{place}/reviews', [ReviewController::class, 'upsert']);
-        Route::delete('/places/{place}/reviews', [ReviewController::class, 'destroy']);
-        Route::post('/reviews/{review}/report', [ReviewController::class, 'report']);
+        // Spam-adjacent writes → 10/min + 100/day per user.
+        Route::middleware('throttle:reviews')->group(function () {
+            Route::post('/places/{place}/reviews', [ReviewController::class, 'store']);
+            Route::put('/places/{place}/reviews', [ReviewController::class, 'upsert']);
+            Route::delete('/places/{place}/reviews', [ReviewController::class, 'destroy']);
+            Route::post('/reviews/{review}/report', [ReviewController::class, 'report']);
+        });
     });
 });
 

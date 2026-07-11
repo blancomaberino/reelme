@@ -34,35 +34,43 @@ class RefreshStaleGoogleReviews extends Command
                 ->orWhere('google_reviews_synced_at', '<', $cutoff))
             ->chunkById(100, function ($places) use ($geocoder, &$refreshed, &$dropped) {
                 foreach ($places as $place) {
-                    $fresh = null;
+                    // Per-row isolation: one bad row must never abort the run —
+                    // every remaining stale place would keep its expired content.
                     try {
+                        $fresh = null;
                         $result = $geocoder->findPlace($place->name, new GeoHints(
                             city: $place->city,
                             country: $place->country_code,
                         ));
-                        // Only trust a result that is the SAME Google place.
+                        // Only trust a result that is the SAME Google place and
+                        // actually carries a rating + reviews.
                         if ($result !== null
                             && $place->google_place_id !== null
                             && $result->googlePlaceId === $place->google_place_id
+                            && $result->rating !== null
                             && $result->reviews !== []) {
                             $fresh = $result;
                         }
-                    } catch (Throwable $e) {
-                        report($e); // fall through to drop — never keep stale content
-                    }
 
-                    if ($fresh !== null) {
-                        $place->google_rating = (string) $fresh->rating;
-                        $place->google_rating_count = $fresh->ratingCount;
-                        $place->google_reviews_json = $fresh->reviews;
-                        $place->google_reviews_synced_at = now();
-                        $refreshed++;
-                    } else {
-                        $place->google_reviews_json = null;
-                        $place->google_reviews_synced_at = null;
-                        $dropped++;
+                        if ($fresh !== null) {
+                            $place->google_rating = (string) $fresh->rating;
+                            $place->google_rating_count = $fresh->ratingCount;
+                            $place->google_reviews_json = $fresh->reviews;
+                            $place->google_reviews_synced_at = now();
+                            $refreshed++;
+                        } else {
+                            // Drop the whole cached Places signal — the rating is
+                            // Places content under the same caching policy.
+                            $place->google_rating = null;
+                            $place->google_rating_count = null;
+                            $place->google_reviews_json = null;
+                            $place->google_reviews_synced_at = null;
+                            $dropped++;
+                        }
+                        $place->save();
+                    } catch (Throwable $e) {
+                        report($e);
                     }
-                    $place->save();
                 }
             });
 

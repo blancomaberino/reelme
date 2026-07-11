@@ -31,6 +31,9 @@ it('creates a review via POST and 409s a duplicate', function () {
     $this->postJson("/api/v1/places/{$place->id}/reviews", ['rating' => 3])
         ->assertStatus(409)
         ->assertJsonPath('error.code', 'conflict');
+
+    // The losing POST must not have mutated the existing review.
+    expect(Review::sole()->rating)->toBe(5);
 });
 
 it('upserts via PUT (idempotent single review per user) and reaggregates', function () {
@@ -93,6 +96,12 @@ it('blocks spam and profanity at the door', function () {
         'rating' => 5,
         'body' => 'This place beats any casino buffet.',
     ])->assertStatus(422);
+
+    // Word-boundary matching: no Scunthorpe false positives.
+    $this->putJson("/api/v1/places/{$place->id}/reviews", [
+        'rating' => 5,
+        'body' => 'Best scampi in Scunthorpe.',
+    ])->assertOk();
 });
 
 it('lists visible reviews with public authors, newest first, paginated', function () {
@@ -186,4 +195,53 @@ it('keeps the aggregate consistent under interleaved writes', function () {
     $detail = $this->getJson("/api/v1/places/{$place->id}")->assertOk();
     expect($detail->json('data.rating.app.count'))->toBe(5)
         ->and((float) $detail->json('data.rating.app.value'))->toBe(3.0); // (1+2+3+4+5)/5
+});
+
+it('rate-limits review writes and cannot report reviews of merged places', function () {
+    $place = reviewPlace();
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->putJson("/api/v1/places/{$place->id}/reviews", ['rating' => 5])
+        ->assertOk()
+        ->assertHeader('X-RateLimit-Limit', '10');
+
+    // A review whose place was merged away is no longer a public surface.
+    $author = User::factory()->create();
+    $review = Review::factory()->create(['place_id' => $place->id, 'user_id' => $author->id, 'rating' => 3]);
+    $survivor = Place::factory()->active()->atPoint(51.6, -0.14)->create();
+    $place->update(['status' => 'merged', 'merged_into_place_id' => $survivor->id]);
+
+    $this->postJson("/api/v1/reviews/{$review->id}/report", ['reason' => 'spam'])->assertStatus(404);
+});
+
+it('shadowbans: hidden-review author can still PUT, review stays hidden and out of the aggregate', function () {
+    $place = reviewPlace();
+    $me = User::factory()->create();
+    $mine = Review::factory()->create(['place_id' => $place->id, 'user_id' => $me->id, 'rating' => 1]);
+    $mine->is_hidden = true;
+    $mine->save();
+
+    Sanctum::actingAs($me);
+    $this->putJson("/api/v1/places/{$place->id}/reviews", ['rating' => 5, 'body' => 'Edited.'])
+        ->assertOk()
+        ->assertJsonPath('meta.rating.app.count', 0); // still excluded from the write-path aggregate
+
+    expect($mine->fresh()->is_hidden)->toBeTrue()
+        ->and($mine->fresh()->rating)->toBe(5);
+
+    // POST while your (hidden) review exists still 409s — no leak either way.
+    $this->postJson("/api/v1/places/{$place->id}/reviews", ['rating' => 4])->assertStatus(409);
+});
+
+it('429s the 11th review write in a minute with the rate_limited envelope', function () {
+    $place = reviewPlace();
+    Sanctum::actingAs(User::factory()->create());
+
+    foreach (range(1, 10) as $i) {
+        $this->putJson("/api/v1/places/{$place->id}/reviews", ['rating' => 5])->assertOk();
+    }
+
+    $this->putJson("/api/v1/places/{$place->id}/reviews", ['rating' => 5])
+        ->assertStatus(429)
+        ->assertJsonPath('error.code', 'rate_limited');
 });

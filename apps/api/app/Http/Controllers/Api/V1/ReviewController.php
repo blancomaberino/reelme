@@ -57,18 +57,33 @@ class ReviewController extends Controller
     public function store(ReviewUpsertRequest $request, Place $place): JsonResponse
     {
         $this->assertVisible($place);
-        $userId = (int) $request->user()->id;
 
-        if ($place->reviews()->where('user_id', $userId)->exists()) {
+        // firstOrCreate (never update) is race-safe on the (place_id, user_id)
+        // unique: a concurrent duplicate POST loses cleanly with a 409 and the
+        // existing row untouched — no TOCTOU pre-check needed.
+        $review = Review::query()->firstOrCreate(
+            ['place_id' => $place->id, 'user_id' => (int) $request->user()->id],
+            [
+                'rating' => (int) $request->validated('rating'),
+                'body' => $request->validated('body'),
+            ],
+        );
+
+        if (! $review->wasRecentlyCreated) {
             abort(409, 'You have already reviewed this place — use PUT to update it.');
         }
-
-        $review = $this->write($place, $userId, $request);
 
         return $this->reviewResponse($request, $place, $review, 201);
     }
 
-    /** PUT — idempotent upsert of the caller's single review. */
+    /**
+     * PUT — idempotent upsert of the caller's single review.
+     *
+     * Deliberate shadowban semantics: if the caller's review was hidden by
+     * moderation, the upsert still succeeds and the row stays hidden
+     * (`is_hidden` is not fillable) — the author gets no signal that they were
+     * moderated, and remediated content is unhidden manually in Filament.
+     */
     public function upsert(ReviewUpsertRequest $request, Place $place): JsonResponse
     {
         $this->assertVisible($place);
@@ -95,6 +110,11 @@ class ReviewController extends Controller
     public function report(Request $request, Review $review): JsonResponse
     {
         abort_if($review->is_hidden, 404);
+        // Same visibility rule as every other review route: reviews of
+        // merged/tombstoned places are not a public surface.
+        $place = $review->place;
+        abort_if($place === null, 404);
+        $this->assertVisible($place);
 
         $validated = $request->validate([
             'reason' => ['required', Rule::in(ReviewReport::REASONS)],

@@ -36,5 +36,12 @@ class AppServiceProvider extends ServiceProvider
         // the route has no auth middleware, so resolve via the sanctum guard).
         RateLimiter::for('map', fn (Request $request) => Limit::perMinute(120)
             ->by('map:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
+
+        // Review writes + reports (T-059): spam-adjacent like shares — bound
+        // them so one token can't churn reviews or flood the moderation queue.
+        RateLimiter::for('reviews', fn (Request $request) => [
+            Limit::perMinute(10)->by('reviews:min:'.$request->user()?->id),
+            Limit::perDay(100)->by('reviews:day:'.$request->user()?->id),
+        ]);
     }
 }

@@ -184,7 +184,10 @@ class PlaceResolver
             'website' => $this->truncate($place['website'] ?? null, 2048),
             'google_rating' => $geo->rating,
             'google_rating_count' => $geo->ratingCount,
-            'google_reviews_json' => $geo->reviews,
+            // NULL (not '[]') when no snippets came back — the ToS refresh
+            // sweep keys on whereNotNull and must not treat "rating, no
+            // snippets" as forever-stale cached content.
+            'google_reviews_json' => $geo->reviews !== [] ? $geo->reviews : null,
             // ToS clock: cached Places review content must be refreshed or
             // dropped ~30 days after capture (reelmap:google:refresh-stale).
             'google_reviews_synced_at' => $geo->reviews !== [] ? now() : null,
@@ -210,7 +213,7 @@ class PlaceResolver
 
         $place->google_rating = (string) $geo->rating;
         $place->google_rating_count = $geo->ratingCount;
-        $place->google_reviews_json = $geo->reviews;
+        $place->google_reviews_json = $geo->reviews !== [] ? $geo->reviews : null;
         $place->google_reviews_synced_at = $geo->reviews !== [] ? now() : null;
 
         return true;

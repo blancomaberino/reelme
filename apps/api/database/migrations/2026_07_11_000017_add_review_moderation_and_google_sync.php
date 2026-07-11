@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ReviewReport;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -28,8 +29,10 @@ return new class extends Migration
 
             $table->unique(['review_id', 'user_id']);
         });
+        // Generated from the model constant so validation and the DB CHECK
+        // can never drift apart.
         DB::statement(
-            "ALTER TABLE review_reports ADD CONSTRAINT review_reports_reason_check CHECK (reason IN ('spam', 'offensive', 'off_topic', 'other'))"
+            "ALTER TABLE review_reports ADD CONSTRAINT review_reports_reason_check CHECK (reason IN ('".implode("', '", ReviewReport::REASONS)."'))"
         );
 
         Schema::table('places', function (Blueprint $table) {
