@@ -35,8 +35,8 @@ class ExtractPlaceData extends PipelineStubJob
     /** Repair re-sends allowed per engine attempt, inside one job execution (04 §5). */
     private const MAX_REPAIRS = 2;
 
-    /** A valid extraction below this overall confidence is parked for human review. */
-    private const MIN_PUBLISH_CONFIDENCE = 0.75;
+    /** Default overall-confidence floor to auto-continue; tunable via config. */
+    private const DEFAULT_MIN_PUBLISH_CONFIDENCE = 0.75;
 
     public int $timeout = 600;
 
@@ -202,7 +202,8 @@ class ExtractPlaceData extends PipelineStubJob
             return;
         }
 
-        if ($overall < self::MIN_PUBLISH_CONFIDENCE) {
+        $minConfidence = (float) config('ai.min_publish_confidence', self::DEFAULT_MIN_PUBLISH_CONFIDENCE);
+        if ($overall < $minConfidence) {
             $this->toReview($share, 'low_confidence');
 
             return;
