@@ -1451,6 +1451,32 @@
       ],
       "agent": "executor",
       "notes": "Deferred from the PR #10 review. Cosmetic/consistency; no behavioural risk."
+    },
+    {
+      "id": "T-059",
+      "title": "Native reviews: user ratings + reviews API, aggregation, moderation",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-030"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Controllers/Api/V1/ReviewController.php",
+        "apps/api/app/Models/Review.php"
+      ],
+      "spec_refs": [
+        "03-api-design.md#places"
+      ],
+      "acceptance": [
+        "POST/PUT/DELETE /api/v1/places/{place}/reviews — one review per user per place (rating 1-5 + optional body), auth required",
+        "Place detail rating.app aggregates the reviews table (avg + count); consistent under concurrent writes",
+        "Reviews listed on place detail with author + timestamp; author can edit/delete their own",
+        "Moderation: report/hide a review (Filament queue) + basic spam/profanity guard",
+        "Google-sourced rating + top reviews (from T-030) shown alongside app reviews, clearly attributed",
+        "Scaffolding already shipped with the place-detail slice: reviews table, Review model, places.google_rating/google_reviews_json, rating.{app,google} in the detail resource"
+      ],
+      "agent": "executor"
     }
   ]
 }
