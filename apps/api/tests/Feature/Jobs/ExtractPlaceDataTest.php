@@ -226,6 +226,44 @@ it('fails the share invalid_model_output when both engines dead-end', function (
         ->and($rows->every(fn ($r) => $r->status === AnalysisStatus::Failed))->toBeTrue();
 });
 
+it('salvages a low-confidence extraction to review when both engines stay under the floor', function () {
+    Http::fake([
+        '*/api/tags' => Http::response(['models' => []]),
+        '*/api/chat' => Http::response(ollamaChat(extraction(['confidence.overall' => 0.3]))),
+    ]);
+    bindExtractionRouter(new FakeRemoteEngine(rawText: extraction(['confidence.overall' => 0.3])));
+    $share = analyzableShare();
+
+    (new ExtractPlaceData($share->id))->handle();
+
+    $share->refresh();
+    // Both engines produced a schema-valid but sub-0.5 result → router dead-ends,
+    // but the kept payload is worth a human's review rather than a hard failure.
+    expect($share->status)->toBe(ShareStatus::Review)
+        ->and($share->review_reason)->toBe('low_confidence')
+        ->and($share->analysis_run_id)->not->toBeNull();
+
+    $rows = AnalysisRun::orderBy('id')->get();
+    expect($rows)->toHaveCount(2)
+        ->and($rows->every(fn ($r) => $r->status === AnalysisStatus::Failed))->toBeTrue()
+        ->and($share->analysisRun->result_json['place']['name'])->toBe('Lanzhou Beef Noodle House');
+});
+
+it('fails fast (no retry rows) when the per-run cost cap is exceeded', function () {
+    config()->set('ai.max_cost_per_run', 0.0); // any priced model now exceeds the cap
+    Http::fake(['*/api/tags' => Http::response(['models' => []])]);
+    bindExtractionRouter(new FakeRemoteEngine);
+    $share = analyzableShare();
+    $share->user->forceFill(['preferred_analysis_model' => 'anthropic/claude-sonnet-4'])->save();
+
+    (new ExtractPlaceData($share->id))->handle();
+
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Failed)
+        ->and($share->failure_reason)->toBe('cost_cap_exceeded')
+        ->and(AnalysisRun::where('error', 'like', 'fallback:cost_cap_exceeded%')->count())->toBe(1);
+});
+
 it('is idempotent: a re-delivery reuses the succeeded run without a second generation', function () {
     Http::fake([
         '*/api/tags' => Http::response(['models' => []]),

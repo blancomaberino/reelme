@@ -8,6 +8,7 @@ use App\Models\AnalysisRun;
 use App\Models\Share;
 use App\Services\AI\Data\GenerationPart;
 use App\Services\AI\Data\ValidationOutcome;
+use App\Services\AI\Exceptions\AllEnginesFailed;
 use App\Services\AI\Exceptions\CostCapExceeded;
 use App\Services\AI\Exceptions\QuotaExhausted;
 use App\Services\AI\ModelRouter;
@@ -61,7 +62,32 @@ class ExtractPlaceData extends PipelineStubJob
     {
         $share->loadMissing('sourcePost');
 
-        $run = $this->existingSuccess($share) ?? $this->analyze($share);
+        if (($existing = $this->existingSuccess($share)) !== null) {
+            $this->gate($share, $existing);
+
+            return;
+        }
+
+        try {
+            $run = $this->analyze($share);
+        } catch (CostCapExceeded|QuotaExhausted $e) {
+            // Deterministic within the retry/backoff window (a daily budget won't
+            // reset in 600s) — park on the first pass instead of retrying 3×.
+            $share->transitionTo(ShareStatus::Failed, $e instanceof CostCapExceeded ? 'cost_cap_exceeded' : 'quota_exhausted');
+
+            return;
+        } catch (AllEnginesFailed $e) {
+            // A schema-valid but low-confidence result (kept by the router on a
+            // failed run) is reviewable, not a hard failure — salvage it.
+            $salvage = $this->salvageableRun($share);
+            if ($salvage !== null) {
+                $this->gate($share, $salvage);
+
+                return;
+            }
+
+            throw $e; // genuinely unusable output — retry per job policy, then failed()
+        }
 
         $this->gate($share, $run);
     }
@@ -90,6 +116,19 @@ class ExtractPlaceData extends PipelineStubJob
     {
         return $share->analysisRuns()
             ->where('status', AnalysisStatus::Succeeded->value)
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * The most recent run that carries a schema-valid payload. The router keeps
+     * `result_json` on a run it failed only for low confidence, so this recovers
+     * an extraction worth a human's review after both engines dead-ended.
+     */
+    private function salvageableRun(Share $share): ?AnalysisRun
+    {
+        return $share->analysisRuns()
+            ->whereNotNull('result_json')
             ->latest('id')
             ->first();
     }
@@ -154,10 +193,10 @@ class ExtractPlaceData extends PipelineStubJob
         $share->save();
 
         $result = $run->result_json ?? [];
-        $placeName = $result['place']['name'] ?? null;
+        $placeName = trim((string) ($result['place']['name'] ?? ''));
         $overall = $run->overall_confidence !== null ? (float) $run->overall_confidence : 0.0;
 
-        if ($placeName === null || $placeName === '') {
+        if ($placeName === '') {
             $this->toReview($share, 'no_place_extracted');
 
             return;
@@ -169,6 +208,9 @@ class ExtractPlaceData extends PipelineStubJob
             return;
         }
 
+        // Clear any stale review reason before continuing the chain to ResolvePlace.
+        $share->review_reason = null;
+        $share->save();
         $share->transitionTo(ShareStatus::Analyzing);
     }
 
