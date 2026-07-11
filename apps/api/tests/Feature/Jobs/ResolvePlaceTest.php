@@ -174,6 +174,23 @@ it('backfills the Google rating onto a fuzzy-matched place that lacks it', funct
         ->and($existing->google_rating_count)->toBe(12);
 });
 
+it('backfills the Google rating onto a google_place_id-matched place that lacks it', function () {
+    $existing = Place::factory()->atPoint(51.5117, -0.1300)->withGooglePlaceId('ChIJgpid')->create([
+        'name' => 'Old Name',
+        'google_rating' => null,
+    ]);
+    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult(
+        'ChIJgpid', 51.5200, -0.1400, rating: 4.6, ratingCount: 88,
+    )));
+    $share = analyzingShare();
+
+    (new ResolvePlace($share->id))->handle();
+
+    $existing->refresh();
+    expect((float) $existing->google_rating)->toBe(4.6)
+        ->and($existing->google_rating_count)->toBe(88);
+});
+
 it('clamps an out-of-range extracted price_range instead of hitting the CHECK', function () {
     bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult('ChIJclamp', 38.7223, -9.1393)));
     $share = analyzingShare();
