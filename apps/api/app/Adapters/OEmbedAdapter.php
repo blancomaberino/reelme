@@ -28,6 +28,9 @@ class OEmbedAdapter implements SourceAdapter
         'youtube.com' => [Platform::Youtube, 'https://www.youtube.com/oembed'],
         'youtu.be' => [Platform::Youtube, 'https://www.youtube.com/oembed'],
         'tiktok.com' => [Platform::Tiktok, 'https://www.tiktok.com/oembed'],
+        // Instagram's public oEmbed is keyless but undocumented and IP-rate-limited;
+        // best-effort (a block/limit → PostUnavailable/FetchFailed → manual review).
+        'instagram.com' => [Platform::Instagram, 'https://www.instagram.com/api/v1/oembed/'],
     ];
 
     public function supports(string $canonicalUrl): bool
@@ -51,6 +54,8 @@ class OEmbedAdapter implements SourceAdapter
 
         try {
             $response = Http::timeout((int) config('ingestion.oembed.timeout', 10))
+                // A browser-like UA — some providers (Instagram) reject default agents.
+                ->withHeaders(['User-Agent' => (string) config('ingestion.oembed.user_agent')])
                 ->get($endpoint, ['url' => $canonicalUrl, 'format' => 'json']);
         } catch (ConnectionException) {
             // Never interpolate the URL/message — transient, advance the chain.
@@ -139,6 +144,10 @@ class OEmbedAdapter implements SourceAdapter
             return $m[1];
         }
         if (preg_match('#/video/(\d+)#', $url, $m) === 1) {
+            return $m[1];
+        }
+        // Instagram /p/, /reel/, /reels/, /tv/ shortcode.
+        if (preg_match('#/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)#', $url, $m) === 1) {
             return $m[1];
         }
 
