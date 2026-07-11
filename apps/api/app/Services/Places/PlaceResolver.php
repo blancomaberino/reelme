@@ -27,12 +27,20 @@ class PlaceResolver
     public function resolve(Share $share): ResolutionOutcome
     {
         $run = $this->winningRun($share);
-        $result = $run !== null ? ($run->result_json ?? []) : [];
+        $result = $this->payload($share, $run);
         $place = is_array($result['place'] ?? null) ? $result['place'] : [];
         $name = trim((string) ($place['name'] ?? ''));
 
         if ($name === '') {
             return ResolutionOutcome::geocodeFailed();
+        }
+
+        // Review picker: the user chose an existing candidate by its google_place_id
+        // — attach straight to that place, short-circuiting geocode + the dedup tree.
+        if (($picked = $this->pickedPlace($share)) !== null) {
+            $target = $this->terminal($picked);
+
+            return ResolutionOutcome::attached($target, $this->attach($target, $share, $run, $place));
         }
 
         // A transient provider error throws GeocodeFailed here — let it propagate
@@ -204,6 +212,41 @@ class PlaceResolver
         return $place->merged_into_place_id !== null
             ? ($place->mergedInto()->first() ?? $place)
             : $place;
+    }
+
+    /**
+     * The payload to resolve against: a user's corrected extraction (captured in
+     * review) when present, else the winning run's raw result. The place_source
+     * still links to the winning run — the model provenance is preserved.
+     *
+     * @return array<string, mixed>
+     */
+    private function payload(Share $share, ?AnalysisRun $run): array
+    {
+        if (is_array($share->corrected_extraction_json)) {
+            return $share->corrected_extraction_json;
+        }
+
+        return $run !== null ? ($run->result_json ?? []) : [];
+    }
+
+    /**
+     * The existing place a reviewer selected from the ambiguous-candidate picker
+     * (`review_meta_json.picked_google_place_id`), or null when none was chosen.
+     */
+    private function pickedPlace(Share $share): ?Place
+    {
+        $meta = is_array($share->review_meta_json) ? $share->review_meta_json : [];
+        $pickedId = is_string($meta['picked_google_place_id'] ?? null) ? $meta['picked_google_place_id'] : null;
+
+        if ($pickedId === null || $pickedId === '') {
+            return null;
+        }
+
+        return Place::query()
+            ->where('google_place_id', $pickedId)
+            ->where('status', '!=', PlaceStatus::Merged->value)
+            ->first();
     }
 
     private function winningRun(Share $share): ?AnalysisRun

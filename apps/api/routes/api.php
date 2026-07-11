@@ -51,6 +51,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/shares', [ShareController::class, 'store'])->middleware('throttle:shares');
         Route::get('/shares', [ShareController::class, 'index']);
         Route::get('/shares/{share}', [ShareController::class, 'show']);
+        Route::patch('/shares/{share}', [ShareController::class, 'update']);
         Route::post('/shares/{share}/retry', [ShareController::class, 'retry']);
         Route::delete('/shares/{share}', [ShareController::class, 'destroy']);
     });

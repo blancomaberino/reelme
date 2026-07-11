@@ -21,6 +21,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $failure_reason
  * @property string|null $review_reason
  * @property array<string, mixed>|null $review_meta_json
+ * @property array<string, mixed>|null $corrected_extraction_json
+ * @property bool $user_confirmed
  * @property int|null $published_place_source_id
  * @property string|null $shared_via
  * @property Carbon|null $published_at
@@ -43,6 +45,8 @@ class Share extends Model
         return [
             'status' => ShareStatus::class,
             'review_meta_json' => 'array',
+            'corrected_extraction_json' => 'array',
+            'user_confirmed' => 'boolean',
             'published_at' => 'datetime',
         ];
     }
@@ -79,6 +83,12 @@ class Share extends Model
     public function stageMetrics(): HasMany
     {
         return $this->hasMany(ShareStageMetric::class);
+    }
+
+    /** @return HasMany<ShareCorrection, $this> */
+    public function corrections(): HasMany
+    {
+        return $this->hasMany(ShareCorrection::class);
     }
 
     public function canTransitionTo(ShareStatus $to): bool
