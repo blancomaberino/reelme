@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * Validates a map viewport query (T-029, 03 §3.3). `bbox` arrives as a
@@ -60,5 +61,22 @@ class MapPlacesRequest extends FormRequest
             'maxLng.gt' => 'A bbox crossing the antimeridian is not supported.',
             'minLat.lt' => 'minLat must be south of maxLat.',
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        // A globe-spanning bbox makes ST_MakeEnvelope(...)::geography an invalid
+        // (too-large) polygon → a DB error. The map is for local browsing, so cap
+        // the span well below a hemisphere.
+        $validator->after(function ($v) {
+            if (! $v->errors()->isEmpty()) {
+                return;
+            }
+            $lngSpan = abs((float) $this->input('maxLng') - (float) $this->input('minLng'));
+            $latSpan = abs((float) $this->input('maxLat') - (float) $this->input('minLat'));
+            if ($lngSpan > 90 || $latSpan > 90) {
+                $v->errors()->add('bbox', 'The viewport is too large; zoom in.');
+            }
+        });
     }
 }

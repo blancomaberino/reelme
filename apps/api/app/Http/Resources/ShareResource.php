@@ -44,6 +44,30 @@ class ShareResource extends JsonResource
                 'extraction' => $run->result_json,
             ],
             'failure' => $this->failurePayload(),
+            'place' => $this->placePayload(),
+        ];
+    }
+
+    /**
+     * The published place (with coordinates) so a client can drop/centre a pin
+     * without a separate map query. Null until the share publishes.
+     *
+     * @return array{id: string, name: string, lat: float, lng: float}|null
+     */
+    private function placePayload(): ?array
+    {
+        $place = $this->publishedPlaceSource?->place;
+        if ($place === null) {
+            return null;
+        }
+
+        $coords = $place->coordinates();
+
+        return [
+            'id' => (string) $place->id,
+            'name' => $place->name,
+            'lat' => $coords['lat'],
+            'lng' => $coords['lng'],
         ];
     }
 

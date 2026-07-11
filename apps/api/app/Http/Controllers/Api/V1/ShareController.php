@@ -25,7 +25,7 @@ use Illuminate\Validation\ValidationException;
 
 class ShareController extends Controller
 {
-    private const RELATIONS = ['sourcePost.influencer', 'analysisRuns', 'stageMetrics'];
+    private const RELATIONS = ['sourcePost.influencer', 'analysisRuns', 'stageMetrics', 'publishedPlaceSource.place'];
 
     public function __construct(private readonly UrlCanonicalizer $canonicalizer) {}
 

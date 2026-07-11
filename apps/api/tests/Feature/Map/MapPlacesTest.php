@@ -148,6 +148,11 @@ it('rejects a bad bbox with a validation_failed envelope', function () {
 
     $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=99')
         ->assertStatus(422);
+
+    // A globe-spanning bbox would make an invalid geography envelope → guarded.
+    $this->getJson('/api/v1/map/places?bbox=-180,-90,180,90&zoom=3')
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed');
 });
 
 it('exposes rate-limit headers', function () {
