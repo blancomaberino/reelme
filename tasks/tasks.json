@@ -135,7 +135,7 @@
       "agent": "executor-high"
     },
     {
-      "id": "T-017", "title": "DownloadMedia + PrepareMedia jobs (ffmpeg keyframes, audio extract)", "phase": "M1", "status": "pending",
+      "id": "T-017", "title": "DownloadMedia + PrepareMedia jobs (ffmpeg keyframes, audio extract)", "phase": "M1", "status": "done",
       "depends_on": ["T-016", "T-009"], "estimate": "M",
       "paths": ["apps/api/app/Jobs/DownloadMedia.php", "apps/api/app/Jobs/PrepareMedia.php", "apps/api/app/Services/Media/"],
       "spec_refs": ["04-analysis-pipeline.md"],
@@ -151,7 +151,7 @@
       "agent": "executor"
     },
     {
-      "id": "T-019", "title": "ModelRouter: Ollama client, health check, fallback policy", "phase": "M1", "status": "pending",
+      "id": "T-019", "title": "ModelRouter: Ollama client, health check, fallback policy", "phase": "M1", "status": "done",
       "depends_on": ["T-011"], "estimate": "M",
       "paths": ["apps/api/app/Services/AI/ModelRouter.php", "apps/api/app/Services/AI/OllamaClient.php"],
       "spec_refs": ["04-analysis-pipeline.md#model-orchestration"],
@@ -159,7 +159,7 @@
       "agent": "executor-high"
     },
     {
-      "id": "T-020", "title": "OpenRouter client + GET /models + per-user model preference", "phase": "M1", "status": "pending",
+      "id": "T-020", "title": "OpenRouter client + GET /models + per-user model preference", "phase": "M1", "status": "done",
       "depends_on": ["T-019"], "estimate": "M",
       "paths": ["apps/api/app/Services/AI/OpenRouterClient.php", "apps/api/app/Http/Controllers/ModelController.php"],
       "spec_refs": ["04-analysis-pipeline.md#model-orchestration", "03-api-design.md#analysis"],
@@ -175,7 +175,7 @@
       "agent": "executor-high"
     },
     {
-      "id": "T-022", "title": "Geocoder contract + Google Places implementation", "phase": "M1", "status": "pending",
+      "id": "T-022", "title": "Geocoder contract + Google Places implementation", "phase": "M1", "status": "done",
       "depends_on": ["T-011"], "estimate": "M",
       "paths": ["apps/api/app/Services/Geo/"],
       "spec_refs": ["04-analysis-pipeline.md#resolveplace", "07-risks-decisions.md#adr"],
