@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -79,6 +80,16 @@ class Place extends Model
     public function sources(): HasMany
     {
         return $this->hasMany(PlaceSource::class);
+    }
+
+    /**
+     * The first/credited source — carries the headline influencer.
+     *
+     * @return HasOne<PlaceSource, $this>
+     */
+    public function primarySource(): HasOne
+    {
+        return $this->hasOne(PlaceSource::class)->where('is_primary', true);
     }
 
     /** @return BelongsTo<Place, $this> */

@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Auth\RefreshController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\ShareController;
@@ -25,6 +26,11 @@ use Illuminate\Support\Facades\Route;
 */
 Route::prefix('v1')->group(function () {
     Route::get('/health', HealthController::class);
+
+    // Map read path (T-029): public + viewport-scoped; 120/min. Optional auth —
+    // `filter=mine|following` resolve the caller via the sanctum guard inside the
+    // controller (401 when absent) without gating the public `all` view.
+    Route::get('/map/places', [MapController::class, 'places'])->middleware('throttle:map');
 
     // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
     Route::prefix('auth')->middleware('throttle:auth')->group(function () {

@@ -1,0 +1,133 @@
+<?php
+
+use App\Models\Influencer;
+use App\Models\Place;
+use App\Models\PlaceSource;
+use App\Models\Share;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+
+uses(RefreshDatabase::class);
+
+// A small viewport over central London for all cases.
+const BBOX = '-0.20,51.45,-0.05,51.55';
+
+function activePlace(float $lat, float $lng, array $attrs = []): Place
+{
+    return Place::factory()->active()->atPoint($lat, $lng)->create($attrs);
+}
+
+it('returns raw pins (no clusters) at high zoom', function () {
+    activePlace(51.5117, -0.1300, ['name' => 'Alpha', 'shares_count' => 3]);
+    activePlace(51.5000, -0.1000, ['name' => 'Beta']);
+
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16')->assertOk();
+
+    $res->assertJsonPath('meta.clustered', false)
+        ->assertJsonPath('meta.total_in_bbox', 2)
+        ->assertJsonCount(0, 'data.clusters')
+        ->assertJsonCount(2, 'data.pins');
+
+    $pin = collect($res->json('data.pins'))->firstWhere('name', 'Alpha');
+    expect($pin)->toMatchArray(['type' => 'place', 'source_count' => 3, 'has_active_offer' => false, 'status' => 'active'])
+        ->and(round($pin['lat'], 4))->toBe(51.5117)
+        ->and(round($pin['lng'], 4))->toBe(-0.13);
+});
+
+it('grid-clusters co-located places at low zoom and leaves distant ones as pins', function () {
+    // Two places in the same grid cell → one cluster.
+    activePlace(51.5117, -0.1300, ['name' => 'C1']);
+    activePlace(51.5118, -0.1301, ['name' => 'C2']);
+    // A far-apart place in the same bbox → a singleton pin.
+    activePlace(51.4700, -0.0700, ['name' => 'Lonely']);
+
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=12')->assertOk();
+
+    $res->assertJsonPath('meta.clustered', true)
+        ->assertJsonPath('meta.total_in_bbox', 3)
+        ->assertJsonCount(1, 'data.clusters')
+        ->assertJsonCount(1, 'data.pins');
+
+    $cluster = $res->json('data.clusters.0');
+    expect($cluster['type'])->toBe('cluster')
+        ->and($cluster['count'])->toBe(2)
+        ->and($cluster['cluster_id'])->toStartWith('12:')
+        ->and($cluster['expand']['bbox'])->toHaveCount(4);
+    expect($res->json('data.pins.0.name'))->toBe('Lonely');
+});
+
+it('excludes merged and pending-elsewhere places but includes pending in-view', function () {
+    activePlace(51.5117, -0.1300, ['name' => 'Active']);
+    Place::factory()->atPoint(51.5100, -0.1200)->create(['name' => 'PendingInView']); // pending default
+    Place::factory()->active()->atPoint(51.5100, -0.1200)->create(['name' => 'Merged', 'status' => 'merged']);
+    activePlace(60.0, 10.0, ['name' => 'OutOfView']);
+
+    $names = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16')->assertOk()->json('data.pins'))
+        ->pluck('name');
+
+    expect($names)->toContain('Active', 'PendingInView')
+        ->not->toContain('Merged', 'OutOfView');
+});
+
+it('surfaces the primary source influencer as top_influencer', function () {
+    $place = activePlace(51.5117, -0.1300, ['name' => 'WithInfluencer']);
+    $share = Share::factory()->create();
+    $share->sourcePost->influencer()->associate(Influencer::factory()->create(['handle' => 'noodle.hunter', 'display_name' => 'Noodle Hunter']));
+    $share->sourcePost->save();
+    PlaceSource::factory()->primary()->create([
+        'place_id' => $place->id,
+        'share_id' => $share->id,
+        'source_post_id' => $share->source_post_id,
+    ]);
+
+    $pin = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16')->json('data.pins'))
+        ->firstWhere('name', 'WithInfluencer');
+
+    expect($pin['top_influencer'])->toMatchArray(['handle' => 'noodle.hunter', 'display_name' => 'Noodle Hunter']);
+});
+
+it('filters to the caller’s own places with filter=mine', function () {
+    $user = User::factory()->create();
+    $mine = activePlace(51.5117, -0.1300, ['name' => 'Mine']);
+    activePlace(51.5000, -0.1000, ['name' => 'Someone else']);
+
+    $share = Share::factory()->for($user)->create();
+    PlaceSource::factory()->create(['place_id' => $mine->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id]);
+
+    Sanctum::actingAs($user);
+    $names = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=mine')->assertOk()->json('data.pins'))
+        ->pluck('name');
+
+    expect($names)->toContain('Mine')->not->toContain('Someone else');
+});
+
+it('requires auth for filter=mine and filter=following', function () {
+    $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=mine')->assertStatus(401);
+    $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=following')->assertStatus(401);
+});
+
+it('returns an empty stub for filter=following when authed', function () {
+    activePlace(51.5117, -0.1300);
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=following')
+        ->assertOk()
+        ->assertJsonPath('meta.filter', 'following')
+        ->assertJsonCount(0, 'data.pins');
+});
+
+it('rejects a bad bbox with a validation_failed envelope', function () {
+    $this->getJson('/api/v1/map/places?bbox=-0.05,51.45,-0.20,51.55&zoom=12') // maxLng < minLng
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed');
+
+    $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=99')
+        ->assertStatus(422);
+});
+
+it('exposes rate-limit headers', function () {
+    $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16')
+        ->assertOk()
+        ->assertHeader('X-RateLimit-Limit', '120');
+});

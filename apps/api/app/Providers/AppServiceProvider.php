@@ -31,5 +31,10 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(10)->by('shares:min:'.$request->user()?->id),
             Limit::perDay(100)->by('shares:day:'.$request->user()?->id),
         ]);
+
+        // GET /map/places: 120/min per user (falls back to IP for anonymous —
+        // the route has no auth middleware, so resolve via the sanctum guard).
+        RateLimiter::for('map', fn (Request $request) => Limit::perMinute(120)
+            ->by('map:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
     }
 }
