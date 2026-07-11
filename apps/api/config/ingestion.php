@@ -15,9 +15,10 @@ return [
     | T-013 (Instagram), T-014 (X/TikTok/YouTube), T-015 (authed Instagram).
     */
     'chains' => [
-        'instagram' => [],
-        'x' => [],
         // Keyless public oEmbed → real link title/author for the text path.
+        // Instagram's endpoint is keyless but best-effort (undocumented, IP-limited).
+        'instagram' => [OEmbedAdapter::class],
+        'x' => [],
         'tiktok' => [OEmbedAdapter::class],
         'youtube' => [OEmbedAdapter::class],
     ],
@@ -26,5 +27,6 @@ return [
 
     'oembed' => [
         'timeout' => (int) env('OEMBED_TIMEOUT', 10),
+        'user_agent' => env('OEMBED_USER_AGENT', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'),
     ],
 ];

@@ -10,14 +10,34 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
-it('supports youtube and tiktok URLs, not others', function () {
+it('supports youtube, tiktok and instagram URLs, not look-alikes', function () {
     $adapter = new OEmbedAdapter;
 
     expect($adapter->supports('https://www.youtube.com/watch?v=abc123'))->toBeTrue()
         ->and($adapter->supports('https://youtu.be/abc123'))->toBeTrue()
         ->and($adapter->supports('https://www.tiktok.com/@chef/video/7123456789'))->toBeTrue()
-        ->and($adapter->supports('https://www.instagram.com/reel/XYZ/'))->toBeFalse()
-        ->and($adapter->supports('https://evil.youtube.com.attacker.test/x'))->toBeFalse();
+        ->and($adapter->supports('https://www.instagram.com/p/DaJVG6IPcR5/'))->toBeTrue()
+        ->and($adapter->supports('https://www.instagram.com/reel/XYZ/'))->toBeTrue()
+        ->and($adapter->supports('https://evil.youtube.com.attacker.test/x'))->toBeFalse()
+        ->and($adapter->supports('https://instagram.com.attacker.test/p/x/'))->toBeFalse();
+});
+
+it('fetches an instagram post caption via the keyless oembed endpoint', function () {
+    Http::fake(['*instagram.com/api/v1/oembed*' => Http::response([
+        'title' => 'Nuevo cafecito en Cordón — Clara Café ☕️',
+        'author_name' => 'somoscomiendo',
+        'author_url' => 'https://www.instagram.com/somoscomiendo',
+    ])]);
+
+    $data = (new OEmbedAdapter)->fetchMetadata('https://www.instagram.com/p/DaJVG6IPcR5/', null);
+
+    expect($data->platform)->toBe(Platform::Instagram)
+        ->and($data->caption)->toContain('Clara Café')
+        ->and($data->authorHandle)->toBe('somoscomiendo')
+        ->and($data->externalId)->toBe('DaJVG6IPcR5');
+
+    Http::assertSent(fn (Request $r) => str_starts_with($r->url(), 'https://www.instagram.com/api/v1/oembed/')
+        && $r->hasHeader('User-Agent'));
 });
 
 it('maps a YouTube oEmbed response to caption + author', function () {
