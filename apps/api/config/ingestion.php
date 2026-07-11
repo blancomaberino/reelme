@@ -1,6 +1,7 @@
 <?php
 
 use App\Adapters\ManualUploadAdapter;
+use App\Adapters\OEmbedAdapter;
 
 return [
     /*
@@ -16,9 +17,14 @@ return [
     'chains' => [
         'instagram' => [],
         'x' => [],
-        'tiktok' => [],
-        'youtube' => [],
+        // Keyless public oEmbed → real link title/author for the text path.
+        'tiktok' => [OEmbedAdapter::class],
+        'youtube' => [OEmbedAdapter::class],
     ],
 
     'fallback' => ManualUploadAdapter::class,
+
+    'oembed' => [
+        'timeout' => (int) env('OEMBED_TIMEOUT', 10),
+    ],
 ];
