@@ -143,7 +143,7 @@
       "agent": "executor"
     },
     {
-      "id": "T-018", "title": "TranscribeAudio job (Whisper local, OpenRouter/API fallback)", "phase": "M1", "status": "pending",
+      "id": "T-018", "title": "TranscribeAudio job (Whisper local, OpenRouter/API fallback)", "phase": "M1", "status": "done",
       "depends_on": ["T-017"], "estimate": "M",
       "paths": ["apps/api/app/Jobs/TranscribeAudio.php", "apps/api/app/Services/Transcription/"],
       "spec_refs": ["04-analysis-pipeline.md#model-orchestration"],
