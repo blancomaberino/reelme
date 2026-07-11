@@ -16,8 +16,10 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $user_id
  * @property int $source_post_id
+ * @property int|null $analysis_run_id
  * @property ShareStatus $status
  * @property string|null $failure_reason
+ * @property string|null $review_reason
  * @property string|null $shared_via
  * @property Carbon|null $published_at
  */
@@ -58,6 +60,16 @@ class Share extends Model
     public function analysisRuns(): HasMany
     {
         return $this->hasMany(AnalysisRun::class);
+    }
+
+    /**
+     * The winning run selected by ExtractPlaceData (T-021).
+     *
+     * @return BelongsTo<AnalysisRun, $this>
+     */
+    public function analysisRun(): BelongsTo
+    {
+        return $this->belongsTo(AnalysisRun::class);
     }
 
     /** @return HasMany<ShareStageMetric, $this> */

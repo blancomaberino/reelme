@@ -9,6 +9,7 @@ use App\Jobs\IngestShare;
 use App\Models\Share;
 use App\Models\User;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\FakeInstagramAdapter;
 
@@ -68,6 +69,17 @@ it('parks the share in review when the chain needs manual fallback', function ()
 it('runs the full pipeline skeleton to analyzing (sync queue + fake adapter)', function () {
     useFakeInstagram();
     Sanctum::actingAs(User::factory()->create());
+
+    // The fake adapter yields no media, so extraction runs text-only; fake Ollama
+    // so ExtractPlaceData produces a clean high-confidence result and continues.
+    Http::fake([
+        '*/api/tags' => Http::response(['models' => []]),
+        '*/api/chat' => Http::response([
+            'message' => ['content' => (string) file_get_contents(base_path('tests/Fixtures/extraction/valid.json'))],
+            'prompt_eval_count' => 10,
+            'eval_count' => 5,
+        ]),
+    ]);
 
     // QUEUE_CONNECTION=sync in tests, so the whole chain runs during the request.
     $this->postJson('/api/v1/shares', ['url' => 'https://www.instagram.com/reel/FULL/'])

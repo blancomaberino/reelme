@@ -12,12 +12,14 @@ final readonly class GenerationRequest
     /**
      * @param  list<GenerationPart>  $userParts
      * @param  array<string, mixed>|null  $jsonSchema
+     * @param  string|null  $promptVersion  system-prompt version, recorded on each analysis_runs row
      */
     public function __construct(
         public string $systemPrompt,
         public array $userParts,
         public ?array $jsonSchema = null,
         public float $temperature = 0.0,
+        public ?string $promptVersion = null,
     ) {}
 
     public function hasImages(): bool

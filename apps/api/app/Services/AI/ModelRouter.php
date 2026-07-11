@@ -44,10 +44,12 @@ class ModelRouter
 
     /**
      * Route a generation request for a share and return the winning (succeeded)
-     * run. `$validate` is invoked on each engine's raw output — its repair loop
-     * lives in the caller (T-021); the router only reacts to the outcome.
+     * run. `$validate` receives each engine's raw output plus a `$resend` callable
+     * that re-invokes the *current* engine (original conversation + appended
+     * parts) — the caller's repair loop (T-021) uses it; the router only reacts to
+     * the final outcome and books any repair spend onto the run.
      *
-     * @param  Closure(string): ValidationOutcome  $validate
+     * @param  Closure(string, callable): ValidationOutcome  $validate
      *
      * @throws AllEnginesFailed neither engine produced an accepted result
      * @throws CostCapExceeded the cheapest model still exceeds the per-run cap
@@ -106,7 +108,7 @@ class ModelRouter
      * succeeded local run, or parks the share (QuotaExhausted) when local is
      * unavailable or could not produce an accepted result.
      *
-     * @param  Closure(string): ValidationOutcome  $validate
+     * @param  Closure(string, callable): ValidationOutcome  $validate
      */
     private function localOnlyOrPark(Share $share, GenerationRequest $request, Closure $validate, string $localModel): AnalysisRun
     {
@@ -122,7 +124,7 @@ class ModelRouter
      * Attempt the local engine when healthy, otherwise record the skipped-local
      * reason and return null so the caller can fall back.
      *
-     * @param  Closure(string): ValidationOutcome  $validate
+     * @param  Closure(string, callable): ValidationOutcome  $validate
      */
     private function attemptLocalOrRecordSkip(Share $share, GenerationRequest $request, Closure $validate, string $localModel): ?AnalysisRun
     {
@@ -130,7 +132,7 @@ class ModelRouter
             return $this->attempt($share, $this->local, $request, $validate, $localModel);
         }
 
-        $this->recordSkippedLocal($share, $localModel);
+        $this->recordSkippedLocal($share, $localModel, $request->promptVersion);
 
         return null;
     }
@@ -139,7 +141,7 @@ class ModelRouter
      * Attempt the remote engine with the cost cap applied, recording spend for
      * any billed run — a remote call that fails validation was still charged.
      *
-     * @param  Closure(string): ValidationOutcome  $validate
+     * @param  Closure(string, callable): ValidationOutcome  $validate
      */
     private function attemptRemote(Share $share, GenerationRequest $request, Closure $validate, ?string $model): AnalysisRun
     {
@@ -176,7 +178,7 @@ class ModelRouter
             return (string) $cheapest['id'];
         }
 
-        $run = $this->startRun($share, AnalysisEngineEnum::OpenRouter, $model);
+        $run = $this->startRun($share, AnalysisEngineEnum::OpenRouter, $model, $request->promptVersion);
         $this->fail($run, 'cost_cap_exceeded', 'estimated cost exceeds per-run cap');
 
         throw new CostCapExceeded("Run cost exceeds cap even on the cheapest model (share {$share->id}).");
@@ -212,7 +214,7 @@ class ModelRouter
      * on its status. Never throws generation errors upward; they become failed
      * rows carrying the fallback reason in `error`.
      *
-     * @param  Closure(string): ValidationOutcome  $validate
+     * @param  Closure(string, callable): ValidationOutcome  $validate
      */
     private function attempt(
         Share $share,
@@ -221,7 +223,7 @@ class ModelRouter
         Closure $validate,
         ?string $model,
     ): AnalysisRun {
-        $run = $this->startRun($share, $engine->name(), $model ?? '(auto)');
+        $run = $this->startRun($share, $engine->name(), $model ?? '(auto)', $request->promptVersion);
 
         try {
             $result = $engine->generate($request, $model);
@@ -231,12 +233,35 @@ class ModelRouter
             return $this->fail($run, 'ollama_error', $e->getMessage());
         }
 
-        $run->model = $result->model;
-        $run->input_tokens = $result->inputTokens;
-        $run->output_tokens = $result->outputTokens;
-        $run->cost_usd = (string) $result->costUsd;
+        // Repair re-sends (driven by the caller's validator) re-invoke this same
+        // engine; their spend is billed too, so accumulate it onto this run.
+        $repairCost = 0.0;
+        $repairInput = 0;
+        $repairOutput = 0;
+        $resend = function (array $extraParts, float $temperature) use ($engine, $request, $model, &$repairCost, &$repairInput, &$repairOutput): string {
+            $repaired = $engine->generate(
+                new GenerationRequest(
+                    $request->systemPrompt,
+                    [...$request->userParts, ...$extraParts],
+                    $request->jsonSchema,
+                    $temperature,
+                    $request->promptVersion,
+                ),
+                $model,
+            );
+            $repairCost += $repaired->costUsd;
+            $repairInput += $repaired->inputTokens ?? 0;
+            $repairOutput += $repaired->outputTokens ?? 0;
 
-        $outcome = $validate($result->rawText);
+            return $repaired->rawText;
+        };
+
+        $outcome = $validate($result->rawText, $resend);
+
+        $run->model = $result->model;
+        $run->input_tokens = $this->sumTokens($result->inputTokens, $repairInput);
+        $run->output_tokens = $this->sumTokens($result->outputTokens, $repairOutput);
+        $run->cost_usd = (string) ($result->costUsd + $repairCost);
 
         if (! $outcome->valid) {
             // Persist raw invalid output nowhere except truncated in `error`.
@@ -288,15 +313,28 @@ class ModelRouter
      * `ollama_unreachable` reason is queryable, without issuing a doomed
      * generation call.
      */
-    private function recordSkippedLocal(Share $share, string $localModel): void
+    private function recordSkippedLocal(Share $share, string $localModel, ?string $promptVersion): void
     {
-        $run = $this->startRun($share, $this->local->name(), $localModel);
+        $run = $this->startRun($share, $this->local->name(), $localModel, $promptVersion);
 
         $this->fail($run, 'ollama_unreachable', 'health check failed');
     }
 
+    /**
+     * Sum base + repair token counts, preserving null when nothing is known
+     * (so an engine that doesn't report usage stays null rather than 0).
+     */
+    private function sumTokens(?int $base, int $repair): ?int
+    {
+        if ($base === null && $repair === 0) {
+            return null;
+        }
+
+        return ($base ?? 0) + $repair;
+    }
+
     /** Open a `running` run row for one engine attempt. */
-    private function startRun(Share $share, AnalysisEngineEnum $engine, string $model): AnalysisRun
+    private function startRun(Share $share, AnalysisEngineEnum $engine, string $model, ?string $promptVersion = null): AnalysisRun
     {
         $run = new AnalysisRun([
             'engine' => $engine,
@@ -304,6 +342,7 @@ class ModelRouter
             'status' => AnalysisStatus::Running,
             'started_at' => now(),
         ]);
+        $run->prompt_version = $promptVersion;
         $run->share()->associate($share);
         $run->save();
 
