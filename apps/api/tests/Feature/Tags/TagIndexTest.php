@@ -66,3 +66,13 @@ it('exposes rate-limit headers', function () {
         ->assertOk()
         ->assertHeader('X-RateLimit-Limit', '120');
 });
+
+it('treats LIKE metacharacters in ?q= as literals', function () {
+    Tag::factory()->create(['name' => 'Noodles', 'slug' => 'noodles']);
+    Tag::factory()->create(['name' => '100% Vegan', 'slug' => '100-vegan']);
+
+    // "%" must not act as a wildcard that matches everything.
+    expect($this->getJson('/api/v1/tags?q='.urlencode('%'))->assertOk()->json('data'))->toBe([]);
+    expect($this->getJson('/api/v1/tags?q='.urlencode('100% v'))->assertOk()->json('data'))
+        ->toHaveCount(1);
+});

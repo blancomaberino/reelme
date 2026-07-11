@@ -28,16 +28,19 @@ class TagController extends Controller
         $query = Tag::query()->withCount('places');
 
         if (($q = trim((string) ($request->validated('q') ?? ''))) !== '') {
-            $needle = mb_strtolower($q);
+            // Escape LIKE metacharacters — q is a literal prefix, not a pattern.
+            $needle = addcslashes(mb_strtolower($q), '%_\\');
             $query->where(fn ($w) => $w
-                ->where('slug', 'like', $needle.'%')
-                ->orWhereRaw('lower(name) like ?', [$needle.'%']));
+                ->whereRaw("slug like ? escape '\\'", [$needle.'%'])
+                ->orWhereRaw("lower(name) like ? escape '\\'", [$needle.'%']));
         }
 
         $cursor = KeysetCursor::decode($request->validated('cursor'), $sort, 2);
 
         if ($popular) {
-            $query->orderByRaw(self::COUNT_EXPR.' DESC')->orderByDesc('id');
+            // ORDER BY the withCount alias (addressable in PG); only the keyset
+            // WHERE needs the raw expression.
+            $query->orderByDesc('places_count')->orderByDesc('id');
             if ($cursor !== null) {
                 $query->whereRaw('('.self::COUNT_EXPR.', id) < (?, ?)', [(int) $cursor[0], (int) $cursor[1]]);
             }

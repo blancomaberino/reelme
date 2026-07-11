@@ -99,3 +99,25 @@ it('backfills tags from existing snapshots via the command', function () {
 
     expect($place->tags()->pluck('slug')->all())->toContain('chinese');
 });
+
+it('caps labels per kind (defense in depth against tag explosion)', function () {
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+
+    $labels = array_map(fn ($i) => "cuisine-label-{$i}", range(1, 100));
+    app(TagMaterializer::class)->materialize($place, ['cuisines' => $labels], 0.9);
+
+    expect($place->tags()->count())->toBe(32)
+        ->and(Tag::count())->toBe(32);
+});
+
+it('preserves a manual pivot source on republish', function () {
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    $tag = Tag::factory()->ofKind(TagKind::Cuisine)->create(['name' => 'Ramen', 'slug' => 'ramen']);
+    $place->tags()->attach($tag->id, ['source' => 'manual', 'confidence' => null]);
+
+    app(TagMaterializer::class)->materialize($place, ['cuisines' => ['ramen']], 0.7);
+
+    $pivot = $place->tags()->where('slug', 'ramen')->first()->pivot;
+    expect($pivot->source)->toBe('manual')
+        ->and((float) $pivot->confidence)->toBe(0.7);
+});

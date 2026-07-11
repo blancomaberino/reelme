@@ -16,6 +16,13 @@ use App\Models\Tag;
 class TagMaterializer
 {
     /**
+     * Hard cap per kind — defense in depth behind the schema's maxItems: a
+     * snapshot is model/reviewer-controlled input and every unique slug is a
+     * PERMANENT global tags row, so this must be bounded here too.
+     */
+    private const MAX_LABELS_PER_KIND = 32;
+
+    /**
      * @param  array<string, mixed>  $snapshot
      */
     public function materialize(Place $place, array $snapshot, ?float $confidence): void
@@ -29,7 +36,7 @@ class TagMaterializer
 
         $attach = [];
         foreach ($labels as $kind => $names) {
-            foreach ($names as $name) {
+            foreach (array_slice($names, 0, self::MAX_LABELS_PER_KIND) as $name) {
                 $slug = Tag::makeSlug($name);
                 if ($slug === '') {
                     continue;
@@ -47,25 +54,35 @@ class TagMaterializer
         }
 
         if ($attach !== []) {
+            // syncWithoutDetaching is race-safe on the (place_id, tag_id) PK —
+            // two workers publishing to the same place must not blow up the
+            // publish job on a duplicate attach. It also updates the pivot of
+            // rows that already exist, so re-apply the max-confidence rule for
+            // any existing pivot that had a HIGHER confidence than this run.
             $existing = $place->tags()
                 ->whereIn('tags.id', array_keys($attach))
                 ->get()
                 ->keyBy('id');
 
+            $sync = [];
             foreach ($attach as $tagId => $pivot) {
-                $current = $existing->get($tagId);
+                $current = $existing->get($tagId)?->getRelationValue('pivot');
                 if ($current === null) {
-                    $place->tags()->attach($tagId, $pivot);
+                    $sync[$tagId] = $pivot;
 
                     continue;
                 }
-                // Keep the strongest signal across republs/multiple sources.
-                $currentConfidence = $current->getRelationValue('pivot')?->confidence;
-                if ($pivot['confidence'] !== null
-                    && ($currentConfidence === null || (float) $pivot['confidence'] > (float) $currentConfidence)) {
-                    $place->tags()->updateExistingPivot($tagId, ['confidence' => $pivot['confidence']]);
+                // Existing pivot: never downgrade confidence, never touch the
+                // provenance (a manual/owner tag stays manual/owner).
+                $confidence = $pivot['confidence'];
+                if ($current->confidence !== null
+                    && ($confidence === null || (float) $current->confidence >= (float) $confidence)) {
+                    $confidence = (float) $current->confidence;
                 }
+                $sync[$tagId] = ['confidence' => $confidence];
             }
+
+            $place->tags()->syncWithoutDetaching($sync);
         }
 
         if ($place->cuisine_primary === null && ($labels[TagKind::Cuisine->value][0] ?? null) !== null) {
