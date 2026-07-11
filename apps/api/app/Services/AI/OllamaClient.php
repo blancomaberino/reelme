@@ -73,7 +73,12 @@ class OllamaClient
                 $userMessage,
             ],
             'stream' => false,
-            'format' => 'json',
+            // Structured outputs: pass the JSON Schema as `format` so Ollama
+            // grammar-constrains generation to a schema-shaped object (small local
+            // models can't reliably hit a strict additionalProperties:false schema
+            // from a prompt alone). Falls back to plain-JSON mode when no schema is
+            // supplied. Post-parse opis validation still runs (T-021).
+            'format' => $request->jsonSchema ?? 'json',
             'options' => ['temperature' => $request->temperature],
         ];
 
