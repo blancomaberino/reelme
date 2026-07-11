@@ -68,8 +68,13 @@ it('returns null on no match and caches the miss', function () {
 it('raises GeocodeFailed on a provider error without leaking the query', function () {
     Http::fake(['*/search*' => Http::response('', 503)]);
 
-    expect(fn () => (new NominatimGeocoder)->findPlace('Secret Spot', new GeoHints))
-        ->toThrow(GeocodeFailed::class);
+    try {
+        (new NominatimGeocoder)->findPlace('Secret Spot', new GeoHints);
+        $this->fail('Expected GeocodeFailed.');
+    } catch (GeocodeFailed $e) {
+        // The error must not carry the (potentially sensitive) query text.
+        expect($e->getMessage())->not->toContain('Secret Spot');
+    }
 });
 
 it('binds Nominatim as the keyless default when no Google key is configured', function () {

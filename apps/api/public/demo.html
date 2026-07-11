@@ -117,7 +117,7 @@ async function loadPlaces() {
     for (const p of (data.pins || [])) {
       L.marker([p.lat, p.lng]).addTo(markers)
         .bindPopup(`<b>${esc(p.name)}</b><br>${esc(p.category||"")} ${p.city?("· "+esc(p.city)):""}` +
-          `<br><small>${p.source_count} share(s) · ${esc(p.status)}</small>`);
+          `<br><small>${esc(p.source_count)} share(s) · ${esc(p.status)}</small>`);
     }
     for (const c of (data.clusters || [])) {
       L.marker([c.lat, c.lng], { icon: clusterIcon(c.count) }).addTo(markers)
@@ -190,7 +190,7 @@ async function refreshShares() {
     el.innerHTML = data.map(s => {
       const st = s.status;
       const place = s.place ? `<br>📍 ${esc(s.place.name)}` : "";
-      return `<div class="share"><span class="pill ${st}">${esc(st)}</span> <span class="u">${esc(s.url||s.source_post?.url||"manual")}</span>${place}</div>`;
+      return `<div class="share"><span class="pill ${esc(st)}">${esc(st)}</span> <span class="u">${esc(s.url||s.source_post?.url||"manual")}</span>${place}</div>`;
     }).join("");
     // If anything published, refresh the map so the new pin shows.
     if (data.some(s => s.status === "published")) loadPlaces();

@@ -329,6 +329,9 @@ class ShareController extends Controller
         // Manual text share: a pasted caption IS the content. Store it pre-fetched
         // (any URL is kept only as a reference) so FetchSourcePost no-ops and the
         // pipeline extracts from the caption directly — the fetch-free demo path.
+        // NOTE: each submission mints a fresh external_id, so the (user,source_post)
+        // dedup guard can't fire — a resubmitted caption creates a new run/pin. Fine
+        // for the demo; ResolvePlace still dedups the resulting *place* by geo+name.
         if ($caption !== null) {
             $externalId = 'manual-'.Str::ulid();
 
