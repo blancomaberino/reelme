@@ -580,7 +580,7 @@
       "id": "T-024",
       "title": "Review + publish flow: PATCH share extraction corrections, PublishShare job",
       "phase": "M1",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-023",
         "T-016"
