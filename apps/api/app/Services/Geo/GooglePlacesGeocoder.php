@@ -20,7 +20,7 @@ class GooglePlacesGeocoder implements Geocoder
     private const BASE_URL = 'https://maps.googleapis.com/maps/api/place';
 
     // Minimal Place Details field list — widening this raises the billed SKU.
-    private const DETAILS_FIELDS = 'place_id,name,formatted_address,address_component,geometry/location,type';
+    private const DETAILS_FIELDS = 'place_id,name,formatted_address,address_component,geometry/location,type,rating,user_ratings_total,reviews';
 
     private const CACHE_DAYS = 30;
 
@@ -60,7 +60,40 @@ class GooglePlacesGeocoder implements Geocoder
             lng: (float) ($details['geometry']['location']['lng'] ?? 0.0),
             types: $details['types'] ?? [],
             score: $this->score($name, (string) ($details['name'] ?? ''), $formattedAddress, $hints),
+            rating: isset($details['rating']) ? (float) $details['rating'] : null,
+            ratingCount: isset($details['user_ratings_total']) ? (int) $details['user_ratings_total'] : null,
+            reviews: $this->reviews($details['reviews'] ?? []),
         );
+    }
+
+    /**
+     * Normalize Google's Place Details `reviews` (up to 5) to our snippet shape.
+     * Missing keys are guarded — Google occasionally omits `text` or timing fields.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function reviews(mixed $reviews): array
+    {
+        if (! is_array($reviews)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach (array_slice($reviews, 0, 5) as $review) {
+            if (! is_array($review)) {
+                continue;
+            }
+
+            $normalized[] = [
+                'author' => (string) ($review['author_name'] ?? ''),
+                'rating' => (int) ($review['rating'] ?? 0),
+                'text' => (string) ($review['text'] ?? ''),
+                'relative_time' => $review['relative_time_description'] ?? null,
+                'time' => $review['time'] ?? null,
+            ];
+        }
+
+        return $normalized;
     }
 
     private function findPlaceId(string $name, GeoHints $hints): ?string

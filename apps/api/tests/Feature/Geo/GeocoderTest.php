@@ -42,7 +42,17 @@ it('maps find-place + details into a GeocodeResult', function () {
         ->and($result->lng)->toBe(-9.137619)
         ->and($result->types)->toContain('restaurant')
         ->and($result->addressComponents)->toHaveCount(5)
-        ->and($result->score)->toBeGreaterThan(0.5);
+        ->and($result->score)->toBeGreaterThan(0.5)
+        ->and($result->rating)->toBe(4.6)
+        ->and($result->ratingCount)->toBe(214)
+        ->and($result->reviews)->toHaveCount(2)
+        ->and($result->reviews[0])->toMatchArray([
+            'author' => 'Maria S.',
+            'rating' => 5,
+            'text' => 'Best hand-pulled noodles in Lisbon.',
+            'relative_time' => '2 weeks ago',
+            'time' => 1699000000,
+        ]);
 });
 
 it('sends the minimal field mask on the details request (billing guard)', function () {
@@ -58,7 +68,7 @@ it('sends the minimal field mask on the details request (billing guard)', functi
             return false;
         }
 
-        return $request['fields'] === 'place_id,name,formatted_address,address_component,geometry/location,type';
+        return $request['fields'] === 'place_id,name,formatted_address,address_component,geometry/location,type,rating,user_ratings_total,reviews';
     });
 });
 

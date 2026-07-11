@@ -87,8 +87,19 @@ class PlaceResolver
         if (count($matches) === 1) {
             /** @var Place $existing */
             $existing = Place::query()->findOrFail($matches[0]['place_id']);
+            $dirty = false;
             if ($existing->google_place_id === null) {
                 $existing->google_place_id = $geo->googlePlaceId;
+                $dirty = true;
+            }
+            // Backfill the Google review signal onto an existing place that lacks it.
+            if ($existing->google_rating === null && $geo->rating !== null) {
+                $existing->google_rating = (string) $geo->rating;
+                $existing->google_rating_count = $geo->ratingCount;
+                $existing->google_reviews_json = $geo->reviews;
+                $dirty = true;
+            }
+            if ($dirty) {
                 $existing->save();
             }
 
@@ -173,6 +184,9 @@ class PlaceResolver
             'price_range' => $this->priceRange($place['price_range'] ?? null),
             'phone' => $this->truncate($place['phone'] ?? null, 32),
             'website' => $this->truncate($place['website'] ?? null, 2048),
+            'google_rating' => $geo->rating,
+            'google_rating_count' => $geo->ratingCount,
+            'google_reviews_json' => $geo->reviews,
             'status' => PlaceStatus::Pending,
         ]);
         $model->setPoint($geo->lat, $geo->lng);

@@ -13,6 +13,7 @@ final readonly class GeocodeResult
     /**
      * @param  array<int, array<string, mixed>>  $addressComponents
      * @param  list<string>  $types
+     * @param  list<array<string, mixed>>  $reviews
      */
     public function __construct(
         public string $googlePlaceId,
@@ -23,6 +24,9 @@ final readonly class GeocodeResult
         public float $lng,
         public array $types,
         public float $score,
+        public ?float $rating = null,
+        public ?int $ratingCount = null,
+        public array $reviews = [],
     ) {}
 
     /**
@@ -39,6 +43,9 @@ final readonly class GeocodeResult
             'lng' => $this->lng,
             'types' => $this->types,
             'score' => $this->score,
+            'rating' => $this->rating,
+            'rating_count' => $this->ratingCount,
+            'reviews' => $this->reviews,
         ];
     }
 
@@ -56,6 +63,9 @@ final readonly class GeocodeResult
             lng: (float) $data['lng'],
             types: $data['types'] ?? [],
             score: (float) $data['score'],
+            rating: $data['rating'] ?? null,
+            ratingCount: $data['rating_count'] ?? null,
+            reviews: $data['reviews'] ?? [],
         );
     }
 }
