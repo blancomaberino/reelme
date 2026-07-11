@@ -27,7 +27,7 @@ class AnalysisRun extends Model
     // Written only by the analysis pipeline (ModelRouter/jobs, T-019+), never
     // from user request input — `result_json`/`cost_usd` are trust-sensitive.
     protected $fillable = [
-        'share_id', 'engine', 'model', 'status', 'started_at', 'finished_at',
+        'share_id', 'engine', 'model', 'prompt_version', 'status', 'started_at', 'finished_at',
         'input_tokens', 'output_tokens', 'cost_usd', 'overall_confidence',
         'result_json', 'error',
     ];

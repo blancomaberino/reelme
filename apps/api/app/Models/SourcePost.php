@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $caption
  * @property PostPrivacy $privacy
  * @property FetchStatus $fetch_status
+ * @property array<string, mixed>|null $transcript_json
  */
 class SourcePost extends Model
 {
