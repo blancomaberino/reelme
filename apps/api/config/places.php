@@ -1,0 +1,31 @@
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Dedup decision tree (04 §6)
+    |--------------------------------------------------------------------------
+    | Tunable without code changes. Distances are meters (geography space), the
+    | similarity threshold is 0–1 (max of pg_trgm similarity + Jaro-Winkler).
+    */
+    'dedup' => [
+        'radius_meters' => (float) env('PLACES_DEDUP_RADIUS_M', 75),
+        'name_similarity_threshold' => (float) env('PLACES_DEDUP_SIMILARITY', 0.85),
+    ],
+
+    /*
+    | A geocode result scoring below this is treated as "not found" → the share
+    | is parked for human review rather than pinned at a bad location.
+    */
+    'geocode' => [
+        'min_score' => (float) env('PLACES_GEOCODE_MIN_SCORE', 0.5),
+    ],
+
+    /*
+    | Seconds a resolve holds the per-canonical lock, serializing concurrent
+    | shares of the same place so they can't create duplicate pins.
+    */
+    'lock_seconds' => (int) env('PLACES_RESOLVE_LOCK_SECONDS', 30),
+
+];
