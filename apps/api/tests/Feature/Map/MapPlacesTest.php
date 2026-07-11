@@ -57,6 +57,30 @@ it('grid-clusters co-located places at low zoom and leaves distant ones as pins'
     expect($res->json('data.pins.0.name'))->toBe('Lonely');
 });
 
+it('applies cuisine and price_range filters and keeps total_in_bbox consistent', function () {
+    activePlace(51.5117, -0.1300, ['name' => 'Thai Spot', 'cuisine_primary' => 'thai', 'price_range' => 2]);
+    activePlace(51.5000, -0.1000, ['name' => 'Pizza Spot', 'cuisine_primary' => 'pizza', 'price_range' => 3]);
+
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&cuisine=thai')->assertOk();
+    expect(collect($res->json('data.pins'))->pluck('name'))->toContain('Thai Spot')->not->toContain('Pizza Spot');
+    expect($res->json('meta.total_in_bbox'))->toBe(1);
+
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&price_range=3')->assertOk();
+    expect(collect($res->json('data.pins'))->pluck('name'))->toContain('Pizza Spot')->not->toContain('Thai Spot');
+});
+
+it('total_in_bbox equals pins + sum of cluster counts (clustered path)', function () {
+    activePlace(51.5117, -0.1300);
+    activePlace(51.5118, -0.1301); // same cell → cluster of 2
+    activePlace(51.4700, -0.0700); // distinct cell → pin
+
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=12')->assertOk();
+    $pins = count($res->json('data.pins'));
+    $clustered = collect($res->json('data.clusters'))->sum('count');
+
+    expect($pins + $clustered)->toBe($res->json('meta.total_in_bbox'));
+});
+
 it('excludes merged and pending-elsewhere places but includes pending in-view', function () {
     activePlace(51.5117, -0.1300, ['name' => 'Active']);
     Place::factory()->atPoint(51.5100, -0.1200)->create(['name' => 'PendingInView']); // pending default

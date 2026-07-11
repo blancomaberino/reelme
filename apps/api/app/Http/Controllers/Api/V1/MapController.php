@@ -29,6 +29,9 @@ class MapController extends Controller
 
     private const PIN_CAP = 300;
 
+    /** Max grid cells returned (biggest clusters first) — bounds an oversized-bbox request. */
+    private const CELL_CAP = 400;
+
     /** Cells ≈ 60–80px: cell = 360 / (2^zoom * k). */
     private const GRID_K = 3;
 
@@ -147,6 +150,8 @@ class MapController extends Controller
         $sql = $base->toSql();
         $bindings = $base->getBindings();
 
+        // Cap the number of cells (densest first) so an oversized bbox at low zoom
+        // can't force a full-table aggregation + singleton re-fetch.
         $rows = DB::select(
             "WITH in_bbox AS ({$sql})
              SELECT ST_X(ST_SnapToGrid(geom, ?)) AS cell_x,
@@ -160,9 +165,14 @@ class MapController extends Controller
                     ST_XMax(ST_Extent(geom)) AS max_lng,
                     ST_YMax(ST_Extent(geom)) AS max_lat
              FROM in_bbox
-             GROUP BY cell_x, cell_y",
-            [...$bindings, $cell, $cell],
+             GROUP BY cell_x, cell_y
+             ORDER BY count DESC
+             LIMIT ?",
+            [...$bindings, $cell, $cell, self::CELL_CAP + 1],
         );
+
+        $truncated = count($rows) > self::CELL_CAP;
+        $rows = array_slice($rows, 0, self::CELL_CAP);
 
         // Singleton cells become real pins (fetch their attributes); multi-place
         // cells become clusters.
@@ -203,7 +213,12 @@ class MapController extends Controller
 
         return response()->json([
             'data' => ['pins' => $pins, 'clusters' => $clusters],
-            'meta' => ['zoom' => $zoom, 'total_in_bbox' => $total, 'clustered' => true],
+            'meta' => array_filter([
+                'zoom' => $zoom,
+                'total_in_bbox' => $total,
+                'clustered' => true,
+                'truncated' => $truncated ?: null,
+            ], fn ($v) => $v !== null),
         ]);
     }
 

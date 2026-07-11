@@ -30,10 +30,12 @@ it('serves a city-zoom viewport quickly over 10k seeded places', function () {
     // Generous ceiling for a shared Docker Postgres; the production target is <300ms.
     expect($p95)->toBeLessThan(1500.0);
 
-    // The bbox predicate must hit the GIST index, not seq-scan 10k rows.
+    // The bbox predicate must hit the GIST index, not seq-scan 10k rows — probe
+    // with the controller's actual predicate shape.
     $plan = collect(DB::select(
         "EXPLAIN SELECT id FROM places
-         WHERE status = 'active'
+         WHERE status IN ('pending', 'active')
+           AND merged_into_place_id IS NULL
            AND location && ST_MakeEnvelope(-9.20, 38.69, -9.10, 38.75, 4326)::geography"
     ))->pluck('QUERY PLAN')->implode("\n");
 
