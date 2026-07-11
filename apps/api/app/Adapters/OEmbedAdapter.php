@@ -44,7 +44,8 @@ class OEmbedAdapter implements SourceAdapter
     {
         $provider = $this->provider($canonicalUrl);
         if ($provider === null) {
-            throw new PostUnavailable("Unsupported oEmbed URL [{$canonicalUrl}].");
+            // Never interpolate the URL into the message (log-leak policy).
+            throw new PostUnavailable('Unsupported oEmbed URL.');
         }
         [$platform, $endpoint] = $provider;
 
@@ -56,16 +57,20 @@ class OEmbedAdapter implements SourceAdapter
             throw new FetchFailed('oEmbed request failed.');
         }
 
-        if ($response->status() === 404 || $response->status() === 401 || $response->status() === 403) {
+        if ($response->status() === 429) {
+            // Transient rate-limit — release + retry with backoff, don't degrade to manual.
+            $retryAfter = (int) $response->header('Retry-After');
+            throw new FetchFailed('oEmbed rate limited.', retryAfter: $retryAfter > 0 ? $retryAfter : 60);
+        }
+        if (in_array($response->status(), [404, 401, 403, 410], true)) {
             throw new PostUnavailable('Post is unavailable or private.');
         }
         if ($response->failed()) {
             throw new FetchFailed('oEmbed returned '.$response->status().'.');
         }
 
-        /** @var array<string, mixed> $body */
-        $body = $response->json() ?? [];
-        $title = trim((string) ($body['title'] ?? ''));
+        $body = is_array($response->json()) ? $response->json() : [];
+        $title = trim($this->scalar($body['title'] ?? null));
         if ($title === '') {
             throw new PostUnavailable('oEmbed response had no title.');
         }
@@ -78,7 +83,7 @@ class OEmbedAdapter implements SourceAdapter
             // caption the extractor reads.
             caption: $title,
             authorHandle: $this->authorHandle($body),
-            authorDisplayName: ($body['author_name'] ?? null) !== null ? (string) $body['author_name'] : null,
+            authorDisplayName: trim($this->scalar($body['author_name'] ?? null)) ?: null,
             raw: ['source' => 'oembed'] + $body,
         );
     }
@@ -111,14 +116,20 @@ class OEmbedAdapter implements SourceAdapter
      */
     private function authorHandle(array $body): ?string
     {
-        $authorUrl = (string) ($body['author_url'] ?? '');
+        $authorUrl = $this->scalar($body['author_url'] ?? null);
         if (preg_match('/@([A-Za-z0-9._]+)/', $authorUrl, $m) === 1) {
             return $m[1];
         }
 
-        $name = trim((string) ($body['author_name'] ?? ''));
+        $name = trim($this->scalar($body['author_name'] ?? null));
 
         return $name !== '' ? $name : null;
+    }
+
+    /** Coerce a possibly-nested oEmbed value to a string, never "Array". */
+    private function scalar(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 
     private function externalId(string $url): string

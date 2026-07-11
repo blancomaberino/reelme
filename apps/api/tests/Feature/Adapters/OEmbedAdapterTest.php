@@ -1,10 +1,13 @@
 <?php
 
+use App\Adapters\Data\MediaFetchResult;
+use App\Adapters\Data\SourcePostData;
 use App\Adapters\Exceptions\FetchFailed;
 use App\Adapters\Exceptions\PostUnavailable;
 use App\Adapters\OEmbedAdapter;
 use App\Enums\Platform;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 it('supports youtube and tiktok URLs, not others', function () {
@@ -33,6 +36,36 @@ it('maps a YouTube oEmbed response to caption + author', function () {
         ->and($data->authorDisplayName)->toBe('Taco Hunter')
         ->and($data->externalId)->toBe('dQw4w9WgXcQ')
         ->and($data->raw['source'])->toBe('oembed');
+
+    // The request hits the hardcoded provider endpoint with the URL as a param
+    // (not as the request host) — the SSRF-relevant assertion.
+    Http::assertSent(fn (Request $r) => str_starts_with($r->url(), 'https://www.youtube.com/oembed')
+        && str_contains(urldecode($r->url()), 'url=https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
+});
+
+it('parks (PostUnavailable) on 401/403 and on a titleless body; media is empty', function () {
+    Http::fake(['*/oembed*' => Http::response('', 401)]);
+    expect(fn () => (new OEmbedAdapter)->fetchMetadata('https://youtu.be/private', null))
+        ->toThrow(PostUnavailable::class);
+
+    Http::fake(['*/oembed*' => Http::response(['author_name' => 'No Title'])]); // no title key
+    expect(fn () => (new OEmbedAdapter)->fetchMetadata('https://youtu.be/blank', null))
+        ->toThrow(PostUnavailable::class);
+
+    expect((new OEmbedAdapter)->fetchMedia(new SourcePostData(Platform::Youtube, 'x', 'https://youtu.be/x'), null))
+        ->toBeInstanceOf(MediaFetchResult::class)
+        ->and((new OEmbedAdapter)->fetchMedia(new SourcePostData(Platform::Youtube, 'x', 'https://youtu.be/x'), null)->media)->toBe([]);
+});
+
+it('releases with backoff on a 429 rate-limit', function () {
+    Http::fake(['*/oembed*' => Http::response('', 429, ['Retry-After' => '30'])]);
+
+    try {
+        (new OEmbedAdapter)->fetchMetadata('https://youtu.be/busy', null);
+        $this->fail('Expected FetchFailed.');
+    } catch (FetchFailed $e) {
+        expect($e->retryAfter)->toBe(30);
+    }
 });
 
 it('extracts the tiktok video id and handle', function () {
