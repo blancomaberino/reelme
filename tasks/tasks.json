@@ -710,7 +710,7 @@
       "id": "T-029",
       "title": "Map API: bbox query with clustering",
       "phase": "M2",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-023"
       ],
