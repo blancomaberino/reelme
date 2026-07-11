@@ -55,7 +55,9 @@ it('lists every source with post link-out, influencer and public sharer attribut
         'dishes' => [['name' => 'Beef Noodle Soup', 'shown_in_video' => true]],
     ], primary: true);
 
-    $res = $this->getJson("/api/v1/places/{$place->slug}/sources")->assertOk();
+    $res = $this->getJson("/api/v1/places/{$place->slug}/sources")
+        ->assertOk()
+        ->assertHeader('X-RateLimit-Limit', '120');
 
     $row = $res->json('data.0');
     expect($row['id'])->toBe((string) $source->id)
@@ -96,7 +98,8 @@ it('serves a signed thumbnail URL when the post has a thumbnail asset', function
         ->assertOk()
         ->json('data.0.source_post.thumbnail_url');
 
-    expect($url)->toBeString()->toContain('thumb.jpg');
+    // A signed temporary URL — not a raw storage path/URL.
+    expect($url)->toBeString()->toContain('thumb.jpg')->toContain('signature=');
 });
 
 it('paginates sources by cursor', function () {

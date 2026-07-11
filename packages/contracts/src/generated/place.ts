@@ -33,7 +33,11 @@ export interface PlaceDetail {
     google: RatingBlock;
     app: RatingBlock;
   };
-  google_reviews: {}[];
+  google_reviews: {
+    author?: string | null;
+    rating?: number | null;
+    text?: string | null;
+  }[];
   sources?: PlaceSource[];
   offers?: unknown[];
 }

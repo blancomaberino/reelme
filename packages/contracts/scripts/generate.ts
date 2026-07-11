@@ -49,6 +49,9 @@ async function main(): Promise<void> {
   for (const file of apiSchemas) {
     const stem = basename(file, '.json').replace(/[^a-z0-9-]/gi, '');
     const out = join(OUT_DIR, `${stem}.ts`);
+    if (out === EXTRACTION_OUT) {
+      throw new Error(`schemas/${file} collides with the extraction output file`);
+    }
     writeFileSync(out, await compileSchema(join(SCHEMAS_DIR, file), `schemas/${file}`));
     // eslint-disable-next-line no-console
     console.log(`Wrote ${out}`);

@@ -52,7 +52,17 @@
         "app": { "$ref": "#/definitions/ratingBlock" }
       }
     },
-    "google_reviews": { "type": "array", "items": { "type": "object" } },
+    "google_reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "author": { "type": ["string", "null"] },
+          "rating": { "type": ["number", "null"] },
+          "text": { "type": ["string", "null"] }
+        }
+      }
+    },
     "sources": {
       "type": "array",
       "items": { "$ref": "place-source.json" }

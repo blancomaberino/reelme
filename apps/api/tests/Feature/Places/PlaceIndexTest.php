@@ -56,12 +56,30 @@ it('sorts by recent (default) newest first with id tiebreak', function () {
 });
 
 it('sorts by popular (shares_count desc)', function () {
+    // The popular winner is the OLDER row so a fall-through to the default
+    // recent sort would produce the opposite order.
+    $hot = Place::factory()->active()->atPoint(38.7, -9.1)->create(['shares_count' => 9, 'created_at' => now()->subDay()]);
     $quiet = Place::factory()->active()->atPoint(38.7, -9.1)->create(['shares_count' => 1]);
-    $hot = Place::factory()->active()->atPoint(38.7, -9.1)->create(['shares_count' => 9]);
 
     $ids = collect($this->getJson('/api/v1/places?sort=popular')->assertOk()->json('data'))->pluck('id')->all();
 
     expect($ids)->toBe([(string) $hot->id, (string) $quiet->id]);
+});
+
+it('walks popular pages via cursor, including shares_count ties, without duplicates or gaps', function () {
+    Place::factory()->active()->atPoint(38.7, -9.1)->count(5)->sequence(
+        fn ($seq) => ['shares_count' => [9, 5, 5, 5, 1][$seq->index]],
+    )->create();
+
+    $page1 = $this->getJson('/api/v1/places?sort=popular&limit=2')->assertOk();
+    $page2 = $this->getJson('/api/v1/places?sort=popular&limit=2&cursor='.urlencode($page1->json('meta.pagination.next_cursor')))->assertOk();
+    $page3 = $this->getJson('/api/v1/places?sort=popular&limit=2&cursor='.urlencode($page2->json('meta.pagination.next_cursor')))->assertOk();
+
+    $all = collect([...$page1->json('data'), ...$page2->json('data'), ...$page3->json('data')]);
+    expect($all)->toHaveCount(5)
+        ->and($all->pluck('id')->unique())->toHaveCount(5)
+        ->and($all->pluck('source_count')->all())->toBe([9, 5, 5, 5, 1])
+        ->and($page3->json('meta.pagination.next_cursor'))->toBeNull();
 });
 
 it('walks pages via cursor without duplicates or gaps', function () {
@@ -102,13 +120,17 @@ it('rejects a garbage cursor with 422, not 500', function () {
         ->assertJsonPath('error.code', 'validation_failed');
 });
 
-it('rejects a structurally-valid recent cursor whose key is not a timestamp', function () {
-    $crafted = rtrim(strtr(base64_encode((string) json_encode(['s' => 'recent', 'k' => ['not-a-date', 1]])), '+/', '-_'), '=');
+it('rejects a structurally-valid recent cursor whose key is not a timestamp', function (string $key) {
+    $crafted = rtrim(strtr(base64_encode((string) json_encode(['s' => 'recent', 'k' => [$key, 1]])), '+/', '-_'), '=');
 
     $this->getJson('/api/v1/places?sort=recent&cursor='.urlencode($crafted))
         ->assertStatus(422)
         ->assertJsonPath('error.code', 'validation_failed');
-});
+})->with([
+    'not a date' => ['not-a-date'],
+    'shape-valid but out of range' => ['2026-13-40 99:99:99.000000'],
+    'year zero (valid in PHP, not in Postgres)' => ['0000-01-01 00:00:00.000000'],
+]);
 
 it('filters by q on normalized name (prefix and fuzzy)', function () {
     Place::factory()->active()->atPoint(38.7, -9.1)->create(['name' => 'Lanzhou Beef Noodle House']);
@@ -192,7 +214,9 @@ it('filters by influencer_id via source attribution', function () {
 it('accepts tags[] pre-T-031 as a validated no-op', function () {
     Place::factory()->active()->atPoint(38.7, -9.1)->create();
 
-    $this->getJson('/api/v1/places?tags[]=ramen')->assertOk();
+    // No-op means the filter must not exclude anything until the pivot exists.
+    $res = $this->getJson('/api/v1/places?tags[]=ramen')->assertOk();
+    expect($res->json('data'))->toHaveCount(1);
 });
 
 it('exposes rate-limit headers', function () {

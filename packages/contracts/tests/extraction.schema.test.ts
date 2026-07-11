@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Ajv, { type ErrorObject } from 'ajv';
@@ -68,17 +68,29 @@ describe('extraction.schema.json (draft-07)', () => {
     expect(typed.confidence.overall).toBeCloseTo(0.91);
   });
 
-  it('has no drift between the schema and the committed generated types', () => {
-    // Regenerate to a temp file in a subprocess (keeps json-schema-to-typescript's
-    // ESM formatter out of Jest's VM) and diff against the committed output.
-    const out = join(mkdtempSync(join(tmpdir(), 'contracts-')), 'extraction.ts');
+  it('has no drift between the schemas and the committed generated types', () => {
+    // Regenerate EVERYTHING to a temp dir in a subprocess (keeps
+    // json-schema-to-typescript's ESM formatter out of Jest's VM, and never
+    // touches the committed src/generated) and diff every file.
+    const outDir = mkdtempSync(join(tmpdir(), 'contracts-'));
     execFileSync('npx', ['tsx', 'scripts/generate.ts'], {
       cwd: ROOT,
-      env: { ...process.env, CONTRACTS_OUT: out },
+      env: {
+        ...process.env,
+        CONTRACTS_OUT: join(outDir, 'extraction.ts'),
+        CONTRACTS_OUT_DIR: outDir,
+      },
       stdio: 'pipe',
     });
-    const fresh = readFileSync(out, 'utf8');
-    const committed = readFileSync(join(ROOT, 'src/generated/extraction.ts'), 'utf8');
-    expect(fresh).toBe(committed); // run `npm run generate -w packages/contracts` if this fails
+
+    const generated = readdirSync(outDir).sort();
+    const committed = readdirSync(join(ROOT, 'src/generated')).sort();
+    expect(generated).toEqual(committed);
+
+    for (const file of generated) {
+      const fresh = readFileSync(join(outDir, file), 'utf8');
+      const kept = readFileSync(join(ROOT, 'src/generated', file), 'utf8');
+      expect(fresh).toBe(kept); // run `npm run generate -w packages/contracts` if this fails
+    }
   }, 60000);
 });

@@ -7,9 +7,18 @@ use App\Models\Review;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    Model::preventLazyLoading();
+});
+
+afterEach(function () {
+    Model::preventLazyLoading(false);
+});
 
 /**
  * Attach a place_source carrying a frozen extraction snapshot, wired to a real
@@ -48,6 +57,19 @@ it('aggregates deduped tags + dishes and lists contributing sources', function (
         'shares_count' => 2,
     ]);
 
+    // The NON-primary source is attached first (lower id) so the "primary
+    // first" assertion pins the is_primary ordering, not insertion order.
+    attachSource($place, [
+        'name' => 'Lanzhou Beef Noodle House',
+        'cuisines' => ['chinese', 'halal'],
+        'vibe_tags' => ['casual', 'authentic'],
+        'dietary_tags' => ['halal', 'vegetarian-options'],
+        'dishes' => [
+            ['name' => 'Beef Noodle Soup', 'shown_in_video' => false], // dup by name → primary's copy wins
+            ['name' => 'Hand-Pulled Noodles', 'shown_in_video' => true],
+        ],
+    ], 'tiktok', 'street.eats', 'Street Eats');
+
     attachSource($place, [
         'name' => 'Lanzhou Beef Noodle House',
         'cuisines' => ['chinese', 'noodles'],
@@ -58,17 +80,6 @@ it('aggregates deduped tags + dishes and lists contributing sources', function (
             ['name' => 'Dumplings', 'shown_in_video' => false],
         ],
     ], 'instagram', 'noodle.hunter', 'Noodle Hunter', primary: true);
-
-    attachSource($place, [
-        'name' => 'Lanzhou Beef Noodle House',
-        'cuisines' => ['chinese', 'halal'],
-        'vibe_tags' => ['casual', 'authentic'],
-        'dietary_tags' => ['halal', 'vegetarian-options'],
-        'dishes' => [
-            ['name' => 'Beef Noodle Soup', 'shown_in_video' => false], // dup by name → first wins
-            ['name' => 'Hand-Pulled Noodles', 'shown_in_video' => true],
-        ],
-    ], 'tiktok', 'street.eats', 'Street Eats');
 
     $res = $this->getJson("/api/v1/places/{$place->id}?include=sources")->assertOk();
 

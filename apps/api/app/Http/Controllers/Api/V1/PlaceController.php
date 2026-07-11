@@ -15,7 +15,6 @@ use App\Support\KeysetCursor;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -64,14 +63,10 @@ class PlaceController extends Controller
             }
         }
 
-        // tags[] pivot lands in T-031 — accepted now, filtering no-ops until
-        // the pivot exists (same guard as the map, T-029).
+        // tags[] pivot lands in T-031 — accepted now, no-op until it exists.
         $tags = $request->validated('tags');
-        if (is_array($tags) && $tags !== [] && Schema::hasTable('place_tag')) {
-            $query->whereExists(fn ($sub) => $sub->from('place_tag')
-                ->join('tags', 'tags.id', '=', 'place_tag.tag_id')
-                ->whereColumn('place_tag.place_id', 'places.id')
-                ->whereIn('tags.slug', $tags));
+        if (is_array($tags)) {
+            $query->anyTagSlug($tags);
         }
 
         if (($influencerId = $request->validated('influencer_id')) !== null) {
@@ -113,7 +108,7 @@ class PlaceController extends Controller
         // pointer and answer with the survivor, flagged so clients can update
         // their canonical reference.
         if ($place->merged_into_place_id !== null || $place->status === PlaceStatus::Merged) {
-            $terminal = $place->mergedInto;
+            $terminal = Place::query()->find($place->merged_into_place_id);
             if ($terminal === null || $terminal->merged_into_place_id !== null || $terminal->status === PlaceStatus::Merged) {
                 Log::warning('places.merged_chain_not_single_hop', ['place_id' => $place->id]);
                 abort(404);
@@ -127,14 +122,15 @@ class PlaceController extends Controller
         $includes = $request->includes();
         $withSources = in_array('sources', $includes, true);
 
+        // Sources are always loaded for tag aggregation; their relations only
+        // matter to the ?include=sources embed. Reviews reduce to aggregates —
+        // never load the rows (unbounded as T-059 reviews accumulate).
         $place->load([
             'sources' => fn ($q) => $q
-                ->with($withSources
-                    ? ['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user']
-                    : ['sourcePost.influencer'])
+                ->when($withSources, fn ($qq) => $qq->with(['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user']))
                 ->orderByDesc('is_primary')->orderBy('id')->limit(self::SOURCE_CAP),
-            'reviews',
         ]);
+        $place->loadCount('reviews')->loadAvg('reviews', 'rating');
 
         return response()->json([
             'data' => (new PlaceResource($place))->withIncludes($includes),
@@ -144,6 +140,9 @@ class PlaceController extends Controller
 
     public function sources(PlaceSourcesRequest $request, Place $place): JsonResponse
     {
+        // Unlike show(), a merged tombstone 404s here rather than redirecting:
+        // clients must refresh the canonical place from show() (which carries
+        // meta.redirected_from) before paging its sub-resources.
         abort_unless(
             $place->merged_into_place_id === null
             && in_array($place->status, [PlaceStatus::Pending, PlaceStatus::Active], true),
@@ -179,16 +178,11 @@ class PlaceController extends Controller
     }
 
     /**
-     * Places visible on public browse surfaces (index): pending + active,
-     * never merged/tombstoned.
-     *
      * @return Builder<Place>
      */
     private function visible(): Builder
     {
-        return Place::query()
-            ->whereIn('status', [PlaceStatus::Pending->value, PlaceStatus::Active->value])
-            ->whereNull('merged_into_place_id');
+        return Place::query()->publiclyVisible();
     }
 
     /**
@@ -224,11 +218,13 @@ class PlaceController extends Controller
             default: // recent
                 $query->orderByDesc('created_at')->orderByDesc('id');
                 if ($cursor !== null) {
-                    // The key binds into a ?::timestamp cast — a non-timestamp
-                    // string would be a Postgres error (500), so shape-check it
-                    // here and answer 422 like every other malformed cursor.
+                    // The key binds into a ?::timestamp cast — anything Postgres
+                    // can't parse would be a 500, so require a strict round-trip
+                    // (rejects shape-valid-but-out-of-range values like month 13,
+                    // which PHP would silently normalize) and PG's no-year-zero.
                     $ts = (string) $cursor[0];
-                    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/', $ts) !== 1) {
+                    $dt = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s.u', $ts);
+                    if ($dt === false || $dt->format('Y-m-d H:i:s.u') !== $ts || str_starts_with($ts, '0000-')) {
                         throw ValidationException::withMessages(['cursor' => ['The cursor is malformed.']]);
                     }
                     $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, (int) $cursor[1]]);

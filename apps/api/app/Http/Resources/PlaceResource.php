@@ -67,8 +67,10 @@ class PlaceResource extends JsonResource
                     'count' => (int) ($this->google_rating_count ?? 0),
                 ],
                 'app' => [
-                    'value' => $this->appRatingValue(),
-                    'count' => $this->reviews->count(),
+                    'value' => ((int) $this->reviews_count) > 0
+                        ? round((float) $this->reviews_avg_rating, 1)
+                        : null,
+                    'count' => (int) $this->reviews_count,
                 ],
             ],
             'google_reviews' => $this->google_reviews_json ?? [],
@@ -94,15 +96,5 @@ class PlaceResource extends JsonResource
         );
 
         return implode(', ', array_map(fn ($p) => trim((string) $p), $parts));
-    }
-
-    /** Native review average (rounded to 1dp), or null when there are none. */
-    private function appRatingValue(): ?float
-    {
-        if ($this->reviews->isEmpty()) {
-            return null;
-        }
-
-        return round((float) $this->reviews->avg('rating'), 1);
     }
 }

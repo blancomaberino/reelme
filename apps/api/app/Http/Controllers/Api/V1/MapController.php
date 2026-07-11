@@ -8,7 +8,6 @@ use App\Models\Place;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Map read path (T-029, 03 §3.3): `GET /map/places` returns server-clustered
@@ -78,8 +77,7 @@ class MapController extends Controller
     private function baseQuery(MapPlacesRequest $request, array $bbox, string $filter, ?int $userId): Builder
     {
         $query = Place::query()
-            ->whereIn('status', ['pending', 'active'])
-            ->whereNull('merged_into_place_id')
+            ->publiclyVisible()
             ->whereRaw(
                 'location && ST_MakeEnvelope(?, ?, ?, ?, 4326)::geography',
                 [$bbox['minLng'], $bbox['minLat'], $bbox['maxLng'], $bbox['maxLat']],
@@ -92,15 +90,10 @@ class MapController extends Controller
             $query->where('price_range', (int) $price);
         }
 
-        // tags[] pivot + Tag model land in T-031 — the param is validated and
-        // accepted now but filtering is a no-op until the pivot exists (guarded so
-        // no query references the missing relation).
+        // tags[] pivot + Tag model land in T-031 — validated, no-op until then.
         $tags = $request->validated('tags');
-        if (is_array($tags) && $tags !== [] && Schema::hasTable('place_tag')) {
-            $query->whereExists(fn ($q) => $q->from('place_tag')
-                ->join('tags', 'tags.id', '=', 'place_tag.tag_id')
-                ->whereColumn('place_tag.place_id', 'places.id')
-                ->whereIn('tags.slug', $tags));
+        if (is_array($tags)) {
+            $query->anyTagSlug($tags);
         }
 
         if ($filter === 'mine' && $userId !== null) {

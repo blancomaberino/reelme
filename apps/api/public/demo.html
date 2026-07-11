@@ -171,7 +171,11 @@ function renderPlace(p) {
     const post = s.source_post || {};
     const handle = s.influencer && s.influencer.handle;
     const sharer = s.sharer && s.sharer.username;
-    return `<div class="src">🔗 <a href="${esc(safeUrl(post.url))}" target="_blank" rel="noopener">${esc(post.platform || "post")} post</a>` +
+    const label = `${esc(post.platform || "")} post`.trim();
+    const link = post.url
+      ? `<a href="${esc(safeUrl(post.url))}" target="_blank" rel="noopener">${label}</a>`
+      : label;
+    return `<div class="src">🔗 ${link}` +
       `${handle ? ` · @${esc(handle)}` : ""}${sharer ? ` · shared by ${esc(sharer)}` : ""}</div>`;
   }).join("");
   const reviews = (p.google_reviews || []).slice(0, 3).map(r =>
