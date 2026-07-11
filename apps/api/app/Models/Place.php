@@ -8,12 +8,14 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Laravel\Scout\Searchable;
 
 /**
  * A deduplicated place — one map pin (02 §3.8). `location` is PostGIS
@@ -42,6 +44,8 @@ class Place extends Model
 {
     /** @use HasFactory<PlaceFactory> */
     use HasFactory;
+
+    use Searchable;
 
     // Written by the resolver/merger only; `location` is set via setPoint(), not
     // mass-assignment (it carries a raw SQL expression, not a scalar).
@@ -144,6 +148,68 @@ class Place extends Model
     public function reviews(): HasMany
     {
         return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Discovery tags materialized from extraction snapshots on publish (T-031).
+     *
+     * @return BelongsToMany<Tag, $this>
+     */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class)->withPivot(['source', 'confidence']);
+    }
+
+    /**
+     * Same visibility rule as the public read surfaces (map/browse): pending +
+     * active places are searchable — the documented deviation from "active
+     * only", since a first auto-publish stays pending (02 §3.8) and would
+     * otherwise be undiscoverable. Merged tombstones drop out on save.
+     */
+    public function shouldBeSearchable(): bool
+    {
+        return $this->merged_into_place_id === null
+            && in_array($this->status, [PlaceStatus::Pending, PlaceStatus::Active], true);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toSearchableArray(): array
+    {
+        // Bulk import selects lat/lng as aliases (makeAllSearchableUsing);
+        // a single-model sync falls back to the coordinate query.
+        $lat = $this->getAttribute('lat');
+        $lng = $this->getAttribute('lng');
+        if ($lat === null || $lng === null) {
+            ['lat' => $lat, 'lng' => $lng] = $this->coordinates();
+        }
+
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'normalized_name' => $this->normalized_name,
+            'slug' => $this->slug,
+            'city' => $this->city,
+            'country_code' => $this->country_code,
+            'cuisine_primary' => $this->cuisine_primary,
+            'price_range' => $this->price_range,
+            'tags' => $this->tags->pluck('slug')->all(),
+            'shares_count' => (int) $this->shares_count,
+            '_geo' => ['lat' => (float) $lat, 'lng' => (float) $lng],
+        ];
+    }
+
+    /**
+     * @param  Builder<Place>  $query
+     * @return Builder<Place>
+     */
+    protected function makeAllSearchableUsing(Builder $query): Builder
+    {
+        return $query
+            ->select('places.*')
+            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
+            ->with('tags');
     }
 
     /**

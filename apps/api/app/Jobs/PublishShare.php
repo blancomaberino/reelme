@@ -6,6 +6,7 @@ use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
 use App\Models\PlaceSource;
 use App\Models\Share;
+use App\Services\Places\TagMaterializer;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -91,6 +92,17 @@ class PublishShare extends PipelineStubJob
         if ($place->status === PlaceStatus::Pending && ($sourceCount >= 2 || $share->user_confirmed)) {
             $place->status = PlaceStatus::Active;
         }
+
+        // Materialize discovery tags from the as-published snapshot (T-031) —
+        // before save() so cuisine_primary backfill and the Scout re-index (the
+        // searchable document embeds tag slugs) ride the same write.
+        app(TagMaterializer::class)->materialize(
+            $place,
+            $source->extraction_snapshot_json,
+            $source->analysisRun?->overall_confidence !== null
+                ? (float) $source->analysisRun->overall_confidence
+                : null,
+        );
 
         $place->shares_count = $sourceCount;
         $place->avg_extraction_confidence = $this->avgConfidence($place->id);

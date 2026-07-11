@@ -12,7 +12,9 @@ use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\PlaceController;
+use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\ShareController;
+use App\Http\Controllers\Api\V1\TagController;
 use App\Http\Controllers\MediaUploadController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,6 +41,11 @@ Route::prefix('v1')->group(function () {
     Route::get('/places', [PlaceController::class, 'index'])->middleware('throttle:map');
     Route::get('/places/{place}', [PlaceController::class, 'show'])->middleware('throttle:map');
     Route::get('/places/{place}/sources', [PlaceController::class, 'sources'])->middleware('throttle:map');
+
+    // Tags + federated search (T-031, 03 §2.11): public, same interactive
+    // read limiter as the map (typing in a search box pans like a map does).
+    Route::get('/tags', [TagController::class, 'index'])->middleware('throttle:map');
+    Route::get('/search', SearchController::class)->middleware('throttle:map');
 
     // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
     Route::prefix('auth')->middleware('throttle:auth')->group(function () {

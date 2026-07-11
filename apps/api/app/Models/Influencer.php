@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Scout\Searchable;
 
 /**
  * @property int $id
@@ -20,6 +21,8 @@ class Influencer extends Model
 {
     /** @use HasFactory<InfluencerFactory> */
     use HasFactory;
+
+    use Searchable;
 
     // Identity/profile fields set by the ingest pipeline. `claimed_by_user_id`
     // and `claimed_at` are granted only by the verified claim flow (T-038),
@@ -52,5 +55,18 @@ class Influencer extends Model
     public function claimedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'claimed_by_user_id');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'platform' => $this->platform->value,
+            'handle' => $this->handle,
+            'display_name' => $this->display_name,
+        ];
     }
 }

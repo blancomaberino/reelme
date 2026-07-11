@@ -4,6 +4,7 @@ use App\Models\Influencer;
 use App\Models\Place;
 use App\Models\PlaceSource;
 use App\Models\Share;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -159,4 +160,17 @@ it('exposes rate-limit headers', function () {
     $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16')
         ->assertOk()
         ->assertHeader('X-RateLimit-Limit', '120');
+});
+
+it('filters map pins by tags[] via the pivot (live since T-031)', function () {
+    $tagged = activePlace(51.5117, -0.1300, ['name' => 'Tagged']);
+    activePlace(51.5000, -0.1000, ['name' => 'Untagged']);
+    $tag = Tag::factory()->create(['slug' => 'ramen', 'name' => 'Ramen']);
+    $tagged->tags()->attach($tag->id, ['source' => 'extraction']);
+
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&tags[]=ramen')->assertOk();
+
+    $names = collect($res->json('data.pins'))->pluck('name');
+    expect($names)->toContain('Tagged')->not->toContain('Untagged');
+    $res->assertJsonPath('meta.total_in_bbox', 1);
 });
