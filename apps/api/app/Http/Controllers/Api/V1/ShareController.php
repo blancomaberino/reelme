@@ -177,8 +177,10 @@ class ShareController extends Controller
 
     /**
      * Fold a candidate override into the payload. A manual `{lat,lng}` pin becomes
-     * `place.geo` (valid per schema); a `google_place_id` pick is stashed on
-     * `review_meta_json` so ResolvePlace attaches straight to that place.
+     * `place.geo` (valid per schema); a `place_id` pick is stashed on
+     * `review_meta_json` so ResolvePlace attaches straight to that place — but only
+     * after checking the id is one the review actually offered, so a share can't be
+     * attached to (and skew the counters of) an arbitrary canonical place.
      *
      * @param  array<string, mixed>  $merged
      * @param  array<string, mixed>  $candidate
@@ -192,10 +194,21 @@ class ShareController extends Controller
             $merged['place'] = $place;
         }
 
-        $googlePlaceId = $candidate['google_place_id'] ?? null;
-        if (is_string($googlePlaceId) && $googlePlaceId !== '') {
+        if (isset($candidate['place_id'])) {
+            $pickedId = (int) $candidate['place_id'];
             $meta = is_array($share->review_meta_json) ? $share->review_meta_json : [];
-            $meta['picked_google_place_id'] = $googlePlaceId;
+            $offered = array_map(
+                fn ($c): int => (int) ($c['place_id'] ?? 0),
+                is_array($meta['candidates'] ?? null) ? $meta['candidates'] : [],
+            );
+
+            if (! in_array($pickedId, $offered, true)) {
+                throw ValidationException::withMessages([
+                    'place_candidate.place_id' => ['The selected place is not among the review candidates.'],
+                ]);
+            }
+
+            $meta['picked_place_id'] = $pickedId;
             $share->review_meta_json = $meta;
         }
 

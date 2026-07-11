@@ -35,8 +35,8 @@ class PlaceResolver
             return ResolutionOutcome::geocodeFailed();
         }
 
-        // Review picker: the user chose an existing candidate by its google_place_id
-        // — attach straight to that place, short-circuiting geocode + the dedup tree.
+        // Review picker: the user chose one of the offered candidate places (by id,
+        // validated at PATCH time) — attach straight to it, short-circuiting geocode.
         if (($picked = $this->pickedPlace($share)) !== null) {
             $target = $this->terminal($picked);
 
@@ -232,19 +232,20 @@ class PlaceResolver
 
     /**
      * The existing place a reviewer selected from the ambiguous-candidate picker
-     * (`review_meta_json.picked_google_place_id`), or null when none was chosen.
+     * (`review_meta_json.picked_place_id`, already constrained to the offered set
+     * by the controller), or null when none was chosen.
      */
     private function pickedPlace(Share $share): ?Place
     {
         $meta = is_array($share->review_meta_json) ? $share->review_meta_json : [];
-        $pickedId = is_string($meta['picked_google_place_id'] ?? null) ? $meta['picked_google_place_id'] : null;
+        $pickedId = is_numeric($meta['picked_place_id'] ?? null) ? (int) $meta['picked_place_id'] : null;
 
-        if ($pickedId === null || $pickedId === '') {
+        if ($pickedId === null) {
             return null;
         }
 
         return Place::query()
-            ->where('google_place_id', $pickedId)
+            ->whereKey($pickedId)
             ->where('status', '!=', PlaceStatus::Merged->value)
             ->first();
     }

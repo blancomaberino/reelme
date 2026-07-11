@@ -125,6 +125,39 @@ it('rejects a correction that breaks the schema with 422 + field details', funct
         ->and($share->fresh()->corrected_extraction_json)->toBeNull();
 });
 
+it('attaches to a reviewer-picked candidate and refuses an id outside the offered set', function () {
+    $share = reviewShare();
+    $a = Place::factory()->atPoint(51.5117, -0.1300)->create(['name' => 'Lanzhou A']);
+    $b = Place::factory()->atPoint(51.5117, -0.1300)->create(['name' => 'Lanzhou B']);
+    $share->review_reason = 'ambiguous_place';
+    $share->review_meta_json = ['candidates' => [
+        ['place_id' => $a->id, 'name' => 'Lanzhou A'],
+        ['place_id' => $b->id, 'name' => 'Lanzhou B'],
+    ]];
+    $share->save();
+    Sanctum::actingAs($share->user);
+
+    // An id NOT among the offered candidates is refused — no place poisoning.
+    $stranger = Place::factory()->atPoint(0.0, 0.0)->create(['name' => 'Stranger']);
+    $this->patchJson("/api/v1/shares/{$share->id}", ['place_candidate' => ['place_id' => $stranger->id]])
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed');
+    expect(PlaceSource::where('share_id', $share->id)->exists())->toBeFalse()
+        ->and($stranger->fresh()->shares_count)->toBe(0);
+
+    // Picking an offered candidate attaches straight to it (no geocode) and publishes.
+    $this->patchJson("/api/v1/shares/{$share->id}", [
+        'place_candidate' => ['place_id' => $a->id],
+        'action' => 'publish',
+    ])->assertOk();
+
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Published)
+        ->and(PlaceSource::where('share_id', $share->id)->sole()->place_id)->toBe($a->id)
+        ->and($a->fresh()->shares_count)->toBe(1)
+        ->and($a->fresh()->status)->toBe(PlaceStatus::Active); // user-confirmed pick
+});
+
 it('409s a PATCH on a share that is not in review', function () {
     $user = User::factory()->create();
     $share = Share::factory()->create(['user_id' => $user->id, 'status' => ShareStatus::Analyzing]);

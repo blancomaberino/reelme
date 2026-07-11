@@ -24,7 +24,9 @@ class UpdateShareRequest extends FormRequest
         return [
             'extraction' => ['nullable', 'array'],
             'place_candidate' => ['nullable', 'array'],
-            'place_candidate.google_place_id' => ['nullable', 'string'],
+            // A picked candidate is identified by its place_id (validated in the
+            // controller against the candidate set the review actually offered).
+            'place_candidate.place_id' => ['nullable', 'integer'],
             'place_candidate.lat' => ['nullable', 'numeric', 'between:-90,90'],
             'place_candidate.lng' => ['nullable', 'numeric', 'between:-180,180'],
             'action' => ['nullable', 'in:publish'],
