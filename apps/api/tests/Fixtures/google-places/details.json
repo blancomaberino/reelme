@@ -13,7 +13,25 @@
     "geometry": {
       "location": { "lat": 38.710979, "lng": -9.137619 }
     },
-    "types": ["restaurant", "food", "point_of_interest", "establishment"]
+    "types": ["restaurant", "food", "point_of_interest", "establishment"],
+    "rating": 4.6,
+    "user_ratings_total": 214,
+    "reviews": [
+      {
+        "author_name": "Maria S.",
+        "rating": 5,
+        "text": "Best hand-pulled noodles in Lisbon.",
+        "relative_time_description": "2 weeks ago",
+        "time": 1699000000
+      },
+      {
+        "author_name": "João P.",
+        "rating": 4,
+        "text": "Great broth, quick service.",
+        "relative_time_description": "a month ago",
+        "time": 1697000000
+      }
+    ]
   },
   "status": "OK"
 }

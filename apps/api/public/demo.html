@@ -35,6 +35,16 @@
   .muted { color:var(--mut); font-size:12px; }
   .err { color:var(--acc); font-size:12px; margin-top:8px; min-height:16px; }
   .hidden { display:none; }
+  #detail { position:absolute; top:0; right:0; width:360px; height:100%; background:var(--panel);
+    border-left:1px solid var(--line); overflow-y:auto; padding:18px 20px; z-index:1200; display:none; }
+  #detail.open { display:block; }
+  #detail .close { float:right; cursor:pointer; color:var(--mut); font-size:16px; }
+  #detail h2 { margin:0 0 2px; font-size:19px; letter-spacing:-0.02em; }
+  #detail h3 { font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--mut); margin:14px 0 6px; }
+  .stars { color:var(--warn); letter-spacing:1px; }
+  #detail .chip { display:inline-block; font-size:11px; padding:3px 9px; border-radius:999px; border:1px solid var(--line); margin:2px 4px 2px 0; color:var(--fg); }
+  .rev, .src { border-top:1px solid var(--line); padding:9px 0; font-size:12px; }
+  .src a { color:var(--acc); text-decoration:none; }
 </style>
 </head>
 <body>
@@ -78,6 +88,7 @@
     </div>
   </aside>
   <div id="map"></div>
+  <div id="detail"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -116,8 +127,8 @@ async function loadPlaces() {
     markers.clearLayers();
     for (const p of (data.pins || [])) {
       L.marker([p.lat, p.lng]).addTo(markers)
-        .bindPopup(`<b>${esc(p.name)}</b><br>${esc(p.category||"")} ${p.city?("· "+esc(p.city)):""}` +
-          `<br><small>${esc(p.source_count)} share(s) · ${esc(p.status)}</small>`);
+        .bindTooltip(esc(p.name))
+        .on("click", () => showPlace(p.id));
     }
     for (const c of (data.clusters || [])) {
       L.marker([c.lat, c.lng], { icon: clusterIcon(c.count) }).addTo(markers)
@@ -131,6 +142,46 @@ function clusterIcon(count) {
   return L.divIcon({ className:"", html:`<div style="background:#ff5a5f;color:#fff;border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;border:2px solid #fff">${count}</div>`, iconSize:[34,34] });
 }
 const esc = s => String(s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const safeUrl = u => /^https?:\/\//i.test(u||"") ? u : "#";   // block javascript:/data: in hrefs
+const money = n => n ? "$".repeat(n) : "";
+const starStr = v => { if (v == null) return ""; const n = Math.max(0, Math.min(5, Math.round(v))); return "★".repeat(n) + "☆".repeat(5 - n); };
+
+// ── Place detail panel (click a pin) ────────────────────────────────────────
+async function showPlace(id) {
+  const el = document.getElementById("detail");
+  el.classList.add("open");
+  el.innerHTML = '<span class="close" onclick="closeDetail()">✕</span><div class="muted">Loading…</div>';
+  try {
+    const { data: p } = await api(`/places/${id}`);
+    el.innerHTML = renderPlace(p);
+  } catch (e) {
+    el.innerHTML = `<span class="close" onclick="closeDetail()">✕</span><div class="err">${esc(e.message)}</div>`;
+  }
+}
+function closeDetail() { document.getElementById("detail").classList.remove("open"); }
+
+function renderPlace(p) {
+  const g = (p.rating && p.rating.google) || {}, a = (p.rating && p.rating.app) || {};
+  const chips = arr => (arr || []).map(t => `<span class="chip">${esc(t)}</span>`).join("");
+  const gLine = g.value != null ? `<span class="stars">${starStr(g.value)}</span> ${g.value} · ${g.count} on Google` : "";
+  const aLine = a.count ? `<div><span class="stars">${starStr(a.value)}</span> ${a.value} · ${a.count} in-app</div>` : "";
+  const dishes = (p.dishes || []).map(d => `<span class="chip">${esc(d.name)}${d.shown_in_video ? " 🎬" : ""}</span>`).join("");
+  const tags = chips(p.cuisines) + chips(p.vibe_tags) + chips(p.dietary_tags);
+  const sources = (p.sources || []).map(s =>
+    `<div class="src">🔗 <a href="${esc(safeUrl(s.reel_url))}" target="_blank" rel="noopener">${esc(s.platform)} post</a>` +
+    `${s.account ? ` · @${esc(s.account)}` : ""}</div>`).join("");
+  const reviews = (p.google_reviews || []).slice(0, 3).map(r =>
+    `<div class="rev"><span class="stars">${starStr(r.rating)}</span> <b>${esc(r.author || "")}</b>` +
+    `<br>${esc((r.text || "").slice(0, 220))}</div>`).join("");
+  return `<span class="close" onclick="closeDetail()">✕</span>
+    <h2>${esc(p.name)}</h2>
+    <div class="muted">${esc([p.category, p.city, p.country_code].filter(Boolean).join(" · "))} ${money(p.price_range)}</div>
+    <div style="margin:8px 0">${gLine}${aLine}</div>
+    ${tags ? `<h3>Tags</h3>${tags}` : ""}
+    ${dishes ? `<h3>Dishes seen</h3>${dishes}` : ""}
+    ${sources ? `<h3>Shared in (${p.source_count})</h3>${sources}` : ""}
+    ${reviews ? `<h3>Google reviews</h3>${reviews}` : ""}`;
+}
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 async function auth(kind) {

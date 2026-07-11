@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ModelController;
+use App\Http\Controllers\Api\V1\PlaceController;
 use App\Http\Controllers\Api\V1\ShareController;
 use App\Http\Controllers\MediaUploadController;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +32,10 @@ Route::prefix('v1')->group(function () {
     // `filter=mine|following` resolve the caller via the sanctum guard inside the
     // controller (401 when absent) without gating the public `all` view.
     Route::get('/map/places', [MapController::class, 'places'])->middleware('throttle:map');
+
+    // Place detail (03 §3.3): public read of a single pin — aggregated tags,
+    // contributing sources, Google + native ratings. Same 120/min map limiter.
+    Route::get('/places/{place}', [PlaceController::class, 'show'])->middleware('throttle:map');
 
     // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
     Route::prefix('auth')->middleware('throttle:auth')->group(function () {

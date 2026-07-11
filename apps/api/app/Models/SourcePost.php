@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $external_id
  * @property string $url
  * @property string|null $caption
+ * @property Carbon|null $posted_at
  * @property PostPrivacy $privacy
  * @property FetchStatus $fetch_status
  * @property array<string, mixed>|null $transcript_json

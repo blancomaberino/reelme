@@ -30,6 +30,9 @@ use Illuminate\Support\Str;
  * @property PlaceStatus $status
  * @property int|null $merged_into_place_id
  * @property int $shares_count
+ * @property numeric-string|null $google_rating
+ * @property int|null $google_rating_count
+ * @property array<int, array<string, mixed>>|null $google_reviews_json
  */
 class Place extends Model
 {
@@ -43,7 +46,7 @@ class Place extends Model
         'postal_code', 'country_code', 'google_place_id', 'cuisine_primary',
         'price_range', 'phone', 'website', 'opening_hours_json', 'status',
         'merged_into_place_id', 'shares_count', 'avg_extraction_confidence',
-        'normalized_name',
+        'normalized_name', 'google_rating', 'google_rating_count', 'google_reviews_json',
     ];
 
     /**
@@ -57,6 +60,9 @@ class Place extends Model
             'price_range' => 'integer',
             'shares_count' => 'integer',
             'avg_extraction_confidence' => 'decimal:3',
+            'google_rating' => 'decimal:1',
+            'google_rating_count' => 'integer',
+            'google_reviews_json' => 'array',
         ];
     }
 
@@ -80,6 +86,95 @@ class Place extends Model
     public function sources(): HasMany
     {
         return $this->hasMany(PlaceSource::class);
+    }
+
+    /**
+     * Native user reviews (1–5 stars) — distinct from the cached Google snippets.
+     *
+     * @return HasMany<Review, $this>
+     */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Union + dedupe the discovery tags across every place_source's frozen
+     * extraction snapshot. `cuisines`/`vibe_tags`/`dietary_tags` are string lists;
+     * `dishes` are `{name, shown_in_video}` objects deduped by name (first wins).
+     * Pure: it reads the already-loaded `sources` relation, issuing no queries.
+     *
+     * @return array{cuisines: list<string>, vibe_tags: list<string>, dietary_tags: list<string>, dishes: list<array{name: string, shown_in_video: bool}>}
+     */
+    public function aggregatedTags(): array
+    {
+        $cuisines = [];
+        $vibeTags = [];
+        $dietaryTags = [];
+        /** @var array<string, array{name: string, shown_in_video: bool}> $dishes */
+        $dishes = [];
+
+        foreach ($this->sources as $source) {
+            $snapshot = $source->extraction_snapshot_json;
+
+            foreach ($this->stringList($snapshot['cuisines'] ?? null) as $value) {
+                $cuisines[$value] = $value;
+            }
+            foreach ($this->stringList($snapshot['vibe_tags'] ?? null) as $value) {
+                $vibeTags[$value] = $value;
+            }
+            foreach ($this->stringList($snapshot['dietary_tags'] ?? null) as $value) {
+                $dietaryTags[$value] = $value;
+            }
+
+            if (is_array($snapshot['dishes'] ?? null)) {
+                foreach ($snapshot['dishes'] as $dish) {
+                    if (! is_array($dish)) {
+                        continue;
+                    }
+                    $name = trim((string) ($dish['name'] ?? ''));
+                    if ($name === '' || isset($dishes[$name])) {
+                        continue;
+                    }
+                    $dishes[$name] = [
+                        'name' => $name,
+                        'shown_in_video' => (bool) ($dish['shown_in_video'] ?? false),
+                    ];
+                }
+            }
+        }
+
+        return [
+            'cuisines' => array_values($cuisines),
+            'vibe_tags' => array_values($vibeTags),
+            'dietary_tags' => array_values($dietaryTags),
+            'dishes' => array_values($dishes),
+        ];
+    }
+
+    /**
+     * Coerce a snapshot value to a deduped list of non-empty trimmed strings.
+     *
+     * @return list<string>
+     */
+    private function stringList(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (! is_scalar($item)) {
+                continue;
+            }
+            $trimmed = trim((string) $item);
+            if ($trimmed !== '') {
+                $out[] = $trimmed;
+            }
+        }
+
+        return $out;
     }
 
     /**

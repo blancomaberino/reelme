@@ -71,6 +71,10 @@ class PlaceResolver
 
         if ($byId !== null) {
             $target = $this->terminal($byId);
+            // Backfill Google's rating/reviews onto a place that predates them.
+            if ($this->backfillGoogleSignal($target, $geo)) {
+                $target->save();
+            }
 
             return ResolutionOutcome::attached($target, $this->attach($target, $share, $run, $place));
         }
@@ -87,8 +91,13 @@ class PlaceResolver
         if (count($matches) === 1) {
             /** @var Place $existing */
             $existing = Place::query()->findOrFail($matches[0]['place_id']);
+            $dirty = false;
             if ($existing->google_place_id === null) {
                 $existing->google_place_id = $geo->googlePlaceId;
+                $dirty = true;
+            }
+            $dirty = $this->backfillGoogleSignal($existing, $geo) || $dirty;
+            if ($dirty) {
                 $existing->save();
             }
 
@@ -173,6 +182,9 @@ class PlaceResolver
             'price_range' => $this->priceRange($place['price_range'] ?? null),
             'phone' => $this->truncate($place['phone'] ?? null, 32),
             'website' => $this->truncate($place['website'] ?? null, 2048),
+            'google_rating' => $geo->rating,
+            'google_rating_count' => $geo->ratingCount,
+            'google_reviews_json' => $geo->reviews,
             'status' => PlaceStatus::Pending,
         ]);
         $model->setPoint($geo->lat, $geo->lng);
@@ -180,6 +192,24 @@ class PlaceResolver
         $model->refresh();
 
         return $model;
+    }
+
+    /**
+     * Set Google's rating/review signal on a place that lacks it (in memory —
+     * caller saves). Returns whether anything changed. Used on both attach paths
+     * so an existing place created before we captured reviews gets backfilled.
+     */
+    private function backfillGoogleSignal(Place $place, GeocodeResult $geo): bool
+    {
+        if ($place->google_rating !== null || $geo->rating === null) {
+            return false;
+        }
+
+        $place->google_rating = (string) $geo->rating;
+        $place->google_rating_count = $geo->ratingCount;
+        $place->google_reviews_json = $geo->reviews;
+
+        return true;
     }
 
     /**

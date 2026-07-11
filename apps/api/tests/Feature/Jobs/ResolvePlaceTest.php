@@ -18,7 +18,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-function geoResult(string $gpid, float $lat, float $lng, float $score = 0.9, string $name = 'Lanzhou Beef Noodle House'): GeocodeResult
+/**
+ * @param  list<array<string, mixed>>  $reviews
+ */
+function geoResult(string $gpid, float $lat, float $lng, float $score = 0.9, string $name = 'Lanzhou Beef Noodle House', ?float $rating = null, ?int $ratingCount = null, array $reviews = []): GeocodeResult
 {
     return new GeocodeResult(
         googlePlaceId: $gpid,
@@ -32,6 +35,9 @@ function geoResult(string $gpid, float $lat, float $lng, float $score = 0.9, str
         lng: $lng,
         types: ['restaurant'],
         score: $score,
+        rating: $rating,
+        ratingCount: $ratingCount,
+        reviews: $reviews,
     );
 }
 
@@ -128,6 +134,61 @@ it('creates a new pending place with a real point when nothing matches', functio
     expect($source->is_primary)->toBeTrue()
         ->and($source->place_id)->toBe($place->id)
         ->and($source->extraction_snapshot_json['name'])->toBe('Lanzhou Beef Noodle House');
+});
+
+it('persists the Google rating + review snippets onto a newly created place', function () {
+    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult(
+        'ChIJreviews', 38.7223, -9.1393,
+        rating: 4.4,
+        ratingCount: 128,
+        reviews: [
+            ['author' => 'Jane D.', 'rating' => 5, 'text' => 'Incredible.', 'relative_time' => 'a week ago', 'time' => 1700000000],
+        ],
+    )));
+    $share = analyzingShare();
+
+    (new ResolvePlace($share->id))->handle();
+
+    $place = Place::sole();
+    expect((float) $place->google_rating)->toBe(4.4)
+        ->and($place->google_rating_count)->toBe(128)
+        ->and($place->google_reviews_json)->toHaveCount(1)
+        ->and($place->google_reviews_json[0]['author'])->toBe('Jane D.');
+});
+
+it('backfills the Google rating onto a fuzzy-matched place that lacks it', function () {
+    $existing = Place::factory()->atPoint(51.5117, -0.1300)->create([
+        'name' => 'Lanzhou Beef Noodle House',
+        'google_place_id' => null,
+        'google_rating' => null,
+    ]);
+    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult(
+        'ChIJbackfillrating', 51.5117, -0.1300, rating: 4.1, ratingCount: 12,
+    )));
+    $share = analyzingShare();
+
+    (new ResolvePlace($share->id))->handle();
+
+    $existing->refresh();
+    expect((float) $existing->google_rating)->toBe(4.1)
+        ->and($existing->google_rating_count)->toBe(12);
+});
+
+it('backfills the Google rating onto a google_place_id-matched place that lacks it', function () {
+    $existing = Place::factory()->atPoint(51.5117, -0.1300)->withGooglePlaceId('ChIJgpid')->create([
+        'name' => 'Old Name',
+        'google_rating' => null,
+    ]);
+    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult(
+        'ChIJgpid', 51.5200, -0.1400, rating: 4.6, ratingCount: 88,
+    )));
+    $share = analyzingShare();
+
+    (new ResolvePlace($share->id))->handle();
+
+    $existing->refresh();
+    expect((float) $existing->google_rating)->toBe(4.6)
+        ->and($existing->google_rating_count)->toBe(88);
 });
 
 it('clamps an out-of-range extracted price_range instead of hitting the CHECK', function () {
