@@ -47,6 +47,12 @@ class PlaceSource extends Model
         return $this->belongsTo(Place::class);
     }
 
+    /** @return BelongsTo<SourcePost, $this> */
+    public function sourcePost(): BelongsTo
+    {
+        return $this->belongsTo(SourcePost::class);
+    }
+
     /** @return BelongsTo<Share, $this> */
     public function share(): BelongsTo
     {
