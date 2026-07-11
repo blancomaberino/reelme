@@ -173,7 +173,21 @@ async function afterAuth() {
   if (on) { refreshShares(); loadPlaces(); }
 }
 
-function logout() { token = null; localStorage.removeItem("reelmap_token"); clearInterval(pollTimer); afterAuth(); }
+// Fly the map to the newest published place (which can be anywhere in the world)
+// so the pin is visible without panning — using the place coords the /shares
+// response now carries, rather than a globe-sized map query.
+let lastFocusedShareId = null;
+function focusPublished(shares) {
+  const published = shares.find(s => s.status === "published" && s.place);
+  if (!published) return;
+  loadPlaces();
+  if (published.id !== lastFocusedShareId) {
+    lastFocusedShareId = published.id;
+    map.setView([published.place.lat, published.place.lng], 15);
+  }
+}
+
+function logout() { token = null; localStorage.removeItem("reelmap_token"); lastFocusedShareId = null; clearInterval(pollTimer); afterAuth(); }
 
 // ── Submit a share ─────────────────────────────────────────────────────────
 async function submitShare() {
@@ -204,8 +218,8 @@ async function refreshShares() {
       const place = s.place ? `<br>📍 ${esc(s.place.name)}` : "";
       return `<div class="share"><span class="pill ${esc(st)}">${esc(st)}</span> <span class="u">${esc(s.url||s.source_post?.url||"manual")}</span>${place}</div>`;
     }).join("");
-    // If anything published, refresh the map so the new pin shows.
-    if (data.some(s => s.status === "published")) loadPlaces();
+    // When something publishes, fly the map to its place so the new pin shows.
+    focusPublished(data);
     // Stop polling once nothing is in-flight.
     const inflight = data.some(s => ["pending","fetching","analyzing"].includes(s.status));
     if (!inflight && pollTimer) { clearInterval(pollTimer); pollTimer = null; }

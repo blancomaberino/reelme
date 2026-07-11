@@ -79,6 +79,16 @@ class Share extends Model
         return $this->belongsTo(AnalysisRun::class);
     }
 
+    /**
+     * The place_source this share published (set by PublishShare).
+     *
+     * @return BelongsTo<PlaceSource, $this>
+     */
+    public function publishedPlaceSource(): BelongsTo
+    {
+        return $this->belongsTo(PlaceSource::class, 'published_place_source_id');
+    }
+
     /** @return HasMany<ShareStageMetric, $this> */
     public function stageMetrics(): HasMany
     {

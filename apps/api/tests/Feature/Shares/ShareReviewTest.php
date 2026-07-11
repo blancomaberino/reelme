@@ -158,6 +158,24 @@ it('attaches to a reviewer-picked candidate and refuses an id outside the offere
         ->and($a->fresh()->status)->toBe(PlaceStatus::Active); // user-confirmed pick
 });
 
+it('exposes the published place with coordinates on the share resource', function () {
+    $user = User::factory()->create();
+    $place = Place::factory()->atPoint(-34.9014, -56.1704)->create(['name' => 'Clara Café']);
+    $share = Share::factory()->for($user)->create(['status' => ShareStatus::Published]);
+    $source = PlaceSource::factory()->create([
+        'place_id' => $place->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id,
+    ]);
+    $share->published_place_source_id = $source->id;
+    $share->save();
+
+    Sanctum::actingAs($user);
+    $this->getJson("/api/v1/shares/{$share->id}")
+        ->assertOk()
+        ->assertJsonPath('data.place.name', 'Clara Café')
+        ->assertJsonPath('data.place.lat', -34.9014)
+        ->assertJsonPath('data.place.lng', -56.1704);
+});
+
 it('409s a PATCH on a share that is not in review', function () {
     $user = User::factory()->create();
     $share = Share::factory()->create(['user_id' => $user->id, 'status' => ShareStatus::Analyzing]);
