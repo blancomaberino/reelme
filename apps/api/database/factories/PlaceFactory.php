@@ -50,6 +50,10 @@ class PlaceFactory extends Factory
 
     private static function point(float $lat, float $lng): Expression
     {
-        return DB::raw(sprintf('ST_MakePoint(%.8f, %.8f)::geography', $lng, $lat));
+        return DB::raw(sprintf(
+            'ST_MakePoint(%s, %s)::geography',
+            number_format($lng, 8, '.', ''),
+            number_format($lat, 8, '.', ''),
+        ));
     }
 }

@@ -40,6 +40,38 @@ it('backfills the winner’s null fields from the loser', function () {
         ->and($winner->phone)->toBe('+441234567890');
 });
 
+it('promotes a survivor source when the winner had no primary', function () {
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Winner']);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Loser']);
+
+    // Winner has only a non-primary source; loser owns the primary.
+    PlaceSource::factory()->create(['place_id' => $winner->id, 'is_primary' => false]);
+    PlaceSource::factory()->primary()->create(['place_id' => $loser->id]);
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    expect(PlaceSource::where('place_id', $winner->id)->where('is_primary', true)->count())->toBe(1);
+});
+
+it('follows the merge chain to the live survivor across more than one hop', function () {
+    $survivor = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Survivor']);
+    $mid = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Mid']);
+    (new PlaceMerger)->merge($survivor, $mid); // mid → survivor
+
+    // A later admin merge folds the survivor itself into a top place.
+    $top = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Top']);
+    (new PlaceMerger)->merge($top, $survivor->fresh()); // survivor → top (chain: mid → survivor → top)
+
+    $newcomer = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Newcomer']);
+    PlaceSource::factory()->create(['place_id' => $newcomer->id]);
+
+    // Merging into `mid` (2 hops from top) must land the source on `top`, not a tombstone.
+    (new PlaceMerger)->merge($mid->fresh(), $newcomer);
+
+    expect($newcomer->fresh()->merged_into_place_id)->toBe($top->id)
+        ->and(PlaceSource::where('place_id', $top->id)->count())->toBe(1);
+});
+
 it('follows the single-hop rule — merging into an already-merged place targets the survivor', function () {
     $survivor = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Survivor']);
     $middle = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Middle']);

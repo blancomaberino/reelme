@@ -130,6 +130,22 @@ it('creates a new pending place with a real point when nothing matches', functio
         ->and($source->extraction_snapshot_json['name'])->toBe('Lanzhou Beef Noodle House');
 });
 
+it('clamps an out-of-range extracted price_range instead of hitting the CHECK', function () {
+    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult('ChIJclamp', 38.7223, -9.1393)));
+    $share = analyzingShare();
+    // Overwrite the run's payload with an invalid price band (LLM could emit 0/5/9).
+    $run = $share->analysisRun;
+    $result = $run->result_json;
+    $result['place']['price_range'] = 9;
+    $run->result_json = $result;
+    $run->save();
+
+    (new ResolvePlace($share->id))->handle();
+
+    expect(Place::sole()->price_range)->toBeNull()
+        ->and($share->fresh()->status)->toBe(ShareStatus::Analyzing);
+});
+
 it('routes to review/geocode_failed when the geocoder finds nothing', function () {
     bindGeocoder(new FakeGeocoder); // nothing seeded → null
     $share = analyzingShare();

@@ -98,9 +98,13 @@ class Place extends Model
             throw new \InvalidArgumentException('Place coordinates must be finite.');
         }
 
-        $this->attributes['location'] = new Expression(
-            sprintf('ST_MakePoint(%.8f, %.8f)::geography', $lng, $lat)
-        );
+        // number_format is locale-independent (unlike %f, which honors LC_NUMERIC
+        // and would emit a comma decimal → a broken multi-arg ST_MakePoint call).
+        $this->attributes['location'] = new Expression(sprintf(
+            'ST_MakePoint(%s, %s)::geography',
+            number_format($lng, 8, '.', ''),
+            number_format($lat, 8, '.', ''),
+        ));
     }
 
     /**

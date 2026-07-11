@@ -148,18 +148,23 @@ class PlaceResolver
         $components = $geo->addressComponents;
         $address = is_array($place['address'] ?? null) ? $place['address'] : [];
 
+        // Fields sourced from the LLM extraction are untrusted — clamp/truncate to
+        // the column limits so a bad value parks the share via review, not a
+        // QueryException that burns all the job's retries as `resolve_conflict`.
+        $cuisines = is_array($place['cuisines'] ?? null) ? $place['cuisines'] : [];
+
         $model = new Place([
-            'name' => $geo->canonicalName !== '' ? $geo->canonicalName : ($place['name'] ?? 'Unknown'),
-            'address_line1' => $this->component($components, 'route') ?? ($address['street'] ?? null),
-            'city' => $this->component($components, 'locality') ?? ($address['city'] ?? null),
-            'region' => $this->component($components, 'administrative_area_level_1') ?? ($address['region'] ?? null),
-            'postal_code' => $this->component($components, 'postal_code') ?? ($address['postal_code'] ?? null),
+            'name' => $this->truncate($geo->canonicalName !== '' ? $geo->canonicalName : (string) ($place['name'] ?? 'Unknown'), 255),
+            'address_line1' => $this->truncate($this->component($components, 'route') ?? ($address['street'] ?? null), 255),
+            'city' => $this->truncate($this->component($components, 'locality') ?? ($address['city'] ?? null), 120),
+            'region' => $this->truncate($this->component($components, 'administrative_area_level_1') ?? ($address['region'] ?? null), 120),
+            'postal_code' => $this->truncate($this->component($components, 'postal_code') ?? ($address['postal_code'] ?? null), 24),
             'country_code' => $this->countryCode($geo, $address),
             'google_place_id' => $geo->googlePlaceId,
-            'cuisine_primary' => is_array($place['cuisines'] ?? null) ? ($place['cuisines'][0] ?? null) : null,
-            'price_range' => $place['price_range'] ?? null,
-            'phone' => $place['phone'] ?? null,
-            'website' => $place['website'] ?? null,
+            'cuisine_primary' => $this->truncate($cuisines[0] ?? null, 64),
+            'price_range' => $this->priceRange($place['price_range'] ?? null),
+            'phone' => $this->truncate($place['phone'] ?? null, 32),
+            'website' => $this->truncate($place['website'] ?? null, 2048),
             'status' => PlaceStatus::Pending,
         ]);
         $model->setPoint($geo->lat, $geo->lng);
@@ -171,6 +176,10 @@ class PlaceResolver
 
     /**
      * Attach a share's extraction to a place as a (idempotent) place_source.
+     * firstOrCreate keys on (place_id, share_id); the table also has a global
+     * unique(share_id), so this only stays exception-free because
+     * ResolvePlace::run() early-returns when the share already has a source —
+     * a share never resolves to two different places.
      *
      * @param  array<string, mixed>  $extractedPlace
      */
@@ -243,6 +252,30 @@ class PlaceResolver
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $address
+     */
+    /** Clamp an extracted price band to the 1–4 CHECK, else null. */
+    private function priceRange(mixed $value): ?int
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+        $int = (int) $value;
+
+        return ($int >= 1 && $int <= 4) ? $int : null;
+    }
+
+    private function truncate(mixed $value, int $max): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+        $trimmed = trim((string) $value);
+
+        return $trimmed === '' ? null : mb_substr($trimmed, 0, $max);
     }
 
     /**

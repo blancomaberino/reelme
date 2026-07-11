@@ -53,10 +53,29 @@ class PlaceMerger
             $loser->save();
 
             $this->backfill($winner, $donor);
+            $this->ensurePrimary($winner);
             $this->recountShares($winner);
         });
 
         return $winner->fresh() ?? $winner;
+    }
+
+    /** Guarantee exactly-one-primary holds after rehoming (promote if none). */
+    private function ensurePrimary(Place $winner): void
+    {
+        $hasPrimary = DB::table('place_sources')
+            ->where('place_id', $winner->id)
+            ->where('is_primary', true)
+            ->exists();
+
+        if ($hasPrimary) {
+            return;
+        }
+
+        $first = DB::table('place_sources')->where('place_id', $winner->id)->orderBy('id')->first();
+        if ($first !== null) {
+            DB::table('place_sources')->where('id', $first->id)->update(['is_primary' => true]);
+        }
     }
 
     /**
@@ -92,11 +111,23 @@ class PlaceMerger
         $winner->save();
     }
 
-    /** Follow the single merge hop to the surviving place. */
+    /**
+     * Follow the merge chain to the live survivor. Loops (not a single hop) so a
+     * later admin double-merge can't leave us rehoming onto a tombstone; the
+     * visited guard makes a corrupt cycle terminate instead of spinning.
+     */
     private function terminal(Place $place): Place
     {
-        return $place->merged_into_place_id !== null
-            ? ($place->mergedInto()->first() ?? $place)
-            : $place;
+        $seen = [];
+        while ($place->merged_into_place_id !== null && ! in_array($place->id, $seen, true)) {
+            $seen[] = $place->id;
+            $next = $place->mergedInto()->first();
+            if ($next === null) {
+                break;
+            }
+            $place = $next;
+        }
+
+        return $place;
     }
 }
