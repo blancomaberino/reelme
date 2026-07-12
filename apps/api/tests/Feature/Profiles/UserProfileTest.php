@@ -52,12 +52,36 @@ it('404s private profiles for strangers and guests but not the owner', function 
     $private = User::factory()->create(['is_public' => false, 'username' => 'hermit']);
 
     $this->getJson('/api/v1/users/hermit')->assertStatus(404);
+    $this->getJson('/api/v1/users/hermit/map?bbox=-0.20,51.45,-0.05,51.55&zoom=16')->assertStatus(404);
 
     Sanctum::actingAs(User::factory()->create());
     $this->getJson('/api/v1/users/hermit')->assertStatus(404);
+    $this->getJson('/api/v1/users/hermit/map?bbox=-0.20,51.45,-0.05,51.55&zoom=16')->assertStatus(404);
 
     Sanctum::actingAs($private);
     $this->getJson('/api/v1/users/hermit')->assertOk();
+    $this->getJson('/api/v1/users/hermit/map?bbox=-0.20,51.45,-0.05,51.55&zoom=16')->assertOk();
+});
+
+it('never leaks private-account existence through validation errors (404, not 422)', function () {
+    User::factory()->create(['is_public' => false, 'username' => 'hermit2']);
+
+    // Invalid params would 422 BEFORE the controller runs — the privacy gate
+    // must fire first so private and nonexistent are indistinguishable.
+    $this->getJson('/api/v1/users/hermit2?limit=0')->assertStatus(404);
+    $this->getJson('/api/v1/users/never-there?limit=0')->assertStatus(404);
+    $this->getJson('/api/v1/users/hermit2/map?bbox=bad&zoom=99')->assertStatus(404);
+    $this->getJson('/api/v1/users/never-there/map?bbox=bad&zoom=99')->assertStatus(404);
+    $this->getJson('/api/v1/users/hermit2/map')->assertStatus(404);
+});
+
+it('rejects a feed-tagged cursor on the profile share list', function () {
+    User::factory()->create(['is_public' => true, 'username' => 'walker']);
+
+    $crafted = rtrim(strtr(base64_encode((string) json_encode(['s' => 'feed', 'k' => ['2026-07-11 10:00:00.000000', 1]])), '+/', '-_'), '=');
+    $this->getJson('/api/v1/users/walker?cursor='.urlencode($crafted))
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed');
 });
 
 it('404s soft-deleted (banned) users and unknown usernames', function () {

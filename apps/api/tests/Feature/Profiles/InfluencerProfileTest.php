@@ -7,9 +7,18 @@ use App\Models\Share;
 use App\Models\SourcePost;
 use App\Models\User;
 use App\Support\Contracts\ApiSchema;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    Model::preventLazyLoading();
+});
+
+afterEach(function () {
+    Model::preventLazyLoading(false);
+});
 
 /** Wire a place → published share → post credited to $influencer. */
 function influencerPlace(Influencer $influencer, Place $place, string $shareStatus = 'published'): void

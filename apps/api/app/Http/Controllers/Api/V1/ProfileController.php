@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\ShareStatus;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\FeedRequest;
-use App\Http\Requests\MapPlacesRequest;
+use App\Http\Requests\ProfileMapRequest;
+use App\Http\Requests\ProfileShowRequest;
 use App\Http\Resources\FeedItemResource;
 use App\Http\Resources\PublicUserResource;
+use App\Models\Place;
 use App\Models\User;
 use App\Services\Feed\PublishedShareFeed;
 use App\Services\Map\MapViewport;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,7 +24,7 @@ use Illuminate\Http\Request;
  */
 class ProfileController extends Controller
 {
-    public function show(FeedRequest $request, User $user, PublishedShareFeed $feed): JsonResponse
+    public function show(ProfileShowRequest $request, User $user, PublishedShareFeed $feed): JsonResponse
     {
         $this->assertViewable($request, $user);
 
@@ -34,9 +36,15 @@ class ProfileController extends Controller
             fn ($q) => $q->where('shares.user_id', $user->id),
         );
 
+        // Same constraints as the listed shares (incl. place visibility) so the
+        // counter can never disagree with the list.
         $user->loadCount(['shares as published_shares_count' => fn ($q) => $q
             ->where('status', ShareStatus::Published)
-            ->whereNotNull('published_place_source_id')]);
+            ->whereNotNull('published_place_source_id')
+            ->whereHas('publishedPlaceSource.place', function ($p) {
+                /** @var Builder<Place> $p */
+                $p->publiclyVisible();
+            })]);
 
         return response()->json([
             'data' => [
@@ -57,7 +65,7 @@ class ProfileController extends Controller
      * The user's public map: places evidenced by their PUBLISHED shares only —
      * same pin/cluster shape as GET /map/places.
      */
-    public function map(MapPlacesRequest $request, User $user, MapViewport $viewport): JsonResponse
+    public function map(ProfileMapRequest $request, User $user, MapViewport $viewport): JsonResponse
     {
         $this->assertViewable($request, $user);
 
