@@ -152,7 +152,7 @@ async function showPlace(id) {
   el.classList.add("open");
   el.innerHTML = '<span class="close" onclick="closeDetail()">✕</span><div class="muted">Loading…</div>';
   try {
-    const { data: p } = await api(`/places/${id}`);
+    const { data: p } = await api(`/places/${id}?include=sources`);
     el.innerHTML = renderPlace(p);
   } catch (e) {
     el.innerHTML = `<span class="close" onclick="closeDetail()">✕</span><div class="err">${esc(e.message)}</div>`;
@@ -167,9 +167,17 @@ function renderPlace(p) {
   const aLine = a.count ? `<div><span class="stars">${starStr(a.value)}</span> ${a.value} · ${a.count} in-app</div>` : "";
   const dishes = (p.dishes || []).map(d => `<span class="chip">${esc(d.name)}${d.shown_in_video ? " 🎬" : ""}</span>`).join("");
   const tags = chips(p.cuisines) + chips(p.vibe_tags) + chips(p.dietary_tags);
-  const sources = (p.sources || []).map(s =>
-    `<div class="src">🔗 <a href="${esc(safeUrl(s.reel_url))}" target="_blank" rel="noopener">${esc(s.platform)} post</a>` +
-    `${s.account ? ` · @${esc(s.account)}` : ""}</div>`).join("");
+  const sources = (p.sources || []).map(s => {
+    const post = s.source_post || {};
+    const handle = s.influencer && s.influencer.handle;
+    const sharer = s.sharer && s.sharer.username;
+    const label = `${esc(post.platform || "")} post`.trim();
+    const link = post.url
+      ? `<a href="${esc(safeUrl(post.url))}" target="_blank" rel="noopener">${label}</a>`
+      : label;
+    return `<div class="src">🔗 ${link}` +
+      `${handle ? ` · @${esc(handle)}` : ""}${sharer ? ` · shared by ${esc(sharer)}` : ""}</div>`;
+  }).join("");
   const reviews = (p.google_reviews || []).slice(0, 3).map(r =>
     `<div class="rev"><span class="stars">${starStr(r.rating)}</span> <b>${esc(r.author || "")}</b>` +
     `<br>${esc((r.text || "").slice(0, 220))}</div>`).join("");

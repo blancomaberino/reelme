@@ -5,3 +5,6 @@
  * of truth shared by the Laravel API and the Expo app.
  */
 export type { ReelmapExtraction } from './generated/extraction';
+export type { PlaceDetail } from './generated/place';
+export type { PlaceSummary } from './generated/place-summary';
+export type { PlaceSource } from './generated/place-source';

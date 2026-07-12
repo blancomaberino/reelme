@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/place.json",
+  "title": "PlaceDetail",
+  "description": "GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (empty until M4).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "name", "slug", "status", "lat", "lng", "category", "price_range",
+    "city", "country_code", "address", "google_place_id", "opening_hours",
+    "phone", "website", "cuisines", "vibe_tags", "dietary_tags", "dishes",
+    "source_count", "rating", "google_reviews"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "slug": { "type": "string" },
+    "status": { "type": "string", "enum": ["pending", "active"] },
+    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+    "lng": { "type": "number", "minimum": -180, "maximum": 180 },
+    "category": { "type": ["string", "null"] },
+    "price_range": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
+    "city": { "type": ["string", "null"] },
+    "country_code": { "type": "string" },
+    "address": { "type": "string" },
+    "google_place_id": { "type": ["string", "null"] },
+    "opening_hours": { "type": ["object", "array", "null"] },
+    "phone": { "type": ["string", "null"] },
+    "website": { "type": ["string", "null"] },
+    "cuisines": { "type": "array", "items": { "type": "string" } },
+    "vibe_tags": { "type": "array", "items": { "type": "string" } },
+    "dietary_tags": { "type": "array", "items": { "type": "string" } },
+    "dishes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "shown_in_video"],
+        "properties": {
+          "name": { "type": "string" },
+          "shown_in_video": { "type": "boolean" }
+        }
+      }
+    },
+    "source_count": { "type": "integer", "minimum": 0 },
+    "rating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["google", "app"],
+      "properties": {
+        "google": { "$ref": "#/definitions/ratingBlock" },
+        "app": { "$ref": "#/definitions/ratingBlock" }
+      }
+    },
+    "google_reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "author": { "type": ["string", "null"] },
+          "rating": { "type": ["number", "null"] },
+          "text": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "place-source.json" }
+    },
+    "offers": { "type": "array" }
+  },
+  "definitions": {
+    "ratingBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "count"],
+      "properties": {
+        "value": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
+        "count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

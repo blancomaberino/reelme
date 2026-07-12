@@ -33,9 +33,12 @@ Route::prefix('v1')->group(function () {
     // controller (401 when absent) without gating the public `all` view.
     Route::get('/map/places', [MapController::class, 'places'])->middleware('throttle:map');
 
-    // Place detail (03 §3.3): public read of a single pin — aggregated tags,
-    // contributing sources, Google + native ratings. Same 120/min map limiter.
+    // Places browse surface (T-030, 03 §2.6): public index with filters +
+    // detail + attribution sources. `{place}` binds by slug (canonical) or
+    // numeric id. Same 120/min map limiter.
+    Route::get('/places', [PlaceController::class, 'index'])->middleware('throttle:map');
     Route::get('/places/{place}', [PlaceController::class, 'show'])->middleware('throttle:map');
+    Route::get('/places/{place}/sources', [PlaceController::class, 'sources'])->middleware('throttle:map');
 
     // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
     Route::prefix('auth')->middleware('throttle:auth')->group(function () {

@@ -9,6 +9,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property Platform $platform
+ * @property string $handle
+ * @property string|null $display_name
+ * @property string|null $avatar_url
+ */
 class Influencer extends Model
 {
     /** @use HasFactory<InfluencerFactory> */

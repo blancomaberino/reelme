@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PlaceStatus;
 use Database\Factories\PlaceFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
@@ -33,6 +35,8 @@ use Illuminate\Support\Str;
  * @property numeric-string|null $google_rating
  * @property int|null $google_rating_count
  * @property array<int, array<string, mixed>>|null $google_reviews_json
+ * @property int|null $reviews_count
+ * @property float|numeric-string|null $reviews_avg_rating
  */
 class Place extends Model
 {
@@ -80,6 +84,50 @@ class Place extends Model
                 $place->slug = self::makeSlug($name);
             }
         });
+    }
+
+    /**
+     * Places visible on public read surfaces (map, browse index): pending +
+     * active — a first auto-publish is on the map immediately (02 §3.8, the
+     * documented deviation from "active only") — never merged tombstones.
+     *
+     * @param  Builder<Place>  $query
+     */
+    protected function scopePubliclyVisible(Builder $query): void
+    {
+        $query->whereIn('status', PlaceStatus::matchable())
+            ->whereNull('merged_into_place_id');
+    }
+
+    /**
+     * Places carrying any of the given tag slugs. The place_tag pivot lands in
+     * T-031 — until it exists this is a validated no-op (schema-guarded), so
+     * both the map and the browse index accept tags[] today.
+     *
+     * @param  Builder<Place>  $query
+     * @param  list<string>  $slugs
+     */
+    protected function scopeAnyTagSlug(Builder $query, array $slugs): void
+    {
+        if ($slugs === [] || ! Schema::hasTable('place_tag')) {
+            return;
+        }
+
+        $query->whereExists(fn ($sub) => $sub->from('place_tag')
+            ->join('tags', 'tags.id', '=', 'place_tag.tag_id')
+            ->whereColumn('place_tag.place_id', 'places.id')
+            ->whereIn('tags.slug', $slugs));
+    }
+
+    /**
+     * Public routes bind by slug (canonical, T-030) but numeric ids keep
+     * working — map pins and existing clients address places by id.
+     */
+    public function resolveRouteBinding($value, $field = null): ?Place
+    {
+        $field ??= ctype_digit((string) $value) ? 'id' : 'slug';
+
+        return $this->where($field, $value)->first();
     }
 
     /** @return HasMany<PlaceSource, $this> */
