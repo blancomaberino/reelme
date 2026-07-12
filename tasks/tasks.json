@@ -858,7 +858,7 @@
       "id": "T-035",
       "title": "Filament: places dedup/merge review queue",
       "phase": "M2",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-023",
         "T-008"
@@ -876,7 +876,8 @@
         "Merge action (rehomes place_sources) + unmerge/undo",
         "Shares and analysis_runs browsable for debugging"
       ],
-      "agent": "executor"
+      "agent": "executor",
+      "notes": "2026-07-12: DONE — PR #36 squash-merged to main (b0dcdd8). PlaceResource review queue (default pending filter + badge), candidates panel via PlaceResolver::candidatesFor() (shared with pipeline), approve/merge/hide/restore/unmerge actions, place_merges audit table + PlaceMerger unmerge, PlaceStatus::Hidden (+ resolver parks gpid-hits on hidden places to review as place_hidden), read-only Shares+AnalysisRuns resources (SharePolicy admins may view). Adversarial review: 7 findings (1 High merge-concurrency locking) all fixed + regression-tested. 403 tests green. Browser-verified end-to-end."
     },
     {
       "id": "T-036",

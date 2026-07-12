@@ -68,3 +68,14 @@ Manual: log in at `http://localhost:8000/admin` as an admin (T-008 seeder) → P
 - **Scout sync on bulk updates:** `DB::table(...)->update()` bypasses Eloquent events, so Meilisearch keeps stale docs; rehome with query builder for speed but explicitly `searchable()`/`unsearchable()` A and B afterwards (see T-031 gotcha).
 - **published_place_source_id on shares:** rehoming changes the source's `place_id`, not the share FK — nothing to touch on `shares`, but assert in tests that share → published place resolution (via place_source → place, following merges) still lands on A.
 - **Filament version drift:** T-008 pins the Filament major; follow its resource generator output (schema/table class layout changed across majors) rather than copying older-version snippets.
+
+## Log
+
+- **2026-07-12 — DONE (PR #36, squash `b0dcdd8`).** Built + adversarially reviewed + browser-verified in one pass.
+  - PlaceResource: review queue (default `status=pending` filter + nav badge), candidate panel shares `PlaceResolver::candidatesFor()` with the pipeline, OSM iframe mini-map, SourcesRelationManager. Actions on ViewPlace: approve-as-new, merge-into-candidate (server re-validates target ∈ candidate set), hide/restore, unmerge.
+  - `place_merges` audit table snapshots everything reversal needs (rehomed ids, dropped duplicate rows, tombstone attrs/tag pivots/primary flags, survivor pre-merge pivots + backfilled fields, acting admin). `PlaceMerger::unmerge()` restores exactly; keeps post-merge tag gains + admin-edited backfills; refuses stale snapshots.
+  - `PlaceStatus::Hidden` added (CHECK rebuild migration; `down()` parks hidden→pending first). Hidden drops off map/browse/search/Scout/tag-popularity; resolver gpid-hit on hidden → share review `place_hidden` (new `ResolutionOutcome::HIDDEN_MATCH`).
+  - Read-only ShareResource + AnalysisRunResource (highlighted `result_json` via new `phiki/phiki` dep); `SharePolicy::view` admits admins (update/delete stay owner-only).
+  - Adversarial subagent review: 7 findings fixed — **High**: merge() had no in-transaction locks (concurrent cross/same-pair merges corrupt; now `lockForUpdate` ascending-id + re-check); Medium: hidden matchable via gpid path; Medium: tag restore was UPDATE not upsert; Lows: `==` juggling on backfill-null, unmerge 500s on QueryException, migration down() validation, hidden inflating `?popular=1`.
+  - Suite 403 green serial + `--parallel`; Pint/PHPStan L6 clean. Browser E2E on live panel: queue → candidates (95.0%/39 m) → merge → tombstone+redirect → unmerge → hide (curl-verified off `/map/places`) → restore; Shares/AnalysisRuns render real gemma4 pipeline data.
+  - **Gotcha**: Filament v5 `CodeEntry` requires `phiki/phiki` (not pulled in by filament itself). Livewire login form ignores `form_input`-set values (type via keyboard). Filament modals need ~2 s before the Confirm click registers.
