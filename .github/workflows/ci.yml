@@ -80,6 +80,21 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # Real-engine search tests (@group meilisearch) — the default suite runs
+      # the collection driver, so this only serves that group.
+      # v1.49 = what the dev compose stack currently runs (its `latest` volume);
+      # the ^1.16 PHP SDK is forward-compatible with it (verified live).
+      meilisearch:
+        image: getmeili/meilisearch:v1.49
+        ports:
+          - 7700:7700
+        env:
+          MEILI_ENV: development
+        options: >-
+          --health-cmd "curl -fs http://localhost:7700/health || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -134,6 +149,9 @@ jobs:
           DB_PASSWORD: password
           REDIS_HOST: 127.0.0.1
           REDIS_PORT: 6379
+          # For the @group meilisearch suite; the default suite stays on the
+          # collection driver via phpunit.xml.
+          MEILISEARCH_HOST: http://127.0.0.1:7700
 
   contracts:
     name: Contracts

@@ -45,5 +45,11 @@
         <env name="OLLAMA_TEXT_MODEL" value="qwen2.5:14b"/>
         <env name="AI_MIN_CONFIDENCE" value="0.5"/>
         <env name="AI_MIN_PUBLISH_CONFIDENCE" value="0.75"/>
+        <!-- Search: tests run the driver-agnostic collection engine; the
+             @group meilisearch suite opts into the real server explicitly
+             (SCOUT_PREFIX keeps its indexes off the dev ones). -->
+        <env name="SCOUT_DRIVER" value="collection"/>
+        <env name="SCOUT_PREFIX" value="reelmap_testing_"/>
+        <env name="SCOUT_QUEUE" value="false"/>
     </php>
 </phpunit>

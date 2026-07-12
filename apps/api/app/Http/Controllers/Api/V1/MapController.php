@@ -111,7 +111,7 @@ class MapController extends Controller
         $places = $this->baseQuery($request, $bbox, $filter, $userId)
             ->select('*')
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-            ->with(['primarySource.sourcePost.influencer'])
+            ->with(['primarySource.sourcePost.influencer', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
             ->orderByDesc('shares_count')
             ->limit(self::PIN_CAP + 1)
             ->get();
@@ -198,7 +198,7 @@ class MapController extends Controller
                 ->whereIn('id', $singletonIds)
                 ->select('*')
                 ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-                ->with(['primarySource.sourcePost.influencer'])
+                ->with(['primarySource.sourcePost.influencer', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
                 ->get()
                 ->map(fn (Place $p) => $this->pin($p))
                 ->all();
@@ -232,7 +232,7 @@ class MapController extends Controller
             'city' => $place->city,
             'price_range' => $place->price_range,
             'status' => $place->status->value,
-            'tags' => [], // populated in T-031
+            'tags' => $place->tags->pluck('slug')->take(8)->values()->all(),
             'source_count' => $place->shares_count,
             'has_active_offer' => false, // M4
             'top_influencer' => $influencer === null ? null : [

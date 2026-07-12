@@ -18,7 +18,7 @@
           "enum": ["restaurant", "cafe", "bar", "bakery", "street_food", "food_truck",
                    "dessert", "market", "other", null]
         },
-        "cuisines": { "type": "array", "items": { "type": "string" }, "description": "Lowercase cuisine labels, e.g. \"thai\", \"neapolitan pizza\". Empty if unstated." },
+        "cuisines": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 80 }, "description": "Lowercase cuisine labels, e.g. \"thai\", \"neapolitan pizza\". Empty if unstated." },
         "address": {
           "type": "object",
           "additionalProperties": false,
@@ -47,18 +47,19 @@
         "opening_hours_text": { "type": ["string", "null"], "description": "Verbatim hours text from the source, unparsed." },
         "dishes": {
           "type": "array",
+          "maxItems": 32,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["name", "shown_in_video"],
             "properties": {
-              "name": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1, "maxLength": 120 },
               "shown_in_video": { "type": "boolean", "description": "true only if the dish visibly appears in the keyframes/video." }
             }
           }
         },
-        "vibe_tags":    { "type": "array", "items": { "type": "string" }, "description": "e.g. \"cozy\", \"date night\", \"counter seating\", \"late night\"." },
-        "dietary_tags": { "type": "array", "items": { "type": "string" }, "description": "e.g. \"vegan options\", \"halal\", \"gluten-free\". Only when stated or clearly shown." }
+        "vibe_tags":    { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 80 }, "description": "e.g. \"cozy\", \"date night\", \"counter seating\", \"late night\"." },
+        "dietary_tags": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 80 }, "description": "e.g. \"vegan options\", \"halal\", \"gluten-free\". Only when stated or clearly shown." }
       }
     },
     "influencer": {

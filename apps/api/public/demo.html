@@ -53,6 +53,12 @@
     <h1>Reel<span>map</span></h1>
     <div class="sub">Share a link → we extract the place → it lands on the map.</div>
 
+    <div class="card" id="searchCard">
+      <h2>Search</h2>
+      <input id="searchBox" type="search" placeholder="Search places, tags, accounts…" autocomplete="off">
+      <div id="searchResults"></div>
+    </div>
+
     <div class="card" id="authCard">
       <h2>1 · Sign in</h2>
       <div class="row">
@@ -116,6 +122,38 @@ async function api(path, opts = {}) {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(body?.error?.message || res.statusText), { body, status: res.status });
   return body;
+}
+
+// ── Search (T-031): federated places/tags/influencers ──────────────────────
+let searchTimer = null, searchSeq = 0;
+document.getElementById("searchBox").addEventListener("input", (e) => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 2) { searchSeq++; document.getElementById("searchResults").innerHTML = ""; return; }
+  searchTimer = setTimeout(() => runSearch(q), 250);
+});
+
+async function runSearch(q) {
+  const seq = ++searchSeq; // drop out-of-order responses
+  const out = document.getElementById("searchResults");
+  try {
+    const { data } = await api(`/search?q=${encodeURIComponent(q)}`);
+    if (seq !== searchSeq) return;
+    const places = (data.places || []).map(p =>
+      `<div class="src"><a href="#" onclick="goToPlace(${Number(p.id)}, ${Number(p.lat)}, ${Number(p.lng)}); return false;">📍 ${esc(p.name)}</a>` +
+      `${p.city ? ` <span class="muted">· ${esc(p.city)}</span>` : ""}</div>`).join("");
+    const tags = (data.tags || []).map(t => `<span class="chip">#${esc(t.slug)}</span>`).join("");
+    const infl = (data.influencers || []).map(i => `<div class="src muted">🎥 @${esc(i.handle)}</div>`).join("");
+    out.innerHTML = (places + tags + infl) || '<div class="muted">No matches.</div>';
+  } catch (err) {
+    if (seq !== searchSeq) return;
+    out.innerHTML = `<div class="err">${esc(err.message)}</div>`;
+  }
+}
+
+function goToPlace(id, lat, lng) {
+  map.flyTo([lat, lng], 17, { duration: 0.8 });
+  showPlace(id);
 }
 
 // ── Map: load places in the current viewport ───────────────────────────────

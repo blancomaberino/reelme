@@ -12,6 +12,8 @@ export interface ReelmapExtraction {
       'restaurant' | 'cafe' | 'bar' | 'bakery' | 'street_food' | 'food_truck' | 'dessert' | 'market' | 'other' | null;
     /**
      * Lowercase cuisine labels, e.g. "thai", "neapolitan pizza". Empty if unstated.
+     *
+     * @maxItems 32
      */
     cuisines: string[];
     address: {
@@ -44,6 +46,9 @@ export interface ReelmapExtraction {
      * Verbatim hours text from the source, unparsed.
      */
     opening_hours_text: string | null;
+    /**
+     * @maxItems 32
+     */
     dishes: {
       name: string;
       /**
@@ -53,10 +58,14 @@ export interface ReelmapExtraction {
     }[];
     /**
      * e.g. "cozy", "date night", "counter seating", "late night".
+     *
+     * @maxItems 32
      */
     vibe_tags: string[];
     /**
      * e.g. "vegan options", "halal", "gluten-free". Only when stated or clearly shown.
+     *
+     * @maxItems 32
      */
     dietary_tags: string[];
   };
