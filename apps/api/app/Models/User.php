@@ -8,6 +8,7 @@ use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -18,6 +19,13 @@ use Laravel\Sanctum\HasApiTokens;
  * Role flags (is_influencer/is_restaurant_owner/is_admin) and stripe columns are
  * deliberately NOT fillable — they are granted by the system, never mass-assigned.
  *
+ * @property int $id
+ * @property string $username
+ * @property string|null $name
+ * @property string|null $bio
+ * @property string|null $avatar_path
+ * @property bool $is_public
+ * @property bool $is_influencer
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $stripe_connect_onboarded_at
  */
@@ -35,6 +43,12 @@ class User extends Authenticatable implements FilamentUser
     public function canAccessPanel(Panel $panel): bool
     {
         return (bool) $this->is_admin;
+    }
+
+    /** @return HasMany<Share, $this> */
+    public function shares(): HasMany
+    {
+        return $this->hasMany(Share::class);
     }
 
     /**

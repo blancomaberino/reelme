@@ -1,11 +1,8 @@
 <?php
 
 use App\Enums\ShareStatus;
-use App\Models\Influencer;
 use App\Models\Place;
-use App\Models\PlaceSource;
 use App\Models\Share;
-use App\Models\SourcePost;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,36 +18,9 @@ afterEach(function () {
     Model::preventLazyLoading(false);
 });
 
-/**
- * A fully-wired published share: sharer → source post (+influencer) → place
- * source → place, with `published_at` set.
- */
-function publishedShare(Place $place, ?User $sharer = null, ?string $publishedAt = null): Share
-{
-    $sharer ??= User::factory()->create(['is_public' => true]);
-    $influencer = Influencer::factory()->create();
-    $post = SourcePost::factory()->create([
-        'influencer_id' => $influencer->id,
-        'caption' => 'Amazing noodles, hidden gem',
-        'posted_at' => now()->subDay(),
-    ]);
-    $share = Share::factory()->create([
-        'user_id' => $sharer->id,
-        'source_post_id' => $post->id,
-        'status' => ShareStatus::Published,
-        'published_at' => $publishedAt ?? now(),
-    ]);
-    $source = PlaceSource::factory()->create([
-        'place_id' => $place->id,
-        'source_post_id' => $post->id,
-        'share_id' => $share->id,
-        'extraction_snapshot_json' => ['name' => $place->name],
-    ]);
-    $share->published_place_source_id = $source->id;
-    $share->save();
-
-    return $share;
-}
+// publishedShare() lives in tests/Helpers/PipelineHelpers.php (loaded via
+// Pest.php) — shared with the Profiles suite, so it must exist in every
+// parallel worker.
 
 it('lists published shares reverse-chron with full attribution + place summary', function () {
     $place = Place::factory()->active()->atPoint(38.7169, -9.1355)->create(['name' => 'Feed Cafe']);
