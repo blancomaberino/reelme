@@ -64,7 +64,7 @@
     </div>
 
     <div class="card" id="feedCard">
-      <h2>Feed</h2>
+      <h2>Feed <label style="float:right;font-weight:400;text-transform:none;letter-spacing:0"><input type="checkbox" id="feedFollowing" style="width:auto;vertical-align:-2px"> following</label></h2>
       <div id="feed"><div class="muted">Loading…</div></div>
     </div>
 
@@ -134,7 +134,7 @@ async function api(path, opts = {}) {
 }
 
 // ── Search (T-031): federated places/tags/influencers ──────────────────────
-let searchTimer = null, searchSeq = 0;
+let searchTimer = null, searchSeq = 0, followTarget = null;
 document.getElementById("searchBox").addEventListener("input", (e) => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
@@ -168,8 +168,9 @@ function goToPlace(id, lat, lng) {
 // ── Feed (T-034): recent published shares ───────────────────────────────────
 async function loadFeed() {
   const el = document.getElementById("feed");
+  const following = document.getElementById("feedFollowing").checked;
   try {
-    const { data } = await api('/feed?limit=8');
+    const { data } = await api(`/feed?limit=8${following ? "&scope=following" : ""}`);
     if (!data.length) { el.innerHTML = '<div class="muted">Nothing shared yet.</div>'; return; }
     el.innerHTML = data.map(item => {
       const place = item.place;
@@ -189,6 +190,7 @@ async function loadFeed() {
   }
 }
 loadFeed();
+document.getElementById("feedFollowing").addEventListener("change", loadFeed);
 
 // ── Map: load places in the current viewport ───────────────────────────────
 async function loadPlaces() {
@@ -247,8 +249,10 @@ async function showProfile(username) {
   el.classList.add("open");
   el.innerHTML = '<span class="close" onclick="closeDetail()">✕</span><div class="muted">Loading…</div>';
   try {
-    const { data } = await api(`/users/${encodeURIComponent(username)}`);
+    const res = await api(`/users/${encodeURIComponent(username)}`);
+    const data = res.data, meta = res.meta;
     const p = data.profile;
+    followTarget = { followable_type: "user", followable_id: Number(p2id(data)) };
     const shares = (data.shares || []).map(s => {
       const place = s.place;
       const label = place
@@ -264,9 +268,37 @@ async function showProfile(username) {
       <div class="muted">${Number(p.counters.published_shares)} shares · ${Number(p.counters.followers)} followers</div>
       <span id="followSlot"></span>
       <h3>Published</h3>${shares || '<div class="muted">Nothing published yet.</div>'}`;
+    renderFollowButton(username, meta && meta.viewer);
   } catch (e) {
     el.innerHTML = `<span class="close" onclick="closeDetail()">✕</span><div class="err">${esc(e.message)}</div>`;
   }
+}
+
+function p2id(data) { return data.profile && data.profile.id ? data.profile.id : 0; }
+
+function renderFollowButton(username, viewer) {
+  const slot = document.getElementById("followSlot");
+  if (!slot || !token || !viewer) return;
+  const btn = document.createElement("button");
+  btn.style.width = "auto";
+  btn.style.marginTop = "8px";
+  btn.textContent = viewer.following ? "Unfollow" : "Follow";
+  if (viewer.following) btn.className = "ghost";
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      if (viewer.following) {
+        await api(`/follows/${viewer.follow_id}`, { method: "DELETE" });
+      } else {
+        // The profile payload doesn't carry the numeric user id; resolve the
+        // follow target through the follows API by username lookup is not a
+        // thing — so the button uses the id embedded when opening profiles.
+        await api("/follows", { method: "POST", body: JSON.stringify(followTarget) });
+      }
+      showProfile(username); // re-render with fresh state
+    } catch (e) { btn.disabled = false; btn.textContent = e.message; }
+  });
+  slot.replaceChildren(btn);
 }
 
 function renderPlace(p) {

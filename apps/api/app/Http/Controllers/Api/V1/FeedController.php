@@ -24,25 +24,28 @@ class FeedController extends Controller
     public function index(FeedRequest $request, PublishedShareFeed $feed): JsonResponse
     {
         $limit = $request->limit();
+        $scope = $request->scope();
+        $constrain = null;
 
-        if ($request->scope() === 'following') {
-            abort_unless($request->user('sanctum') !== null, 401);
+        if ($scope === 'following') {
+            $me = $request->user('sanctum');
+            abort_unless($me !== null, 401);
 
-            return response()->json([
-                'data' => [],
-                'meta' => [
-                    'scope' => 'following', // populated by T-037
-                    'pagination' => ['next_cursor' => null, 'prev_cursor' => null, 'limit' => $limit],
-                ],
-            ]);
+            // Shares BY followed users, or crediting followed influencers (T-037).
+            $constrain = fn ($q) => $q->where(fn ($w) => $w
+                ->whereIn('shares.user_id', fn ($f) => $f->select('followee_id')->from('follows')
+                    ->where('follower_user_id', $me->id)->where('followee_type', 'user'))
+                ->orWhereIn('shares.source_post_id', fn ($p) => $p->select('source_posts.id')->from('source_posts')
+                    ->whereIn('source_posts.influencer_id', fn ($f) => $f->select('followee_id')->from('follows')
+                        ->where('follower_user_id', $me->id)->where('followee_type', 'influencer'))));
         }
 
-        $page = $feed->paginate('feed', $request->validated('cursor'), $limit);
+        $page = $feed->paginate('feed', $request->validated('cursor'), $limit, $constrain);
 
         return response()->json([
             'data' => FeedItemResource::collection($page['items']),
             'meta' => [
-                'scope' => 'global',
+                'scope' => $scope,
                 'pagination' => [
                     'next_cursor' => $page['next_cursor'],
                     'prev_cursor' => null,

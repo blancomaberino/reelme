@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Auth\RefreshController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
 use App\Http\Controllers\Api\V1\FeedController;
+use App\Http\Controllers\Api\V1\FollowController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\InfluencerController;
 use App\Http\Controllers\Api\V1\MapController;
@@ -96,6 +97,12 @@ Route::prefix('v1')->group(function () {
         Route::patch('/shares/{share}', [ShareController::class, 'update']);
         Route::post('/shares/{share}/retry', [ShareController::class, 'retry']);
         Route::delete('/shares/{share}', [ShareController::class, 'destroy']);
+
+        // Follows (T-037, 03 §2.10): follow users or influencers; counters +
+        // NewFollower notification handled transactionally in the controller.
+        Route::post('/follows', [FollowController::class, 'store']);
+        Route::delete('/follows/{follow}', [FollowController::class, 'destroy']);
+        Route::get('/me/follows', [FollowController::class, 'follows']);
 
         // Native reviews (T-059): one review per (place, user). POST creates
         // (409 on duplicate), PUT upserts, DELETE removes the caller's own.

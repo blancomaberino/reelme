@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Follow;
 use App\Models\Influencer;
 use App\Models\Place;
 use App\Models\PlaceSource;
@@ -132,14 +133,35 @@ it('requires auth for filter=mine and filter=following', function () {
     $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=following')->assertStatus(401);
 });
 
-it('returns an empty stub for filter=following when authed', function () {
-    activePlace(51.5117, -0.1300);
-    Sanctum::actingAs(User::factory()->create());
+it('filters to followed accounts with filter=following (T-037)', function () {
+    $me = User::factory()->create();
+    $followedUser = User::factory()->create(['is_public' => true]);
+    $followedInfluencer = Influencer::factory()->create();
 
-    $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=following')
-        ->assertOk()
-        ->assertJsonPath('meta.filter', 'following')
-        ->assertJsonCount(0, 'data.pins');
+    // Place A: shared (and PUBLISHED — attribution requires it) by a followed user.
+    $a = activePlace(51.5117, -0.1300, ['name' => 'ByFollowedUser']);
+    $shareA = Share::factory()->for($followedUser)->create(['status' => 'published', 'published_at' => now()]);
+    PlaceSource::factory()->create(['place_id' => $a->id, 'share_id' => $shareA->id, 'source_post_id' => $shareA->source_post_id]);
+
+    // Place B: credited to a followed influencer (shared by a stranger).
+    $b = activePlace(51.5000, -0.1000, ['name' => 'ByFollowedInfluencer']);
+    $shareB = Share::factory()->create(['status' => 'published', 'published_at' => now()]);
+    $shareB->sourcePost->influencer()->associate($followedInfluencer);
+    $shareB->sourcePost->save();
+    PlaceSource::factory()->create(['place_id' => $b->id, 'share_id' => $shareB->id, 'source_post_id' => $shareB->source_post_id]);
+
+    // Place C: unrelated.
+    activePlace(51.5200, -0.1100, ['name' => 'Unrelated']);
+
+    Follow::create(['follower_user_id' => $me->id, 'followee_type' => 'user', 'followee_id' => $followedUser->id]);
+    Follow::create(['follower_user_id' => $me->id, 'followee_type' => 'influencer', 'followee_id' => $followedInfluencer->id]);
+
+    Sanctum::actingAs($me);
+    $names = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=following')->assertOk()->json('data.pins'))
+        ->pluck('name');
+
+    expect($names)->toContain('ByFollowedUser', 'ByFollowedInfluencer')
+        ->not->toContain('Unrelated');
 });
 
 it('rejects a bad bbox with a validation_failed envelope', function () {

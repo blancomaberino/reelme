@@ -37,9 +37,17 @@ class InfluencerController extends Controller
 
         $influencer->setAttribute('promoted_places_count', $count);
 
+        $viewer = request()->user('sanctum');
+        $follow = $viewer?->follows()->where('followee_type', 'influencer')->where('followee_id', $influencer->id)->first();
+
         return response()->json([
             'data' => new InfluencerResource($influencer),
-            'meta' => (object) [],
+            'meta' => [
+                'viewer' => [
+                    'following' => $follow !== null,
+                    'follow_id' => $follow !== null ? (string) $follow->id : null,
+                ],
+            ],
         ]);
     }
 
