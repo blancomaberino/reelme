@@ -62,6 +62,28 @@ final class KeysetCursor
         return $keys;
     }
 
+    /**
+     * Coerce a decoded key that must be an integer (row ids, counts). JSON
+     * turns big numbers into floats, and PHP 8.4 THROWS casting a
+     * non-representable float to int — so a crafted `1e300` id must 422 like
+     * every other malformed cursor, never 500.
+     */
+    public static function intKey(mixed $key): int
+    {
+        if (is_int($key)) {
+            return $key;
+        }
+        if (is_string($key) && preg_match('/^-?\d{1,18}$/', $key) === 1) {
+            return (int) $key;
+        }
+        if (is_float($key) && is_finite($key) && floor($key) === $key
+            && $key >= (float) PHP_INT_MIN && $key <= (float) PHP_INT_MAX) {
+            return (int) $key;
+        }
+
+        self::reject('The cursor is malformed.');
+    }
+
     private static function reject(string $message): never
     {
         throw ValidationException::withMessages(['cursor' => [$message]]);
