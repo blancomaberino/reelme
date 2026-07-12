@@ -17,8 +17,12 @@ use App\Enums\ShareStatus;
 use App\Jobs\PublishShare;
 use App\Jobs\ResolvePlace;
 use App\Models\AnalysisRun;
+use App\Models\Influencer;
 use App\Models\Place;
+use App\Models\PlaceSource;
 use App\Models\Share;
+use App\Models\SourcePost;
+use App\Models\User;
 use App\Services\Geo\FakeGeocoder;
 use App\Services\Geo\Geocoder;
 use App\Services\Geo\GeocodeResult;
@@ -87,6 +91,37 @@ function useFakeInstagram(): void
 {
     config(['ingestion.chains.instagram' => [FakeInstagramAdapter::class]]);
     app()->forgetInstance(AdapterRegistry::class);
+}
+
+/**
+ * A fully-wired published share row (no pipeline run): sharer → source post
+ * (+influencer) → place source → place, with `published_at` set.
+ */
+function publishedShare(Place $place, ?User $sharer = null, ?string $publishedAt = null): Share
+{
+    $sharer ??= User::factory()->create(['is_public' => true]);
+    $influencer = Influencer::factory()->create();
+    $post = SourcePost::factory()->create([
+        'influencer_id' => $influencer->id,
+        'caption' => 'Amazing noodles, hidden gem',
+        'posted_at' => now()->subDay(),
+    ]);
+    $share = Share::factory()->create([
+        'user_id' => $sharer->id,
+        'source_post_id' => $post->id,
+        'status' => ShareStatus::Published,
+        'published_at' => $publishedAt ?? now(),
+    ]);
+    $source = PlaceSource::factory()->create([
+        'place_id' => $place->id,
+        'source_post_id' => $post->id,
+        'share_id' => $share->id,
+        'extraction_snapshot_json' => ['name' => $place->name],
+    ]);
+    $share->published_place_source_id = $source->id;
+    $share->save();
+
+    return $share;
 }
 
 /** Publish a share end-to-end (resolve → publish) with the standard fixture snapshot. */

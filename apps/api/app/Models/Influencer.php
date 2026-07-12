@@ -16,6 +16,8 @@ use Laravel\Scout\Searchable;
  * @property string $handle
  * @property string|null $display_name
  * @property string|null $avatar_url
+ * @property int|null $claimed_by_user_id
+ * @property int|null $follower_count_cached
  */
 class Influencer extends Model
 {

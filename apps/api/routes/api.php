@@ -9,10 +9,12 @@ use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
 use App\Http\Controllers\Api\V1\FeedController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\InfluencerController;
 use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\PlaceController;
+use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\ShareController;
@@ -55,6 +57,16 @@ Route::prefix('v1')->group(function () {
     // Discovery feed (T-034, 03 §2.8): global scope is public; `following`
     // requires auth (checked in the controller via the sanctum guard).
     Route::get('/feed', [FeedController::class, 'index'])->middleware('throttle:map');
+
+    // Public profiles (T-036, 03 §2.9): users bind by citext username;
+    // private profiles 404 in-controller. Influencer identities are always
+    // public. Same interactive read limiter.
+    Route::middleware('throttle:map')->group(function () {
+        Route::get('/users/{user:username}', [ProfileController::class, 'show']);
+        Route::get('/users/{user:username}/map', [ProfileController::class, 'map']);
+        Route::get('/influencers/{influencer}', [InfluencerController::class, 'show']);
+        Route::get('/influencers/{influencer}/map', [InfluencerController::class, 'map']);
+    });
 
     // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
     Route::prefix('auth')->middleware('throttle:auth')->group(function () {

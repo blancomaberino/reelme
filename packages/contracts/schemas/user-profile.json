@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/user-profile.json",
+  "title": "UserProfile",
+  "description": "The `profile` object of GET /api/v1/users/{username} (T-036). Public fields only — never email, roles beyond is_influencer, or billing data.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["username", "name", "bio", "avatar_path", "is_influencer", "counters", "created_at"],
+  "properties": {
+    "username": { "type": "string" },
+    "name": { "type": ["string", "null"] },
+    "bio": { "type": ["string", "null"] },
+    "avatar_path": { "type": ["string", "null"] },
+    "is_influencer": { "type": "boolean" },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["published_shares", "followers", "following"],
+      "properties": {
+        "published_shares": { "type": "integer", "minimum": 0 },
+        "followers": { "type": "integer", "minimum": 0 },
+        "following": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "created_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

@@ -173,7 +173,9 @@ async function loadFeed() {
     if (!data.length) { el.innerHTML = '<div class="muted">Nothing shared yet.</div>'; return; }
     el.innerHTML = data.map(item => {
       const place = item.place;
-      const who = item.sharer ? esc(item.sharer.username) : "someone";
+      const who = item.sharer
+        ? `<a href="#" onclick="showProfile('${esc(item.sharer.username)}'); return false;">${esc(item.sharer.username)}</a>`
+        : "someone";
       const via = item.influencer ? ` · @${esc(item.influencer.handle)}` : "";
       const when = item.published_at ? new Date(item.published_at).toLocaleDateString() : "";
       const label = place
@@ -230,6 +232,34 @@ async function showPlace(id) {
 }
 function closeDetail() { document.getElementById("detail").classList.remove("open"); }
 
+// ── Public profile (T-036) ──────────────────────────────────────────────────
+async function showProfile(username) {
+  const el = document.getElementById("detail");
+  el.classList.add("open");
+  el.innerHTML = '<span class="close" onclick="closeDetail()">✕</span><div class="muted">Loading…</div>';
+  try {
+    const { data } = await api(`/users/${encodeURIComponent(username)}`);
+    const p = data.profile;
+    const shares = (data.shares || []).map(s => {
+      const place = s.place;
+      const label = place
+        ? `<a href="#" onclick="goToPlace(${Number(place.id)}, ${Number(place.lat)}, ${Number(place.lng)}); return false;">${esc(place.name || "a place")}</a>`
+        : "a place";
+      const via = s.influencer ? ` · @${esc(s.influencer.handle)}` : "";
+      return `<div class="src">📣 ${label}${via}</div>`;
+    }).join("");
+    el.innerHTML = `<span class="close" onclick="closeDetail()">✕</span>
+      <h2>@${esc(p.username)}</h2>
+      <div class="muted">${esc(p.name || "")}${p.is_influencer ? " · 🎥 influencer" : ""}</div>
+      ${p.bio ? `<div style="margin:6px 0">${esc(p.bio)}</div>` : ""}
+      <div class="muted">${Number(p.counters.published_shares)} shares · ${Number(p.counters.followers)} followers</div>
+      <span id="followSlot"></span>
+      <h3>Published</h3>${shares || '<div class="muted">Nothing published yet.</div>'}`;
+  } catch (e) {
+    el.innerHTML = `<span class="close" onclick="closeDetail()">✕</span><div class="err">${esc(e.message)}</div>`;
+  }
+}
+
 function renderPlace(p) {
   const g = (p.rating && p.rating.google) || {}, a = (p.rating && p.rating.app) || {};
   const chips = arr => (arr || []).map(t => `<span class="chip">${esc(t)}</span>`).join("");
@@ -245,8 +275,11 @@ function renderPlace(p) {
     const link = post.url
       ? `<a href="${esc(safeUrl(post.url))}" target="_blank" rel="noopener">${label}</a>`
       : label;
+    const sharerBit = sharer
+      ? ` · shared by <a href="#" onclick="showProfile('${esc(sharer)}'); return false;">${esc(sharer)}</a>`
+      : "";
     return `<div class="src">🔗 ${link}` +
-      `${handle ? ` · @${esc(handle)}` : ""}${sharer ? ` · shared by ${esc(sharer)}` : ""}</div>`;
+      `${handle ? ` · @${esc(handle)}` : ""}${sharerBit}</div>`;
   }).join("");
   const reviews = (p.google_reviews || []).slice(0, 3).map(r =>
     `<div class="rev"><span class="stars">${starStr(r.rating)}</span> <b>${esc(r.author || "")}</b>` +

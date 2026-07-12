@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/influencer-profile.json",
+  "title": "InfluencerProfile",
+  "description": "GET /api/v1/influencers/{id} data payload (T-036). `claimed_by_user_id` is never serialized raw — only a boolean plus the public claimer username.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "platform", "handle", "display_name", "avatar_url", "claimed", "claimed_by", "follower_count", "counters"],
+  "properties": {
+    "id": { "type": "string" },
+    "platform": { "type": "string" },
+    "handle": { "type": "string" },
+    "display_name": { "type": ["string", "null"] },
+    "avatar_url": { "type": ["string", "null"] },
+    "claimed": { "type": "boolean" },
+    "claimed_by": { "type": ["string", "null"] },
+    "follower_count": { "type": "integer", "minimum": 0 },
+    "counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["promoted_places"],
+      "properties": {
+        "promoted_places": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
