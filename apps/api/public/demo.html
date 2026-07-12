@@ -63,6 +63,11 @@
       <div id="searchResults"></div>
     </div>
 
+    <div class="card" id="feedCard">
+      <h2>Feed</h2>
+      <div id="feed"><div class="muted">Loading…</div></div>
+    </div>
+
     <div class="card" id="authCard">
       <h2>1 · Sign in</h2>
       <div class="row">
@@ -159,6 +164,26 @@ function goToPlace(id, lat, lng) {
   map.flyTo([lat, lng], 17, { duration: 0.8 });
   showPlace(id);
 }
+
+// ── Feed (T-034): recent published shares ───────────────────────────────────
+async function loadFeed() {
+  const el = document.getElementById("feed");
+  try {
+    const { data } = await api('/feed?limit=8');
+    if (!data.length) { el.innerHTML = '<div class="muted">Nothing shared yet.</div>'; return; }
+    el.innerHTML = data.map(item => {
+      const place = item.place || {};
+      const who = item.sharer ? esc(item.sharer.username) : "someone";
+      const via = item.influencer ? ` · @${esc(item.influencer.handle)}` : "";
+      const when = item.published_at ? new Date(item.published_at).toLocaleDateString() : "";
+      return `<div class="src">📣 <a href="#" onclick="goToPlace(${Number(place.id)}, ${Number(place.lat)}, ${Number(place.lng)}); return false;">${esc(place.name || "a place")}</a>` +
+        `<br><span class="muted">${who}${via} · ${esc(when)}</span></div>`;
+    }).join("");
+  } catch (err) {
+    el.innerHTML = `<div class="err">${esc(err.message)}</div>`;
+  }
+}
+loadFeed();
 
 // ── Map: load places in the current viewport ───────────────────────────────
 async function loadPlaces() {

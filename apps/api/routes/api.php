@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\Auth\PasswordResetController;
 use App\Http\Controllers\Api\V1\Auth\RefreshController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
+use App\Http\Controllers\Api\V1\FeedController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
@@ -50,6 +51,10 @@ Route::prefix('v1')->group(function () {
 
     // Native reviews (T-059): public read; writes are authenticated below.
     Route::get('/places/{place}/reviews', [ReviewController::class, 'index'])->middleware('throttle:map');
+
+    // Discovery feed (T-034, 03 §2.8): global scope is public; `following`
+    // requires auth (checked in the controller via the sanctum guard).
+    Route::get('/feed', [FeedController::class, 'index'])->middleware('throttle:map');
 
     // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
     Route::prefix('auth')->middleware('throttle:auth')->group(function () {
