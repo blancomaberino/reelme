@@ -13,6 +13,7 @@ use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use RuntimeException;
+use Throwable;
 
 /**
  * The dedup decision surface (T-035): approve a pending place as genuinely
@@ -146,6 +147,13 @@ class ViewPlace extends ViewRecord
                     $restored = app(PlaceMerger::class)->unmerge($merge);
                 } catch (RuntimeException $e) {
                     Notification::make()->title('Cannot undo this merge')->body($e->getMessage())->danger()->send();
+
+                    return;
+                } catch (Throwable $e) {
+                    // e.g. a constraint collision from out-of-band edits — the
+                    // transaction rolled back; surface it instead of a 500.
+                    report($e);
+                    Notification::make()->title('Cannot undo this merge')->body('The restore failed and was rolled back. Check the logs.')->danger()->send();
 
                     return;
                 }

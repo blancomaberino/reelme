@@ -9,6 +9,7 @@ use App\Models\Tag;
 use App\Models\User;
 use App\Services\Places\PlaceMerger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
@@ -270,4 +271,55 @@ it('covers the M2 exit scenario: two shares of one restaurant end up on one plac
     (new PlaceMerger)->unmerge(PlaceMerge::sole());
     expect($sourceB->fresh()->place_id)->toBe($b->id)
         ->and($b->fresh()->status)->toBe(PlaceStatus::Pending);
+});
+
+it('merging the same pair twice writes a single audit row and keeps the tombstone consistent', function () {
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create();
+    $loser = Place::factory()->atPoint(51.5, -0.13)->create(['phone' => '+441234567890']);
+    PlaceSource::factory()->primary()->create(['place_id' => $loser->id]);
+
+    (new PlaceMerger)->merge($winner, $loser);
+    // A double-submit / second admin re-merging the (now stale) pair: the
+    // in-transaction re-check must no-op instead of writing a second audit row
+    // with an empty source set that would corrupt a later unmerge.
+    (new PlaceMerger)->merge($winner->fresh(), $loser);
+
+    expect(PlaceMerge::count())->toBe(1)
+        ->and($loser->fresh()->status)->toBe(PlaceStatus::Merged);
+
+    // And the single audit row still unmerges cleanly.
+    (new PlaceMerger)->unmerge(PlaceMerge::sole());
+    expect($loser->fresh()->shares_count)->toBe(1);
+});
+
+it('unmerge re-creates a survivor tag pivot that was deleted after the merge', function () {
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    $loser = Place::factory()->atPoint(51.5001, -0.1301)->create();
+
+    $tag = Tag::factory()->create(['slug' => 'ramen', 'name' => 'Ramen']);
+    $winner->tags()->attach($tag->id, ['source' => 'extraction', 'confidence' => 0.5]);
+
+    (new PlaceMerger)->merge($winner, $loser);
+    // Some cleanup deletes the winner's pivot between merge and unmerge.
+    DB::table('place_tag')->where('place_id', $winner->id)->delete();
+
+    (new PlaceMerger)->unmerge(PlaceMerge::sole());
+
+    $restored = $winner->fresh()->tags()->get()->keyBy('slug');
+    expect($restored->keys()->all())->toBe(['ramen'])
+        ->and((float) $restored['ramen']->pivot->confidence)->toBe(0.5);
+});
+
+it('unmerge keeps a numeric-string backfill the admin changed to a ==-equal but distinct value', function () {
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['postal_code' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->create(['postal_code' => '01234']);
+
+    (new PlaceMerger)->merge($winner, $loser);
+    $winner->refresh();
+    $winner->postal_code = '1234'; // '01234' == '1234' loosely, but this is an admin edit
+    $winner->save();
+
+    (new PlaceMerger)->unmerge(PlaceMerge::sole());
+
+    expect($winner->fresh()->postal_code)->toBe('1234');
 });

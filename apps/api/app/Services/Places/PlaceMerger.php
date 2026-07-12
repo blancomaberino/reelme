@@ -36,7 +36,30 @@ class PlaceMerger
             return $winner;
         }
 
-        DB::transaction(function () use ($winner, $loser, $actor) {
+        return DB::transaction(function () use ($winner, $loser, $actor) {
+            // Lock both rows (ascending id — deterministic order prevents
+            // deadlocks) and RE-CHECK state under the lock: a concurrent merge
+            // of the same pair (double-submit) or of the reverse pair (A→B vs
+            // B→A) passes the unlocked pre-checks and would otherwise tombstone
+            // both places or write a second, corrupting audit row.
+            /** @var list<Place> $locked */
+            $locked = Place::query()
+                ->whereIn('id', [$winner->id, $loser->id])
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->all();
+            [$winner, $loser] = $locked[0]->id === $winner->id ? [$locked[0], $locked[1]] : [$locked[1], $locked[0]];
+
+            if ($loser->status === PlaceStatus::Merged) {
+                return $this->terminal($winner);
+            }
+            if ($winner->status === PlaceStatus::Merged) {
+                // The winner was merged away while we waited on the lock. Retry
+                // against its survivor rather than rehoming onto a tombstone.
+                return $this->merge($this->terminal($winner), $loser, $actor);
+            }
+
             $loserSources = DB::table('place_sources')->where('place_id', $loser->id)->orderBy('id')->get();
             $winnerShareIds = DB::table('place_sources')->where('place_id', $winner->id)->pluck('share_id')->all();
 
@@ -96,9 +119,9 @@ class PlaceMerger
                 'target_tag_pivots' => $winnerPivots,
                 'target_backfilled_fields' => $backfilled,
             ]);
-        });
 
-        return $winner->fresh() ?? $winner;
+            return $winner->fresh() ?? $winner;
+        });
     }
 
     /**
@@ -132,8 +155,11 @@ class PlaceMerger
             // Null the survivor's backfilled fields first (only where the donated
             // value still stands — an admin edit since the merge wins), releasing
             // the unique google_place_id before the tombstone reclaims it.
+            // json_encode-normalized strict compare: jsonb round-trips arrays
+            // faithfully, and a loose == would numeric-juggle strings ('01234'
+            // == '1234'), wrongly nulling an admin's post-merge correction.
             foreach ($merge->target_backfilled_fields as $field => $value) {
-                if ($winner->getAttribute($field) == $value) {
+                if (json_encode($winner->getAttribute($field)) === json_encode($value)) {
                     $winner->setAttribute($field, null);
                 }
             }
@@ -167,8 +193,8 @@ class PlaceMerger
 
             $this->restoreTagPivots($winner->id, $merge->target_tag_pivots, (array) ($snapshot['tag_pivots'] ?? []));
             DB::table('place_tag')->where('place_id', $loser->id)->delete();
-            foreach ((array) ($snapshot['tag_pivots'] ?? []) as $pivot) {
-                DB::table('place_tag')->insertOrIgnore((array) $pivot);
+            foreach ($this->pivotsWithLiveTags((array) ($snapshot['tag_pivots'] ?? [])) as $pivot) {
+                DB::table('place_tag')->insertOrIgnore($pivot);
             }
 
             $this->ensurePrimary($winner);
@@ -203,11 +229,33 @@ class PlaceMerger
             ->whereIn('tag_id', $donatedTagIds->diff($snapshotByTag->keys()))
             ->delete();
 
-        foreach ($snapshotByTag as $tagId => $pivot) {
-            DB::table('place_tag')
-                ->where('place_id', $winnerId)->where('tag_id', $tagId)
-                ->update(['source' => $pivot['source'], 'confidence' => $pivot['confidence']]);
+        // Upsert (not UPDATE): a snapshot pivot deleted since the merge must be
+        // re-created, not silently skipped. Tags hard-deleted in the interim are
+        // filtered out — restoring them would hit the FK.
+        $rows = $this->pivotsWithLiveTags(
+            $snapshotByTag->map(fn ($pivot) => ['place_id' => $winnerId] + (array) $pivot)->values()->all(),
+        );
+        if ($rows !== []) {
+            DB::table('place_tag')->upsert($rows, ['place_id', 'tag_id'], ['source', 'confidence']);
         }
+    }
+
+    /**
+     * Keep only snapshot pivots whose tag still exists (normalized to arrays
+     * with any stale place_id overwritten by the snapshot's own value).
+     *
+     * @param  list<array<string, mixed>>  $pivots
+     * @return list<array<string, mixed>>
+     */
+    private function pivotsWithLiveTags(array $pivots): array
+    {
+        $pivots = array_map(fn ($pivot) => (array) $pivot, $pivots);
+        $live = DB::table('tags')
+            ->whereIn('id', array_map(fn (array $pivot) => (int) $pivot['tag_id'], $pivots))
+            ->pluck('id')
+            ->all();
+
+        return array_values(array_filter($pivots, fn (array $pivot) => in_array((int) $pivot['tag_id'], $live, true)));
     }
 
     /**

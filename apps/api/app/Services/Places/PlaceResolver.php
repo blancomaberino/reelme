@@ -69,6 +69,13 @@ class PlaceResolver
             ->where('status', '!=', PlaceStatus::Merged->value)
             ->first();
 
+        // Attaching to an admin-hidden place would publish the share onto a
+        // pin that renders nowhere, and creating a fresh one would violate the
+        // unique google_place_id — park the share for a human instead (T-035).
+        if ($byId !== null && $byId->status === PlaceStatus::Hidden) {
+            return ResolutionOutcome::hiddenMatch();
+        }
+
         if ($byId !== null) {
             $target = $this->terminal($byId);
             // Backfill Google's rating/reviews onto a place that predates them.
@@ -314,7 +321,7 @@ class PlaceResolver
 
         return Place::query()
             ->whereKey($pickedId)
-            ->where('status', '!=', PlaceStatus::Merged->value)
+            ->whereIn('status', PlaceStatus::matchable())
             ->first();
     }
 

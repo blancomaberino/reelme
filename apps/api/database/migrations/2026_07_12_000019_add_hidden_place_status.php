@@ -19,6 +19,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Postgres validates existing rows when adding a CHECK — park any
+        // hidden rows back in the review queue or the rebuild aborts halfway
+        // (constraint dropped, replacement never added).
+        DB::statement("UPDATE places SET status = 'pending' WHERE status = 'hidden'");
         DB::statement('ALTER TABLE places DROP CONSTRAINT places_status_check');
         DB::statement("ALTER TABLE places ADD CONSTRAINT places_status_check CHECK (status IN ('pending','active','merged'))");
     }

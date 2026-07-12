@@ -20,6 +20,8 @@ final class ResolutionOutcome
 
     public const GEOCODE_FAILED = 'geocode_failed';
 
+    public const HIDDEN_MATCH = 'hidden_match';
+
     /**
      * @param  list<array<string, mixed>>  $candidates
      */
@@ -51,6 +53,16 @@ final class ResolutionOutcome
     public static function geocodeFailed(): self
     {
         return new self(self::GEOCODE_FAILED);
+    }
+
+    /**
+     * The share's google_place_id resolves to a place an admin hid (T-035).
+     * Attaching would publish onto an invisible pin and creating a duplicate
+     * would violate the unique google_place_id — a human decides.
+     */
+    public static function hiddenMatch(): self
+    {
+        return new self(self::HIDDEN_MATCH);
     }
 
     public function resolved(): bool
