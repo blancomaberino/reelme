@@ -2,6 +2,9 @@
 
 use App\Models\Follow;
 use App\Models\Influencer;
+use App\Models\Place;
+use App\Models\PlaceSource;
+use App\Models\Share;
 use App\Models\User;
 use App\Notifications\NewFollower;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -149,4 +152,52 @@ it('reflects follow state in profile meta.viewer and live counters', function ()
     expect($after->json('meta.viewer.following'))->toBeTrue()
         ->and($after->json('meta.viewer.follow_id'))->not->toBeNull()
         ->and($after->json('data.profile.counters.followers'))->toBe(1);
+});
+
+it('stores Sanctum tokens under the morph alias so revocation flows see them', function () {
+    $user = User::factory()->create();
+    $user->createToken('device-a');
+
+    // The morph map writes the alias — and tokens() queries by it, so
+    // password reset / login dedupe / admin revocation all keep working.
+    $this->assertDatabaseHas('personal_access_tokens', [
+        'tokenable_type' => 'user',
+        'tokenable_id' => $user->id,
+    ]);
+    expect($user->tokens()->count())->toBe(1);
+});
+
+it('withholds a followee who went private since the follow (contract parity)', function () {
+    $me = User::factory()->create();
+    $target = User::factory()->create(['is_public' => true]);
+
+    Sanctum::actingAs($me);
+    $this->postJson('/api/v1/follows', ['followable_type' => 'user', 'followable_id' => $target->id])->assertStatus(201);
+
+    $target->update(['is_public' => false]);
+
+    $row = $this->getJson('/api/v1/me/follows')->assertOk()->json('data.0');
+    expect($row['followee'])->toBeNull()          // identity withheld
+        ->and($row['id'])->not->toBeNull();       // but the edge (and unfollow id) remains
+});
+
+it('excludes unpublished shares from following-map attribution', function () {
+    $me = User::factory()->create();
+    $followed = User::factory()->create(['is_public' => true]);
+    Follow::create(['follower_user_id' => $me->id, 'followee_type' => 'user', 'followee_id' => $followed->id]);
+
+    $place = Place::factory()->active()->atPoint(51.5117, -0.13)->create(['name' => 'ResolvedNotPublished']);
+    // A resolved-but-FAILED share: place_source exists, share never published.
+    $share = Share::factory()->for($followed)->create(['status' => 'failed']);
+    PlaceSource::factory()->create([
+        'place_id' => $place->id,
+        'share_id' => $share->id,
+        'source_post_id' => $share->source_post_id,
+    ]);
+
+    Sanctum::actingAs($me);
+    $names = collect($this->getJson('/api/v1/map/places?bbox=-0.20,51.45,-0.05,51.55&zoom=16&filter=following')
+        ->assertOk()->json('data.pins'))->pluck('name');
+
+    expect($names)->not->toContain('ResolvedNotPublished');
 });

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -31,6 +32,16 @@ return new class extends Migration
         Schema::table('influencers', function (Blueprint $table) {
             $table->unsignedInteger('followers_count')->default(0);
         });
+
+        // The morph map (AppServiceProvider) makes every NEW morph row store
+        // the alias — but pre-existing Sanctum tokens stored the FQCN, and
+        // User::tokens() (now querying tokenable_type='user') would silently
+        // stop seeing them: password reset / login dedupe / admin revocation
+        // would MISS legacy sessions. Rewrite them once, here, atomically with
+        // the change that introduces the map.
+        DB::table('personal_access_tokens')
+            ->where('tokenable_type', 'App\\Models\\User')
+            ->update(['tokenable_type' => 'user']);
 
         // Database notifications (NewFollower rides this; Expo push is T-027).
         Schema::create('notifications', function (Blueprint $table) {

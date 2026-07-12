@@ -90,7 +90,13 @@ class FollowController extends Controller
         abort_unless($follow->follower_user_id === $request->user()->id, 403);
 
         DB::transaction(function () use ($follow) {
-            $follow->delete();
+            // Decrement only when THIS request physically removed the row — a
+            // concurrent double-unfollow must not double-decrement (store()'s
+            // mirror-image guard is wasRecentlyCreated).
+            $deleted = Follow::query()->whereKey($follow->id)->delete();
+            if ($deleted === 0) {
+                return;
+            }
 
             User::query()->whereKey($follow->follower_user_id)
                 ->where('following_count', '>', 0)->decrement('following_count');
@@ -132,7 +138,12 @@ class FollowController extends Controller
                 'id' => (string) $f->id,
                 'followable_type' => $f->followee_type,
                 'followee' => match (true) {
-                    $f->followee instanceof User => new UserSummaryResource($f->followee),
+                    // A followee who went private since is withheld like
+                    // everywhere else (UserSummaryResource's stated contract);
+                    // the edge (and its unfollow id) stays visible.
+                    $f->followee instanceof User => $f->followee->is_public
+                        ? new UserSummaryResource($f->followee)
+                        : null,
                     $f->followee instanceof Influencer => new InfluencerSummaryResource($f->followee),
                     default => null, // followee deleted since — edge is stale
                 },

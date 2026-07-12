@@ -138,14 +138,14 @@ it('filters to followed accounts with filter=following (T-037)', function () {
     $followedUser = User::factory()->create(['is_public' => true]);
     $followedInfluencer = Influencer::factory()->create();
 
-    // Place A: shared by a followed user.
+    // Place A: shared (and PUBLISHED — attribution requires it) by a followed user.
     $a = activePlace(51.5117, -0.1300, ['name' => 'ByFollowedUser']);
-    $shareA = Share::factory()->for($followedUser)->create();
+    $shareA = Share::factory()->for($followedUser)->create(['status' => 'published', 'published_at' => now()]);
     PlaceSource::factory()->create(['place_id' => $a->id, 'share_id' => $shareA->id, 'source_post_id' => $shareA->source_post_id]);
 
     // Place B: credited to a followed influencer (shared by a stranger).
     $b = activePlace(51.5000, -0.1000, ['name' => 'ByFollowedInfluencer']);
-    $shareB = Share::factory()->create();
+    $shareB = Share::factory()->create(['status' => 'published', 'published_at' => now()]);
     $shareB->sourcePost->influencer()->associate($followedInfluencer);
     $shareB->sourcePost->save();
     PlaceSource::factory()->create(['place_id' => $b->id, 'share_id' => $shareB->id, 'source_post_id' => $shareB->source_post_id]);

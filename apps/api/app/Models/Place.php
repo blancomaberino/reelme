@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PlaceStatus;
+use App\Enums\ShareStatus;
 use Database\Factories\PlaceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -138,6 +139,9 @@ class Place extends Model
             ->join('shares', 'shares.id', '=', 'place_sources.share_id')
             ->join('source_posts', 'source_posts.id', '=', 'place_sources.source_post_id')
             ->whereColumn('place_sources.place_id', 'places.id')
+            // Attribution only through PUBLISHED shares — a resolved-but-
+            // failed share must not whisper "someone you follow was here".
+            ->where('shares.status', ShareStatus::Published->value)
             ->where(fn ($w) => $w
                 ->whereIn('shares.user_id', fn ($f) => $f->select('followee_id')->from('follows')
                     ->where('follower_user_id', $user->id)->where('followee_type', 'user'))

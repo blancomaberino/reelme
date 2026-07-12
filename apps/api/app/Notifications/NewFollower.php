@@ -15,7 +15,12 @@ class NewFollower extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(private readonly User $follower) {}
+    public function __construct(private readonly User $follower)
+    {
+        // Horizon's supervisor-default consumes ['default', 'notifications'];
+        // route explicitly so a plain `queue:work` setup can subscribe too.
+        $this->onQueue('notifications');
+    }
 
     /**
      * @return list<string>
