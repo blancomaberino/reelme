@@ -69,6 +69,13 @@ class PlaceResolver
             ->where('status', '!=', PlaceStatus::Merged->value)
             ->first();
 
+        // Attaching to an admin-hidden place would publish the share onto a
+        // pin that renders nowhere, and creating a fresh one would violate the
+        // unique google_place_id — park the share for a human instead (T-035).
+        if ($byId !== null && $byId->status === PlaceStatus::Hidden) {
+            return ResolutionOutcome::hiddenMatch();
+        }
+
         if ($byId !== null) {
             $target = $this->terminal($byId);
             // Backfill Google's rating/reviews onto a place that predates them.
@@ -122,12 +129,41 @@ class PlaceResolver
      */
     private function candidates(GeocodeResult $geo, string $name): array
     {
-        $normalized = Place::normalizeName($name);
+        return $this->scanCandidates($geo->lat, $geo->lng, Place::normalizeName($name));
+    }
+
+    /**
+     * Duplicate candidates for an existing place — the same scan the pipeline
+     * dedup runs, exposed for the T-035 admin review queue so both surfaces
+     * agree on what "looks like a duplicate" means. Sorted best-first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function candidatesFor(Place $place): array
+    {
+        ['lat' => $lat, 'lng' => $lng] = $place->coordinates();
+
+        $candidates = array_values(array_filter(
+            $this->scanCandidates($lat, $lng, $place->normalized_name),
+            fn (array $c) => $c['place_id'] !== $place->id,
+        ));
+
+        usort($candidates, fn (array $a, array $b) => $b['similarity'] <=> $a['similarity']);
+
+        return $candidates;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function scanCandidates(float $lat, float $lng, string $normalized): array
+    {
         $radius = (float) config('places.dedup.radius_meters', 75);
 
         // Status literals mirror PlaceStatus::matchable() (pending, active).
         $rows = DB::select(
             'SELECT id, name, normalized_name, address_line1, city, region, country_code,
+                    status, shares_count,
                     ST_Y(location::geometry) AS lat,
                     ST_X(location::geometry) AS lng,
                     ST_Distance(location, ST_MakePoint(?, ?)::geography) AS distance_m,
@@ -136,7 +172,7 @@ class PlaceResolver
              WHERE status IN (\'pending\', \'active\')
                AND merged_into_place_id IS NULL
                AND ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
-            [$geo->lng, $geo->lat, $normalized, $geo->lng, $geo->lat, $radius]
+            [$lng, $lat, $normalized, $lng, $lat, $radius]
         );
 
         return array_map(function ($row) use ($normalized) {
@@ -153,6 +189,8 @@ class PlaceResolver
                 'lat' => (float) $row->lat,
                 'lng' => (float) $row->lng,
                 'address' => $this->joinAddress([$row->address_line1, $row->city, $row->region, $row->country_code]),
+                'status' => (string) $row->status,
+                'shares_count' => (int) $row->shares_count,
             ];
         }, $rows);
     }
@@ -283,7 +321,7 @@ class PlaceResolver
 
         return Place::query()
             ->whereKey($pickedId)
-            ->where('status', '!=', PlaceStatus::Merged->value)
+            ->whereIn('status', PlaceStatus::matchable())
             ->first();
     }
 

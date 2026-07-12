@@ -211,3 +211,20 @@ it('no-ops when the share is not analyzing', function () {
 
     expect(Place::count())->toBe(0);
 });
+
+it('parks the share in review when its google_place_id matches an admin-hidden place (T-035)', function () {
+    $hidden = Place::factory()->atPoint(51.5200, -0.1400)->withGooglePlaceId('ChIJhidden')->create([
+        'name' => 'Lanzhou Beef Noodle House',
+        'status' => PlaceStatus::Hidden->value,
+    ]);
+    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult('ChIJhidden', 51.5200, -0.1400)));
+    $share = analyzingShare();
+
+    (new ResolvePlace($share->id))->handle();
+
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Review)
+        ->and($share->review_reason)->toBe('place_hidden')
+        ->and(PlaceSource::where('share_id', $share->id)->exists())->toBeFalse()
+        ->and($hidden->fresh()->status)->toBe(PlaceStatus::Hidden); // untouched
+});

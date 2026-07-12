@@ -16,8 +16,13 @@ use Illuminate\Http\JsonResponse;
  */
 class TagController extends Controller
 {
-    /** Correlated usage count — keyset-comparable (an alias would not be addressable in WHERE). */
-    private const COUNT_EXPR = '(select count(*) from place_tag where place_tag.tag_id = tags.id)';
+    /**
+     * Correlated usage count — keyset-comparable (an alias would not be
+     * addressable in WHERE). Counts publicly visible places only: merged
+     * tombstones shed their pivots on merge, but hidden places keep theirs
+     * (hide is reversible) and must not inflate popularity.
+     */
+    private const COUNT_EXPR = "(select count(*) from place_tag join places on places.id = place_tag.place_id where place_tag.tag_id = tags.id and places.status in ('pending', 'active') and places.merged_into_place_id is null)";
 
     public function index(TagIndexRequest $request): JsonResponse
     {
@@ -25,7 +30,9 @@ class TagController extends Controller
         $popular = $request->popular();
         $sort = $popular ? 'tags-popular' : 'tags-alpha';
 
-        $query = Tag::query()->withCount('places');
+        // Scoped the same way as COUNT_EXPR — the keyset WHERE and the ORDER BY
+        // alias must agree or popular-cursor pages skip/repeat rows.
+        $query = Tag::query()->withCount(['places' => fn ($q) => $q->publiclyVisible()]);
 
         if (($q = trim((string) ($request->validated('q') ?? ''))) !== '') {
             // Escape LIKE metacharacters — q is a literal prefix, not a pattern.

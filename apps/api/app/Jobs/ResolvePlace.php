@@ -49,6 +49,7 @@ class ResolvePlace extends PipelineStubJob
         match ($outcome->type) {
             ResolutionOutcome::ATTACHED, ResolutionOutcome::CREATED => null, // stay analyzing → PublishShare
             ResolutionOutcome::AMBIGUOUS => $this->toReview($share, 'ambiguous_place', ['candidates' => $outcome->candidates]),
+            ResolutionOutcome::HIDDEN_MATCH => $this->toReview($share, 'place_hidden', null),
             default => $this->toReview($share, 'geocode_failed', null), // GEOCODE_FAILED
         };
     }
