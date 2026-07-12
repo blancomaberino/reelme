@@ -10,3 +10,7 @@ Artisan::command('inspire', function () {
 
 // Horizon metrics graphs need periodic snapshots.
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
+
+// Google ToS: cached Places review snippets must be refreshed or dropped
+// after ~30 days (T-059).
+Schedule::command('reelmap:google:refresh-stale')->daily()->onOneServer()->withoutOverlapping();

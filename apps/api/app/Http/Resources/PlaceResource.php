@@ -84,6 +84,10 @@ class PlaceResource extends JsonResource
                 in_array('offers', $this->includes, true),
                 [], // offers ship in M4 — the include is accepted-but-empty (03 §2.6)
             ),
+            'reviews' => $this->when(
+                in_array('reviews', $this->includes, true),
+                fn () => ReviewResource::collection($this->reviews),
+            ),
         ];
     }
 

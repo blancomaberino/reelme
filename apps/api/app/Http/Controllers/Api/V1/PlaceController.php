@@ -32,6 +32,9 @@ class PlaceController extends Controller
     /** Cap the embedded/aggregated sources so a very popular place stays bounded. */
     private const SOURCE_CAP = 24;
 
+    /** Embedded native reviews on ?include=reviews; page the rest via /reviews. */
+    private const REVIEW_CAP = 10;
+
     public function index(PlaceIndexRequest $request): JsonResponse
     {
         $sort = $request->sort();
@@ -130,7 +133,16 @@ class PlaceController extends Controller
                 ->when($withSources, fn ($qq) => $qq->with(['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user']))
                 ->orderByDesc('is_primary')->orderBy('id')->limit(self::SOURCE_CAP),
         ]);
-        $place->loadCount('reviews')->loadAvg('reviews', 'rating');
+        // Hidden (moderated) reviews never count toward the public aggregate.
+        $place->loadCount(['reviews' => fn ($q) => $q->visible()])
+            ->loadAvg(['reviews' => fn ($q) => $q->visible()], 'rating');
+
+        if (in_array('reviews', $includes, true)) {
+            $place->load([
+                'reviews' => fn ($q) => $q->visible()->with('user')
+                    ->orderByDesc('id')->limit(self::REVIEW_CAP),
+            ]);
+        }
 
         return response()->json([
             'data' => (new PlaceResource($place))->withIncludes($includes),

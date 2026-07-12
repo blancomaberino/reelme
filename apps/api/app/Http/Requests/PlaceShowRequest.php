@@ -12,7 +12,7 @@ use Illuminate\Validation\Validator;
  */
 class PlaceShowRequest extends FormRequest
 {
-    private const ALLOWED_INCLUDES = ['sources', 'offers'];
+    private const ALLOWED_INCLUDES = ['sources', 'offers', 'reviews'];
 
     public function authorize(): bool
     {
