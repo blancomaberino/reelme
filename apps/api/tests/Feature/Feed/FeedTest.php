@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ShareStatus;
+use App\Models\Follow;
 use App\Models\Place;
 use App\Models\Share;
 use App\Models\User;
@@ -100,14 +101,31 @@ it('excludes shares of merged places and withholds private sharers', function ()
         ->and($res->json('data.0.sharer'))->toBeNull();
 });
 
-it('gates scope=following behind auth and stubs it empty', function () {
+it('gates scope=following behind auth and filters to followed accounts (T-037)', function () {
     $this->getJson('/api/v1/feed?scope=following')->assertStatus(401);
 
-    Sanctum::actingAs(User::factory()->create());
-    $this->getJson('/api/v1/feed?scope=following')
-        ->assertOk()
-        ->assertJsonPath('data', [])
-        ->assertJsonPath('meta.scope', 'following');
+    $me = User::factory()->create();
+    $followedUser = User::factory()->create(['is_public' => true]);
+    $place = Place::factory()->active()->atPoint(38.7, -9.1)->create();
+
+    $wanted = publishedShare($place, sharer: $followedUser);
+    publishedShare($place); // a stranger's share — must not appear
+
+    // A share credited to a followed influencer (shared by a stranger).
+    $viaInfluencer = publishedShare($place);
+    Follow::create(['follower_user_id' => $me->id, 'followee_type' => 'user', 'followee_id' => $followedUser->id]);
+    Follow::create([
+        'follower_user_id' => $me->id,
+        'followee_type' => 'influencer',
+        'followee_id' => $viaInfluencer->sourcePost->influencer_id,
+    ]);
+
+    Sanctum::actingAs($me);
+    $res = $this->getJson('/api/v1/feed?scope=following')->assertOk();
+
+    expect(collect($res->json('data'))->pluck('id')->all())
+        ->toEqualCanonicalizing([(string) $wanted->id, (string) $viaInfluencer->id])
+        ->and($res->json('meta.scope'))->toBe('following');
 });
 
 it('validates scope/limit/cursor and exposes rate-limit headers', function () {

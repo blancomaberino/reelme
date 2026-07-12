@@ -126,6 +126,26 @@ class Place extends Model
     }
 
     /**
+     * Places traceable to accounts the user follows (T-037): a place_source
+     * whose share belongs to a followed user, or whose source post is
+     * credited to a followed influencer.
+     *
+     * @param  Builder<Place>  $query
+     */
+    protected function scopeFollowedBy(Builder $query, User $user): void
+    {
+        $query->whereExists(fn ($sub) => $sub->from('place_sources')
+            ->join('shares', 'shares.id', '=', 'place_sources.share_id')
+            ->join('source_posts', 'source_posts.id', '=', 'place_sources.source_post_id')
+            ->whereColumn('place_sources.place_id', 'places.id')
+            ->where(fn ($w) => $w
+                ->whereIn('shares.user_id', fn ($f) => $f->select('followee_id')->from('follows')
+                    ->where('follower_user_id', $user->id)->where('followee_type', 'user'))
+                ->orWhereIn('source_posts.influencer_id', fn ($f) => $f->select('followee_id')->from('follows')
+                    ->where('follower_user_id', $user->id)->where('followee_type', 'influencer'))));
+    }
+
+    /**
      * Public routes bind by slug (canonical, T-030) but numeric ids keep
      * working — map pins and existing clients address places by id.
      */

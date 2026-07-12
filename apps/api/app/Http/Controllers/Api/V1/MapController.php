@@ -29,23 +29,16 @@ class MapController extends Controller
             abort(401, 'Authentication is required for this filter.');
         }
 
-        // `following` is a validated auth-required stub until T-037.
-        if ($filter === 'following') {
-            return response()->json([
-                'data' => ['pins' => [], 'clusters' => []],
-                'meta' => [
-                    'zoom' => (int) $request->validated('zoom'),
-                    'total_in_bbox' => 0,
-                    'clustered' => false,
-                    'filter' => 'following',
-                ],
-            ]);
-        }
-
         $userId = $user?->id;
 
-        return $viewport->respond($request, $filter === 'mine' && $userId !== null
-            ? fn ($q) => $q->whereHas('sources.share', fn ($s) => $s->where('user_id', $userId))
-            : null);
+        return $viewport->respond($request, match ($filter) {
+            // Places traceable to followed users/influencers (T-037). $user is
+            // non-null here — guarded by the 401 above.
+            'following' => fn ($q) => $q->followedBy($user),
+            'mine' => fn ($q) => $q->whereHas(
+                'sources.share', fn ($s) => $s->where('user_id', $userId),
+            ),
+            default => null,
+        });
     }
 }

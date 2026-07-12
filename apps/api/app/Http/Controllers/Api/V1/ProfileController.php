@@ -46,12 +46,21 @@ class ProfileController extends Controller
                 $p->publiclyVisible();
             })]);
 
+        // Viewer-relative state (demo follow button / mobile): outside the
+        // contract-pinned profile object on purpose.
+        $viewer = $request->user('sanctum');
+        $follow = $viewer?->follows()->where('followee_type', 'user')->where('followee_id', $user->id)->first();
+
         return response()->json([
             'data' => [
                 'profile' => new PublicUserResource($user),
                 'shares' => FeedItemResource::collection($page['items']),
             ],
             'meta' => [
+                'viewer' => [
+                    'following' => $follow !== null,
+                    'follow_id' => $follow !== null ? (string) $follow->id : null,
+                ],
                 'pagination' => [
                     'next_cursor' => $page['next_cursor'],
                     'prev_cursor' => null,

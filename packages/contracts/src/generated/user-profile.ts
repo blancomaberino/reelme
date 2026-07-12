@@ -6,6 +6,7 @@
  * The `profile` object of GET /api/v1/users/{username} (T-036). Public fields only — never email, roles beyond is_influencer, or billing data.
  */
 export interface UserProfile {
+  id: string;
   username: string;
   name: string | null;
   bio: string | null;

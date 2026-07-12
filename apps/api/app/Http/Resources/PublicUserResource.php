@@ -24,6 +24,7 @@ class PublicUserResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
+            'id' => (string) $this->id, // already public via sharer summaries
             'username' => $this->username,
             'name' => $this->name,
             'bio' => $this->bio,

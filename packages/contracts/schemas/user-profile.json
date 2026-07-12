@@ -5,8 +5,9 @@
   "description": "The `profile` object of GET /api/v1/users/{username} (T-036). Public fields only — never email, roles beyond is_influencer, or billing data.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["username", "name", "bio", "avatar_path", "is_influencer", "counters", "created_at"],
+  "required": ["id", "username", "name", "bio", "avatar_path", "is_influencer", "counters", "created_at"],
   "properties": {
+    "id": { "type": "string" },
     "username": { "type": "string" },
     "name": { "type": ["string", "null"] },
     "bio": { "type": ["string", "null"] },

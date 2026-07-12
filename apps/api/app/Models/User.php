@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -49,6 +50,22 @@ class User extends Authenticatable implements FilamentUser
     public function shares(): HasMany
     {
         return $this->hasMany(Share::class);
+    }
+
+    /**
+     * Follow edges this user created (T-037).
+     *
+     * @return HasMany<Follow, $this>
+     */
+    public function follows(): HasMany
+    {
+        return $this->hasMany(Follow::class, 'follower_user_id');
+    }
+
+    /** @return MorphMany<Follow, $this> */
+    public function followers(): MorphMany
+    {
+        return $this->morphMany(Follow::class, 'followee');
     }
 
     /**
