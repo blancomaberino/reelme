@@ -169,7 +169,7 @@ class PlaceController extends Controller
             ->orderBy('id');
 
         if ($cursor !== null) {
-            $query->where('id', '>', (int) $cursor[0]);
+            $query->where('id', '>', KeysetCursor::intKey($cursor[0]));
         }
 
         $rows = $query->limit($limit + 1)->get();
@@ -212,7 +212,7 @@ class PlaceController extends Controller
             case 'popular':
                 $query->orderByDesc('shares_count')->orderByDesc('id');
                 if ($cursor !== null) {
-                    $query->whereRaw('(shares_count, id) < (?, ?)', [(int) $cursor[0], (int) $cursor[1]]);
+                    $query->whereRaw('(shares_count, id) < (?, ?)', [KeysetCursor::intKey($cursor[0]), KeysetCursor::intKey($cursor[1])]);
                 }
                 break;
 
@@ -223,7 +223,7 @@ class PlaceController extends Controller
                 $point = [$near['lng'], $near['lat']];
                 $query->orderByRaw("{$dist} ASC, id ASC", $point);
                 if ($cursor !== null) {
-                    $query->whereRaw("({$dist}, id) > (?, ?)", [...$point, (float) $cursor[0], (int) $cursor[1]]);
+                    $query->whereRaw("({$dist}, id) > (?, ?)", [...$point, (float) $cursor[0], KeysetCursor::intKey($cursor[1])]);
                 }
                 break;
 
@@ -239,7 +239,7 @@ class PlaceController extends Controller
                     if ($dt === false || $dt->format('Y-m-d H:i:s.u') !== $ts || str_starts_with($ts, '0000-')) {
                         throw ValidationException::withMessages(['cursor' => ['The cursor is malformed.']]);
                     }
-                    $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, (int) $cursor[1]]);
+                    $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, KeysetCursor::intKey($cursor[1])]);
                 }
         }
     }

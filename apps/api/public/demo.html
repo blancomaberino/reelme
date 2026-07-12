@@ -172,11 +172,14 @@ async function loadFeed() {
     const { data } = await api('/feed?limit=8');
     if (!data.length) { el.innerHTML = '<div class="muted">Nothing shared yet.</div>'; return; }
     el.innerHTML = data.map(item => {
-      const place = item.place || {};
+      const place = item.place;
       const who = item.sharer ? esc(item.sharer.username) : "someone";
       const via = item.influencer ? ` · @${esc(item.influencer.handle)}` : "";
       const when = item.published_at ? new Date(item.published_at).toLocaleDateString() : "";
-      return `<div class="src">📣 <a href="#" onclick="goToPlace(${Number(place.id)}, ${Number(place.lat)}, ${Number(place.lng)}); return false;">${esc(place.name || "a place")}</a>` +
+      const label = place
+        ? `<a href="#" onclick="goToPlace(${Number(place.id)}, ${Number(place.lat)}, ${Number(place.lng)}); return false;">${esc(place.name || "a place")}</a>`
+        : "a place";
+      return `<div class="src">📣 ${label}` +
         `<br><span class="muted">${who}${via} · ${esc(when)}</span></div>`;
     }).join("");
   } catch (err) {

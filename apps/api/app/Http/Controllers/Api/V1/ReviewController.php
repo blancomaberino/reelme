@@ -33,7 +33,7 @@ class ReviewController extends Controller
 
         $query = $place->reviews()->visible()->with('user')->orderByDesc('id');
         if ($cursor !== null) {
-            $query->where('id', '<', (int) $cursor[0]);
+            $query->where('id', '<', KeysetCursor::intKey($cursor[0]));
         }
 
         $rows = $query->limit($limit + 1)->get();

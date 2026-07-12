@@ -154,3 +154,17 @@ it('validates scope/limit/cursor and exposes rate-limit headers', function () {
         ->assertOk()
         ->assertHeader('X-RateLimit-Limit', '120');
 });
+
+it('422s a cursor whose id key is a non-representable float, on feed and places', function () {
+    $craft = fn (string $sort, array $keys) => rtrim(strtr(base64_encode((string) json_encode(['s' => $sort, 'k' => $keys])), '+/', '-_'), '=');
+
+    $this->getJson('/api/v1/feed?cursor='.urlencode($craft('feed', ['2026-07-11 10:00:00.000000', 1e300])))
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed');
+
+    $this->getJson('/api/v1/places?cursor='.urlencode($craft('recent', ['2026-07-11 10:00:00.000000', 1e300])))
+        ->assertStatus(422);
+
+    $this->getJson('/api/v1/places?sort=popular&cursor='.urlencode($craft('popular', [1, 1e300])))
+        ->assertStatus(422);
+});

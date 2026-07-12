@@ -69,7 +69,7 @@ class FeedController extends Controller
             if ($dt === false || $dt->format('Y-m-d H:i:s.u') !== $ts || str_starts_with($ts, '0000-')) {
                 throw ValidationException::withMessages(['cursor' => ['The cursor is malformed.']]);
             }
-            $query->whereRaw('(published_at, id) < (?::timestamptz, ?)', [$ts, (int) $cursor[1]]);
+            $query->whereRaw('(published_at, id) < (?::timestamptz, ?)', [$ts, KeysetCursor::intKey($cursor[1])]);
         }
 
         $rows = $query->limit($limit + 1)->get();

@@ -42,12 +42,12 @@ class TagController extends Controller
             // WHERE needs the raw expression.
             $query->orderByDesc('places_count')->orderByDesc('id');
             if ($cursor !== null) {
-                $query->whereRaw('('.self::COUNT_EXPR.', id) < (?, ?)', [(int) $cursor[0], (int) $cursor[1]]);
+                $query->whereRaw('('.self::COUNT_EXPR.', id) < (?, ?)', [KeysetCursor::intKey($cursor[0]), KeysetCursor::intKey($cursor[1])]);
             }
         } else {
             $query->orderBy('slug')->orderBy('id');
             if ($cursor !== null) {
-                $query->whereRaw('(slug, id) > (?, ?)', [(string) $cursor[0], (int) $cursor[1]]);
+                $query->whereRaw('(slug, id) > (?, ?)', [(string) $cursor[0], KeysetCursor::intKey($cursor[1])]);
             }
         }
 
