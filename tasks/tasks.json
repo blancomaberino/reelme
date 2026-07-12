@@ -734,7 +734,7 @@
       "id": "T-030",
       "title": "Places API: index/show with filters + sources + attribution",
       "phase": "M2",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-023"
       ],
@@ -752,13 +752,13 @@
         "API Resources shaped per 03-api-design.md envelope"
       ],
       "agent": "executor",
-      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #30 (base of the stack) — awaiting user merge. Index (keyset cursors recent/popular/distance), slug-canonical show w/ merged redirect + includes, /sources attribution, contract schemas."
+      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #30 (base of the stack) — awaiting user merge. Index (keyset cursors recent/popular/distance), slug-canonical show w/ merged redirect + includes, /sources attribution, contract schemas. | PR #30 MERGED to main (b113c15, 2026-07-12)."
     },
     {
       "id": "T-031",
       "title": "Tags + Scout/Meilisearch search",
       "phase": "M2",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-023"
       ],
@@ -777,7 +777,7 @@
         "Reindex command + tests"
       ],
       "agent": "executor",
-      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #31 (stacked on #30) — awaiting user merge. tags+place_tag materialized on publish (atomic upsert), Scout+Meilisearch, GET /search + /tags, tag filters live, reindex+backfill commands (run on dev)."
+      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #31 (stacked on #30) — awaiting user merge. tags+place_tag materialized on publish (atomic upsert), Scout+Meilisearch, GET /search + /tags, tag filters live, reindex+backfill commands (run on dev). | PR #31 MERGED to main (2be1925, 2026-07-12)."
     },
     {
       "id": "T-032",
@@ -852,7 +852,7 @@
         "Search screen against GET /search"
       ],
       "agent": "executor",
-      "notes": "2026-07-11: API slice BUILT+REVIEWED+CI-GREEN as PR #33 (stacked on #32) — awaiting user merge. GET /feed (global + following) + demo feed panel. Mobile Feed/Search screens (steps 4-6) still pending — mobile arc."
+      "notes": "2026-07-11: API slice BUILT+REVIEWED+CI-GREEN as PR #33 (stacked on #32) — awaiting user merge. GET /feed (global + following) + demo feed panel. Mobile Feed/Search screens (steps 4-6) still pending — mobile arc. | API slice PR #33 MERGED to main (776b425, 2026-07-12); task stays open for the mobile Feed/Search screens only."
     },
     {
       "id": "T-035",
@@ -882,7 +882,7 @@
       "id": "T-036",
       "title": "Public profiles API: users + influencers",
       "phase": "M3",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-030"
       ],
@@ -900,13 +900,13 @@
         "Privacy: only published content exposed"
       ],
       "agent": "executor",
-      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #34 (stacked on #33) — awaiting user merge. User+influencer profiles + public maps (MapViewport extraction), existence-oracle fix, contract schemas."
+      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #34 (stacked on #33) — awaiting user merge. User+influencer profiles + public maps (MapViewport extraction), existence-oracle fix, contract schemas. | PR #34 MERGED to main (4b0ae74, 2026-07-12)."
     },
     {
       "id": "T-037",
       "title": "Follows API + following filters",
       "phase": "M3",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-036"
       ],
@@ -926,7 +926,7 @@
         "Counter caches"
       ],
       "agent": "executor",
-      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #35 (stacked on #34) — awaiting user merge. Polymorphic follows, counters, NewFollower notification (DB channel; push waits for T-027), following filters live on map+feed. CRITICAL legacy-Sanctum-token morph rewrite included."
+      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #35 (stacked on #34) — awaiting user merge. Polymorphic follows, counters, NewFollower notification (DB channel; push waits for T-027), following filters live on map+feed. CRITICAL legacy-Sanctum-token morph rewrite included. | PR #35 MERGED to main (7e7c07d, 2026-07-12)."
     },
     {
       "id": "T-038",
@@ -1461,7 +1461,7 @@
       "id": "T-059",
       "title": "Native reviews: user ratings + reviews API, aggregation, moderation",
       "phase": "M2",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-030"
       ],
@@ -1482,7 +1482,7 @@
         "Scaffolding already shipped with the place-detail slice: reviews table, Review model, places.google_rating/google_reviews_json, rating.{app,google} in the detail resource"
       ],
       "agent": "executor",
-      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #32 (stacked on #31) — awaiting user merge. Review CRUD (one per user), read-time aggregation, report→Filament hide queue, Google-ToS refresh-stale command (daily schedule)."
+      "notes": "2026-07-11: BUILT+REVIEWED+CI-GREEN as PR #32 (stacked on #31) — awaiting user merge. Review CRUD (one per user), read-time aggregation, report→Filament hide queue, Google-ToS refresh-stale command (daily schedule). | PR #32 MERGED to main (ab716a7, 2026-07-12)."
     }
   ]
 }
