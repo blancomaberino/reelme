@@ -8,49 +8,45 @@ type Props = {
   selected: boolean;
 };
 
-// Brand pin colors — kept literal (markers render outside the themed tree and
-// must read on both light and dark map tiles).
-const PIN = '#208AEF';
-const PIN_SELECTED = '#E0245E';
+// MERCADO pin colors — kept literal (markers render outside the themed tree and
+// must read on both light and dark map tiles). Terracotta teardrop, white ring.
+const PIN = '#CF5C34';
+const PIN_SELECTED = '#B4842A'; // market-gold when selected
 
 /**
- * The map marker visual — a rounded teardrop with the price tier. Deliberately
- * cheap: no images, no theme hook (markers must not subscribe to re-renders).
+ * The map marker visual — a terracotta teardrop (rotated rounded square) with
+ * the price tier, per the MERCADO art direction. Deliberately cheap: no images,
+ * no theme hook (markers must not subscribe to re-renders).
  */
 export function PinGlyph({ priceRange, selected }: Props) {
-  const price = priceGlyphs(priceRange);
+  const price = priceGlyphs(priceRange) || '•';
+  const size = selected ? 40 : 34;
+  const color = selected ? PIN_SELECTED : PIN;
   return (
-    <View style={styles.wrap}>
-      <View style={[styles.bubble, { backgroundColor: selected ? PIN_SELECTED : PIN }, selected && styles.bubbleSelected]}>
-        <Text style={styles.label}>{price || '•'}</Text>
-      </View>
-      <View style={[styles.tail, { borderTopColor: selected ? PIN_SELECTED : PIN }]} />
+    <View style={[styles.teardrop, { width: size, height: size, backgroundColor: color }]}>
+      <Text style={styles.label}>{price}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center' },
-  bubble: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: 14,
-    paddingHorizontal: 8,
+  teardrop: {
+    // Rounded on three corners, sharp bottom-left → a teardrop once rotated 45°.
+    borderTopLeftRadius: 999,
+    borderTopRightRadius: 999,
+    borderBottomRightRadius: 999,
+    borderBottomLeftRadius: 4,
+    transform: [{ rotate: '45deg' }],
+    borderWidth: 2.5,
+    borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
-  bubbleSelected: { minWidth: 34, height: 34, borderRadius: 17, transform: [{ scale: 1.05 }] },
-  label: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  tail: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 4,
-    borderRightWidth: 4,
-    borderTopWidth: 6,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    marginTop: -1,
-  },
+  // Counter-rotate the glyph so the text reads upright inside the rotated pin.
+  label: { transform: [{ rotate: '-45deg' }], color: '#FFFFFF', fontSize: 11, fontWeight: '800', letterSpacing: -0.5 },
 });

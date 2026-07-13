@@ -13,7 +13,7 @@ import { cuisinePriceLine } from '@/lib/format';
 import { summarizeHours } from '@/lib/opening-hours';
 import { directionsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
-import { type Palette, useColors } from '@/theme/colors';
+import { fonts, type Palette, useColors } from '@/theme/colors';
 
 export default function PlaceDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -73,7 +73,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
           ) : null}
           {place.rating.google.value != null ? (
             <Text style={styles.rating}>
-              <Ionicons name="star" size={13} color="#F5A623" /> {place.rating.google.value.toFixed(1)}
+              <Ionicons name="star" size={13} color={c.gold} /> {place.rating.google.value.toFixed(1)}
               {place.rating.google.count > 0 ? ` (${place.rating.google.count})` : ''}
             </Text>
           ) : null}
@@ -269,7 +269,7 @@ const makeStyles = (c: Palette) =>
     header: { paddingHorizontal: 16, paddingVertical: 8 },
     scroll: { padding: 20, gap: 20 },
     block: { gap: 10 },
-    name: { fontSize: 26, fontWeight: '700', letterSpacing: -0.5, color: c.text },
+    name: { fontFamily: fonts.display, fontSize: 27, fontWeight: '700', letterSpacing: -0.4, color: c.text },
     metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 },
     meta: { fontSize: 15, color: c.text, textTransform: 'capitalize' },
     metaMuted: { fontSize: 14, color: c.muted },
@@ -280,7 +280,7 @@ const makeStyles = (c: Palette) =>
     rowBody: { flex: 1, flexDirection: 'row', alignItems: 'center' },
     rowText: { flex: 1, fontSize: 15, color: c.text, lineHeight: 21 },
     chevron: { marginLeft: 8 },
-    open: { color: '#16A34A', fontWeight: '600' },
+    open: { color: c.green, fontWeight: '600' },
     closed: { color: c.danger, fontWeight: '600' },
     weekly: { paddingLeft: 30, gap: 4, paddingBottom: 4 },
     weeklyLine: { fontSize: 14, color: c.muted },
@@ -298,7 +298,7 @@ const makeStyles = (c: Palette) =>
     },
     actionPressed: { backgroundColor: c.primaryPressed },
     actionLabel: { color: c.onPrimary, fontSize: 15, fontWeight: '600' },
-    sectionTitle: { fontSize: 18, fontWeight: '700', color: c.text },
+    sectionTitle: { fontFamily: fonts.display, fontSize: 19, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
     sourceList: { gap: 12 },
     footer: { height: 24 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
