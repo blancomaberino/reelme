@@ -9,11 +9,15 @@ import { useDismissShare } from '@/api/hooks/useDismissShare';
 import { useFeed } from '@/api/hooks/useFeed';
 import type { FeedItem } from '@/api/places';
 import { FeedCard } from '@/components/feed/feed-card';
+import { type MessageKey, useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
 
+type T = (key: MessageKey) => string;
+
 export default function FeedScreen() {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const authed = useSessionStore((s) => s.status === 'authed');
   const { data, isLoading, isError, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } =
@@ -52,10 +56,10 @@ export default function FeedScreen() {
         item={item}
         onPress={onPressCard}
         onHide={authed ? onHide : undefined}
-        hideLabel="Hide from my feed"
+        hideLabel={t('feed.hide')}
       />
     ),
-    [onPressCard, onHide, authed],
+    [onPressCard, onHide, authed, t],
   );
 
   const onEndReached = useCallback(() => {
@@ -65,10 +69,10 @@ export default function FeedScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Feed</Text>
+        <Text style={styles.title}>{t('feed.title')}</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Search"
+          accessibilityLabel={t('feed.search')}
           onPress={() => router.push('/search')}
           hitSlop={10}
         >
@@ -81,7 +85,7 @@ export default function FeedScreen() {
           <ActivityIndicator color={c.primary} />
         </View>
       ) : isError ? (
-        <ErrorState styles={styles} c={c} onRetry={() => void refetch()} />
+        <ErrorState styles={styles} c={c} t={t} onRetry={() => void refetch()} />
       ) : (
         <FlashList
           data={items}
@@ -94,7 +98,7 @@ export default function FeedScreen() {
           refreshControl={
             <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={c.primary} />
           }
-          ListEmptyComponent={<EmptyState styles={styles} c={c} />}
+          ListEmptyComponent={<EmptyState styles={styles} c={c} t={t} />}
           ListFooterComponent={
             isFetchingNextPage ? <ActivityIndicator style={styles.footer} color={c.primary} /> : null
           }
@@ -103,11 +107,11 @@ export default function FeedScreen() {
 
       {hidden ? (
         <View style={styles.snackbar}>
-          <Text style={styles.snackText}>Hidden from your feed</Text>
+          <Text style={styles.snackText}>{t('feed.hidden')}</Text>
           {/* Gate Undo until the hide POST settles so the DELETE can't race
               ahead of the row it's meant to remove. */}
           <Pressable accessibilityRole="button" onPress={onUndo} hitSlop={8} disabled={hide.isPending}>
-            <Text style={[styles.snackUndo, hide.isPending && styles.snackUndoDisabled]}>Undo</Text>
+            <Text style={[styles.snackUndo, hide.isPending && styles.snackUndoDisabled]}>{t('feed.undo')}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -120,23 +124,23 @@ function Separator() {
 }
 const styles12 = { height: 12 } as const;
 
-function EmptyState({ styles, c }: { styles: Styles; c: Palette }) {
+function EmptyState({ styles, c, t }: { styles: Styles; c: Palette; t: T }) {
   return (
     <View style={styles.empty}>
       <Ionicons name="albums-outline" size={40} color={c.muted} />
-      <Text style={styles.emptyTitle}>Nothing here yet</Text>
-      <Text style={styles.emptyBody}>Share your first reel to see it on the feed.</Text>
+      <Text style={styles.emptyTitle}>{t('feed.empty.title')}</Text>
+      <Text style={styles.emptyBody}>{t('feed.empty.body')}</Text>
     </View>
   );
 }
 
-function ErrorState({ styles, c, onRetry }: { styles: Styles; c: Palette; onRetry: () => void }) {
+function ErrorState({ styles, c, t, onRetry }: { styles: Styles; c: Palette; t: T; onRetry: () => void }) {
   return (
     <View style={styles.center}>
       <Ionicons name="cloud-offline-outline" size={40} color={c.muted} />
-      <Text style={styles.emptyTitle}>Couldn’t load the feed</Text>
+      <Text style={styles.emptyTitle}>{t('feed.error.title')}</Text>
       <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retry}>
-        <Text style={styles.retryText}>Try again</Text>
+        <Text style={styles.retryText}>{t('common.tryAgain')}</Text>
       </Pressable>
     </View>
   );

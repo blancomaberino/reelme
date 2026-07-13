@@ -6,10 +6,12 @@ import { useRegister } from '@/api/hooks/useAuth';
 import { AuthScreenLayout, useAuthFormStyles } from '@/components/auth-screen-layout';
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
+import { useT } from '@/i18n';
 import { formErrors } from '@/lib/form-errors';
 
 export default function RegisterScreen() {
   const styles = useAuthFormStyles();
+  const t = useT();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -29,11 +31,11 @@ export default function RegisterScreen() {
   }
 
   return (
-    <AuthScreenLayout title="Create your account" subtitle="Save the places behind every food video you love.">
-      <TextField label="Name" value={name} onChangeText={setName} autoCapitalize="words" error={fieldErrors.name} />
-      <TextField label="Username" value={username} onChangeText={setUsername} error={fieldErrors.username} />
+    <AuthScreenLayout title={t('auth.register.title')} subtitle={t('auth.register.subtitle')}>
+      <TextField label={t('auth.field.name')} value={name} onChangeText={setName} autoCapitalize="words" error={fieldErrors.name} />
+      <TextField label={t('auth.field.username')} value={username} onChangeText={setUsername} error={fieldErrors.username} />
       <TextField
-        label="Email"
+        label={t('auth.field.email')}
         value={email}
         onChangeText={setEmail}
         keyboardType="email-address"
@@ -42,7 +44,7 @@ export default function RegisterScreen() {
         error={fieldErrors.email}
       />
       <TextField
-        label="Password"
+        label={t('auth.field.password')}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -51,11 +53,11 @@ export default function RegisterScreen() {
         error={fieldErrors.password}
       />
       {generalError ? <Text style={styles.general}>{generalError}</Text> : null}
-      <Button title="Create account" onPress={submit} loading={register.isPending} />
+      <Button title={t('auth.register.submit')} onPress={submit} loading={register.isPending} />
       <View style={styles.footer}>
-        <Text style={styles.muted}>Already have an account? </Text>
+        <Text style={styles.muted}>{t('auth.register.haveAccount')}</Text>
         <Link href="/(auth)/login" style={styles.link}>
-          Log in
+          {t('auth.register.login')}
         </Link>
       </View>
     </AuthScreenLayout>

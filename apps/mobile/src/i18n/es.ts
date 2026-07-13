@@ -1,0 +1,101 @@
+import type { MessageKey } from './en';
+
+// Spanish dictionary — the DEFAULT app language ("main app language must be
+// Spanish"). Must define every key in en.ts (enforced by the drift test).
+export const es: Record<MessageKey, string> = {
+  'common.tryAgain': 'Reintentar',
+
+  'tabs.map': 'Mapa',
+  'tabs.feed': 'Feed',
+  'tabs.share': 'Compartir',
+  'tabs.profile': 'Perfil',
+
+  'feed.title': 'Feed',
+  'feed.search': 'Buscar',
+  'feed.empty.title': 'Todavía no hay nada',
+  'feed.empty.body': 'Compartí tu primer reel para verlo en el feed.',
+  'feed.error.title': 'No se pudo cargar el feed',
+  'feed.hide': 'Ocultar de mi feed',
+  'feed.hidden': 'Ocultado de tu feed',
+  'feed.undo': 'Deshacer',
+  'feed.sharerFallback': 'un usuario de Reelmap',
+
+  'place.back': 'Volver',
+  'place.notFound.title': 'Lugar no encontrado',
+  'place.notFound.body': 'Puede que se haya eliminado o que el enlace esté desactualizado.',
+  'place.directions': 'Cómo llegar',
+  'place.share': 'Compartir',
+  'place.shareMessage': '{{name}} en Reelmap',
+  'place.dishes': 'Platos',
+  'place.sources': 'De dónde salió',
+  'place.reviews': 'Reseñas',
+  'place.fromGoogle': 'De Google',
+  'place.you': ' (vos)',
+  'place.anonymous': 'anónimo',
+  'place.googleUser': 'Usuario de Google',
+  'place.sourceCount': '{{count}} fuentes',
+  'place.sourceCount_one': '{{count}} fuente',
+  'place.sourceCount_other': '{{count}} fuentes',
+  'place.hoursShow': 'Ver horario semanal',
+  'place.hoursHide': 'Ocultar horario semanal',
+  'place.openInMap': 'Abrir en el mapa',
+  'place.website': 'Abrir sitio web',
+  'place.call': 'Llamar a {{phone}}',
+  'place.view': 'Ver lugar',
+
+  'source.openOriginal': 'Abrir publicación original de {{platform}}',
+  'source.firstShared': 'Compartido primero',
+
+  'filter.following': 'Siguiendo',
+
+  'search.placeholder': 'Buscar lugares, etiquetas…',
+  'search.cancel': 'Cancelar',
+  'search.close': 'Cerrar',
+  'search.clear': 'Borrar',
+  'search.hint': 'Escribí al menos 2 caracteres para buscar.',
+  'search.error': 'Algo salió mal. Reintentá.',
+  'search.noResults': 'Sin resultados para «{{query}}».',
+  'search.section.places': 'Lugares',
+  'search.section.tags': 'Etiquetas',
+  'search.section.influencers': 'Influencers',
+  'search.profilesSoon': 'Perfiles próximamente',
+
+  'map.search': 'Buscar',
+  'map.zoomIn': 'Acercá para ver más lugares',
+
+  'profile.title': 'Perfil',
+  'profile.note': 'Tus publicaciones, seguidores y ajustes aparecerán acá (T-039).',
+  'profile.settings': 'Ajustes',
+  'profile.logout': 'Cerrar sesión',
+
+  'share.title': 'Compartir',
+  'share.subtitle': 'Pegá una URL o usá el menú de compartir del sistema (T-025)',
+
+  'settings.title': 'Ajustes',
+  'settings.language': 'Idioma',
+  'settings.languageHint': 'Elegí el idioma de la aplicación.',
+  'settings.language.es': 'Español',
+  'settings.language.en': 'English',
+
+  'auth.welcome.tagline': 'Compartí un video de comida. Marcá el lugar. Descubrí dónde come internet.',
+  'auth.welcome.createAccount': 'Crear cuenta',
+  'auth.welcome.login': 'Iniciar sesión',
+  'auth.welcome.legal': 'Al continuar aceptás nuestros Términos y Política de Privacidad.',
+
+  'auth.field.name': 'Nombre',
+  'auth.field.username': 'Usuario',
+  'auth.field.email': 'Correo',
+  'auth.field.password': 'Contraseña',
+
+  'auth.login.title': 'Bienvenido de nuevo',
+  'auth.login.subtitle': 'Iniciá sesión para seguir donde lo dejaste.',
+  'auth.login.submit': 'Iniciar sesión',
+  'auth.login.newHere': '¿Sos nuevo? ',
+  'auth.login.createAccount': 'Crear una cuenta',
+
+  'auth.register.title': 'Creá tu cuenta',
+  'auth.register.subtitle': 'Guardá los lugares detrás de cada video de comida que te gusta.',
+  'auth.register.submit': 'Crear cuenta',
+  'auth.register.haveAccount': '¿Ya tenés cuenta? ',
+  'auth.register.login': 'Iniciar sesión',
+};

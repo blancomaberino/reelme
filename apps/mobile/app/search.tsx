@@ -7,18 +7,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useSearch } from '@/api/hooks/useSearch';
 import type { InfluencerSummary, PlaceSummary, TagSummary } from '@/api/places';
+import { type MessageKey, useT } from '@/i18n';
 import { cuisinePriceLine } from '@/lib/format';
 import { useDebounced } from '@/lib/use-debounced';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 type Row =
-  | { type: 'header'; key: string; title: string }
+  | { type: 'header'; key: string; titleKey: MessageKey }
   | { type: 'place'; key: string; place: PlaceSummary }
   | { type: 'tag'; key: string; tag: TagSummary }
   | { type: 'influencer'; key: string; inf: InfluencerSummary };
 
 export default function SearchScreen() {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const [q, setQ] = useState('');
   const debouncedQ = useDebounced(q, 300);
@@ -31,15 +33,15 @@ export default function SearchScreen() {
     if (!data) return [];
     const out: Row[] = [];
     if (data.places.length > 0) {
-      out.push({ type: 'header', key: 'h-places', title: 'Places' });
+      out.push({ type: 'header', key: 'h-places', titleKey: 'search.section.places' });
       data.places.forEach((place) => out.push({ type: 'place', key: `p-${place.id}`, place }));
     }
     if (data.tags.length > 0) {
-      out.push({ type: 'header', key: 'h-tags', title: 'Tags' });
+      out.push({ type: 'header', key: 'h-tags', titleKey: 'search.section.tags' });
       data.tags.forEach((tag) => out.push({ type: 'tag', key: `t-${tag.id}`, tag }));
     }
     if (data.influencers.length > 0) {
-      out.push({ type: 'header', key: 'h-inf', title: 'Influencers' });
+      out.push({ type: 'header', key: 'h-inf', titleKey: 'search.section.influencers' });
       data.influencers.forEach((inf) => out.push({ type: 'influencer', key: `i-${inf.id}`, inf }));
     }
     return out;
@@ -56,7 +58,7 @@ export default function SearchScreen() {
           <Ionicons name="search" size={18} color={c.muted} />
           <TextInput
             style={styles.input}
-            placeholder="Search places, tags…"
+            placeholder={t('search.placeholder')}
             placeholderTextColor={c.placeholder}
             value={q}
             onChangeText={setQ}
@@ -64,30 +66,30 @@ export default function SearchScreen() {
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
-            accessibilityLabel="Search"
+            accessibilityLabel={t('feed.search')}
           />
           {q.length > 0 ? (
-            <Pressable accessibilityLabel="Clear" onPress={() => setQ('')} hitSlop={8}>
+            <Pressable accessibilityLabel={t('search.clear')} onPress={() => setQ('')} hitSlop={8}>
               <Ionicons name="close-circle" size={18} color={c.placeholder} />
             </Pressable>
           ) : null}
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.cancel}>Cancel</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('search.close')} onPress={() => router.back()} hitSlop={8}>
+          <Text style={styles.cancel}>{t('search.cancel')}</Text>
         </Pressable>
       </View>
 
       {typed.length < 2 ? (
         <View style={styles.hint}>
-          <Text style={styles.hintText}>Type at least 2 characters to search.</Text>
+          <Text style={styles.hintText}>{t('search.hint')}</Text>
         </View>
       ) : isError ? (
         <View style={styles.hint}>
-          <Text style={styles.hintText}>Something went wrong. Try again.</Text>
+          <Text style={styles.hintText}>{t('search.error')}</Text>
         </View>
       ) : showEmpty ? (
         <View style={styles.hint}>
-          <Text style={styles.hintText}>No results for “{typed}”.</Text>
+          <Text style={styles.hintText}>{t('search.noResults', { query: typed })}</Text>
         </View>
       ) : (
         <FlashList
@@ -107,8 +109,9 @@ export default function SearchScreen() {
 }
 
 function RowView({ row, styles, c }: { row: Row; styles: Styles; c: Palette }) {
+  const t = useT();
   if (row.type === 'header') {
-    return <Text style={styles.section}>{row.title}</Text>;
+    return <Text style={styles.section}>{t(row.titleKey)}</Text>;
   }
   if (row.type === 'place') {
     const p = row.place;
@@ -153,7 +156,7 @@ function RowView({ row, styles, c }: { row: Row; styles: Styles; c: Palette }) {
         <Text style={styles.rowTitle} numberOfLines={1}>
           @{row.inf.handle}
         </Text>
-        <Text style={styles.rowSub}>Profiles coming soon</Text>
+        <Text style={styles.rowSub}>{t('search.profilesSoon')}</Text>
       </View>
     </View>
   );
