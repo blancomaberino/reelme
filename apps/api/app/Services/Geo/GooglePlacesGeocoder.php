@@ -84,12 +84,18 @@ class GooglePlacesGeocoder implements Geocoder
                 continue;
             }
 
+            $photo = $review['profile_photo_url'] ?? null;
+
             $normalized[] = [
                 'author' => (string) ($review['author_name'] ?? ''),
                 'rating' => (int) ($review['rating'] ?? 0),
                 'text' => (string) ($review['text'] ?? ''),
                 'relative_time' => $review['relative_time_description'] ?? null,
                 'time' => $review['time'] ?? null,
+                // Google returns the reviewer's avatar in the same review object
+                // (no field-mask/billing change); http(s) only, cached under the
+                // same ToS refresh sweep as author/text.
+                'profile_photo_url' => is_string($photo) && preg_match('#^https?://#i', $photo) === 1 ? $photo : null,
             ];
         }
 

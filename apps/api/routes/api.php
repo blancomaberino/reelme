@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Auth\RefreshController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
 use App\Http\Controllers\Api\V1\FeedController;
+use App\Http\Controllers\Api\V1\FeedDismissalController;
 use App\Http\Controllers\Api\V1\FollowController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\InfluencerController;
@@ -103,6 +104,14 @@ Route::prefix('v1')->group(function () {
         Route::post('/follows', [FollowController::class, 'store']);
         Route::delete('/follows/{follow}', [FollowController::class, 'destroy']);
         Route::get('/me/follows', [FollowController::class, 'follows']);
+
+        // "Hide from my feed": per-user, non-destructive dismiss of a published
+        // share. The feed query filters these out for the viewer only. A light
+        // write throttle keeps it in line with the other write surfaces.
+        Route::middleware('throttle:60,1')->group(function () {
+            Route::post('/feed/hidden', [FeedDismissalController::class, 'store']);
+            Route::delete('/feed/hidden/{share}', [FeedDismissalController::class, 'destroy']);
+        });
 
         // Native reviews (T-059): one review per (place, user). POST creates
         // (409 on duplicate), PUT upserts, DELETE removes the caller's own.

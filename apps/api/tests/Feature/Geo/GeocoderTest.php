@@ -52,7 +52,10 @@ it('maps find-place + details into a GeocodeResult', function () {
             'text' => 'Best hand-pulled noodles in Lisbon.',
             'relative_time' => '2 weeks ago',
             'time' => 1699000000,
-        ]);
+            'profile_photo_url' => 'https://lh3.googleusercontent.com/a/maria.jpg',
+        ])
+        // A reviewer without a photo carries null, not a missing key.
+        ->and($result->reviews[1]['profile_photo_url'])->toBeNull();
 });
 
 it('sends the minimal field mask on the details request (billing guard)', function () {

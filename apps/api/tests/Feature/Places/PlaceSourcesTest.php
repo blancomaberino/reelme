@@ -130,3 +130,43 @@ it('404s sources of a merged place', function () {
 
     $this->getJson("/api/v1/places/{$merged->slug}/sources")->assertStatus(404);
 });
+
+it('falls back to the oEmbed thumbnail when no media asset exists', function () {
+    $place = Place::factory()->active()->atPoint(38.7, -9.1)->create();
+    $source = makeAttributedSource($place, User::factory()->create(['is_public' => true]));
+    $source->sourcePost->update(['oembed_json' => ['thumbnail_url' => 'https://i.ytimg.com/vi/abc/hq.jpg']]);
+
+    $url = $this->getJson("/api/v1/places/{$place->slug}/sources")
+        ->assertOk()->json('data.0.source_post.thumbnail_url');
+
+    expect($url)->toBe('https://i.ytimg.com/vi/abc/hq.jpg');
+});
+
+it('rejects a non-http oEmbed thumbnail (no javascript:/data: leaks)', function () {
+    $place = Place::factory()->active()->atPoint(38.7, -9.1)->create();
+    $source = makeAttributedSource($place, User::factory()->create(['is_public' => true]));
+    $source->sourcePost->update(['oembed_json' => ['thumbnail_url' => 'javascript:alert(1)']]);
+
+    $url = $this->getJson("/api/v1/places/{$place->slug}/sources")
+        ->assertOk()->json('data.0.source_post.thumbnail_url');
+
+    expect($url)->toBeNull();
+});
+
+it('prefers the signed media-asset thumbnail over the oEmbed one', function () {
+    $place = Place::factory()->active()->atPoint(38.7, -9.1)->create();
+    $source = makeAttributedSource($place, User::factory()->create(['is_public' => true]));
+    $source->sourcePost->update(['oembed_json' => ['thumbnail_url' => 'https://i.ytimg.com/vi/abc/hq.jpg']]);
+    MediaAsset::factory()->create([
+        'source_post_id' => $source->source_post_id,
+        'kind' => MediaKind::Thumbnail,
+        'disk' => 'local_media',
+        'storage_path' => 'derived/thumb.jpg',
+    ]);
+
+    $url = $this->getJson("/api/v1/places/{$place->slug}/sources")
+        ->assertOk()->json('data.0.source_post.thumbnail_url');
+
+    expect($url)->toContain('thumb.jpg')->toContain('signature=')
+        ->and($url)->not->toContain('ytimg');
+});
