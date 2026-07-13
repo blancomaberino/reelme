@@ -60,6 +60,7 @@ class PlaceResource extends JsonResource
             'vibe_tags' => $tags['vibe_tags'],
             'dietary_tags' => $tags['dietary_tags'],
             'dishes' => $tags['dishes'],
+            'dishes_updated_at' => $this->dishesUpdatedAt(),
             'source_count' => (int) $this->shares_count,
             'rating' => [
                 'google' => [

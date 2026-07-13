@@ -244,14 +244,14 @@ class Place extends Model
      * `dishes` are `{name, shown_in_video}` objects deduped by name (first wins).
      * Pure: it reads the already-loaded `sources` relation, issuing no queries.
      *
-     * @return array{cuisines: list<string>, vibe_tags: list<string>, dietary_tags: list<string>, dishes: list<array{name: string, shown_in_video: bool}>}
+     * @return array{cuisines: list<string>, vibe_tags: list<string>, dietary_tags: list<string>, dishes: list<array{name: string, shown_in_video: bool, price: string|null}>}
      */
     public function aggregatedTags(): array
     {
         $cuisines = [];
         $vibeTags = [];
         $dietaryTags = [];
-        /** @var array<string, array{name: string, shown_in_video: bool}> $dishes */
+        /** @var array<string, array{name: string, shown_in_video: bool, price: string|null}> $dishes */
         $dishes = [];
 
         foreach ($this->sources as $source) {
@@ -273,12 +273,24 @@ class Place extends Model
                         continue;
                     }
                     $name = trim((string) ($dish['name'] ?? ''));
-                    if ($name === '' || isset($dishes[$name])) {
+                    if ($name === '') {
+                        continue;
+                    }
+                    $priceRaw = $dish['price'] ?? null;
+                    $price = is_string($priceRaw) && trim($priceRaw) !== '' ? trim($priceRaw) : null;
+                    if (isset($dishes[$name])) {
+                        // First occurrence wins for the dish, but a later source
+                        // can fill in a price the first one lacked (menu update).
+                        if ($dishes[$name]['price'] === null && $price !== null) {
+                            $dishes[$name]['price'] = $price;
+                        }
+
                         continue;
                     }
                     $dishes[$name] = [
                         'name' => $name,
                         'shown_in_video' => (bool) ($dish['shown_in_video'] ?? false),
+                        'price' => $price,
                     ];
                 }
             }
@@ -290,6 +302,29 @@ class Place extends Model
             'dietary_tags' => array_values($dietaryTags),
             'dishes' => array_values($dishes),
         ];
+    }
+
+    /**
+     * When the dish/menu list was last refreshed — the most recent source that
+     * contributed any dishes (its snapshot is frozen at publish, so its
+     * `created_at` is when those dishes landed on the place). Null if no source
+     * carries dishes. Reads the already-loaded `sources` relation (no queries).
+     */
+    public function dishesUpdatedAt(): ?string
+    {
+        $latest = null;
+        foreach ($this->sources as $source) {
+            $snapshot = $source->extraction_snapshot_json;
+            $dishes = $snapshot['dishes'] ?? null;
+            if (! is_array($dishes) || $dishes === []) {
+                continue;
+            }
+            if ($source->created_at !== null && ($latest === null || $source->created_at->gt($latest))) {
+                $latest = $source->created_at;
+            }
+        }
+
+        return $latest?->toIso8601ZuluString();
     }
 
     /**

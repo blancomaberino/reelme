@@ -111,6 +111,39 @@ it('aggregates deduped tags + dishes and lists contributing sources', function (
     expect(collect($data['sources'])->pluck('source_post.platform')->all())->toContain('tiktok');
 });
 
+it('carries menu prices on dishes and reports when the list was updated', function () {
+    $place = Place::factory()->active()->atPoint(-34.9, -56.16)->create([
+        'name' => 'Parrilla del Puerto',
+        'shares_count' => 2,
+    ]);
+
+    // A non-primary source shows the carta with a price for Milanesa.
+    attachSource($place, [
+        'name' => 'Parrilla del Puerto',
+        'dishes' => [['name' => 'Milanesa', 'shown_in_video' => false, 'price' => '$450']],
+    ], 'instagram', 'come.uy', 'Come UY');
+
+    // The primary source names Milanesa without a price (its copy wins for
+    // shown_in_video) and adds a priced Flan.
+    attachSource($place, [
+        'name' => 'Parrilla del Puerto',
+        'dishes' => [
+            ['name' => 'Milanesa', 'shown_in_video' => true, 'price' => null],
+            ['name' => 'Flan', 'shown_in_video' => true, 'price' => '$120'],
+        ],
+    ], 'tiktok', 'foodie.uy', 'Foodie UY', primary: true);
+
+    $data = $this->getJson("/api/v1/places/{$place->id}")->assertOk()->json('data');
+
+    $milanesa = collect($data['dishes'])->firstWhere('name', 'Milanesa');
+    $flan = collect($data['dishes'])->firstWhere('name', 'Flan');
+    // Price filled from the later source; shown_in_video keeps the first source.
+    expect($milanesa['price'])->toBe('$450')
+        ->and($milanesa['shown_in_video'])->toBeTrue()
+        ->and($flan['price'])->toBe('$120')
+        ->and($data['dishes_updated_at'])->not->toBeNull();
+});
+
 it('binds by slug (canonical) as well as by numeric id', function () {
     $place = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Slug Cafe']);
 
