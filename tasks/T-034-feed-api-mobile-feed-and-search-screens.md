@@ -62,3 +62,15 @@ Manual on device (seeded API with ≥ 30 published shares): Feed tab lists cards
 - **Debounce + `keepPreviousData`:** without `keepPreviousData` the results flash empty on every keystroke; without `enabled: q.length >= 2` you hammer Meilisearch with 1-char queries.
 - **FlashList measurement:** missing `estimatedItemSize` logs warnings and janks; variable-height cards need `overrideItemLayout` or consistent card heights.
 - **Meilisearch in API tests:** feed tests don't touch search, but search-screen msw fixtures must mirror the real `GET /search` envelope from T-031 — regenerate contracts fixtures rather than hand-writing shapes.
+
+## Log
+
+- **2026-07-11 — API slice done (PR #33, `776b425`).** GET /feed (global + following stub).
+- **2026-07-12 — Mobile screens DONE (PR #39, squash `7645c9b`). T-034 fully complete.**
+  - **Feed tab** `app/(main)/feed.tsx`: FlashList of the reverse-chron feed via `useFeed` infinite query (keyed by scope so a scope switch restarts pagination — a cursor is valid for one query only), `onEndReached`→`fetchNextPage`, pull-to-refresh, share cards (thumbnail, place + cuisine/price, influencer+sharer attribution, relative time)→`/place/[slug]`; empty + error/retry; guests welcome.
+  - **Search modal** `app/search.tsx`: 300ms `useDebounced` input, `useSearch` gated ≥2 chars + `keepPreviousData`, sectioned Places/Tags/Influencers via FlashList `getItemType`; place→detail, tag→`/tag/[slug]`, influencers inert (M3). Idle/loading/empty/error. Immediate-value gates the hint so a clear reverts instantly (no stale results in the debounce window).
+  - **Tag results** `app/tag/[slug].tsx`: `GET /places?tags[]=` infinite list. Search entry buttons on Map + Feed headers.
+  - New dep `@shopify/flash-list` (jest passthrough mock exposing `onEndReached` via a test control). Hooks: `useFeed`, `useSearch`, `usePlacesByTag`, `useTags`; `src/lib/use-debounced.ts`.
+  - Adversarial review: no runtime bugs. Fixed the coverage gaps it flagged — the `onEndReached` append path now has real screen tests (feed + tag), `usePlacesByTag`/tag screen tested — plus the search-clear glitch. 90 jest tests.
+  - **Verified live on iPhone 17 Pro via Maestro** `e2e/feed-search.yaml`: register → Feed with live cards (1921 Restaurant) → Search "nood" → Places section → tap Lanzhou Noodle House → place detail (Directions). Feed + search both query the live API and navigate to detail.
+  - **Gotcha**: a `type` alias inside a `jest.mock` factory trips jest's hoisting guard ("out-of-scope variable") — inline the types. FlashList v2 dropped `estimatedItemSize` (auto-measured). Maestro `id:` matches testID/resource-id, not accessibilityLabel — use the plain label form to tap an a11y-labelled control.

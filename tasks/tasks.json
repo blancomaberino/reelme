@@ -833,7 +833,7 @@
    "id": "T-034",
    "title": "Feed API + mobile Feed and Search screens",
    "phase": "M2",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-030",
     "T-031"
@@ -854,7 +854,7 @@
     "Search screen against GET /search"
    ],
    "agent": "executor",
-   "notes": "2026-07-11: API slice BUILT+REVIEWED+CI-GREEN as PR #33 (stacked on #32) — awaiting user merge. GET /feed (global + following) + demo feed panel. Mobile Feed/Search screens (steps 4-6) still pending — mobile arc. | API slice PR #33 MERGED to main (776b425, 2026-07-12); task stays open for the mobile Feed/Search screens only."
+   "notes": "2026-07-11: API slice PR #33 MERGED (776b425). 2026-07-12: MOBILE SCREENS DONE — PR #39 squash-merged (7645c9b). Feed tab app/(main)/feed.tsx (FlashList infinite useFeed keyed by scope, onEndReached→fetchNextPage, pull-to-refresh, share cards→/place/[slug], empty/error states), Search modal app/search.tsx (300ms useDebounced, useSearch ≥2 chars + keepPreviousData, sectioned Places/Tags/Influencers via FlashList getItemType, place→detail / tag→/tag/[slug] / influencers inert), tag results app/tag/[slug].tsx (GET /places?tags[]=). New dep @shopify/flash-list (jest passthrough mock exposing onEndReached). Search entry on Map+Feed headers. Adversarial review: no runtime bugs; fixed test-coverage gaps (append-path screen tests) + search-clear glitch (immediate-value hint gating). 90 jest tests. Verified live via e2e/feed-search.yaml (register→Feed live cards→Search 'nood'→Places→Lanzhou→detail). T-034 FULLY DONE."
   },
   {
    "id": "T-035",
