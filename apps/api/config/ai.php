@@ -21,6 +21,11 @@ return [
         'vision_tags' => ['vl', 'vision', 'llava'],
         // Generation timeout (a full multimodal extraction is slow).
         'timeout' => (int) env('OLLAMA_TIMEOUT', 180),
+        // How long Ollama keeps the model resident after a call. The pipeline
+        // makes several calls minutes apart (transcribe → extract → repair
+        // loop); the default 5m unload means a later step pays a cold reload
+        // that can time out. Keep it warm across a share's processing.
+        'keep_alive' => (string) env('OLLAMA_KEEP_ALIVE', '30m'),
         // Health probe: short, and never blocks the pipeline.
         'health_timeout' => (int) env('OLLAMA_HEALTH_TIMEOUT', 2),
         'health_cache_seconds' => (int) env('OLLAMA_HEALTH_CACHE_SECONDS', 30),
