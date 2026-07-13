@@ -48,7 +48,10 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     base: {
       borderRadius: 14,
-      paddingVertical: 16,
+      paddingVertical: 15,
+      // Horizontal padding so a content-hugging button (e.g. centered "View
+      // place") isn't cramped; full-width buttons just centre their label.
+      paddingHorizontal: 28,
       alignItems: 'center',
       justifyContent: 'center',
     },

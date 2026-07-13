@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useDismissShare } from '@/api/hooks/useDismissShare';
@@ -30,10 +30,10 @@ export default function FeedScreen() {
     router.push({ pathname: '/place/[slug]', params: { slug } });
   }, []);
 
-  // Undo snackbar: optimistically hide on ⋯, keep the item ~5s for an undo.
+  // Undo snackbar: optimistically hide, keep the item ~5s for an undo.
   const [hidden, setHidden] = useState<FeedItem | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onHide = useCallback(
+  const doHide = useCallback(
     (item: FeedItem) => {
       hide.mutate(item.id);
       setHidden(item);
@@ -41,6 +41,16 @@ export default function FeedScreen() {
       timer.current = setTimeout(() => setHidden(null), 5000);
     },
     [hide],
+  );
+  // Confirm before hiding (from the ⋯ button or a swipe); undo still available.
+  const onHide = useCallback(
+    (item: FeedItem) => {
+      Alert.alert(t('feed.hideConfirm.title'), t('feed.hideConfirm.message', { name: item.place.name }), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('feed.hide'), style: 'destructive', onPress: () => doHide(item) },
+      ]);
+    },
+    [doHide, t],
   );
   const onUndo = useCallback(() => {
     if (hidden) undo.mutate(hidden.id);

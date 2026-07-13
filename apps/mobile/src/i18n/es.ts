@@ -4,6 +4,7 @@ import type { MessageKey } from './en';
 // Spanish"). Must define every key in en.ts (enforced by the drift test).
 export const es: Record<MessageKey, string> = {
   'common.tryAgain': 'Reintentar',
+  'common.cancel': 'Cancelar',
 
   'tabs.map': 'Mapa',
   'tabs.feed': 'Feed',
@@ -16,6 +17,8 @@ export const es: Record<MessageKey, string> = {
   'feed.empty.body': 'Compartí tu primer reel para verlo en el feed.',
   'feed.error.title': 'No se pudo cargar el feed',
   'feed.hide': 'Ocultar de mi feed',
+  'feed.hideConfirm.title': '¿Ocultar de tu feed?',
+  'feed.hideConfirm.message': '«{{name}}» no aparecerá en tu feed. Podés deshacerlo enseguida.',
   'feed.hidden': 'Ocultado de tu feed',
   'feed.undo': 'Deshacer',
   'feed.sharerFallback': 'un usuario de Reelmap',

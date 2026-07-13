@@ -4,6 +4,7 @@
 // — the drift test in __tests__/i18n.test.ts fails the build if a key is missing.
 export const en = {
   'common.tryAgain': 'Try again',
+  'common.cancel': 'Cancel',
 
   'tabs.map': 'Map',
   'tabs.feed': 'Feed',
@@ -16,6 +17,8 @@ export const en = {
   'feed.empty.body': 'Share your first reel to see it on the feed.',
   'feed.error.title': 'Couldn’t load the feed',
   'feed.hide': 'Hide from my feed',
+  'feed.hideConfirm.title': 'Hide from your feed?',
+  'feed.hideConfirm.message': '“{{name}}” won’t show in your feed. You can undo right after.',
   'feed.hidden': 'Hidden from your feed',
   'feed.undo': 'Undo',
   'feed.sharerFallback': 'a Reelmap user',
