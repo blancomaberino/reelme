@@ -1,0 +1,200 @@
+// Discovery-domain API types (places, sources, map, feed, search). Hand-written
+// to mirror the live API resources (PlaceResource, PlaceSummaryResource,
+// MapViewport, FeedItemResource, SearchService) exactly — see the matching
+// JSON Schemas in packages/contracts/schemas. Kept separate from the auth
+// types in ./types.ts.
+
+export type RatingBlock = {
+  value: number | null;
+  count: number;
+};
+
+/** Attribution glyph on a source card / pin (SourcePost.influencer). */
+export type InfluencerSummary = {
+  id: string;
+  platform: string;
+  handle: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
+/** The user who shared a post (UserSummaryResource; anonymized when private). */
+export type SharerSummary = {
+  id: string;
+  username: string;
+  name: string;
+  avatar_path: string | null;
+} | null;
+
+export type SocialPlatform = 'instagram' | 'x' | 'tiktok' | 'youtube';
+
+/** One row of GET /places, /search places, and feed `place` (PlaceSummaryResource). */
+export type PlaceSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  status: 'pending' | 'active';
+  lat: number;
+  lng: number;
+  category: string | null;
+  price_range: number | null;
+  city: string | null;
+  country_code: string;
+  source_count: number;
+  rating: { google: RatingBlock };
+  distance_m: number | null;
+  created_at: string | null;
+};
+
+export type Dish = {
+  name: string;
+  shown_in_video: boolean;
+};
+
+/** A Google-cached review snippet (place detail `google_reviews`). */
+export type GoogleReview = {
+  author: string | null;
+  rating: number | null;
+  text: string | null;
+  relative_time?: string | null;
+  time?: number | null;
+};
+
+/**
+ * One place_source on the detail screen — the provenance card. `source_post`
+ * links out to the original reel; influencer + sharer carry attribution.
+ */
+export type PlaceSourceItem = {
+  id: string;
+  is_primary: boolean;
+  source_post: {
+    platform: string;
+    url: string;
+    caption: string | null;
+    posted_at: string | null;
+    thumbnail_url: string | null;
+  };
+  influencer: InfluencerSummary | null;
+  sharer: SharerSummary;
+  highlights: {
+    dishes: string[];
+    tags: string[];
+  };
+};
+
+/** GET /places/{slug}?include=sources (PlaceResource). */
+export type PlaceDetail = {
+  id: string;
+  name: string;
+  slug: string;
+  status: 'pending' | 'active';
+  lat: number;
+  lng: number;
+  category: string | null;
+  price_range: number | null;
+  city: string | null;
+  country_code: string;
+  address: string | null;
+  google_place_id: string | null;
+  opening_hours: OpeningHours | null;
+  phone: string | null;
+  website: string | null;
+  cuisines: string[];
+  vibe_tags: string[];
+  dietary_tags: string[];
+  dishes: Dish[];
+  source_count: number;
+  rating: { google: RatingBlock; app: RatingBlock };
+  google_reviews?: GoogleReview[];
+  sources?: PlaceSourceItem[];
+};
+
+/**
+ * Google-style opening hours: `periods` are weekly open/close windows keyed by
+ * day-of-week (0 = Sunday). Shape mirrors the Places API `opening_hours` we cache.
+ */
+export type OpeningHours = {
+  periods?: {
+    open: { day: number; time: string };
+    close?: { day: number; time: string };
+  }[];
+  weekday_text?: string[];
+};
+
+// --- Map ---
+
+export type MapPin = {
+  type: 'place';
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  category: string | null;
+  city: string | null;
+  price_range: number | null;
+  status: string;
+  tags: string[];
+  source_count: number;
+  has_active_offer: boolean;
+  top_influencer: { handle: string; display_name: string | null } | null;
+};
+
+export type MapCluster = {
+  type: 'cluster';
+  cluster_id: string;
+  lat: number;
+  lng: number;
+  count: number;
+  expand: { bbox: [number, number, number, number] };
+};
+
+export type MapResponse = {
+  data: { pins: MapPin[]; clusters: MapCluster[] };
+  meta: { zoom: number; total_in_bbox: number; clustered: boolean; truncated?: boolean };
+};
+
+// --- Feed ---
+
+export type FeedItem = {
+  id: string;
+  published_at: string | null;
+  sharer: SharerSummary;
+  source_post: {
+    platform: string;
+    url: string;
+    caption: string | null;
+    thumbnail_url: string | null;
+  };
+  influencer: InfluencerSummary | null;
+  place: PlaceSummary;
+};
+
+export type Pagination = {
+  next_cursor: string | null;
+  prev_cursor: string | null;
+  limit: number;
+};
+
+export type Paginated<T> = {
+  data: T[];
+  meta: { pagination: Pagination } & Record<string, unknown>;
+};
+
+// --- Search ---
+
+export type TagSummary = {
+  id: string;
+  kind: string;
+  name: string;
+  slug: string;
+  places_count?: number;
+};
+
+export type SearchResponse = {
+  data: {
+    places: PlaceSummary[];
+    tags: TagSummary[];
+    influencers: InfluencerSummary[];
+  };
+  meta: { query: string; took_ms: number };
+};

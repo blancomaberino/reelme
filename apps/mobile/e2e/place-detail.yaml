@@ -1,0 +1,41 @@
+# Maestro E2E — T-033 place detail against the live API.
+# Deep-links straight to a place (the screen is public; the map that normally
+# navigates here lands in T-032). Proves the route resolves, usePlace fetches
+# the real GET /places/{slug}, and the native mini-map + source cards render.
+#
+# Run: maestro --device <sim-udid> test place-detail.yaml
+appId: pet.one.reelmap
+tags:
+  - place-detail
+---
+- launchApp
+
+# Custom-scheme deep link → iOS may show an "Open in Reelmap?" confirm
+# (depends on prior foreground state); tap through it when present.
+- openLink: reelmap://place/1921-restaurant-ljunrd
+- tapOn:
+    text: "Open"
+    optional: true
+
+# --- Header (proves the live GET /places/{slug} round-trip) ---
+- extendedWaitUntil:
+    visible: "1921 Restaurant"
+    timeout: 8000
+# City is rendered inside the address string, so match as a substring.
+- assertVisible: ".*Montevideo.*"
+
+# --- Info + actions ---
+- assertVisible: "Directions"
+- assertVisible: "Share"
+- assertVisible: "Dishes"
+
+# --- Provenance (the M2 exit criterion: source → original post + attribution) ---
+- assertVisible: "Where it came from"
+# The source card is a single accessibility element (link) below the fold; its
+# a11y label proves an instagram-post provenance card rendered. Tapping it would
+# leave the app (Linking.openURL) — asserting visibility is the safe proof.
+- scrollUntilVisible:
+    element:
+      text: "Open original instagram post"
+    direction: DOWN
+    visibilityPercentage: 40
