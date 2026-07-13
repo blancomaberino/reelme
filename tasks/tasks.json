@@ -1541,6 +1541,121 @@
    ],
    "agent": "executor",
    "notes": "2026-07-13: DONE — PR #40 squash-merged to main (562cc06). apps/api/public/demo.html rebuilt to MERCADO: full-bleed map, floating search+chips, feed rail/bottom-sheet, auth+share modals, place-detail/profile drawer, terracotta teardrop divIcon pins + pulsing clusters, theme toggle (prefers-color-scheme + localStorage, Carto light/dark tile swap via setUrl), skeletons/empty/toast/share-pipeline-timeline. All prior behaviors + XSS guards (esc/safeUrl/data-u delegation/searchSeq) preserved — only DOM/templates changed. Adversarial review: no Critical/High (guards + behaviors intact), 3 Low fixed. Browser-verified light+dark against live API. Companion: mobile MERCADO port (PR #41, bffa72e) — theme/colors.ts palette + Georgia serif + teardrop pins + gold/azulejo chips across map/feed/detail/search."
+  },
+  {
+   "id": "T-062",
+   "title": "Lists: save a place to a personal collection",
+   "phase": "M3",
+   "status": "pending",
+   "depends_on": [
+    "T-030",
+    "T-033",
+    "T-010"
+   ],
+   "estimate": "L",
+   "paths": [
+    "apps/api/app/Models/PlaceList.php",
+    "apps/api/app/Http/Controllers/Api/V1/PlaceListController.php",
+    "apps/mobile/app/lists/",
+    "apps/mobile/src/components/place/save-to-list.tsx"
+   ],
+   "spec_refs": [
+    "03-api-design.md#places",
+    "05-mobile-app.md#screen-inventory"
+   ],
+   "acceptance": [
+    "place_lists (owner, name, is_public, slug) + place_list_items (list, place, note, position, unique(list,place)); owner-scoped",
+    "API: CRUD lists (GET/POST/PATCH/DELETE /me/lists), add/remove a place (POST/DELETE /me/lists/{list}/places/{place}), GET /me/lists/{list} with its places (map-ready summaries)",
+    "Mobile: a 'Save' affordance on place detail opens a list picker (with create-new); a Lists screen shows the user's lists; opening a list shows its places as a list + on a map",
+    "Use case works end-to-end: save several places (e.g. a country's) to one list, then view them together on a map",
+    "Fully localized (es default); tests for the API (owner scope, dedupe) and the mobile save flow"
+   ],
+   "agent": "executor",
+   "notes": "Requested 2026-07-13. 'Store places from a country then travel there and see them all together.' Reuses MapViewport for the list map. Foundation for T-063 (sharing)."
+  },
+  {
+   "id": "T-063",
+   "title": "Share lists: public/shareable place collections",
+   "phase": "M3",
+   "status": "pending",
+   "depends_on": [
+    "T-062"
+   ],
+   "estimate": "M",
+   "paths": [
+    "apps/api/app/Http/Controllers/Api/V1/PlaceListController.php",
+    "apps/mobile/app/list/[slug].tsx"
+   ],
+   "spec_refs": [
+    "03-api-design.md#places"
+   ],
+   "acceptance": [
+    "A list can be marked public; GET /lists/{slug} is a public read (owner attribution, places, map) when public, 404 when private",
+    "Owner can toggle a list public/private and get a shareable deep link (reelmap://list/{slug}) + web URL",
+    "Mobile: a Share button on a list opens the native share sheet with the link; opening a shared link shows a read-only list view (with a 'save a copy' option for authed viewers)",
+    "Privacy: private lists never leak; a shared list only exposes published/visible places",
+    "Localized; tests for public/private visibility and the copy flow"
+   ],
+   "agent": "executor",
+   "notes": "Requested 2026-07-13. Depends on T-062. Mirror the existing public-profile privacy-in-authorize() pattern to avoid an existence oracle."
+  },
+  {
+   "id": "T-064",
+   "title": "Private per-user tags/notes on places",
+   "phase": "M3",
+   "status": "pending",
+   "depends_on": [
+    "T-030",
+    "T-033"
+   ],
+   "estimate": "M",
+   "paths": [
+    "apps/api/app/Models/UserPlaceTag.php",
+    "apps/api/app/Http/Controllers/Api/V1/UserPlaceTagController.php",
+    "apps/mobile/src/components/place/my-tags.tsx"
+   ],
+   "spec_refs": [
+    "03-api-design.md#places",
+    "02-data-model.md"
+   ],
+   "acceptance": [
+    "user_place_tags (user, place, label) unique(user,place,label), owner-only; NEVER exposed to other users or aggregated into the global/AI tags",
+    "API: GET/POST/DELETE /me/places/{place}/tags (list/add/remove my private labels for a place)",
+    "Place detail (mobile) shows a 'My tags' section for the authed owner only, with add/remove chips; e.g. 'visitar a las 5' is visible only to me",
+    "Optional: filter my saved places / a list by my private tag",
+    "Localized; tests proving isolation (user A's tags invisible to user B) + owner CRUD"
+   ],
+   "agent": "executor",
+   "notes": "Requested 2026-07-13. Distinct from the AI/global place tags (which are public + materialized from extraction). These are strictly personal annotations."
+  },
+  {
+   "id": "T-065",
+   "title": "Place-detail enrichments: opening hours + Google Maps link",
+   "phase": "M2",
+   "status": "pending",
+   "depends_on": [
+    "T-030",
+    "T-033",
+    "T-061"
+   ],
+   "estimate": "S",
+   "paths": [
+    "apps/mobile/app/place/[slug].tsx",
+    "apps/api/public/demo.html",
+    "apps/api/app/Http/Resources/PlaceResource.php"
+   ],
+   "spec_refs": [
+    "03-api-design.md#places",
+    "05-mobile-app.md"
+   ],
+   "acceptance": [
+    "Opening hours: when opening_hours is present, show today's open/closed + the weekly schedule on place detail (mobile already summarizes; ensure it renders + add to the web demo)",
+    "Google profile link: when google_place_id exists, show a 'View on Google Maps' link (https://www.google.com/maps/place/?q=place_id:{id}) on mobile + web, http(s)-guarded",
+    "Menu-updated date: verify the 'menu updated <date>' line ships on both surfaces (already implemented in the menu-price PRs #53/#54 — this task just confirms/keeps it)",
+    "Localized (es default); no regression to the existing detail layout"
+   ],
+   "agent": "executor",
+   "notes": "Requested 2026-07-13. Small display-only enrichments. NOTE: the 'last time prices were updated' ask is ALREADY DONE (dishes_updated_at, PRs #53/#54 — 'Menú actualizado el <fecha>'); opening-hours summary already exists on mobile (summarizeHours) — main new work is the Google Maps link + porting hours to the web demo."
   }
  ]
 }

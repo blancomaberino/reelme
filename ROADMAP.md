@@ -58,6 +58,21 @@ Scope: profile APIs + screens; influencer claiming (platform OAuth or bio-code v
 - An influencer can claim their auto-created identity and their public profile shows their map + shares.
 - Following an influencer filters map/feed; follow triggers a push notification.
 
+### Personalization add-ons (requested 2026-07-13)
+
+User-curation features layered onto the discovery surfaces. Not blockers for the M3 exit
+criteria above — sequence them after the core social work as capacity allows.
+
+- **T-062 Lists** — save a place into named personal collections and view them together on
+  a map (e.g. gather a country's places, then see them all when you travel there).
+- **T-063 Share lists** — make a list public + shareable (deep link), read-only view for
+  recipients, "save a copy" for authed viewers. Depends on T-062.
+- **T-064 Private per-user tags** — personal labels on a place visible only to the owner
+  (e.g. "visitar a las 5"); never exposed to others or the global/AI tags.
+- **T-065 Place-detail enrichments** (M2 surface) — opening-hours display (+ port to web
+  demo) and a "View on Google Maps" link when `google_place_id` exists. The
+  "last-updated menu prices" line is already shipped (PRs #53/#54); this task just keeps it.
+
 ## M4 — Monetization
 
 **Outcome:** the incentive loop works: restaurant claims its place → publishes an offer → diner redeems via QR at the restaurant → attributed to influencer + sharer → ledger entries → influencer sees earnings → Stripe Connect payout.
