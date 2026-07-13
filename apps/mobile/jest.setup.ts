@@ -36,9 +36,12 @@ export const mockRouter = {
   replace: jest.fn(),
   push: jest.fn(),
   back: jest.fn(),
+  canGoBack: jest.fn(() => true),
   redirectHref: null as string | null,
   initialRouteName: null as string | null,
   tabNames: [] as string[],
+  // Params returned by useLocalSearchParams — set in a test's beforeEach.
+  params: {} as Record<string, string>,
 };
 jest.mock('expo-router', () => {
   const React = require('react');
@@ -46,6 +49,7 @@ jest.mock('expo-router', () => {
     router: mockRouter,
     useRouter: () => mockRouter,
     useSegments: () => [],
+    useLocalSearchParams: () => mockRouter.params,
     Link: ({ children }: { children: React.ReactNode }) => children,
     Redirect: ({ href }: { href: string }) => {
       mockRouter.redirectHref = href;
@@ -69,6 +73,29 @@ jest.mock('expo-router', () => {
 
 // Silence the reanimated/native-only warnings that don't affect logic tests.
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'), { virtual: true });
+
+// react-native-maps is native — render MapView/Marker as passthrough Views so
+// screens embedding a map (place detail mini-map, map screen) mount in jest.
+jest.mock('react-native-maps', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const passthrough = (name: string) =>
+    Object.assign(
+      ({ children, ...props }: { children?: React.ReactNode; testID?: string }) =>
+        React.createElement(View, { ...props, testID: props.testID ?? name }, children),
+      { displayName: name },
+    );
+  const MapView = passthrough('MapView');
+  return {
+    __esModule: true,
+    default: MapView,
+    MapView,
+    Marker: passthrough('Marker'),
+    Callout: passthrough('Callout'),
+    PROVIDER_DEFAULT: undefined,
+    PROVIDER_GOOGLE: 'google',
+  };
+});
 
 // Safe-area context needs a provider at runtime; in tests, stub insets to 0 and
 // render the provider/view as passthroughs so screens mount without a provider.
