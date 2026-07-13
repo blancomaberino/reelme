@@ -121,12 +121,12 @@ jest.mock('react-native-maps', () => {
 // assert on rows in jest.
 jest.mock('@shopify/flash-list', () => {
   const React = require('react');
-  const { View } = require('react-native');
+  const { View, Pressable } = require('react-native');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resolve = (node: any) => (typeof node === 'function' ? node() : node);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const FlashList = (props: any) => {
-    const { data = [], renderItem, keyExtractor, ListHeaderComponent, ListFooterComponent, ListEmptyComponent } = props;
+    const { data = [], renderItem, keyExtractor, ListHeaderComponent, ListFooterComponent, ListEmptyComponent, onEndReached } = props;
     return React.createElement(
       View,
       { testID: 'flash-list' },
@@ -142,6 +142,11 @@ jest.mock('@shopify/flash-list', () => {
             ),
           ),
       resolve(ListFooterComponent),
+      // Test hook: pressing this invokes onEndReached (the native list fires it
+      // on scroll-to-bottom, which jest can't drive).
+      onEndReached
+        ? React.createElement(Pressable, { testID: 'flash-list-end', onPress: () => onEndReached() })
+        : null,
     );
   };
   return { __esModule: true, FlashList };

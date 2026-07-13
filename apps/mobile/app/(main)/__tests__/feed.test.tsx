@@ -106,3 +106,26 @@ it('shows an error state on failure', async () => {
   render(<FeedScreen />, { wrapper: Providers });
   expect(await screen.findByText(/Couldn’t load the feed/)).toBeOnTheScreen();
 });
+
+it('appends the next page when the list reaches its end', async () => {
+  mock
+    .onGet('/feed', { params: { scope: 'global', limit: 20 } })
+    .reply(200, {
+      data: [feedItem('1')],
+      meta: { pagination: { next_cursor: 'CUR', prev_cursor: null, limit: 20 } },
+    });
+  mock
+    .onGet('/feed', { params: { scope: 'global', limit: 20, cursor: 'CUR' } })
+    .reply(200, {
+      data: [feedItem('2')],
+      meta: { pagination: { next_cursor: null, prev_cursor: null, limit: 20 } },
+    });
+
+  render(<FeedScreen />, { wrapper: Providers });
+  await screen.findByText('Place 1');
+  expect(screen.queryByText('Place 2')).toBeNull();
+
+  // The FlashList mock exposes onEndReached via this control.
+  fireEvent.press(screen.getByTestId('flash-list-end'));
+  expect(await screen.findByText('Place 2')).toBeOnTheScreen();
+});

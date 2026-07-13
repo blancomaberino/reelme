@@ -22,7 +22,9 @@ export default function SearchScreen() {
   const styles = useMemo(() => makeStyles(c), [c]);
   const [q, setQ] = useState('');
   const debouncedQ = useDebounced(q, 300);
-  const trimmed = debouncedQ.trim();
+  const typed = q.trim(); // immediate — drives which branch shows
+  const searched = debouncedQ.trim(); // debounced — drives the query
+  const caughtUp = searched === typed;
   const { data, isFetching, isError } = useSearch(debouncedQ);
 
   const rows = useMemo<Row[]>(() => {
@@ -43,7 +45,9 @@ export default function SearchScreen() {
     return out;
   }, [data]);
 
-  const showEmpty = trimmed.length >= 2 && !isFetching && rows.length === 0 && !isError;
+  // Only "no results" once the debounce has caught up to the box and the query
+  // has settled — never while a query is still in flight or mid-debounce.
+  const showEmpty = typed.length >= 2 && caughtUp && !isFetching && rows.length === 0 && !isError;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -73,7 +77,7 @@ export default function SearchScreen() {
         </Pressable>
       </View>
 
-      {trimmed.length < 2 ? (
+      {typed.length < 2 ? (
         <View style={styles.hint}>
           <Text style={styles.hintText}>Type at least 2 characters to search.</Text>
         </View>
@@ -83,7 +87,7 @@ export default function SearchScreen() {
         </View>
       ) : showEmpty ? (
         <View style={styles.hint}>
-          <Text style={styles.hintText}>No results for “{trimmed}”.</Text>
+          <Text style={styles.hintText}>No results for “{typed}”.</Text>
         </View>
       ) : (
         <FlashList
@@ -94,7 +98,7 @@ export default function SearchScreen() {
           contentContainerStyle={styles.list}
           renderItem={({ item }) => <RowView row={item} styles={styles} c={c} />}
           ListHeaderComponent={
-            isFetching ? <ActivityIndicator style={styles.loading} color={c.primary} /> : null
+            isFetching || !caughtUp ? <ActivityIndicator style={styles.loading} color={c.primary} /> : null
           }
         />
       )}

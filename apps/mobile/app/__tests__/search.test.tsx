@@ -104,6 +104,21 @@ it('does not query for fewer than 2 characters', async () => {
   expect(screen.getByText(/at least 2 characters/)).toBeOnTheScreen();
 });
 
+it('reverts to the hint immediately when the box is cleared (no stale results)', async () => {
+  render(<SearchScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Search'), 'nood');
+  await act(async () => {
+    jest.advanceTimersByTime(300);
+  });
+  expect(await screen.findByText('Places')).toBeOnTheScreen();
+
+  // Clear — the hint must show at once (driven by the immediate value), not
+  // wait 300ms for the debounce to catch up.
+  fireEvent.press(screen.getByLabelText('Clear'));
+  expect(screen.getByText(/at least 2 characters/)).toBeOnTheScreen();
+  expect(screen.queryByText('Places')).toBeNull();
+});
+
 it('shows an empty state when nothing matches', async () => {
   mock.onGet('/search').reply(200, { data: { places: [], tags: [], influencers: [] }, meta: { query: 'zzz', took_ms: 1 } });
 
