@@ -102,6 +102,8 @@ export const en = {
   'settings.languageHint': 'Choose the language of the app.',
   'settings.language.es': 'Español',
   'settings.language.en': 'English',
+  'settings.currency': 'Currency',
+  'settings.currencyHint': 'Symbol used for price ranges.',
 
   'auth.welcome.tagline': 'Share a food video. Pin the place. Discover where the internet eats.',
   'auth.welcome.createAccount': 'Create account',

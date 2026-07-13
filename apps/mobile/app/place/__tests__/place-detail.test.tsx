@@ -77,11 +77,12 @@ it('renders the place name, cuisine, rating and address', async () => {
   render(<PlaceDetailScreen />, { wrapper: Providers });
 
   expect(await screen.findByText('1921 Restaurant')).toBeOnTheScreen();
-  expect(screen.getByText(/modern · €€€/)).toBeOnTheScreen();
+  // Category is title-cased + priced in the chosen currency ($ by default).
+  expect(screen.getByText(/Modern · \$\$\$/)).toBeOnTheScreen();
   expect(screen.getByText(/4\.5/)).toBeOnTheScreen();
   expect(screen.getByText(/Rbla\. República/)).toBeOnTheScreen();
-  // Tag chip from cuisines/vibe_tags union.
-  expect(screen.getByText('fine dining')).toBeOnTheScreen();
+  // Tag chip from cuisines/vibe_tags union (title-cased for display).
+  expect(screen.getByText('Fine Dining')).toBeOnTheScreen();
 });
 
 it('links out to the original post when a source card is tapped', async () => {
