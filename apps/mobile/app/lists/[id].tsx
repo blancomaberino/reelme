@@ -63,9 +63,23 @@ export default function ListDetailScreen() {
           {list?.name ?? name ?? ''}
         </Text>
         {list ? (
-          <Pressable accessibilityRole="button" accessibilityLabel={t('lists.delete')} onPress={onDelete} hitSlop={12}>
-            <Ionicons name="trash-outline" size={22} color={c.danger} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            {items.length > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('lists.viewOnMap')}
+                onPress={() =>
+                  router.push({ pathname: '/(main)/map', params: { list: id as string, listName: list.name } })
+                }
+                hitSlop={12}
+              >
+                <Ionicons name="map-outline" size={22} color={c.primary} />
+              </Pressable>
+            ) : null}
+            <Pressable accessibilityRole="button" accessibilityLabel={t('lists.delete')} onPress={onDelete} hitSlop={12}>
+              <Ionicons name="trash-outline" size={22} color={c.danger} />
+            </Pressable>
+          </View>
         ) : (
           <View style={styles.spacer} />
         )}
@@ -86,13 +100,14 @@ export default function ListDetailScreen() {
               provider={PROVIDER_DEFAULT}
               initialRegion={region}
               showsPointsOfInterests={false}
-              pointerEvents="none"
             >
               {items.map((i) => (
                 <Marker
                   key={i.place.id}
                   coordinate={{ latitude: i.place.lat, longitude: i.place.lng }}
                   pinColor={c.primary}
+                  title={i.place.name}
+                  onCalloutPress={() => router.push({ pathname: '/place/[slug]', params: { slug: i.place.slug } })}
                 />
               ))}
             </MapView>
@@ -134,6 +149,7 @@ const makeStyles = (c: Palette) =>
     safe: { flex: 1, backgroundColor: c.background },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
     title: { flex: 1, fontSize: 22, fontWeight: '700', color: c.text },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 18 },
     spacer: { width: 22 },
     loading: { paddingVertical: 40 },
     empty: { alignItems: 'center', gap: 10, paddingTop: 80, paddingHorizontal: 40 },

@@ -79,6 +79,7 @@ export const es: Record<MessageKey, string> = {
   'map.zoomIn': 'Acercá para ver más lugares',
   'map.zoomInLabel': 'Acercar',
   'map.zoomOutLabel': 'Alejar',
+  'map.clearList': 'Quitar filtro de lista',
 
   'profile.title': 'Perfil',
   'profile.note': 'Tus publicaciones, seguidores y ajustes aparecerán acá (T-039).',
@@ -100,6 +101,7 @@ export const es: Record<MessageKey, string> = {
   'lists.deleteConfirm.title': '¿Eliminar esta lista?',
   'lists.deleteConfirm.message': 'Se eliminará «{{name}}» y sus lugares guardados.',
   'lists.empty.places': 'Todavía no hay lugares en esta lista.',
+  'lists.viewOnMap': 'Ver en el mapa',
 
   'save.title': 'Guardar en una lista',
   'save.saved': 'Guardado',

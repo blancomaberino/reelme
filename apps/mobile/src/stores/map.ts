@@ -14,11 +14,13 @@ type MapState = {
   toggleCuisine: (cuisine: string) => void;
   togglePrice: (price: number) => void;
   toggleTag: (tag: string) => void;
+  /** Restrict the map to a list (or null to clear); keeps other filters. */
+  setList: (list: { id: string; name: string } | null) => void;
   clearFilters: () => void;
   select: (pin: MapPin | null) => void;
 };
 
-const EMPTY: MapFilters = { cuisine: null, price_range: null, tags: [] };
+const EMPTY: MapFilters = { cuisine: null, price_range: null, tags: [], list: null };
 
 export const useMapStore = create<MapState>((set) => ({
   filters: EMPTY,
@@ -44,6 +46,7 @@ export const useMapStore = create<MapState>((set) => ({
         selected: null,
       };
     }),
+  setList: (list) => set((s) => ({ filters: { ...s.filters, list }, selected: null })),
   clearFilters: () => set({ filters: EMPTY, selected: null }),
   select: (selected) => set({ selected }),
 }));

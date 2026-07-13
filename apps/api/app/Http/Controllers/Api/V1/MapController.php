@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\MapPlacesRequest;
+use App\Models\PlaceList;
 use App\Services\Map\MapViewport;
 use Illuminate\Http\JsonResponse;
 
@@ -23,15 +24,27 @@ class MapController extends Controller
     {
         $user = $request->user('sanctum');
         $filter = (string) ($request->validated('filter') ?? 'all');
+        $listId = $request->integer('list');
 
-        // `following`/`mine` are user-scoped — require auth.
-        if (in_array($filter, ['following', 'mine'], true) && $user === null) {
+        // `following`/`mine` and the list filter are user-scoped — require auth.
+        if ((in_array($filter, ['following', 'mine'], true) || $listId > 0) && $user === null) {
             abort(401, 'Authentication is required for this filter.');
         }
 
         $userId = $user?->id;
 
-        return $viewport->respond($request, match ($filter) {
+        // An owned list restricts the map to its places (404 if not the caller's).
+        $listConstraint = null;
+        if ($listId > 0) {
+            $list = PlaceList::query()->where('id', $listId)->where('user_id', $userId)->first();
+            abort_if($list === null, 404);
+            $listConstraint = fn ($q) => $q->whereIn(
+                'places.id',
+                fn ($sub) => $sub->select('place_id')->from('place_list_items')->where('place_list_id', $listId),
+            );
+        }
+
+        $filterConstraint = match ($filter) {
             // Places traceable to followed users/influencers (T-037). $user is
             // non-null here — guarded by the 401 above.
             'following' => fn ($q) => $q->followedBy($user),
@@ -39,6 +52,21 @@ class MapController extends Controller
                 'sources.share', fn ($s) => $s->where('user_id', $userId),
             ),
             default => null,
-        });
+        };
+
+        // Compose the list + filter constraints (both are ANDed onto the base).
+        $constrain = null;
+        if ($listConstraint !== null || $filterConstraint !== null) {
+            $constrain = function ($q) use ($listConstraint, $filterConstraint): void {
+                if ($listConstraint !== null) {
+                    $listConstraint($q);
+                }
+                if ($filterConstraint !== null) {
+                    $filterConstraint($q);
+                }
+            };
+        }
+
+        return $viewport->respond($request, $constrain);
     }
 }

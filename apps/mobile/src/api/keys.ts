@@ -5,6 +5,8 @@ export type MapFilters = {
   cuisine?: string | null;
   price_range?: number | null;
   tags?: string[];
+  /** Restrict the map to a single owned place list (T-062). */
+  list?: { id: string; name: string } | null;
 };
 
 export const queryKeys = {

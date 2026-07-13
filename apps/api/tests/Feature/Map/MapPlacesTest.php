@@ -3,6 +3,7 @@
 use App\Models\Follow;
 use App\Models\Influencer;
 use App\Models\Place;
+use App\Models\PlaceList;
 use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\Tag;
@@ -199,4 +200,25 @@ it('filters map pins by tags[] via the pivot (live since T-031)', function () {
     // The pin payload itself now carries the tag slugs (was [] until T-031).
     $pin = collect($res->json('data.pins'))->firstWhere('name', 'Tagged');
     expect($pin['tags'])->toBe(['ramen']);
+});
+
+it('restricts the map to an owned list when ?list is given', function () {
+    $user = User::factory()->create();
+    $inList = activePlace(51.50, -0.12, ['name' => 'In List']);
+    activePlace(51.51, -0.13, ['name' => 'Not In List']);
+    $list = PlaceList::factory()->for($user)->create();
+    $list->items()->create(['place_id' => $inList->id, 'position' => 1]);
+
+    Sanctum::actingAs($user);
+    $names = collect($this->getJson('/api/v1/map/places?bbox='.BBOX."&zoom=16&list={$list->id}")->assertOk()->json('data.pins'))
+        ->pluck('name');
+    expect($names->all())->toEqual(['In List']);
+});
+
+it('requires auth for the list filter and 404s a list you do not own', function () {
+    $list = PlaceList::factory()->create(); // someone else's
+    $this->getJson('/api/v1/map/places?bbox='.BBOX."&zoom=16&list={$list->id}")->assertUnauthorized();
+
+    Sanctum::actingAs(User::factory()->create());
+    $this->getJson('/api/v1/map/places?bbox='.BBOX."&zoom=16&list={$list->id}")->assertNotFound();
 });
