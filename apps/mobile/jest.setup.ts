@@ -87,10 +87,18 @@ jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock
 // mocked separately, so nothing else needs the real gesture-handler here.
 jest.mock('react-native-gesture-handler', () => {
   const React = require('react');
-  const { View } = require('react-native');
+  const { View, Pressable } = require('react-native');
   return {
     GestureHandlerRootView: ({ children, style }: { children?: React.ReactNode; style?: unknown }) =>
       React.createElement(View, { style }, children),
+    // Feed-card swipe-to-hide: render just the row content (the revealed action
+    // is exercised on-device); the ⋯/eye-off button inside `children` remains
+    // testable. React.forwardRef so the component's swipeRef stays valid.
+    Swipeable: React.forwardRef(({ children }: { children?: React.ReactNode }, _ref: unknown) =>
+      React.createElement(React.Fragment, null, children),
+    ),
+    RectButton: ({ children, ...props }: { children?: React.ReactNode }) =>
+      React.createElement(Pressable, props, children),
   };
 });
 

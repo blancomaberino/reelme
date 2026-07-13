@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { memo, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useMemo, useRef } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { RectButton, Swipeable } from 'react-native-gesture-handler';
 
 import type { FeedItem } from '@/api/places';
 import { Thumbnail } from '@/components/place/thumbnail';
@@ -11,7 +12,7 @@ import { fonts, type Palette, useColors } from '@/theme/colors';
 type Props = {
   item: FeedItem;
   onPress: (slug: string) => void;
-  /** When provided (authed viewers), shows a ⋯ button to hide the item. */
+  /** When provided (authed viewers), enables hiding — a button + swipe action. */
   onHide?: (item: FeedItem) => void;
   /** Accessibility label for the hide control (localized by the caller). */
   hideLabel?: string;
@@ -22,12 +23,37 @@ function FeedCardBase({ item, onPress, onHide, hideLabel }: Props) {
   const c = useColors();
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
+  const swipeRef = useRef<Swipeable>(null);
 
   const { place, source_post: post, influencer, sharer } = item;
   const line = cuisinePriceLine(place.category, place.price_range);
   const sharerLabel = sharer ? `@${sharer.username}` : t('feed.sharerFallback');
+  const label = hideLabel ?? 'Hide from my feed';
 
-  return (
+  const triggerHide = () => {
+    swipeRef.current?.close();
+    onHide?.(item);
+  };
+
+  // The red action revealed by a left-swipe. Its icon/label scale + fade in as
+  // the drawer opens (native Animated — no reanimated dependency here).
+  const renderRightActions = (
+    _progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>,
+  ) => {
+    const scale = dragX.interpolate({ inputRange: [-96, -24, 0], outputRange: [1, 0.86, 0.4], extrapolate: 'clamp' });
+    const opacity = dragX.interpolate({ inputRange: [-72, -24, 0], outputRange: [1, 0.5, 0], extrapolate: 'clamp' });
+    return (
+      <RectButton accessibilityLabel={label} onPress={triggerHide} style={styles.swipeAction}>
+        <Animated.View style={[styles.swipeInner, { opacity, transform: [{ scale }] }]}>
+          <Ionicons name="eye-off" size={22} color={c.onPrimary} />
+          <Text style={styles.swipeText}>{label}</Text>
+        </Animated.View>
+      </RectButton>
+    );
+  };
+
+  const card = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={place.name}
@@ -68,15 +94,29 @@ function FeedCardBase({ item, onPress, onHide, hideLabel }: Props) {
       {onHide ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={hideLabel ?? 'Hide from my feed'}
+          accessibilityLabel={label}
           hitSlop={10}
-          onPress={() => onHide(item)}
+          onPress={triggerHide}
           style={styles.more}
         >
-          <Ionicons name="ellipsis-horizontal" size={18} color={c.muted} />
+          <Ionicons name="eye-off-outline" size={18} color={c.muted} />
         </Pressable>
       ) : null}
     </Pressable>
+  );
+
+  if (!onHide) return card;
+
+  return (
+    <Swipeable
+      ref={swipeRef}
+      friction={2}
+      rightThreshold={44}
+      overshootRight={false}
+      renderRightActions={renderRightActions}
+    >
+      {card}
+    </Swipeable>
   );
 }
 
@@ -96,7 +136,7 @@ const makeStyles = (c: Palette) =>
     pressed: { opacity: 0.7 },
     thumb: { width: 72, height: 72, borderRadius: 12 },
     body: { flex: 1, gap: 4, justifyContent: 'center' },
-    // paddingRight keeps a long (truncated) name clear of the absolute ⋯ button.
+    // paddingRight keeps a long (truncated) name clear of the absolute hide button.
     name: { fontFamily: fonts.display, fontSize: 17, fontWeight: '700', color: c.text, letterSpacing: -0.2, paddingRight: 24 },
     ratingChip: { alignSelf: 'flex-start', backgroundColor: c.goldSoft, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2 },
     ratingText: { color: c.gold, fontSize: 11, fontWeight: '700' },
@@ -110,4 +150,14 @@ const makeStyles = (c: Palette) =>
     sharer: { fontSize: 13, color: c.muted, flexShrink: 1 },
     time: { fontSize: 12, color: c.muted },
     more: { position: 'absolute', top: 8, right: 8, padding: 4 },
+    swipeAction: {
+      width: 108,
+      marginLeft: 8,
+      borderRadius: 16,
+      backgroundColor: c.danger,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    swipeInner: { alignItems: 'center', gap: 4, paddingHorizontal: 8 },
+    swipeText: { color: c.onPrimary, fontSize: 12, fontWeight: '700', textAlign: 'center' },
   });
