@@ -52,6 +52,11 @@ export default function MapScreen() {
   // Latest settled region — drives the zoom buttons (the map is uncontrolled).
   const regionRef = useRef<Region>(initialRegion);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Timestamp of the last marker tap. Some react-native-maps builds also fire
+  // the MapView's own onPress for a marker tap, which would immediately
+  // deselect the pin we just opened — so the background tap ignores presses
+  // that land right after a marker press.
+  const lastMarkerPressAt = useRef(0);
   // The region that drives fetching — updated only on settle (debounced), never
   // per gesture frame, and never the MapView's own region prop (uncontrolled).
   const [queryRegion, setQueryRegion] = useState<Region>(initialRegion);
@@ -118,6 +123,7 @@ export default function MapScreen() {
 
   const onPinPress = useCallback(
     (id: string) => {
+      lastMarkerPressAt.current = Date.now();
       const pin = pinsRef.current.find((p) => p.id === id);
       if (pin) select(pin);
     },
@@ -125,6 +131,7 @@ export default function MapScreen() {
   );
 
   const onServerClusterPress = useCallback((id: string) => {
+    lastMarkerPressAt.current = Date.now();
     const server = clustersRef.current?.find((cl) => cl.cluster_id === id);
     if (server) {
       mapRef.current?.animateToRegion(bboxToRegion(server.expand.bbox), 350);
@@ -132,6 +139,7 @@ export default function MapScreen() {
   }, []);
 
   const onClientClusterPress = useCallback((clusterId: string) => {
+    lastMarkerPressAt.current = Date.now();
     const idx = indexRef.current;
     if (!idx) return;
     const item = clientItemsRef.current?.find((it) => it.kind === 'cluster' && String(it.id) === clusterId);
@@ -155,9 +163,18 @@ export default function MapScreen() {
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         onRegionChangeComplete={onRegionChangeComplete}
-        onPress={() => select(null)}
+        onPress={(e) => {
+          // Ignore the map tap that some builds emit alongside a marker press
+          // (would deselect the just-opened pin). Guard by action + recency.
+          if (e?.nativeEvent?.action === 'marker-press') return;
+          if (Date.now() - lastMarkerPressAt.current < 350) return;
+          select(null);
+        }}
         showsUserLocation
         showsMyLocationButton={false}
+        // Hide Apple's own POI pins/labels — they cluttered the map and were
+        // easy to mistake for (and tap instead of) Reelmap's own pins.
+        showsPointsOfInterests={false}
       >
         {/* Server clusters (below zoom 15). */}
         {data?.clusters.map((cl) => (
