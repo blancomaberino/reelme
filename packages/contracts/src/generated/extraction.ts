@@ -55,6 +55,10 @@ export interface ReelmapExtraction {
        * true only if the dish visibly appears in the keyframes/video.
        */
       shown_in_video: boolean;
+      /**
+       * The dish's menu price EXACTLY as written, including its currency symbol (e.g. "$450", "12€", "UYU 320"). null if no price is shown for this item.
+       */
+      price?: string | null;
     }[];
     /**
      * e.g. "cozy", "date night", "counter seating", "late night".

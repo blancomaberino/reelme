@@ -9,7 +9,7 @@
     "id", "name", "slug", "status", "lat", "lng", "category", "price_range",
     "city", "country_code", "address", "google_place_id", "opening_hours",
     "phone", "website", "cuisines", "vibe_tags", "dietary_tags", "dishes",
-    "source_count", "rating", "google_reviews"
+    "dishes_updated_at", "source_count", "rating", "google_reviews"
   ],
   "properties": {
     "id": { "type": "string" },
@@ -35,13 +35,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "shown_in_video"],
+        "required": ["name", "shown_in_video", "price"],
         "properties": {
           "name": { "type": "string" },
-          "shown_in_video": { "type": "boolean" }
+          "shown_in_video": { "type": "boolean" },
+          "price": { "type": ["string", "null"] }
         }
       }
     },
+    "dishes_updated_at": { "type": ["string", "null"], "description": "When the dish/menu list was last refreshed by a source (ISO 8601)." },
     "source_count": { "type": "integer", "minimum": 0 },
     "rating": {
       "type": "object",

@@ -27,7 +27,12 @@ export interface PlaceDetail {
   dishes: {
     name: string;
     shown_in_video: boolean;
+    price: string | null;
   }[];
+  /**
+   * When the dish/menu list was last refreshed by a source (ISO 8601).
+   */
+  dishes_updated_at: string | null;
   source_count: number;
   rating: {
     google: RatingBlock;
