@@ -33,8 +33,8 @@ const makeStyles = (c: Palette) =>
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: 999,
-      backgroundColor: c.primarySoft,
+      backgroundColor: c.secondarySoft,
     },
     pressed: { opacity: 0.6 },
-    label: { color: c.primary, fontSize: 13, fontWeight: '600' },
+    label: { color: c.secondary, fontSize: 13, fontWeight: '600' },
   });

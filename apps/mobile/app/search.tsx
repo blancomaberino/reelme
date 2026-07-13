@@ -9,7 +9,7 @@ import { useSearch } from '@/api/hooks/useSearch';
 import type { InfluencerSummary, PlaceSummary, TagSummary } from '@/api/places';
 import { cuisinePriceLine } from '@/lib/format';
 import { useDebounced } from '@/lib/use-debounced';
-import { type Palette, useColors } from '@/theme/colors';
+import { fonts, type Palette, useColors } from '@/theme/colors';
 
 type Row =
   | { type: 'header'; key: string; title: string }
@@ -187,6 +187,6 @@ const makeStyles = (c: Palette) =>
     row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
     pressed: { opacity: 0.6 },
     rowBody: { flex: 1 },
-    rowTitle: { fontSize: 16, color: c.text, fontWeight: '600' },
+    rowTitle: { fontFamily: fonts.display, fontSize: 16, color: c.text, fontWeight: '700' },
     rowSub: { fontSize: 13, color: c.muted, textTransform: 'capitalize' },
   });

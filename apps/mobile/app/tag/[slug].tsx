@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { usePlacesByTag } from '@/api/hooks/usePlacesByTag';
 import type { PlaceSummary } from '@/api/places';
 import { cuisinePriceLine } from '@/lib/format';
-import { type Palette, useColors } from '@/theme/colors';
+import { fonts, type Palette, useColors } from '@/theme/colors';
 
 /** Places carrying a tag (T-034): reached from a search Tags result. */
 export default function TagResultsScreen() {
@@ -91,12 +91,12 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
     header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
-    title: { fontSize: 22, fontWeight: '700', color: c.text, flex: 1 },
+    title: { fontFamily: fonts.display, fontSize: 22, fontWeight: '700', color: c.text, flex: 1, letterSpacing: -0.2 },
     list: { paddingHorizontal: 16, paddingBottom: 24 },
     row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
     pressed: { opacity: 0.6 },
     body: { flex: 1 },
-    name: { fontSize: 16, fontWeight: '600', color: c.text },
+    name: { fontFamily: fonts.display, fontSize: 16, fontWeight: '700', color: c.text },
     sub: { fontSize: 13, color: c.muted, textTransform: 'capitalize' },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
     muted: { color: c.muted, fontSize: 15 },

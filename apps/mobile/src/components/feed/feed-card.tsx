@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { FeedItem } from '@/api/places';
 import { Thumbnail } from '@/components/place/thumbnail';
 import { cuisinePriceLine, platformIcon, relativeTime } from '@/lib/format';
-import { type Palette, useColors } from '@/theme/colors';
+import { fonts, type Palette, useColors } from '@/theme/colors';
 
 type Props = {
   item: FeedItem;
@@ -49,6 +49,11 @@ function FeedCardBase({ item, onPress }: Props) {
           </Text>
           <Text style={styles.time}>{relativeTime(item.published_at)}</Text>
         </View>
+        {place.rating?.google?.value != null ? (
+          <View style={styles.ratingChip}>
+            <Text style={styles.ratingText}>★ {place.rating.google.value.toFixed(1)}</Text>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -70,7 +75,9 @@ const makeStyles = (c: Palette) =>
     pressed: { opacity: 0.7 },
     thumb: { width: 72, height: 72, borderRadius: 12 },
     body: { flex: 1, gap: 4, justifyContent: 'center' },
-    name: { fontSize: 16, fontWeight: '700', color: c.text },
+    name: { fontFamily: fonts.display, fontSize: 17, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
+    ratingChip: { alignSelf: 'flex-start', backgroundColor: c.goldSoft, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2 },
+    ratingText: { color: c.gold, fontSize: 11, fontWeight: '700' },
     metaRow: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
     meta: { fontSize: 14, color: c.text, textTransform: 'capitalize' },
     muted: { fontSize: 13, color: c.muted },

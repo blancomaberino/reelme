@@ -10,7 +10,7 @@ type Props = {
   onPress: (id: string) => void;
 };
 
-const CLUSTER = '#208AEF';
+const CLUSTER = '#CF5C34'; // MERCADO terracotta
 
 /** A count bubble standing in for several nearby places; tap zooms to expand. */
 function ClusterMarkerBase({ id, lat, lng, count, onPress }: Props) {

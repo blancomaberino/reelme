@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { MapPin } from '@/api/places';
 import { cuisinePriceLine } from '@/lib/format';
-import { type Palette, useColors } from '@/theme/colors';
+import { fonts, type Palette, useColors } from '@/theme/colors';
 
 type Props = {
   pin: MapPin;
@@ -60,7 +60,7 @@ export function PlaceSheet({ pin, onViewPlace }: Props) {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     container: { paddingHorizontal: 20, paddingTop: 4, gap: 8 },
-    name: { fontSize: 20, fontWeight: '700', color: c.text },
+    name: { fontFamily: fonts.display, fontSize: 21, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
     meta: { fontSize: 15, color: c.text, textTransform: 'capitalize' },
     muted: { fontSize: 14, color: c.muted },
