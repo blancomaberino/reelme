@@ -3,6 +3,7 @@
 use App\Models\Follow;
 use App\Models\Influencer;
 use App\Models\Place;
+use App\Models\PlaceList;
 use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\Tag;
@@ -205,7 +206,7 @@ it('restricts the map to an owned list when ?list is given', function () {
     $user = User::factory()->create();
     $inList = activePlace(51.50, -0.12, ['name' => 'In List']);
     activePlace(51.51, -0.13, ['name' => 'Not In List']);
-    $list = App\Models\PlaceList::factory()->for($user)->create();
+    $list = PlaceList::factory()->for($user)->create();
     $list->items()->create(['place_id' => $inList->id, 'position' => 1]);
 
     Sanctum::actingAs($user);
@@ -215,7 +216,7 @@ it('restricts the map to an owned list when ?list is given', function () {
 });
 
 it('requires auth for the list filter and 404s a list you do not own', function () {
-    $list = App\Models\PlaceList::factory()->create(); // someone else's
+    $list = PlaceList::factory()->create(); // someone else's
     $this->getJson('/api/v1/map/places?bbox='.BBOX."&zoom=16&list={$list->id}")->assertUnauthorized();
 
     Sanctum::actingAs(User::factory()->create());
