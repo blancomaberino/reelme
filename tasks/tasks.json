@@ -783,7 +783,7 @@
    "id": "T-032",
    "title": "Mobile: Map screen with clustering and viewport fetch",
    "phase": "M2",
-   "status": "pending",
+   "status": "done",
    "depends_on": [
     "T-029",
     "T-010"
@@ -802,7 +802,8 @@
     "Filter bar (cuisine/price/tags)",
     "No re-render storms: memoized markers verified"
    ],
-   "agent": "executor-high"
+   "agent": "executor-high",
+   "notes": "2026-07-12: DONE — PR #38 squash-merged to main (7b89062). app/(main)/map.tsx: react-native-maps (Apple Maps), region in a ref (never state), fetch on onRegionChangeComplete debounced 400ms, useMapPlaces with quantized bbox+zoom-band keys (tiny pans reuse cache), 40% padding, keepPreviousData. Server clusters <zoom15, client supercluster (radius50/maxZoom16) at ≥15, cluster tap animates to expand bounds. PlaceMarker React.memo(id,selected) with REF-STABLE onPress (react-query hands new pins array each fetch → handlers must read refs or memo is defeated — the key perf bug the review caught), tracksViewChanges={selected}. @gorhom/bottom-sheet preview → /place/[slug]. Filter bar (price+popular tags+disabled Following) via scoped zustand map store, truncated chip. Consumes place-detail lat/lng push params. New deps @gorhom/bottom-sheet + supercluster; GestureHandlerRootView added to root layout. Pure geo.ts + cluster.ts helpers unit-tested. Adversarial review fixed 2 HIGH (memoization-defeated-per-fetch, frozen-selected-marker) + MED (client-cluster viewport staleness) + lows. 74 jest tests. Verified live on iPhone 17 Pro via Maestro e2e/map-flow.yaml (register→native map over Montevideo w/ filter chips + API pins). NOTE: native map-marker taps aren't Maestro-automatable — pin→sheet→detail covered by component test + verified place detail. Added minimal app/search.tsx placeholder (T-034 fills it)."
   },
   {
    "id": "T-033",
