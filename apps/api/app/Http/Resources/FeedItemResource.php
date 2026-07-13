@@ -2,10 +2,8 @@
 
 namespace App\Http\Resources;
 
-use App\Enums\MediaKind;
-use App\Models\MediaAsset;
+use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Share;
-use App\Services\Media\MediaUrlService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -21,6 +19,8 @@ use Illuminate\Support\Str;
  */
 class FeedItemResource extends JsonResource
 {
+    use ResolvesThumbnail;
+
     /**
      * @return array<string, mixed>
      */
@@ -40,26 +40,12 @@ class FeedItemResource extends JsonResource
                 'platform' => $post->platform->value,
                 'url' => $post->url,
                 'caption' => $post->caption === null ? null : Str::limit($post->caption, 200),
-                'thumbnail_url' => $this->thumbnailUrl(),
+                'thumbnail_url' => $this->resolveThumbnail($post),
             ],
             'influencer' => $post?->influencer === null
                 ? null
                 : new InfluencerSummaryResource($post->influencer),
             'place' => $place === null ? null : new PlaceSummaryResource($place),
         ];
-    }
-
-    /** Signed URL for the source post's thumbnail asset, when one exists. */
-    private function thumbnailUrl(): ?string
-    {
-        /** @var MediaAsset|null $thumb */
-        $thumb = $this->sourcePost?->mediaAssets
-            ->first(fn (MediaAsset $a) => $a->kind === MediaKind::Thumbnail);
-
-        if ($thumb === null) {
-            return null;
-        }
-
-        return app(MediaUrlService::class)->temporaryUrl($thumb->storage_path, $thumb->disk);
     }
 }

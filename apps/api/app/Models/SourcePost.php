@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $posted_at
  * @property PostPrivacy $privacy
  * @property FetchStatus $fetch_status
+ * @property array<string, mixed>|null $oembed_json
  * @property array<string, mixed>|null $transcript_json
  */
 class SourcePost extends Model

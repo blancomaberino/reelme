@@ -59,7 +59,10 @@
         "properties": {
           "author": { "type": ["string", "null"] },
           "rating": { "type": ["number", "null"] },
-          "text": { "type": ["string", "null"] }
+          "text": { "type": ["string", "null"] },
+          "relative_time": { "type": ["string", "null"] },
+          "time": { "type": ["integer", "null"] },
+          "profile_photo_url": { "type": ["string", "null"] }
         }
       }
     },

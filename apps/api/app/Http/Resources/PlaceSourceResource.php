@@ -2,10 +2,8 @@
 
 namespace App\Http\Resources;
 
-use App\Enums\MediaKind;
-use App\Models\MediaAsset;
+use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\PlaceSource;
-use App\Services\Media\MediaUrlService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -22,6 +20,8 @@ use Illuminate\Support\Str;
  */
 class PlaceSourceResource extends JsonResource
 {
+    use ResolvesThumbnail;
+
     /**
      * @return array<string, mixed>
      */
@@ -39,7 +39,7 @@ class PlaceSourceResource extends JsonResource
                 'url' => $post->url,
                 'caption' => $post->caption === null ? null : Str::limit($post->caption, 200),
                 'posted_at' => $post->posted_at?->toIso8601ZuluString(),
-                'thumbnail_url' => $this->thumbnailUrl(),
+                'thumbnail_url' => $this->resolveThumbnail($post),
             ],
             'influencer' => $post?->influencer === null
                 ? null
@@ -53,20 +53,6 @@ class PlaceSourceResource extends JsonResource
                 'tags' => $this->snapshotTags($snapshot),
             ],
         ];
-    }
-
-    /** Signed URL for the source post's thumbnail asset, when one exists. */
-    private function thumbnailUrl(): ?string
-    {
-        /** @var MediaAsset|null $thumb */
-        $thumb = $this->sourcePost?->mediaAssets
-            ->first(fn (MediaAsset $a) => $a->kind === MediaKind::Thumbnail);
-
-        if ($thumb === null) {
-            return null;
-        }
-
-        return app(MediaUrlService::class)->temporaryUrl($thumb->storage_path, $thumb->disk);
     }
 
     /**

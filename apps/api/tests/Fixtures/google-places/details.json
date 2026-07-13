@@ -4,16 +4,56 @@
     "name": "Lanzhou Noodle House",
     "formatted_address": "Rua da Prata 12, 1100-052 Lisboa, Portugal",
     "address_components": [
-      { "long_name": "12", "short_name": "12", "types": ["street_number"] },
-      { "long_name": "Rua da Prata", "short_name": "R. da Prata", "types": ["route"] },
-      { "long_name": "Lisboa", "short_name": "Lisboa", "types": ["locality", "political"] },
-      { "long_name": "Portugal", "short_name": "PT", "types": ["country", "political"] },
-      { "long_name": "1100-052", "short_name": "1100-052", "types": ["postal_code"] }
+      {
+        "long_name": "12",
+        "short_name": "12",
+        "types": [
+          "street_number"
+        ]
+      },
+      {
+        "long_name": "Rua da Prata",
+        "short_name": "R. da Prata",
+        "types": [
+          "route"
+        ]
+      },
+      {
+        "long_name": "Lisboa",
+        "short_name": "Lisboa",
+        "types": [
+          "locality",
+          "political"
+        ]
+      },
+      {
+        "long_name": "Portugal",
+        "short_name": "PT",
+        "types": [
+          "country",
+          "political"
+        ]
+      },
+      {
+        "long_name": "1100-052",
+        "short_name": "1100-052",
+        "types": [
+          "postal_code"
+        ]
+      }
     ],
     "geometry": {
-      "location": { "lat": 38.710979, "lng": -9.137619 }
+      "location": {
+        "lat": 38.710979,
+        "lng": -9.137619
+      }
     },
-    "types": ["restaurant", "food", "point_of_interest", "establishment"],
+    "types": [
+      "restaurant",
+      "food",
+      "point_of_interest",
+      "establishment"
+    ],
     "rating": 4.6,
     "user_ratings_total": 214,
     "reviews": [
@@ -22,7 +62,8 @@
         "rating": 5,
         "text": "Best hand-pulled noodles in Lisbon.",
         "relative_time_description": "2 weeks ago",
-        "time": 1699000000
+        "time": 1699000000,
+        "profile_photo_url": "https://lh3.googleusercontent.com/a/maria.jpg"
       },
       {
         "author_name": "João P.",

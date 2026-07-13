@@ -37,6 +37,9 @@ export interface PlaceDetail {
     author?: string | null;
     rating?: number | null;
     text?: string | null;
+    relative_time?: string | null;
+    time?: number | null;
+    profile_photo_url?: string | null;
   }[];
   sources?: PlaceSource[];
   offers?: unknown[];
