@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { usePopularTags } from '@/api/hooks/useTags';
 import { useT } from '@/i18n';
-import { priceGlyphs } from '@/lib/format';
+import { useFormat } from '@/lib/use-format';
 import { useMapStore } from '@/stores/map';
 import { type Palette, useColors } from '@/theme/colors';
 
@@ -16,6 +16,7 @@ import { type Palette, useColors } from '@/theme/colors';
 export function FilterBar() {
   const c = useColors();
   const t = useT();
+  const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
   const filters = useMapStore((s) => s.filters);
   const togglePrice = useMapStore((s) => s.togglePrice);
@@ -32,7 +33,7 @@ export function FilterBar() {
       {[1, 2, 3, 4].map((tier) => (
         <FilterChip
           key={`price-${tier}`}
-          label={priceGlyphs(tier)}
+          label={fmt.price(tier)}
           active={filters.price_range === tier}
           onPress={() => togglePrice(tier)}
           styles={styles}
@@ -42,7 +43,7 @@ export function FilterBar() {
       {(tags ?? []).map((tag) => (
         <FilterChip
           key={tag.id}
-          label={tag.name}
+          label={fmt.tag(tag.name)}
           active={(filters.tags ?? []).includes(tag.slug)}
           onPress={() => toggleTag(tag.slug)}
           styles={styles}

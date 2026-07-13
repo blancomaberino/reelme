@@ -6,7 +6,8 @@ import { RectButton, Swipeable } from 'react-native-gesture-handler';
 import type { FeedItem } from '@/api/places';
 import { Thumbnail } from '@/components/place/thumbnail';
 import { useT } from '@/i18n';
-import { cuisinePriceLine, platformIcon, relativeTime } from '@/lib/format';
+import { platformIcon, relativeTime } from '@/lib/format';
+import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 type Props = {
@@ -22,11 +23,12 @@ type Props = {
 function FeedCardBase({ item, onPress, onHide, hideLabel }: Props) {
   const c = useColors();
   const t = useT();
+  const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
   const swipeRef = useRef<Swipeable>(null);
 
   const { place, source_post: post, influencer, sharer } = item;
-  const line = cuisinePriceLine(place.category, place.price_range);
+  const line = fmt.priceLine(place.category, place.price_range);
   const sharerLabel = sharer ? `@${sharer.username}` : t('feed.sharerFallback');
   const label = hideLabel ?? 'Hide from my feed';
 

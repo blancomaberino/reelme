@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { MapPin } from '@/api/places';
 import { useT } from '@/i18n';
-import { cuisinePriceLine } from '@/lib/format';
+import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 type Props = {
@@ -20,8 +20,9 @@ type Props = {
 export function PlaceSheet({ pin, onViewPlace }: Props) {
   const c = useColors();
   const t = useT();
+  const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const line = cuisinePriceLine(pin.category, pin.price_range);
+  const line = fmt.priceLine(pin.category, pin.price_range);
 
   return (
     <View style={styles.container}>
@@ -42,7 +43,7 @@ export function PlaceSheet({ pin, onViewPlace }: Props) {
       ) : null}
       {pin.tags.length > 0 ? (
         <Text style={styles.tags} numberOfLines={1}>
-          {pin.tags.slice(0, 4).join(' · ')}
+          {pin.tags.slice(0, 4).map(fmt.tag).join(' · ')}
         </Text>
       ) : null}
 

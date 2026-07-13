@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useT } from '@/i18n';
-import { type Locale, useSettingsStore } from '@/stores/settings';
+import { CURRENCIES, type Currency, type Locale, useSettingsStore } from '@/stores/settings';
 import { type Palette, useColors } from '@/theme/colors';
 
 const LOCALES: { value: Locale; labelKey: 'settings.language.es' | 'settings.language.en' }[] = [
@@ -19,6 +19,8 @@ export default function SettingsScreen() {
   const styles = useMemo(() => makeStyles(c), [c]);
   const locale = useSettingsStore((s) => s.locale);
   const setLocale = useSettingsStore((s) => s.setLocale);
+  const currency = useSettingsStore((s) => s.currency);
+  const setCurrency = useSettingsStore((s) => s.setCurrency);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -46,6 +48,29 @@ export default function SettingsScreen() {
                 style={({ pressed }) => [styles.option, pressed && styles.pressed]}
               >
                 <Text style={styles.optionLabel}>{t(opt.labelKey)}</Text>
+                {selected ? <Ionicons name="checkmark" size={20} color={c.primary} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('settings.currency')}</Text>
+        <Text style={styles.hint}>{t('settings.currencyHint')}</Text>
+        <View style={styles.group}>
+          {CURRENCIES.map((sym: Currency) => {
+            const selected = currency === sym;
+            return (
+              <Pressable
+                key={sym}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={sym}
+                onPress={() => setCurrency(sym)}
+                style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+              >
+                <Text style={styles.optionLabel}>{sym}{sym}{sym}</Text>
                 {selected ? <Ionicons name="checkmark" size={20} color={c.primary} /> : null}
               </Pressable>
             );

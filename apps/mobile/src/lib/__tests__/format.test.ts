@@ -1,9 +1,10 @@
 import { cuisinePriceLine, platformIcon, priceGlyphs, relativeTime } from '../format';
 
 describe('priceGlyphs', () => {
-  it('maps 1–4 to € glyphs', () => {
-    expect(priceGlyphs(1)).toBe('€');
-    expect(priceGlyphs(3)).toBe('€€€');
+  it('maps 1–4 to currency glyphs (defaults to $)', () => {
+    expect(priceGlyphs(1)).toBe('$');
+    expect(priceGlyphs(3)).toBe('$$$');
+    expect(priceGlyphs(2, '€')).toBe('€€');
   });
   it('returns empty for null / out of range', () => {
     expect(priceGlyphs(null)).toBe('');
@@ -41,9 +42,9 @@ describe('relativeTime', () => {
 
 describe('cuisinePriceLine', () => {
   it('joins present parts with a middot', () => {
-    expect(cuisinePriceLine('ramen', 2)).toBe('ramen · €€');
+    expect(cuisinePriceLine('ramen', 2)).toBe('ramen · $$');
     expect(cuisinePriceLine('ramen', null)).toBe('ramen');
-    expect(cuisinePriceLine(null, 3)).toBe('€€€');
+    expect(cuisinePriceLine(null, 3)).toBe('$$$');
     expect(cuisinePriceLine(null, null)).toBe('');
   });
 });

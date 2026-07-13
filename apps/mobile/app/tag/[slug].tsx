@@ -7,13 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { usePlacesByTag } from '@/api/hooks/usePlacesByTag';
 import type { PlaceSummary } from '@/api/places';
-import { cuisinePriceLine } from '@/lib/format';
+import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 /** Places carrying a tag (T-034): reached from a search Tags result. */
 export default function TagResultsScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const c = useColors();
+  const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
   const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage } = usePlacesByTag(slug ?? '');
 
@@ -37,12 +38,12 @@ export default function TagResultsScreen() {
             {item.name}
           </Text>
           <Text style={styles.sub} numberOfLines={1}>
-            {[cuisinePriceLine(item.category, item.price_range), item.city].filter(Boolean).join(' · ')}
+            {[fmt.priceLine(item.category, item.price_range), item.city].filter(Boolean).join(' · ')}
           </Text>
         </View>
       </Pressable>
     ),
-    [styles, c.muted],
+    [styles, c.muted, fmt],
   );
 
   return (

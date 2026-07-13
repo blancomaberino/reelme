@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSearch } from '@/api/hooks/useSearch';
 import type { InfluencerSummary, PlaceSummary, TagSummary } from '@/api/places';
 import { type MessageKey, useT } from '@/i18n';
-import { cuisinePriceLine } from '@/lib/format';
+import { useFormat } from '@/lib/use-format';
 import { useDebounced } from '@/lib/use-debounced';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
@@ -110,12 +110,13 @@ export default function SearchScreen() {
 
 function RowView({ row, styles, c }: { row: Row; styles: Styles; c: Palette }) {
   const t = useT();
+  const fmt = useFormat();
   if (row.type === 'header') {
     return <Text style={styles.section}>{t(row.titleKey)}</Text>;
   }
   if (row.type === 'place') {
     const p = row.place;
-    const line = cuisinePriceLine(p.category, p.price_range);
+    const line = fmt.priceLine(p.category, p.price_range);
     return (
       <Pressable
         accessibilityRole="button"

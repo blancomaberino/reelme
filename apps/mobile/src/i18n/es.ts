@@ -102,6 +102,8 @@ export const es: Record<MessageKey, string> = {
   'settings.languageHint': 'Elegí el idioma de la aplicación.',
   'settings.language.es': 'Español',
   'settings.language.en': 'English',
+  'settings.currency': 'Moneda',
+  'settings.currencyHint': 'Símbolo usado para los rangos de precio.',
 
   'auth.welcome.tagline': 'Compartí un video de comida. Marcá el lugar. Descubrí dónde come internet.',
   'auth.welcome.createAccount': 'Crear cuenta',

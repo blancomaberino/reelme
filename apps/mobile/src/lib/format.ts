@@ -1,9 +1,9 @@
 // Presentation helpers shared across discovery screens (place detail, feed, map).
 
-/** Price tier 1–4 → "€" glyphs; null/out-of-range → empty string. */
-export function priceGlyphs(tier: number | null | undefined): string {
+/** Price tier 1–4 → currency glyphs ("$" by default); null/out-of-range → "". */
+export function priceGlyphs(tier: number | null | undefined, symbol = '$'): string {
   if (typeof tier !== 'number' || tier < 1 || tier > 4) return '';
-  return '€'.repeat(tier);
+  return symbol.repeat(tier);
 }
 
 /** Ionicons glyph name for a social platform badge. */
@@ -42,8 +42,12 @@ export function relativeTime(iso: string | null | undefined, now: Date = new Dat
   return `${Math.floor(days / 365)}y`;
 }
 
-/** Compact one-line label for a place's cuisine + price. */
-export function cuisinePriceLine(category: string | null, priceRange: number | null): string {
-  const price = priceGlyphs(priceRange);
+/**
+ * Compact one-line label for a place's cuisine + price. `category` is passed
+ * through verbatim — callers wanting a localized label should use the
+ * `useFormat()` hook (which localizes the category and applies the currency).
+ */
+export function cuisinePriceLine(category: string | null, priceRange: number | null, symbol = '$'): string {
+  const price = priceGlyphs(priceRange, symbol);
   return [category, price].filter(Boolean).join(' · ');
 }

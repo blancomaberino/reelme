@@ -11,7 +11,7 @@ import { MiniMap } from '@/components/place/mini-map';
 import { SourceCard } from '@/components/place/source-card';
 import { Thumbnail } from '@/components/place/thumbnail';
 import { useT } from '@/i18n';
-import { cuisinePriceLine } from '@/lib/format';
+import { useFormat } from '@/lib/use-format';
 import { summarizeHours } from '@/lib/opening-hours';
 import { directionsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
@@ -51,6 +51,7 @@ function Header({ onBack, styles, c }: { onBack: () => void; styles: Styles; c: 
 
 function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c: Palette }) {
   const t = useT();
+  const fmt = useFormat();
   const [hoursOpen, setHoursOpen] = useState(false);
   const hours = useMemo(() => summarizeHours(place.opening_hours), [place.opening_hours]);
   const tags = useMemo(
@@ -82,8 +83,8 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
       <View style={styles.block}>
         <Text style={styles.name}>{place.name}</Text>
         <View style={styles.metaRow}>
-          {cuisinePriceLine(place.category, place.price_range) ? (
-            <Text style={styles.meta}>{cuisinePriceLine(place.category, place.price_range)}</Text>
+          {fmt.priceLine(place.category, place.price_range) ? (
+            <Text style={styles.meta}>{fmt.priceLine(place.category, place.price_range)}</Text>
           ) : null}
           {place.rating.google.value != null ? (
             <Text style={styles.rating}>
@@ -98,7 +99,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         {tags.length > 0 ? (
           <View style={styles.chips}>
             {tags.map((tag) => (
-              <Chip key={tag} label={tag} />
+              <Chip key={tag} label={fmt.tag(tag)} />
             ))}
           </View>
         ) : null}
