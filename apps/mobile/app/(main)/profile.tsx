@@ -35,6 +35,16 @@ export default function ProfileScreen() {
       <View style={styles.body}>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={t('profile.edit')}
+          onPress={() => router.push('/profile/edit')}
+          style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+        >
+          <Ionicons name="person-outline" size={20} color={c.text} />
+          <Text style={styles.settingsLabel}>{t('profile.edit')}</Text>
+          <Ionicons name="chevron-forward" size={18} color={c.muted} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={t('profile.settings')}
           onPress={() => router.push('/settings')}
           style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}

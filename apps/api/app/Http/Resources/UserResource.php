@@ -26,6 +26,11 @@ class UserResource extends JsonResource
             'email' => $this->email,
             'avatar_path' => $this->avatar_path,
             'bio' => $this->bio,
+            'birthdate' => $this->birthdate?->toDateString(),
+            // Age is derived so it never goes stale in storage.
+            'age' => $this->birthdate?->age,
+            'favorite_topics' => $this->favorite_topics ?? [],
+            'favorite_foods' => $this->favorite_foods ?? [],
             'is_influencer' => $this->is_influencer,
             'is_restaurant_owner' => $this->is_restaurant_owner,
             'is_admin' => $this->is_admin,
