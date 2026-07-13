@@ -41,7 +41,7 @@ Scope: migrations for influencers/source_posts/shares/media_assets/analysis_runs
 
 **Outcome:** every published place is discoverable: clustered map driven by viewport, place detail pages with source videos + attribution, tag/cuisine/price filters, text search, a basic feed. Duplicate places get merged.
 
-Scope: `GET /map/places` bbox query with clustering; places index/show; tags + Scout/Meilisearch; mobile Map, Place detail, Search, Feed screens; Filament dedup/merge review queue.
+Scope: `GET /map/places` bbox query with clustering; places index/show; tags + Scout/Meilisearch; mobile Map, Place detail, Search, Feed screens; Filament dedup/merge review queue. Design track (T-060/T-061): a design-agent-produced visual spec (`design/DESIGN-AGENT-PROMPT.md` → committed HTML prototype + design tokens), then the web demo rebuilt to it; the tokens later seed the mobile theme.
 
 **Exit criteria**
 - Map at city zoom returns clusters in <300ms p95 with 10k seeded places.

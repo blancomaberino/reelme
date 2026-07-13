@@ -52,3 +52,12 @@ Manual on device (against seeded local API with at least one multi-source place)
 - **Mini-map inside a ScrollView:** an interactive MapView steals scroll gestures — disable interaction and wrap with `pointerEvents="none"`, using an overlay `Pressable` for the tap-through.
 - **Sharer privacy:** the API may return an anonymized sharer (`is_public=false`) — render "a Reelmap user" rather than crashing on null handle.
 - **Attribution taps in M2:** `/users/[handle]` and influencer profiles don't exist until M3 — keep the rows visually tappable-looking but inert (or toast "profiles coming soon"), and leave a TODO referencing T-036/T-039.
+
+## Log
+
+- **2026-07-12 — DONE (PR #37, squash `0979e9a`).** `app/place/[slug].tsx` on `GET /places/{slug}?include=sources`. Header, info (hours summary + expandable weekly, tap-to-call, website), **native react-native-maps mini-map** (Apple Maps iOS, taps through to `/(main)/map` with lat/lng params for T-032), source provenance cards (platform badge, caption, link-out to original post, influencer+sharer attribution, primary marked), Directions (Apple/`geo:`) + native Share, loading/404/error states.
+- Pure tested helpers: `opening-hours` (open-now/closes-at, midnight + week-boundary + 24/7 sentinel, null-tolerant), `directions`, `format` (€ glyphs, platform icon, relative time), `linking` (http(s) allow-list + rejection-swallowing opener).
+- **Introduced `react-native-maps`** — native module, needs a dev-client rebuild (`npx expo run:ios`); Expo Go won't work.
+- Adversarial review fixed 7 findings: **HIGH** 24/7 place (Google day-0 no-close sentinel) shown "Closed" 6 days; **MED** unhandled `Linking.openURL` rejections; **LOWs** scheme allow-listing on API URLs, a11y labels, staleTime comment.
+- 52 jest tests green; typecheck + expo lint clean. **Verified E2E on iPhone 17 Pro / iOS 26.5 via Maestro** (`e2e/place-detail.yaml`): deep link → live API render → native mini-map → dishes → scrolled source card.
+- **Gotchas**: Filament-style — a `<Pressable accessibilityLabel>` collapses its children in the a11y tree, so Maestro sees the card's label (`"Open original instagram post"`), not the inner text. Custom-scheme deep links (`reelmap://…`) trigger an iOS "Open in Reelmap?" confirm dialog whose appearance is prior-foreground-state-dependent — handle with an optional `tapOn "Open"`. jest-expo's `Linking.openURL` is a persistent mock; `clearAllMocks()` per test to reset its call log.
