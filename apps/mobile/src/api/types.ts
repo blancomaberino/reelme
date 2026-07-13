@@ -8,6 +8,10 @@ export type Me = {
   email: string;
   avatar_path: string | null;
   bio: string | null;
+  birthdate: string | null;
+  age: number | null;
+  favorite_topics: string[];
+  favorite_foods: string[];
   is_influencer: boolean;
   is_restaurant_owner: boolean;
   is_admin: boolean;

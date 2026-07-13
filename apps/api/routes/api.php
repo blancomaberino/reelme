@@ -86,6 +86,7 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
+        Route::patch('/me', [MeController::class, 'update']);
 
         // Analysis model catalog + per-user model preference (T-020).
         Route::get('/analysis/models', [ModelController::class, 'index']);

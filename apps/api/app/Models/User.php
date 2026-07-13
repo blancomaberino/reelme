@@ -24,13 +24,16 @@ use Laravel\Sanctum\HasApiTokens;
  * @property string $username
  * @property string|null $name
  * @property string|null $bio
+ * @property Carbon|null $birthdate
+ * @property list<string>|null $favorite_topics
+ * @property list<string>|null $favorite_foods
  * @property string|null $avatar_path
  * @property bool $is_public
  * @property bool $is_influencer
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $stripe_connect_onboarded_at
  */
-#[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'is_public', 'preferred_analysis_model'])]
+#[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'birthdate', 'favorite_topics', 'favorite_foods', 'is_public', 'preferred_analysis_model'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {
@@ -77,6 +80,9 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'stripe_connect_onboarded_at' => 'datetime',
             'password' => 'hashed',
+            'birthdate' => 'date',
+            'favorite_topics' => 'array',
+            'favorite_foods' => 'array',
             'is_influencer' => 'boolean',
             'is_restaurant_owner' => 'boolean',
             'is_admin' => 'boolean',
