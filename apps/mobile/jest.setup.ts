@@ -74,8 +74,21 @@ jest.mock('expo-router', () => {
 // Silence the reanimated/native-only warnings that don't affect logic tests.
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'), { virtual: true });
 
+// GestureHandlerRootView (wraps the app in _layout for gorhom) calls a native
+// install() absent in jest — render it as a passthrough View. gorhom itself is
+// mocked separately, so nothing else needs the real gesture-handler here.
+jest.mock('react-native-gesture-handler', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    GestureHandlerRootView: ({ children, style }: { children?: React.ReactNode; style?: unknown }) =>
+      React.createElement(View, { style }, children),
+  };
+});
+
 // react-native-maps is native — render MapView/Marker as passthrough Views so
 // screens embedding a map (place detail mini-map, map screen) mount in jest.
+// MapView forwards a ref exposing a no-op animateToRegion (called on cluster tap).
 jest.mock('react-native-maps', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -85,7 +98,13 @@ jest.mock('react-native-maps', () => {
         React.createElement(View, { ...props, testID: props.testID ?? name }, children),
       { displayName: name },
     );
-  const MapView = passthrough('MapView');
+  const MapView = Object.assign(
+    React.forwardRef(({ children, ...props }: { children?: React.ReactNode }, ref: unknown) => {
+      React.useImperativeHandle(ref, () => ({ animateToRegion: jest.fn() }));
+      return React.createElement(View, { ...props, testID: 'MapView' }, children);
+    }),
+    { displayName: 'MapView' },
+  );
   return {
     __esModule: true,
     default: MapView,
@@ -94,6 +113,21 @@ jest.mock('react-native-maps', () => {
     Callout: passthrough('Callout'),
     PROVIDER_DEFAULT: undefined,
     PROVIDER_GOOGLE: 'google',
+  };
+});
+
+// @gorhom/bottom-sheet needs reanimated/gesture-handler native bits — render
+// its container/view as passthroughs so the map screen mounts in jest.
+jest.mock('@gorhom/bottom-sheet', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const BottomSheet = React.forwardRef(({ children }: { children?: React.ReactNode }, _ref: unknown) =>
+    React.createElement(View, { testID: 'BottomSheet' }, children),
+  );
+  return {
+    __esModule: true,
+    default: BottomSheet,
+    BottomSheetView: ({ children }: { children?: React.ReactNode }) => React.createElement(View, null, children),
   };
 });
 

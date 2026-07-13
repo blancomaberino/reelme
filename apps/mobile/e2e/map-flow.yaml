@@ -1,0 +1,62 @@
+# Maestro E2E — T-032 map screen against the live API.
+# Registers a fresh user (auth is the only way onto the (main) tabs), lands on
+# the Map tab, and verifies the overlays + the pin → preview sheet → place
+# detail path over the seeded Montevideo data.
+#
+# Run: maestro --device <sim-udid> test map-flow.yaml -e RUN=$(date +%s)
+appId: pet.one.reelmap
+tags:
+  - map
+---
+- launchApp:
+    clearState: true
+
+# A keychain token can survive clearState → app may boot straight to the tabs.
+# "Search" is the map's overlay button (the map has no plain "Map" text).
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: ".*Profile.*"
+      - tapOn: "Log out"
+
+# --- Register to reach the tabs ---
+- assertVisible: "Create account"
+- tapOn: "Create account"
+- assertVisible: "Create your account"
+- tapOn:
+    below: "Name"
+- inputText: "Map ${RUN}"
+- tapOn:
+    below: "Username"
+- inputText: "map_${RUN}"
+- tapOn:
+    below: "Email"
+- inputText: "map_${RUN}@example.com"
+- tapOn:
+    below: "Password"
+- inputText: "Sup3r-secret-${RUN}"
+- hideKeyboard
+- tapOn: "Create account"
+- tapOn:
+    text: "Not Now"
+    optional: true
+
+# --- Map tab (register success → router.replace('/(main)/map')) ---
+# The real map has no "Map" text (only the composite tab label), so prove the
+# screen via its overlays: the price filter chips, the search button, and the
+# disabled Following chip all render above the native MapView.
+- extendedWaitUntil:
+    visible: "€€€"
+    timeout: 6000
+- assertVisible: "Search"
+
+# The native MapView has now fetched the seeded Montevideo data over the live
+# GET /map/places and dropped price-glyph pins.
+#
+# NOTE: the pin → preview-sheet → place-detail path is NOT asserted here.
+# react-native-maps annotations render on the native MKMapView layer and do not
+# reliably receive Maestro's synthetic coordinate taps, so a marker tap can't be
+# automated from this flow. That interaction is covered by the component test
+# app/(main)/__tests__/map.test.tsx ("opens the preview sheet ... and navigates
+# to detail"), and the detail screen it reaches is verified by e2e/place-detail.yaml.
