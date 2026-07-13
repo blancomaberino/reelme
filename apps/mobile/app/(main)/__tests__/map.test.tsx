@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { MapData } from '@/api/hooks/useMapPlaces';
 import type { MapPin } from '@/api/places';
@@ -11,8 +11,19 @@ import { mockRouter } from '../../../jest.setup';
 
 // --- Mocks: feed the screen fixture data, and count PlaceMarker renders. ---
 const mapData: { current: MapData } = { current: { pins: [], clusters: [], truncated: false } };
+// Return fresh array references each render, as react-query does with
+// keepPreviousData — so tests exercise the marker-memoization invariant under
+// real reference churn (the handlers must stay stable across "refetches").
 jest.mock('@/api/hooks/useMapPlaces', () => ({
-  useMapPlaces: () => ({ data: mapData.current, isFetching: false, isSuccess: true }),
+  useMapPlaces: () => ({
+    data: {
+      pins: [...mapData.current.pins],
+      clusters: [...mapData.current.clusters],
+      truncated: mapData.current.truncated,
+    },
+    isFetching: false,
+    isSuccess: true,
+  }),
 }));
 jest.mock('@/api/hooks/useTags', () => ({ usePopularTags: () => ({ data: [] }) }));
 
@@ -88,6 +99,19 @@ it('does not re-render unrelated markers when one pin is selected (memoization)'
   expect(useMapStore.getState().selected?.id).toBe('2');
   const rerendered = markerRenders.slice(3);
   expect(rerendered).toEqual(['2']);
+});
+
+it('does not re-render markers across a refetch (stable onPress despite new data ref)', () => {
+  const view = render(<MapScreen />);
+  expect(markerRenders.length).toBe(3);
+
+  // Force a re-render — the mock hands back a NEW pins array (as react-query
+  // does each fetch). With handlers held in refs (stable identity) and equal
+  // pin ids, the memo must skip every marker: zero additional renders.
+  act(() => {
+    view.rerender(<MapScreen />);
+  });
+  expect(markerRenders.length).toBe(3);
 });
 
 it('opens the preview sheet with the tapped place and navigates to detail', () => {

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,7 +13,7 @@ import { FilterBar } from '@/components/map/filter-bar';
 import { PlaceMarker } from '@/components/map/place-marker';
 import { PlaceSheet } from '@/components/map/place-sheet';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
-import { bboxToRegion, mapQueryFor, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
+import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
 import { useMapStore } from '@/stores/map';
 import { type Palette, useColors } from '@/theme/colors';
 
@@ -37,7 +37,10 @@ export default function MapScreen() {
   const initialRegion = useMemo<Region>(() => {
     const lat = Number(params.lat);
     const lng = Number(params.lng);
-    if (Number.isFinite(lat) && Number.isFinite(lng) && (params.lat ?? '') !== '') {
+    // Both params must be present AND finite — `Number('')` is 0, which would
+    // otherwise center an lat-only push on longitude 0 (the Gulf of Guinea).
+    const bothPresent = (params.lat ?? '') !== '' && (params.lng ?? '') !== '';
+    if (bothPresent && Number.isFinite(lat) && Number.isFinite(lng)) {
       return { latitude: lat, longitude: lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
     }
     return DEFAULT_REGION;
@@ -60,25 +63,6 @@ export default function MapScreen() {
     debounce.current = setTimeout(() => setQueryRegion(region), 400);
   }, []);
 
-  // Stable pin-press handler (never an inline closure — see PlaceMarker memo).
-  const onPinPress = useCallback(
-    (id: string) => {
-      const pin = data?.pins.find((p) => p.id === id);
-      if (pin) select(pin);
-    },
-    [data?.pins, select],
-  );
-
-  const onServerClusterPress = useCallback(
-    (id: string) => {
-      const server = data?.clusters.find((cl) => cl.cluster_id === id);
-      if (server) {
-        mapRef.current?.animateToRegion(bboxToRegion(server.expand.bbox), 350);
-      }
-    },
-    [data?.clusters],
-  );
-
   // Band + bbox for the *rendered* frame (from queryRegion, so it tracks fetches).
   const band = zoomBand(zoomFromRegion(queryRegion));
   const clientClustered = band >= CLIENT_CLUSTER_BAND;
@@ -87,28 +71,64 @@ export default function MapScreen() {
   // pin set changes (O(n log n), never per frame).
   const pins = useMemo(() => data?.pins ?? [], [data?.pins]);
   const index = useMemo(() => (clientClustered ? buildClusterIndex(pins) : null), [clientClustered, pins]);
-  const { quantized } = mapQueryFor(queryRegion);
+  // Recompute the clustered items whenever the *actual* viewport changes (each
+  // settle), not just when the quantized fetch key changes — otherwise a
+  // sub-cell pan reveals a strip whose (already-fetched) pins would be filtered
+  // out by a stale bbox and blank until the next cell crossing.
+  const rawBboxKey = regionToBbox(queryRegion).join(',');
   const clientItems = useMemo(
     () => (index ? clusterItems(index, regionToBbox(queryRegion), band) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the quantized viewport, not the raw region object
-    [index, quantized, band],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rawBboxKey stands in for the region object
+    [index, rawBboxKey, band],
   );
 
-  const onClientClusterPress = useCallback(
-    (clusterId: string) => {
-      if (!index) return;
-      const item = clientItems?.find((it) => it.kind === 'cluster' && String(it.id) === clusterId);
-      if (item && item.kind === 'cluster') {
-        const zoom = clusterExpansionZoom(index, Number(clusterId));
-        const span = 360 / 2 ** zoom;
-        mapRef.current?.animateToRegion(
-          { latitude: item.lat, longitude: item.lng, latitudeDelta: span, longitudeDelta: span },
-          350,
-        );
-      }
+  // Refs hold the latest fetched data so the marker press handlers can stay
+  // reference-stable across fetches. react-query returns a NEW pins/clusters
+  // array each fetch; capturing them in useCallback deps would recreate the
+  // handlers every settle → defeat PlaceMarker's `onPress`-identity memo → all
+  // markers re-render on every fetch. `select` is a stable zustand action.
+  // Refs are synced in an effect (never written during render).
+  const pinsRef = useRef(pins);
+  const clustersRef = useRef(data?.clusters);
+  const indexRef = useRef(index);
+  const clientItemsRef = useRef(clientItems);
+  useEffect(() => {
+    pinsRef.current = pins;
+    clustersRef.current = data?.clusters;
+    indexRef.current = index;
+    clientItemsRef.current = clientItems;
+  }, [pins, data?.clusters, index, clientItems]);
+
+  const onPinPress = useCallback(
+    (id: string) => {
+      const pin = pinsRef.current.find((p) => p.id === id);
+      if (pin) select(pin);
     },
-    [index, clientItems],
+    [select],
   );
+
+  const onServerClusterPress = useCallback((id: string) => {
+    const server = clustersRef.current?.find((cl) => cl.cluster_id === id);
+    if (server) {
+      mapRef.current?.animateToRegion(bboxToRegion(server.expand.bbox), 350);
+    }
+  }, []);
+
+  const onClientClusterPress = useCallback((clusterId: string) => {
+    const idx = indexRef.current;
+    if (!idx) return;
+    const item = clientItemsRef.current?.find((it) => it.kind === 'cluster' && String(it.id) === clusterId);
+    if (item && item.kind === 'cluster') {
+      const zoom = clusterExpansionZoom(idx, Number(clusterId));
+      // Latitude spans 180°, longitude 360° — halve the vertical delta so the
+      // expanded region isn't ~2× too tall.
+      const span = 360 / 2 ** zoom;
+      mapRef.current?.animateToRegion(
+        { latitude: item.lat, longitude: item.lng, latitudeDelta: span / 2, longitudeDelta: span },
+        350,
+      );
+    }
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -125,7 +145,7 @@ export default function MapScreen() {
         {/* Server clusters (below zoom 15). */}
         {data?.clusters.map((cl) => (
           <ClusterMarker
-            key={`s:${cl.cluster_id}`}
+            key={`s:${cl.cluster_id}:${cl.count}`}
             id={cl.cluster_id}
             lat={cl.lat}
             lng={cl.lng}
@@ -139,7 +159,7 @@ export default function MapScreen() {
           ? clientItems.map((item) =>
               item.kind === 'cluster' ? (
                 <ClusterMarker
-                  key={`c:${item.id}`}
+                  key={`c:${item.id}:${item.count}`}
                   id={String(item.id)}
                   lat={item.lat}
                   lng={item.lng}

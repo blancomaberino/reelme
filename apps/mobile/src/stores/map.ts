@@ -23,18 +23,27 @@ const EMPTY: MapFilters = { cuisine: null, price_range: null, tags: [] };
 export const useMapStore = create<MapState>((set) => ({
   filters: EMPTY,
   selected: null,
-  setFilters: (filters) => set({ filters }),
+  setFilters: (filters) => set({ filters, selected: null }),
+  // Changing a filter refetches; clear the selection so the open sheet can't
+  // show a place that's been filtered out of the new results.
   toggleCuisine: (cuisine) =>
-    set((s) => ({ filters: { ...s.filters, cuisine: s.filters.cuisine === cuisine ? null : cuisine } })),
+    set((s) => ({
+      filters: { ...s.filters, cuisine: s.filters.cuisine === cuisine ? null : cuisine },
+      selected: null,
+    })),
   togglePrice: (price) =>
-    set((s) => ({ filters: { ...s.filters, price_range: s.filters.price_range === price ? null : price } })),
+    set((s) => ({
+      filters: { ...s.filters, price_range: s.filters.price_range === price ? null : price },
+      selected: null,
+    })),
   toggleTag: (tag) =>
     set((s) => {
       const tags = s.filters.tags ?? [];
       return {
         filters: { ...s.filters, tags: tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag] },
+        selected: null,
       };
     }),
-  clearFilters: () => set({ filters: EMPTY }),
+  clearFilters: () => set({ filters: EMPTY, selected: null }),
   select: (selected) => set({ selected }),
 }));

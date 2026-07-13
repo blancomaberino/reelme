@@ -23,7 +23,12 @@ function PlaceMarkerBase({ pin, selected, onPress }: Props) {
     <Marker
       identifier={pin.id}
       coordinate={{ latitude: pin.lat, longitude: pin.lng }}
-      tracksViewChanges={false}
+      // Track view changes only while selected, so the highlight (red/enlarged
+      // glyph) actually re-rasterizes; a static marker (initial or deselected)
+      // freezes its bitmap so the map doesn't re-draw it every frame (§4). The
+      // true→false transition on deselect triggers one final capture of the
+      // default glyph.
+      tracksViewChanges={selected}
       onPress={() => onPress(pin.id)}
       accessibilityLabel={pin.name}
     >

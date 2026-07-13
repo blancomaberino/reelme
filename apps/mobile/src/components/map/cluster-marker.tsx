@@ -16,6 +16,8 @@ const CLUSTER = '#208AEF';
 function ClusterMarkerBase({ id, lat, lng, count, onPress }: Props) {
   // Grow the bubble with the count (log scale) so dense clusters read as bigger.
   const size = Math.min(64, 34 + Math.log10(Math.max(count, 1)) * 16);
+  // Frozen bitmap — the caller keys the marker on the count, so a count change
+  // remounts it (fresh raster) rather than needing per-frame tracking.
   return (
     <Marker
       identifier={`cluster:${id}`}
