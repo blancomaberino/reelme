@@ -1491,7 +1491,7 @@
    "id": "T-060",
    "title": "Design language: design-agent brief run, review, committed visual spec",
    "phase": "M2",
-   "status": "pending",
+   "status": "done",
    "depends_on": [],
    "estimate": "M",
    "paths": [
@@ -1509,13 +1509,13 @@
     "User sign-off on the look"
    ],
    "agent": "executor",
-   "notes": "Human-in-the-loop: user runs design/DESIGN-AGENT-PROMPT.md against a design agent and curates; this task reviews/commits the result. Tokens are intended for reuse in the mobile theme (T-032/033/039)."
+   "notes": "2026-07-13: DONE. User ran the brief in claude.ai/design and accepted the \"MERCADO\" art direction (warm Lisbon-market paper, terracotta primary, azulejo secondary, market-gold, Georgia serif for names). Source of truth lives in the claude.ai/design project 0babf33c-0c30-4af6-8004-049dce002480 (file Reelmap.dc.html), read via the claude_design MCP / DesignSync tool (added the MCP server + used DesignSync.get_file). Token reference committed to design/tokens.md + design/DECISIONS.md (source of truth for both surfaces). NOTE: the design lives in claude.ai/design as a .dc.html canvas, not a portable design/reelmap-design-v1.html; tokens.md is the canonical extraction. Consumed by T-061 (web) + the mobile theme."
   },
   {
    "id": "T-061",
    "title": "Web demo redesign: rebuild demo.html to the accepted design",
    "phase": "M2",
-   "status": "pending",
+   "status": "done",
    "depends_on": [
     "T-060",
     "T-030",
@@ -1539,7 +1539,8 @@
     "XSS guards preserved (esc/safeUrl/data-u delegation)",
     "Custom divIcon pins + clusters; auth/share moved into modals"
    ],
-   "agent": "executor"
+   "agent": "executor",
+   "notes": "2026-07-13: DONE — PR #40 squash-merged to main (562cc06). apps/api/public/demo.html rebuilt to MERCADO: full-bleed map, floating search+chips, feed rail/bottom-sheet, auth+share modals, place-detail/profile drawer, terracotta teardrop divIcon pins + pulsing clusters, theme toggle (prefers-color-scheme + localStorage, Carto light/dark tile swap via setUrl), skeletons/empty/toast/share-pipeline-timeline. All prior behaviors + XSS guards (esc/safeUrl/data-u delegation/searchSeq) preserved — only DOM/templates changed. Adversarial review: no Critical/High (guards + behaviors intact), 3 Low fixed. Browser-verified light+dark against live API. Companion: mobile MERCADO port (PR #41, bffa72e) — theme/colors.ts palette + Georgia serif + teardrop pins + gold/azulejo chips across map/feed/detail/search."
   }
  ]
 }
