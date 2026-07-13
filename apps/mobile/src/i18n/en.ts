@@ -30,6 +30,7 @@ export const en = {
   'place.share': 'Share',
   'place.shareMessage': '{{name}} on Reelmap',
   'place.dishes': 'Dishes',
+  'place.dishesUpdated': 'Menu updated {{date}}',
   'place.sources': 'Where it came from',
   'place.reviews': 'Reviews',
   'place.fromGoogle': 'From Google',

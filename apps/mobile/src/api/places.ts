@@ -49,6 +49,8 @@ export type PlaceSummary = {
 export type Dish = {
   name: string;
   shown_in_video: boolean;
+  /** Menu price exactly as shown (with currency symbol), or null if none seen. */
+  price: string | null;
 };
 
 /** A Google-cached review snippet (place detail `google_reviews`). */
@@ -114,6 +116,8 @@ export type PlaceDetail = {
   vibe_tags: string[];
   dietary_tags: string[];
   dishes: Dish[];
+  /** When the dish/menu list was last refreshed by a source (ISO 8601). */
+  dishes_updated_at: string | null;
   source_count: number;
   rating: { google: RatingBlock; app: RatingBlock };
   google_reviews?: GoogleReview[];

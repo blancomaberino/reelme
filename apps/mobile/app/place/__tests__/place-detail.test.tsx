@@ -32,7 +32,11 @@ const PLACE: PlaceDetail = {
   cuisines: ['modern', 'seafood'],
   vibe_tags: ['fine dining'],
   dietary_tags: [],
-  dishes: [{ name: 'Ojo de bife', shown_in_video: false }],
+  dishes: [
+    { name: 'Ojo de bife', shown_in_video: false, price: '$780' },
+    { name: 'Flan', shown_in_video: true, price: null },
+  ],
+  dishes_updated_at: '2026-07-10T12:00:00Z',
   source_count: 1,
   rating: { google: { value: 4.5, count: 527 }, app: { value: null, count: 0 } },
   sources: [
@@ -83,6 +87,11 @@ it('renders the place name, cuisine, rating and address', async () => {
   expect(screen.getByText(/Rbla\. República/)).toBeOnTheScreen();
   // Tag chip from cuisines/vibe_tags union (title-cased for display).
   expect(screen.getByText('Fine Dining')).toBeOnTheScreen();
+  // Dish chip carries the menu price; a price-less dish shows just its name.
+  expect(screen.getByText('Ojo de bife · $780')).toBeOnTheScreen();
+  expect(screen.getByText('Flan')).toBeOnTheScreen();
+  // "Menu updated <date>" line (jest locale is English → "Jul 10, 2026").
+  expect(screen.getByText(/Menu updated Jul 10, 2026/)).toBeOnTheScreen();
 });
 
 it('links out to the original post when a source card is tapped', async () => {

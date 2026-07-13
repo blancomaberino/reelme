@@ -30,6 +30,7 @@ export const es: Record<MessageKey, string> = {
   'place.share': 'Compartir',
   'place.shareMessage': '{{name}} en Reelmap',
   'place.dishes': 'Platos',
+  'place.dishesUpdated': 'Menú actualizado el {{date}}',
   'place.sources': 'De dónde salió',
   'place.reviews': 'Reseñas',
   'place.fromGoogle': 'De Google',
