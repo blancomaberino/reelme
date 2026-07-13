@@ -116,6 +116,42 @@ jest.mock('react-native-maps', () => {
   };
 });
 
+// @shopify/flash-list is native — render a lightweight list that maps data
+// through renderItem (+ header/footer/empty) so feed/search screens mount and
+// assert on rows in jest.
+jest.mock('@shopify/flash-list', () => {
+  const React = require('react');
+  const { View, Pressable } = require('react-native');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resolve = (node: any) => (typeof node === 'function' ? node() : node);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const FlashList = (props: any) => {
+    const { data = [], renderItem, keyExtractor, ListHeaderComponent, ListFooterComponent, ListEmptyComponent, onEndReached } = props;
+    return React.createElement(
+      View,
+      { testID: 'flash-list' },
+      resolve(ListHeaderComponent),
+      data.length === 0
+        ? resolve(ListEmptyComponent)
+        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          data.map((item: any, index: number) =>
+            React.createElement(
+              React.Fragment,
+              { key: keyExtractor ? keyExtractor(item, index) : index },
+              renderItem?.({ item, index }),
+            ),
+          ),
+      resolve(ListFooterComponent),
+      // Test hook: pressing this invokes onEndReached (the native list fires it
+      // on scroll-to-bottom, which jest can't drive).
+      onEndReached
+        ? React.createElement(Pressable, { testID: 'flash-list-end', onPress: () => onEndReached() })
+        : null,
+    );
+  };
+  return { __esModule: true, FlashList };
+});
+
 // @gorhom/bottom-sheet needs reanimated/gesture-handler native bits — render
 // its container/view as passthroughs so the map screen mounts in jest.
 jest.mock('@gorhom/bottom-sheet', () => {
