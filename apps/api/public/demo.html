@@ -234,22 +234,23 @@ button{font-family:inherit;cursor:pointer;}
 <div id="searchWrap" class="floating">
   <div class="searchbar">
     <div class="mag"></div>
-    <input id="searchBox" type="search" placeholder="Search places, #tags, @creators…" autocomplete="off">
+    <input id="searchBox" type="search" data-i18n-ph="search.placeholder" placeholder="Search places, #tags, @creators…" autocomplete="off">
   </div>
   <div class="chips">
-    <span class="chip-f" id="chipFollowing">Following</span>
-    <span class="chip-f">Cuisine ▾</span>
+    <span class="chip-f" id="chipFollowing" data-i18n="chip.following">Following</span>
+    <span class="chip-f" data-i18n="chip.cuisine">Cuisine ▾</span>
     <span class="chip-f">€–€€€€</span>
-    <span class="chip-f">Open now</span>
+    <span class="chip-f" data-i18n="chip.openNow">Open now</span>
   </div>
   <div id="searchPanel"></div>
 </div>
 
 <!-- top-right account -->
 <div id="topRight" class="floating">
-  <button class="btn btn-primary" id="shareCta"><span style="font-size:16px;line-height:1">+</span> Share a link</button>
+  <button class="btn btn-primary" id="shareCta"><span style="font-size:16px;line-height:1">+</span> <span data-i18n="cta.share">Share a link</span></button>
   <button class="btn" id="themeBtn" title="Toggle theme" style="padding:9px 11px"><span id="themeIcon">☾</span></button>
-  <button class="btn" id="signinCta">Sign in</button>
+  <button class="btn" id="langBtn" data-i18n-title="lang.title" style="padding:9px 11px"><span id="langLabel">ES</span></button>
+  <button class="btn" id="signinCta" data-i18n="cta.signin">Sign in</button>
   <div class="account" id="account" style="display:none">
     <div class="avatar"></div>
     <span id="accountName">@you</span>
@@ -260,8 +261,8 @@ button{font-family:inherit;cursor:pointer;}
 <!-- feed rail / bottom sheet -->
 <div id="feedRail" class="floating">
   <div class="rail-head">
-    <span class="serif" style="font-weight:700;font-size:var(--fs-lg)">Recent shares</span>
-    <label class="switch"><input type="checkbox" id="feedFollowing"><span class="track"></span>Following</label>
+    <span class="serif" style="font-weight:700;font-size:var(--fs-lg)" data-i18n="rail.recent">Recent shares</span>
+    <label class="switch"><input type="checkbox" id="feedFollowing"><span class="track"></span><span data-i18n="chip.following">Following</span></label>
   </div>
   <div class="rail-body" id="feed"></div>
 </div>
@@ -275,9 +276,9 @@ button{font-family:inherit;cursor:pointer;}
     <button class="x" data-close="authModal">✕</button>
     <h3 id="authTitle">Welcome back</h3>
     <p class="sub" id="authSub">Sign in to share reels and follow creators.</p>
-    <label class="field-label">Email</label>
+    <label class="field-label" data-i18n="field.email">Email</label>
     <input class="field" id="email" type="email" placeholder="you@example.com" autocomplete="username">
-    <label class="field-label">Password</label>
+    <label class="field-label" data-i18n="field.password">Password</label>
     <input class="field" id="password" type="password" placeholder="••••••••" autocomplete="current-password">
     <div class="err-line" id="authErr"></div>
     <button class="btn btn-primary btn-block" id="authSubmit">Sign in</button>
@@ -291,16 +292,16 @@ button{font-family:inherit;cursor:pointer;}
 <div class="backdrop" id="shareModal">
   <div class="modal">
     <button class="x" data-close="shareModal">✕</button>
-    <h3>Share a link</h3>
-    <p class="sub">Paste a YouTube / TikTok link — AI drops the place on the map, credited to the creator.</p>
-    <label class="field-label">Post URL</label>
+    <h3 data-i18n="share.title">Share a link</h3>
+    <p class="sub" data-i18n="share.sub">Paste a YouTube / TikTok link — AI drops the place on the map, credited to the creator.</p>
+    <label class="field-label" data-i18n="share.urlLabel">Post URL</label>
     <input class="field" id="url" type="url" placeholder="https://www.youtube.com/watch?v=…">
-    <label class="field-label">…or a caption / description</label>
-    <input class="field" id="caption" type="text" placeholder="Best tacos in Lisbon — Time Out Market">
+    <label class="field-label" data-i18n="share.captionLabel">…or a caption / description</label>
+    <input class="field" id="caption" type="text" data-i18n-ph="share.captionPh" placeholder="Best tacos in Lisbon — Time Out Market">
     <div class="err-line" id="submitErr"></div>
-    <button class="btn btn-primary btn-block" id="submitBtn">Submit</button>
+    <button class="btn btn-primary btn-block" id="submitBtn" data-i18n="share.submit">Submit</button>
     <div id="shareTracker" style="margin-top:20px;display:none">
-      <div class="sec-h" style="margin-bottom:12px">YOUR RECENT SHARES</div>
+      <div class="sec-h" style="margin-bottom:12px" data-i18n="share.recent">YOUR RECENT SHARES</div>
       <div id="shares"></div>
     </div>
   </div>
@@ -309,7 +310,7 @@ button{font-family:inherit;cursor:pointer;}
 <!-- error toast -->
 <div id="toast">
   <div class="bang">!</div>
-  <div style="flex:1"><div style="font-weight:700;font-size:var(--fs-sm)" id="toastTitle">Something went wrong</div>
+  <div style="flex:1"><div style="font-weight:700;font-size:var(--fs-sm)" id="toastTitle" data-i18n="toast.error">Something went wrong</div>
     <div style="font-size:var(--fs-xs);color:var(--ink-2)" id="toastBody"></div></div>
   <button style="background:none;border:none;color:var(--ink-2);font-size:16px" onclick="hideToast()">✕</button>
 </div>
@@ -336,6 +337,102 @@ const reviewAvatar = (url, seed) => /^https?:\/\//i.test(url || "")
   ? `<img class="ra" style="object-fit:cover" alt="" loading="lazy" referrerpolicy="no-referrer" src="${esc(safeUrl(url))}" onerror="this.onerror=null;this.removeAttribute('src');this.style.background='${heroGrad(seed)}'">`
   : `<div class="ra" style="background:${heroGrad(seed)}"></div>`;
 
+// ── i18n (Spanish default, toggle to English) ───────────────────────────────
+const I18N = {
+  es: {
+    'search.placeholder': 'Buscar lugares, #etiquetas, @creadores…',
+    'chip.following': 'Siguiendo', 'chip.cuisine': 'Cocina ▾', 'chip.openNow': 'Abierto ahora',
+    'cta.share': 'Compartir enlace', 'cta.signin': 'Iniciar sesión', 'rail.recent': 'Compartidos recientes',
+    'account.you': '@vos',
+    'auth.title.login': 'Bienvenido de nuevo', 'auth.title.register': 'Creá tu cuenta',
+    'auth.sub.login': 'Iniciá sesión para compartir reels y seguir creadores.',
+    'auth.sub.register': 'Sumate para mapear reels y seguir creadores.',
+    'field.email': 'Correo', 'field.password': 'Contraseña',
+    'auth.submit.login': 'Iniciar sesión', 'auth.submit.register': 'Crear cuenta',
+    'auth.swaptext.login': '¿Sos nuevo?', 'auth.swaptext.register': '¿Ya tenés cuenta?',
+    'auth.swap.login': 'Crear una cuenta', 'auth.swap.register': 'Iniciar sesión',
+    'share.title': 'Compartir un enlace',
+    'share.sub': 'Pegá un enlace de YouTube / TikTok — la IA marca el lugar en el mapa, con crédito al creador.',
+    'share.urlLabel': 'URL de la publicación', 'share.captionLabel': '…o una descripción',
+    'share.captionPh': 'Los mejores tacos de Lisboa — Time Out Market',
+    'share.submit': 'Enviar', 'share.submitting': 'Enviando…', 'share.recent': 'TUS COMPARTIDOS RECIENTES',
+    'sec.places': 'LUGARES', 'sec.tags': 'ETIQUETAS', 'sec.creators': 'CREADORES', 'role.creator': 'Creador',
+    'feed.empty.title': 'Todavía no hay nada', 'feed.empty.body': 'Compartí tu primer reel para verlo acá.',
+    'toast.hidden.title': 'Ocultado', 'toast.hidden.body': 'Quitado de tu feed.',
+    'toast.hideFail': 'No se pudo ocultar', 'toast.published': '¡Publicado!', 'toast.onMap': 'está en el mapa.',
+    'toast.error': 'Algo salió mal',
+    'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.sources': 'VIDEOS DE ORIGEN',
+    'place.reviews': 'RESEÑAS', 'place.fromGoogle': 'DE GOOGLE', 'place.watch': 'Ver original ↗',
+    'place.sharedBy': 'compartido por', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reseñas',
+    'review.rate': 'Calificá este lugar', 'review.your': 'Tu reseña', 'review.ph': 'Escribí una impresión…',
+    'review.post': 'Publicar', 'review.update': 'Actualizar', 'review.delete': 'Eliminar',
+    'review.signin1': 'Iniciá sesión', 'review.signin2': 'para dejar una reseña.',
+    'review.empty': 'Todavía no hay reseñas — sé el primero.', 'review.googleUser': 'Usuario de Google',
+    'review.you': '(vos)', 'review.anon': 'anónimo',
+    'profile.creator': 'CREADOR', 'profile.follow': 'Seguir', 'profile.following': '✓ Siguiendo',
+    'pipe.queued': 'En cola', 'pipe.queuedSub': 'Recibimos tu enlace',
+    'pipe.analyzing': 'Analizando', 'pipe.analyzingSub': 'Extrayendo el lugar del video…',
+    'pipe.review': 'Revisión', 'pipe.reviewSub': 'Confirmando ubicación y creador',
+    'pipe.published': 'Publicado', 'pipe.publishedSub': 'En vivo en el mapa compartido',
+    'pipe.done': 'Listo', 'pipe.working': 'En curso', 'pipe.failed': 'Falló',
+    'pipe.failTitle': 'No se pudo mapear', 'pipe.failBody': 'No se detectó lugar — probá un video más claro',
+    'lang.label': 'ES', 'lang.title': 'Cambiar idioma',
+    'search.noMatch.title': 'Sin coincidencias', 'search.noMatch.body': 'Nadie mapeó esto todavía. ¿Conocés un reel?',
+    'share.needInput': 'Ingresá una URL o una descripción.', 'misc.logoutConfirm': '¿Cerrar sesión?',
+    'auth.pwShort': 'La contraseña debe tener al menos 8 caracteres.',
+  },
+  en: {
+    'search.placeholder': 'Search places, #tags, @creators…',
+    'chip.following': 'Following', 'chip.cuisine': 'Cuisine ▾', 'chip.openNow': 'Open now',
+    'cta.share': 'Share a link', 'cta.signin': 'Sign in', 'rail.recent': 'Recent shares',
+    'account.you': '@you',
+    'auth.title.login': 'Welcome back', 'auth.title.register': 'Create your account',
+    'auth.sub.login': 'Sign in to share reels and follow creators.',
+    'auth.sub.register': 'Join to map reels and follow creators.',
+    'field.email': 'Email', 'field.password': 'Password',
+    'auth.submit.login': 'Sign in', 'auth.submit.register': 'Create account',
+    'auth.swaptext.login': 'New here?', 'auth.swaptext.register': 'Already have an account?',
+    'auth.swap.login': 'Create an account', 'auth.swap.register': 'Sign in',
+    'share.title': 'Share a link',
+    'share.sub': 'Paste a YouTube / TikTok link — AI drops the place on the map, credited to the creator.',
+    'share.urlLabel': 'Post URL', 'share.captionLabel': '…or a caption / description',
+    'share.captionPh': 'Best tacos in Lisbon — Time Out Market',
+    'share.submit': 'Submit', 'share.submitting': 'Submitting…', 'share.recent': 'YOUR RECENT SHARES',
+    'sec.places': 'PLACES', 'sec.tags': 'TAGS', 'sec.creators': 'CREATORS', 'role.creator': 'Creator',
+    'feed.empty.title': 'Nothing here yet', 'feed.empty.body': 'Share your first reel to see it land.',
+    'toast.hidden.title': 'Hidden', 'toast.hidden.body': 'Removed from your feed.',
+    'toast.hideFail': 'Couldn’t hide', 'toast.published': 'Published!', 'toast.onMap': 'is on the map.',
+    'toast.error': 'Something went wrong',
+    'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.sources': 'SOURCE VIDEOS',
+    'place.reviews': 'REVIEWS', 'place.fromGoogle': 'FROM GOOGLE', 'place.watch': 'Watch original ↗',
+    'place.sharedBy': 'shared by', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reviews',
+    'review.rate': 'Rate this place', 'review.your': 'Your review', 'review.ph': 'Share a quick thought…',
+    'review.post': 'Post', 'review.update': 'Update', 'review.delete': 'Delete',
+    'review.signin1': 'Sign in', 'review.signin2': 'to leave a review.',
+    'review.empty': 'No reviews yet — be the first.', 'review.googleUser': 'Google user',
+    'review.you': '(you)', 'review.anon': 'anonymous',
+    'profile.creator': 'CREATOR', 'profile.follow': 'Follow', 'profile.following': '✓ Following',
+    'pipe.queued': 'Queued', 'pipe.queuedSub': 'Received your link',
+    'pipe.analyzing': 'Analyzing', 'pipe.analyzingSub': 'Extracting the place from the video…',
+    'pipe.review': 'Review', 'pipe.reviewSub': 'Confirming location & creator',
+    'pipe.published': 'Published', 'pipe.publishedSub': 'Live on the shared map',
+    'pipe.done': 'Done', 'pipe.working': 'Working', 'pipe.failed': 'Failed',
+    'pipe.failTitle': 'Couldn’t map it', 'pipe.failBody': 'No place detected — try a clearer video',
+    'lang.label': 'EN', 'lang.title': 'Switch language',
+    'search.noMatch.title': 'No matches yet', 'search.noMatch.body': 'Nobody’s mapped this yet. Know a reel?',
+    'share.needInput': 'Enter a URL or a caption.', 'misc.logoutConfirm': 'Log out?',
+    'auth.pwShort': 'Password must be at least 8 characters.',
+  },
+};
+let lang = localStorage.getItem("reelmap_lang") || "es";
+const t = (k) => (I18N[lang] || I18N.es)[k] ?? I18N.en[k] ?? k;
+function applyStaticI18n() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+  document.getElementById("langLabel").textContent = t("lang.label");
+}
+
 // ── Theme ───────────────────────────────────────────────────────────────────
 let theme = localStorage.getItem("reelmap_theme") ||
   (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -351,6 +448,13 @@ document.getElementById("themeBtn").onclick = () => {
   localStorage.setItem("reelmap_theme", theme);
   applyTheme();
 };
+document.getElementById("langBtn").onclick = () => {
+  lang = lang === "es" ? "en" : "es";
+  localStorage.setItem("reelmap_lang", lang);
+  applyStaticI18n();
+  setAuthMode(authMode);   // refresh the auth modal copy
+  loadFeed();              // re-render the feed rail in the new language
+};
 
 // ── Map ───────────────────────────────────────────────────────────────────
 const map = L.map("map", { zoomControl:true, attributionControl:true }).setView([38.72, -9.14], 13); // Lisbon
@@ -359,6 +463,7 @@ tileLayer = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${theme === "dark" ? 
 markers.addTo(map);
 map.on("moveend", loadPlaces);
 applyTheme();
+applyStaticI18n();
 
 async function api(path, opts = {}) {
   const headers = { "Accept":"application/json", "Content-Type":"application/json", ...(opts.headers||{}) };
@@ -410,12 +515,12 @@ async function runSearch(q) {
     const infl = (data.influencers || []).map(i =>
       `<div class="result"><div class="rt round"></div>
          <div style="min-width:0;flex:1"><div class="result-name" style="font-family:var(--font-ui);font-size:var(--fs-md)">@${esc(i.handle)}</div>
-           <div class="result-sub">Creator</div></div></div>`).join("");
+           <div class="result-sub">${t("role.creator")}</div></div></div>`).join("");
     out.innerHTML =
-      (places ? `<div class="sec-label">PLACES</div>${places}` : "") +
-      (tags ? `<div class="sec-label">TAGS</div><div style="padding:0 16px 8px">${tags}</div>` : "") +
-      (infl ? `<div class="sec-label">CREATORS</div>${infl}` : "") ||
-      `<div class="empty"><div class="glyph">?</div><div class="serif" style="font-weight:700;font-size:var(--fs-lg);color:var(--ink)">No matches yet</div><div style="font-size:var(--fs-sm)">Nobody's mapped this yet. Know a reel?</div></div>`;
+      (places ? `<div class="sec-label">${t("sec.places")}</div>${places}` : "") +
+      (tags ? `<div class="sec-label">${t("sec.tags")}</div><div style="padding:0 16px 8px">${tags}</div>` : "") +
+      (infl ? `<div class="sec-label">${t("sec.creators")}</div>${infl}` : "") ||
+      `<div class="empty"><div class="glyph">?</div><div class="serif" style="font-weight:700;font-size:var(--fs-lg);color:var(--ink)">${t("search.noMatch.title")}</div><div style="font-size:var(--fs-sm)">${t("search.noMatch.body")}</div></div>`;
   } catch (err) {
     if (seq !== searchSeq) return;
     out.innerHTML = `<div class="empty"><div style="color:var(--danger)">${esc(err.message)}</div></div>`;
@@ -444,7 +549,7 @@ async function loadFeed() {
   try {
     const { data } = await api(`/feed?limit=10${following ? "&scope=following" : ""}`);
     if (!data.length) {
-      el.innerHTML = `<div class="empty"><div class="glyph">📍</div><div class="serif" style="font-weight:700;color:var(--ink)">Nothing here yet</div><div style="font-size:var(--fs-sm)">Share your first reel to see it land.</div></div>`;
+      el.innerHTML = `<div class="empty"><div class="glyph">📍</div><div class="serif" style="font-weight:700;color:var(--ink)">${t("feed.empty.title")}</div><div style="font-size:var(--fs-sm)">${t("feed.empty.body")}</div></div>`;
       return;
     }
     el.innerHTML = data.map(item => {
@@ -477,9 +582,9 @@ async function loadFeed() {
 async function hideFromFeed(shareId) {
   try {
     await api("/feed/hidden", { method: "POST", body: JSON.stringify({ share_id: Number(shareId) }) });
-    showToast("Hidden", "Removed from your feed.");
+    showToast(t("toast.hidden.title"), t("toast.hidden.body"));
     loadFeed();
-  } catch (e) { showToast("Couldn’t hide", e.message); }
+  } catch (e) { showToast(t("toast.hideFail"), e.message); }
 }
 function timeAgo(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -562,36 +667,36 @@ function renderPlace(p) {
   const sources = (p.sources || []).map(s => {
     const post = s.source_post || {};
     const label = `${(post.platform || "post")}`;
-    const link = post.url ? `<a href="${esc(safeUrl(post.url))}" target="_blank" rel="noopener">Watch original ↗</a>` : label;
+    const link = post.url ? `<a href="${esc(safeUrl(post.url))}" target="_blank" rel="noopener">${t("place.watch")}</a>` : label;
     const handle = s.influencer && s.influencer.handle;
     const sharer = s.sharer && s.sharer.username;
     return `<div class="source-card">
       <div style="width:40px;height:54px;border-radius:8px;flex:none;background:${heroGrad(post.url||label)};position:relative;overflow:hidden">
         <div style="position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 6px,transparent 6px 12px)"></div></div>
       <div style="flex:1;min-width:0"><div style="font-weight:600;text-transform:capitalize">${esc(label)}</div>
-        <div style="font-size:var(--fs-xs);color:var(--ink-2)">${handle ? "@"+esc(handle) : ""}${sharer ? ` · shared by <a href="#" class="plink" data-u="${esc(sharer)}">@${esc(sharer)}</a>` : ""}</div>
+        <div style="font-size:var(--fs-xs);color:var(--ink-2)">${handle ? "@"+esc(handle) : ""}${sharer ? ` · ${t("place.sharedBy")} <a href="#" class="plink" data-u="${esc(sharer)}">@${esc(sharer)}</a>` : ""}</div>
         ${post.url ? `<div style="margin-top:2px">${link}</div>` : ""}</div></div>`;
   }).join("");
   const gReviews = (p.google_reviews || []).slice(0, 3).map(r =>
     `<div class="review">${reviewAvatar(r.profile_photo_url, r.author)}
-       <div><div style="font-size:var(--fs-sm)"><b>${esc(r.author || "Google user")}</b> <span class="stars">${starStr(r.rating)}</span></div>
+       <div><div style="font-size:var(--fs-sm)"><b>${esc(r.author || t("review.googleUser"))}</b> <span class="stars">${starStr(r.rating)}</span></div>
        <p style="font-size:var(--fs-sm);color:var(--ink-2);margin:4px 0 0;line-height:1.5">${esc((r.text || "").slice(0, 200))}</p></div></div>`).join("");
   const appReviews = (p.reviews || []).map(r =>
     `<div class="review">${reviewAvatar(r.author && r.author.avatar_path, r.author ? r.author.username : "a")}
-       <div><div style="font-size:var(--fs-sm)"><b>@${esc(r.author ? r.author.username : "anonymous")}</b>${r.is_own?' <span class="muted" style="color:var(--muted)">(you)</span>':""} <span class="stars">${starStr(r.rating)}</span></div>
+       <div><div style="font-size:var(--fs-sm)"><b>@${esc(r.author ? r.author.username : t("review.anon"))}</b>${r.is_own?` <span class="muted" style="color:var(--muted)">${t("review.you")}</span>`:""} <span class="stars">${starStr(r.rating)}</span></div>
        ${r.body ? `<p style="font-size:var(--fs-sm);color:var(--ink-2);margin:4px 0 0;line-height:1.5">${esc(r.body.slice(0,200))}</p>`:""}</div></div>`).join("");
   const own = (p.reviews || []).find(r => r.is_own);
   const composer = token ? `
     <div class="revbox">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <span style="font-weight:700;font-size:var(--fs-sm)">${own ? "Your review" : "Rate this place"}</span></div>
+        <span style="font-weight:700;font-size:var(--fs-sm)">${own ? t("review.your") : t("review.rate")}</span></div>
       <div class="revform">
         <select id="revRating">${[5,4,3,2,1].map(n => `<option value="${n}"${own && own.rating === n ? " selected" : ""}>${"★".repeat(n)}</option>`).join("")}</select>
-        <input id="revBody" type="text" placeholder="Share a quick thought…" value="${own && own.body ? esc(own.body) : ""}">
-        <button class="btn btn-primary" style="padding:9px 14px" onclick="submitReview(${Number(p.id)})">${own ? "Update" : "Post"}</button>
-        ${own ? `<button class="btn" style="padding:9px 12px" onclick="deleteReview(${Number(p.id)})">Delete</button>` : ""}
+        <input id="revBody" type="text" placeholder="${esc(t("review.ph"))}" value="${own && own.body ? esc(own.body) : ""}">
+        <button class="btn btn-primary" style="padding:9px 14px" onclick="submitReview(${Number(p.id)})">${own ? t("review.update") : t("review.post")}</button>
+        ${own ? `<button class="btn" style="padding:9px 12px" onclick="deleteReview(${Number(p.id)})">${t("review.delete")}</button>` : ""}
       </div><div class="err-line" id="revErr"></div>
-    </div>` : `<div class="revbox" style="text-align:center"><a href="#" onclick="openModal('authModal');return false">Sign in</a> to leave a review.</div>`;
+    </div>` : `<div class="revbox" style="text-align:center"><a href="#" onclick="openModal('authModal');return false">${t("review.signin1")}</a> ${t("review.signin2")}</div>`;
   return `<div class="hero" style="background:${heroGrad(p.name)}"><button class="close" onclick="closeDetail()">✕</button></div>
     <div class="drawer-scroll">
       <div>
@@ -605,19 +710,19 @@ function renderPlace(p) {
       <div class="rating-cards">
         <div class="rating-card"><div class="rating-num">${a.value!=null?a.value:"—"}</div>
           <div class="stars" style="font-size:var(--fs-sm);margin:4px 0">${a.value!=null?starStr(a.value):""}</div>
-          <div style="font-size:var(--fs-xs);color:var(--ink-2)">Reelmap · ${Number(a.count||0)} reviews</div></div>
+          <div style="font-size:var(--fs-xs);color:var(--ink-2)">${t("rating.reelmap")} · ${Number(a.count||0)} ${t("rating.reviews")}</div></div>
         <div class="rating-card"><div class="rating-num">${g.value!=null?g.value:"—"}</div>
           <div class="stars" style="font-size:var(--fs-sm);margin:4px 0">${g.value!=null?starStr(g.value):""}</div>
-          <div style="font-size:var(--fs-xs);color:var(--ink-2)">Google · ${Number(g.count||0)} reviews</div></div>
+          <div style="font-size:var(--fs-xs);color:var(--ink-2)">${t("rating.google")} · ${Number(g.count||0)} ${t("rating.reviews")}</div></div>
       </div>
       ${p.address ? `<div style="font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6"><span style="color:var(--primary)">◆</span> ${esc(p.address)}</div>` : ""}
-      ${tags ? `<div><div class="sec-h" style="margin-bottom:8px">TAGS</div>${tags}</div>` : ""}
-      ${dishes ? `<div><div class="sec-h" style="margin-bottom:8px">DISHES SEEN</div>${dishes}</div>` : ""}
-      ${sources ? `<div><div class="sec-h" style="margin-bottom:10px">SOURCE VIDEOS · ${Number(p.source_count||0)}</div>${sources}</div>` : ""}
+      ${tags ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.tags")}</div>${tags}</div>` : ""}
+      ${dishes ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.dishes")}</div>${dishes}</div>` : ""}
+      ${sources ? `<div><div class="sec-h" style="margin-bottom:10px">${t("place.sources")} · ${Number(p.source_count||0)}</div>${sources}</div>` : ""}
       ${composer}
-      <div><div class="sec-h" style="margin-bottom:10px">REVIEWS</div>
-        ${appReviews || '<div style="font-size:var(--fs-sm);color:var(--ink-2)">No reviews yet — be the first.</div>'}</div>
-      ${gReviews ? `<div><div class="sec-h" style="margin-bottom:10px">FROM GOOGLE</div><div style="display:flex;flex-direction:column;gap:12px">${gReviews}</div></div>` : ""}
+      <div><div class="sec-h" style="margin-bottom:10px">${t("place.reviews")}</div>
+        ${appReviews || `<div style="font-size:var(--fs-sm);color:var(--ink-2)">${t("review.empty")}</div>`}</div>
+      ${gReviews ? `<div><div class="sec-h" style="margin-bottom:10px">${t("place.fromGoogle")}</div><div style="display:flex;flex-direction:column;gap:12px">${gReviews}</div></div>` : ""}
     </div>`;
 }
 
@@ -658,7 +763,7 @@ async function showProfile(username) {
         <div>
           <div style="display:flex;align-items:center;gap:8px">
             <span class="serif" style="font-size:var(--fs-xl);font-weight:700">@${esc(p.username)}</span>
-            ${p.is_influencer ? `<span style="background:var(--gold-soft);color:var(--gold);font-size:9px;font-weight:800;border-radius:5px;padding:2px 6px">CREATOR</span>` : ""}
+            ${p.is_influencer ? `<span style="background:var(--gold-soft);color:var(--gold);font-size:9px;font-weight:800;border-radius:5px;padding:2px 6px">${t("profile.creator")}</span>` : ""}
           </div>
           ${p.name ? `<div style="font-size:var(--fs-sm);color:var(--ink-2);margin-top:2px">${esc(p.name)}</div>` : ""}
           ${p.bio ? `<p style="font-size:var(--fs-sm);color:var(--ink-2);margin:8px 0 0;line-height:1.5">${esc(p.bio)}</p>` : ""}
@@ -683,7 +788,7 @@ function renderFollowButton(username, viewer) {
   if (!slot || !token || !viewer) return;
   const btn = document.createElement("button");
   btn.className = "btn btn-block" + (viewer.following ? "" : " btn-primary");
-  btn.textContent = viewer.following ? "✓ Following" : "Follow";
+  btn.textContent = viewer.following ? t("profile.following") : t("profile.follow");
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     try {
@@ -713,11 +818,11 @@ function openShare() {
 let authMode = "login";
 function setAuthMode(mode) {
   authMode = mode;
-  document.getElementById("authTitle").textContent = mode === "login" ? "Welcome back" : "Create your account";
-  document.getElementById("authSub").textContent = mode === "login" ? "Sign in to share reels and follow creators." : "Join to map reels and follow creators.";
-  document.getElementById("authSubmit").textContent = mode === "login" ? "Sign in" : "Create account";
-  document.getElementById("authSwapText").textContent = mode === "login" ? "New here?" : "Already have an account?";
-  document.getElementById("authSwap").textContent = mode === "login" ? "Create an account" : "Sign in";
+  document.getElementById("authTitle").textContent = t(mode === "login" ? "auth.title.login" : "auth.title.register");
+  document.getElementById("authSub").textContent = t(mode === "login" ? "auth.sub.login" : "auth.sub.register");
+  document.getElementById("authSubmit").textContent = t(mode === "login" ? "auth.submit.login" : "auth.submit.register");
+  document.getElementById("authSwapText").textContent = t(mode === "login" ? "auth.swaptext.login" : "auth.swaptext.register");
+  document.getElementById("authSwap").textContent = t(mode === "login" ? "auth.swap.login" : "auth.swap.register");
 }
 document.getElementById("authSwap").onclick = () => setAuthMode(authMode === "login" ? "register" : "login");
 document.getElementById("authSubmit").onclick = () => auth(authMode);
@@ -729,7 +834,7 @@ async function auth(kind) {
   document.getElementById("authErr").textContent = "";
   pw.classList.remove("err");
   if (kind === "register" && password.length < 8) {
-    document.getElementById("authErr").innerHTML = "⚠ Password must be at least 8 characters.";
+    document.getElementById("authErr").innerHTML = "⚠ " + esc(t("auth.pwShort"));
     pw.classList.add("err"); return;
   }
   try {
@@ -774,7 +879,7 @@ function focusPublished(shares) {
   if (published.id !== lastFocusedShareId) {
     lastFocusedShareId = published.id;
     map.setView([published.place.lat, published.place.lng], 15);
-    setTimeout(() => showToast("Published!", published.place.name + " is on the map."), 300);
+    setTimeout(() => showToast(t("toast.published"), published.place.name + " " + t("toast.onMap")), 300);
   }
 }
 
@@ -782,7 +887,7 @@ function logout() {
   token = null; localStorage.removeItem("reelmap_token"); lastFocusedShareId = null;
   clearInterval(pollTimer); closeModal("shareModal"); afterAuth();
 }
-document.getElementById("account").onclick = () => { if (confirm("Log out?")) logout(); };
+document.getElementById("account").onclick = () => { if (confirm(t("misc.logoutConfirm"))) logout(); };
 
 // ── Submit a share + pipeline ────────────────────────────────────────────────
 document.getElementById("submitBtn").onclick = submitShare;
@@ -791,36 +896,36 @@ async function submitShare() {
   const caption = document.getElementById("caption").value.trim();
   const btn = document.getElementById("submitBtn");
   document.getElementById("submitErr").textContent = "";
-  if (!url && !caption) { document.getElementById("submitErr").innerHTML = "⚠ Enter a URL or a caption."; return; }
-  btn.disabled = true; btn.textContent = "Submitting…";
+  if (!url && !caption) { document.getElementById("submitErr").innerHTML = "⚠ " + esc(t("share.needInput")); return; }
+  btn.disabled = true; btn.textContent = t("share.submitting");
   try {
     await api("/shares", { method:"POST", body: JSON.stringify({ url: url || undefined, caption: caption || undefined }) });
     document.getElementById("url").value = ""; document.getElementById("caption").value = "";
     document.getElementById("shareTracker").style.display = "block";
     startPolling();
   } catch (e) { document.getElementById("submitErr").innerHTML = "⚠ " + esc(e.body?.error?.message || e.message); }
-  finally { btn.disabled = false; btn.textContent = "Submit"; }
+  finally { btn.disabled = false; btn.textContent = t("share.submit"); }
 }
 
 // Map a live share status onto the 4-stage MERCADO timeline.
 const STAGES = [
-  { key:"Queued", sub:"Received your link", reached:["pending","fetching","analyzing","review","published"] },
-  { key:"Analyzing", sub:"Extracting the place from the video…", reached:["analyzing","review","published"], active:["fetching","analyzing"] },
-  { key:"Review", sub:"Confirming location & creator", reached:["review","published"], active:["review"] },
-  { key:"Published", sub:"Live on the shared map", reached:["published"], active:[] },
+  { key:"pipe.queued", sub:"pipe.queuedSub", reached:["pending","fetching","analyzing","review","published"] },
+  { key:"pipe.analyzing", sub:"pipe.analyzingSub", reached:["analyzing","review","published"], active:["fetching","analyzing"] },
+  { key:"pipe.review", sub:"pipe.reviewSub", reached:["review","published"], active:["review"] },
+  { key:"pipe.published", sub:"pipe.publishedSub", reached:["published"], active:[] },
 ];
 function pipelineHtml(status) {
   const failed = status === "failed" || status === "rejected";
   const rows = STAGES.map((s, i) => {
-    let cls = "wait", icon = "○", tag = "Queued";
-    if (s.reached.includes(status) && !(s.active||[]).includes(status)) { cls = "done"; icon = "✓"; tag = "Done"; }
-    if ((s.active||[]).includes(status) || (i === 1 && status === "pending")) { cls = "active"; icon = "◐"; tag = "Working"; }
+    let cls = "wait", icon = "○", tag = t("pipe.queued");
+    if (s.reached.includes(status) && !(s.active||[]).includes(status)) { cls = "done"; icon = "✓"; tag = t("pipe.done"); }
+    if ((s.active||[]).includes(status) || (i === 1 && status === "pending")) { cls = "active"; icon = "◐"; tag = t("pipe.working"); }
     if (failed && !s.reached.includes(status)) { cls = "wait"; }
     return `<div class="stage ${cls}"><div class="dot">${icon}</div>
-      <div class="st"><b>${s.key}</b><span>${s.sub}</span></div><span class="tag">${tag}</span></div>`;
+      <div class="st"><b>${t(s.key)}</b><span>${t(s.sub)}</span></div><span class="tag">${tag}</span></div>`;
   }).join("");
   const failRow = failed ? `<div class="stage fail"><div class="dot">✕</div>
-    <div class="st"><b>Couldn't map it</b><span>No place detected — try a clearer video</span></div><span class="tag">Failed</span></div>` : "";
+    <div class="st"><b>${t("pipe.failTitle")}</b><span>${t("pipe.failBody")}</span></div><span class="tag">${t("pipe.failed")}</span></div>` : "";
   return `<div class="pipe">${rows}${failRow}</div>`;
 }
 
@@ -848,6 +953,7 @@ async function refreshShares() {
 function startPolling() { refreshShares(); clearInterval(pollTimer); pollTimer = setInterval(refreshShares, 2500); }
 
 // ── boot ─────────────────────────────────────────────────────────────────────
+setAuthMode("login");   // localize the auth modal copy on first paint
 afterAuth();
 </script>
 </body>
