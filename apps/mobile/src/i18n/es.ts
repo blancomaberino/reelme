@@ -65,6 +65,8 @@ export const es: Record<MessageKey, string> = {
 
   'map.search': 'Buscar',
   'map.zoomIn': 'Acercá para ver más lugares',
+  'map.zoomInLabel': 'Acercar',
+  'map.zoomOutLabel': 'Alejar',
 
   'profile.title': 'Perfil',
   'profile.note': 'Tus publicaciones, seguidores y ajustes aparecerán acá (T-039).',
