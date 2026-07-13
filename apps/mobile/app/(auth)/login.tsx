@@ -6,10 +6,12 @@ import { useLogin } from '@/api/hooks/useAuth';
 import { AuthScreenLayout, useAuthFormStyles } from '@/components/auth-screen-layout';
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
+import { useT } from '@/i18n';
 import { formErrors } from '@/lib/form-errors';
 
 export default function LoginScreen() {
   const styles = useAuthFormStyles();
+  const t = useT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const login = useLogin();
@@ -27,9 +29,9 @@ export default function LoginScreen() {
   }
 
   return (
-    <AuthScreenLayout title="Welcome back" subtitle="Log in to pick up where you left off.">
+    <AuthScreenLayout title={t('auth.login.title')} subtitle={t('auth.login.subtitle')}>
       <TextField
-        label="Email"
+        label={t('auth.field.email')}
         value={email}
         onChangeText={setEmail}
         keyboardType="email-address"
@@ -38,7 +40,7 @@ export default function LoginScreen() {
         error={fieldErrors.email}
       />
       <TextField
-        label="Password"
+        label={t('auth.field.password')}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -47,11 +49,11 @@ export default function LoginScreen() {
         error={fieldErrors.password}
       />
       {generalError ? <Text style={styles.general}>{generalError}</Text> : null}
-      <Button title="Log in" onPress={submit} loading={login.isPending} />
+      <Button title={t('auth.login.submit')} onPress={submit} loading={login.isPending} />
       <View style={styles.footer}>
-        <Text style={styles.muted}>New here? </Text>
+        <Text style={styles.muted}>{t('auth.login.newHere')}</Text>
         <Link href="/(auth)/register" style={styles.link}>
-          Create an account
+          {t('auth.login.createAccount')}
         </Link>
       </View>
       {/* Social sign-in (Apple/Google) ships once POST /auth/social is implemented. */}

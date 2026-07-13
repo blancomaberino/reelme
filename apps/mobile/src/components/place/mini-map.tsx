@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
+import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
 
 type Props = {
@@ -18,6 +19,7 @@ type Props = {
  */
 export function MiniMap({ lat, lng, onPress }: Props) {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
 
   return (
@@ -38,7 +40,7 @@ export function MiniMap({ lat, lng, onPress }: Props) {
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Open in map"
+        accessibilityLabel={t('place.openInMap')}
         onPress={onPress}
         style={StyleSheet.absoluteFill}
       />

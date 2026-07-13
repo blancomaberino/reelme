@@ -3,6 +3,7 @@ import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PlaceSourceItem } from '@/api/places';
+import { useT } from '@/i18n';
 import { platformIcon } from '@/lib/format';
 import { openWebUrl } from '@/lib/linking';
 import { type Palette, useColors } from '@/theme/colors';
@@ -21,18 +22,19 @@ type Props = {
  */
 function SourceCardBase({ source }: Props) {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const { source_post: post, influencer, sharer } = source;
   const open = () => openWebUrl(post.url);
 
   // A private sharer is anonymized by the API (null) — never crash on it.
-  const sharerLabel = sharer ? `@${sharer.username}` : 'a Reelmap user';
+  const sharerLabel = sharer ? `@${sharer.username}` : t('feed.sharerFallback');
 
   return (
     <Pressable
       accessibilityRole="link"
-      accessibilityLabel={`Open original ${post.platform} post`}
+      accessibilityLabel={t('source.openOriginal', { platform: post.platform })}
       onPress={open}
       style={({ pressed }) => [styles.card, pressed ? styles.pressed : null]}
     >
@@ -42,7 +44,7 @@ function SourceCardBase({ source }: Props) {
           <View style={styles.badgeRow}>
             <Ionicons name={platformIcon(post.platform)} size={16} color={c.muted} />
             <Text style={styles.platform}>{post.platform}</Text>
-            {source.is_primary ? <Text style={styles.firstShared}>First shared</Text> : null}
+            {source.is_primary ? <Text style={styles.firstShared}>{t('source.firstShared')}</Text> : null}
             <Ionicons name="open-outline" size={15} color={c.muted} style={styles.openIcon} />
           </View>
           {post.caption ? (

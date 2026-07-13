@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { MapPin } from '@/api/places';
+import { useT } from '@/i18n';
 import { cuisinePriceLine } from '@/lib/format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
@@ -18,6 +19,7 @@ type Props = {
  */
 export function PlaceSheet({ pin, onViewPlace }: Props) {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const line = cuisinePriceLine(pin.category, pin.price_range);
 
@@ -46,11 +48,11 @@ export function PlaceSheet({ pin, onViewPlace }: Props) {
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="View place"
+        accessibilityLabel={t('place.view')}
         onPress={() => onViewPlace(pin.id)}
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       >
-        <Text style={styles.buttonLabel}>View place</Text>
+        <Text style={styles.buttonLabel}>{t('place.view')}</Text>
         <Ionicons name="arrow-forward" size={18} color={c.onPrimary} />
       </Pressable>
     </View>

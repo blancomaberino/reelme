@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { usePopularTags } from '@/api/hooks/useTags';
+import { useT } from '@/i18n';
 import { priceGlyphs } from '@/lib/format';
 import { useMapStore } from '@/stores/map';
 import { type Palette, useColors } from '@/theme/colors';
@@ -14,6 +15,7 @@ import { type Palette, useColors } from '@/theme/colors';
  */
 export function FilterBar() {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const filters = useMapStore((s) => s.filters);
   const togglePrice = useMapStore((s) => s.togglePrice);
@@ -47,7 +49,7 @@ export function FilterBar() {
         />
       ))}
 
-      <FilterChip label="Following" active={false} disabled onPress={() => {}} styles={styles} />
+      <FilterChip label={t('filter.following')} active={false} disabled onPress={() => {}} styles={styles} />
     </ScrollView>
   );
 }

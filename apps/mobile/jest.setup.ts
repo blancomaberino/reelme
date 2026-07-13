@@ -1,9 +1,17 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { notifyManager } from '@tanstack/react-query';
 
+import { useSettingsStore } from '@/stores/settings';
+
 // Flush React Query notifications synchronously so no batching setTimeout lingers
 // past a test — that timer both fires act(...) warnings and blocks the worker exit.
 notifyManager.setScheduler((cb) => cb());
+
+// The app defaults to Spanish; pin tests to English so screen assertions read in
+// English. Locale-specific behaviour is covered explicitly in i18n tests.
+beforeEach(() => {
+  useSettingsStore.setState({ locale: 'en' });
+});
 
 // In-memory SecureStore (no native module in jest).
 jest.mock('expo-secure-store', () => {

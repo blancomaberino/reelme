@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { fetchMe } from '@/api/hooks/useMe';
 import { clearToken, getToken } from '@/api/token';
 import { useSessionStore } from '@/stores/session';
+import { useSettingsStore } from '@/stores/settings';
 
 // Keep the splash up until the token check resolves (no login/tab flash).
 SplashScreen.preventAutoHideAsync();
@@ -37,7 +38,7 @@ export default function RootLayout() {
               <Stack.Screen name="place/[slug]" />
               <Stack.Screen name="tag/[slug]" />
               <Stack.Screen name="search" options={{ presentation: 'modal' }} />
-              <Stack.Screen name="settings" options={{ headerShown: true, title: 'Settings' }} />
+              <Stack.Screen name="settings" />
             </Stack>
           </ThemeProvider>
         </SafeAreaProvider>
@@ -57,6 +58,11 @@ function AuthBootstrap() {
   const status = useSessionStore((s) => s.status);
   const setUser = useSessionStore((s) => s.setUser);
   const clear = useSessionStore((s) => s.clear);
+
+  // Apply the saved language before the first screens paint (Spanish default).
+  useEffect(() => {
+    void useSettingsStore.getState().hydrate();
+  }, []);
 
   useEffect(() => {
     let active = true;

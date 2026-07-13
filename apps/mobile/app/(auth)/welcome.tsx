@@ -4,10 +4,12 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
+import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
 
 export default function WelcomeScreen() {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
 
   return (
@@ -17,16 +19,16 @@ export default function WelcomeScreen() {
           <Text style={styles.logoGlyph}>📍</Text>
         </View>
         <Text style={styles.logo}>Reelmap</Text>
-        <Text style={styles.tagline}>Share a food video. Pin the place. Discover where the internet eats.</Text>
+        <Text style={styles.tagline}>{t('auth.welcome.tagline')}</Text>
       </View>
       <View style={styles.actions}>
         <Link href="/(auth)/register" asChild>
-          <Button title="Create account" />
+          <Button title={t('auth.welcome.createAccount')} />
         </Link>
         <Link href="/(auth)/login" asChild>
-          <Button title="Log in" variant="secondary" />
+          <Button title={t('auth.welcome.login')} variant="secondary" />
         </Link>
-        <Text style={styles.legal}>By continuing you agree to our Terms & Privacy Policy.</Text>
+        <Text style={styles.legal}>{t('auth.welcome.legal')}</Text>
       </View>
     </SafeAreaView>
   );

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { FeedItem } from '@/api/places';
 import { Thumbnail } from '@/components/place/thumbnail';
+import { useT } from '@/i18n';
 import { cuisinePriceLine, platformIcon, relativeTime } from '@/lib/format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
@@ -19,11 +20,12 @@ type Props = {
 /** One feed row (T-034): thumbnail, place + cuisine/price, attribution, time. */
 function FeedCardBase({ item, onPress, onHide, hideLabel }: Props) {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const { place, source_post: post, influencer, sharer } = item;
   const line = cuisinePriceLine(place.category, place.price_range);
-  const sharerLabel = sharer ? `@${sharer.username}` : 'a Reelmap user';
+  const sharerLabel = sharer ? `@${sharer.username}` : t('feed.sharerFallback');
 
   return (
     <Pressable

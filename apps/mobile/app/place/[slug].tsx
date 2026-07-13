@@ -10,6 +10,7 @@ import { Chip } from '@/components/place/chip';
 import { MiniMap } from '@/components/place/mini-map';
 import { SourceCard } from '@/components/place/source-card';
 import { Thumbnail } from '@/components/place/thumbnail';
+import { useT } from '@/i18n';
 import { cuisinePriceLine } from '@/lib/format';
 import { summarizeHours } from '@/lib/opening-hours';
 import { directionsUrl, placeShareUrl } from '@/lib/directions';
@@ -38,9 +39,10 @@ export default function PlaceDetailScreen() {
 }
 
 function Header({ onBack, styles, c }: { onBack: () => void; styles: Styles; c: Palette }) {
+  const t = useT();
   return (
     <View style={styles.header}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={onBack} hitSlop={12}>
+      <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={onBack} hitSlop={12}>
         <Ionicons name="chevron-back" size={26} color={c.text} />
       </Pressable>
     </View>
@@ -48,6 +50,7 @@ function Header({ onBack, styles, c }: { onBack: () => void; styles: Styles; c: 
 }
 
 function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c: Palette }) {
+  const t = useT();
   const [hoursOpen, setHoursOpen] = useState(false);
   const hours = useMemo(() => summarizeHours(place.opening_hours), [place.opening_hours]);
   const tags = useMemo(
@@ -68,7 +71,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
   const openDirections = () => void openExternal(directionsUrl(place.lat, place.lng, place.name));
 
   const share = () =>
-    void Share.share({ message: `${place.name} on Reelmap`, url: placeShareUrl(place.slug) });
+    void Share.share({ message: t('place.shareMessage', { name: place.name }), url: placeShareUrl(place.slug) });
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -89,13 +92,13 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
             </Text>
           ) : null}
           <Text style={styles.metaMuted}>
-            {place.source_count} source{place.source_count === 1 ? '' : 's'}
+            {t('place.sourceCount', { count: place.source_count })}
           </Text>
         </View>
         {tags.length > 0 ? (
           <View style={styles.chips}>
-            {tags.map((t) => (
-              <Chip key={t} label={t} />
+            {tags.map((tag) => (
+              <Chip key={tag} label={tag} />
             ))}
           </View>
         ) : null}
@@ -114,7 +117,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
             onPress={() => setHoursOpen((v) => !v)}
             disabled={hours.weekly.length === 0}
             accessibilityRole="button"
-            accessibilityLabel={hoursOpen ? 'Hide weekly hours' : 'Show weekly hours'}
+            accessibilityLabel={hoursOpen ? t('place.hoursHide') : t('place.hoursShow')}
             accessibilityState={{ expanded: hoursOpen }}
           >
             <Row icon="time-outline" c={c} styles={styles}>
@@ -144,7 +147,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
           <Pressable
             onPress={() => void openExternal(`tel:${place.phone}`)}
             accessibilityRole="button"
-            accessibilityLabel={`Call ${place.phone}`}
+            accessibilityLabel={t('place.call', { phone: place.phone })}
           >
             <Row icon="call-outline" c={c} styles={styles}>
               <Text style={[styles.rowText, styles.link]}>{place.phone}</Text>
@@ -153,7 +156,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         ) : null}
 
         {place.website ? (
-          <Pressable onPress={() => openWebUrl(place.website)} accessibilityRole="link" accessibilityLabel="Open website">
+          <Pressable onPress={() => openWebUrl(place.website)} accessibilityRole="link" accessibilityLabel={t('place.website')}>
             <Row icon="globe-outline" c={c} styles={styles}>
               <Text style={[styles.rowText, styles.link]} numberOfLines={1}>
                 {place.website.replace(/^https?:\/\//, '')}
@@ -170,14 +173,14 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
 
       {/* Actions */}
       <View style={styles.actions}>
-        <ActionButton icon="navigate" label="Directions" onPress={openDirections} c={c} styles={styles} />
-        <ActionButton icon="share-outline" label="Share" onPress={share} c={c} styles={styles} />
+        <ActionButton icon="navigate" label={t('place.directions')} onPress={openDirections} c={c} styles={styles} />
+        <ActionButton icon="share-outline" label={t('place.share')} onPress={share} c={c} styles={styles} />
       </View>
 
       {/* Dishes */}
       {place.dishes.length > 0 ? (
         <View style={styles.block}>
-          <Text style={styles.sectionTitle}>Dishes</Text>
+          <Text style={styles.sectionTitle}>{t('place.dishes')}</Text>
           <View style={styles.chips}>
             {place.dishes.map((d) => (
               <Chip key={d.name} label={d.name} />
@@ -189,7 +192,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
       {/* Sources */}
       {place.sources && place.sources.length > 0 ? (
         <View style={styles.block}>
-          <Text style={styles.sectionTitle}>Where it came from</Text>
+          <Text style={styles.sectionTitle}>{t('place.sources')}</Text>
           <View style={styles.sourceList}>
             {place.sources.map((s) => (
               <SourceCard key={s.id} source={s} />
@@ -201,12 +204,12 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
       {/* Reviews: in-app + Google (with reviewer photos, like Google) */}
       {appReviews.length > 0 || googleReviews.length > 0 ? (
         <View style={styles.block}>
-          <Text style={styles.sectionTitle}>Reviews</Text>
+          <Text style={styles.sectionTitle}>{t('place.reviews')}</Text>
           {appReviews.map((r) => (
             <ReviewRow
               key={`a-${r.id}`}
-              name={r.author ? `@${r.author.username}` : 'anonymous'}
-              suffix={r.is_own ? ' (you)' : ''}
+              name={r.author ? `@${r.author.username}` : t('place.anonymous')}
+              suffix={r.is_own ? t('place.you') : ''}
               rating={r.rating}
               text={r.body}
               c={c}
@@ -215,11 +218,11 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
           ))}
           {googleReviews.length > 0 ? (
             <>
-              <Text style={styles.reviewSub}>From Google</Text>
+              <Text style={styles.reviewSub}>{t('place.fromGoogle')}</Text>
               {googleReviews.map((r, i) => (
                 <ReviewRow
                   key={`g-${i}`}
-                  name={r.author ?? 'Google user'}
+                  name={r.author ?? t('place.googleUser')}
                   rating={r.rating}
                   text={r.text}
                   photo={r.profile_photo_url}
@@ -332,13 +335,14 @@ function PlaceSkeleton({ styles }: { styles: Styles }) {
 }
 
 function ErrorState({ styles, c, onRetry }: { styles: Styles; c: Palette; onRetry: () => void }) {
+  const t = useT();
   return (
     <View style={styles.center}>
       <Ionicons name="sad-outline" size={40} color={c.muted} />
-      <Text style={styles.errorTitle}>Place not found</Text>
-      <Text style={styles.errorBody}>It may have been removed or the link is out of date.</Text>
+      <Text style={styles.errorTitle}>{t('place.notFound.title')}</Text>
+      <Text style={styles.errorBody}>{t('place.notFound.body')}</Text>
       <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retry}>
-        <Text style={styles.retryText}>Try again</Text>
+        <Text style={styles.retryText}>{t('common.tryAgain')}</Text>
       </Pressable>
     </View>
   );

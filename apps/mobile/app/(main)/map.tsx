@@ -14,6 +14,7 @@ import { PlaceMarker } from '@/components/map/place-marker';
 import { PlaceSheet } from '@/components/map/place-sheet';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
+import { useT } from '@/i18n';
 import { useMapStore } from '@/stores/map';
 import { type Palette, useColors } from '@/theme/colors';
 
@@ -31,6 +32,7 @@ const CLIENT_CLUSTER_BAND = 15;
 
 export default function MapScreen() {
   const c = useColors();
+  const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const params = useLocalSearchParams<{ lat?: string; lng?: string }>();
 
@@ -191,7 +193,7 @@ export default function MapScreen() {
           ) : null}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Search"
+            accessibilityLabel={t('map.search')}
             onPress={() => router.push('/search')}
             style={styles.searchButton}
           >
@@ -200,7 +202,7 @@ export default function MapScreen() {
         </View>
         {data?.truncated ? (
           <View style={styles.zoomChip}>
-            <Text style={styles.zoomChipText}>Zoom in for more places</Text>
+            <Text style={styles.zoomChipText}>{t('map.zoomIn')}</Text>
           </View>
         ) : null}
       </SafeAreaView>
