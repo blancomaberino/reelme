@@ -18,4 +18,5 @@ export const queryKeys = {
   search: (q: string, types: string) => ['search', q, types] as const,
   tagsPopular: () => ['tags', 'popular'] as const,
   placesByTag: (slug: string) => ['places', 'tag', slug] as const,
+  share: (id: string) => ['shares', id] as const,
 };
