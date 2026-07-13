@@ -178,15 +178,20 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         <ActionButton icon="share-outline" label={t('place.share')} onPress={share} c={c} styles={styles} />
       </View>
 
-      {/* Dishes */}
+      {/* Dishes — with menu prices when the source showed a carta */}
       {place.dishes.length > 0 ? (
         <View style={styles.block}>
           <Text style={styles.sectionTitle}>{t('place.dishes')}</Text>
           <View style={styles.chips}>
             {place.dishes.map((d) => (
-              <Chip key={d.name} label={d.name} />
+              <Chip key={d.name} label={d.price ? `${d.name} · ${d.price}` : d.name} />
             ))}
           </View>
+          {place.dishes_updated_at ? (
+            <Text style={styles.updatedAt}>
+              {t('place.dishesUpdated', { date: fmt.date(place.dishes_updated_at) })}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -388,6 +393,7 @@ const makeStyles = (c: Palette) =>
     actionLabel: { color: c.onPrimary, fontSize: 15, fontWeight: '600' },
     hero: { width: '100%', height: 190, borderRadius: 16, marginBottom: 4 },
     sectionTitle: { fontFamily: fonts.display, fontSize: 19, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
+    updatedAt: { fontSize: 12, color: c.muted, marginTop: 6 },
     reviewSub: { fontFamily: fonts.display, fontSize: 15, fontWeight: '700', color: c.ink2, marginTop: 8, marginBottom: 2 },
     review: { flexDirection: 'row', gap: 10, paddingVertical: 8 },
     reviewAvatar: { width: 36, height: 36, borderRadius: 18 },

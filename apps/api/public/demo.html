@@ -361,7 +361,7 @@ const I18N = {
     'toast.hidden.title': 'Ocultado', 'toast.hidden.body': 'Quitado de tu feed.',
     'toast.hideFail': 'No se pudo ocultar', 'toast.published': '¡Publicado!', 'toast.onMap': 'está en el mapa.',
     'toast.error': 'Algo salió mal',
-    'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.sources': 'VIDEOS DE ORIGEN',
+    'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.dishesUpdated': 'Menú actualizado el', 'place.sources': 'VIDEOS DE ORIGEN',
     'place.reviews': 'RESEÑAS', 'place.fromGoogle': 'DE GOOGLE', 'place.watch': 'Ver original ↗',
     'place.sharedBy': 'compartido por', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reseñas',
     'review.rate': 'Calificá este lugar', 'review.your': 'Tu reseña', 'review.ph': 'Escribí una impresión…',
@@ -403,7 +403,7 @@ const I18N = {
     'toast.hidden.title': 'Hidden', 'toast.hidden.body': 'Removed from your feed.',
     'toast.hideFail': 'Couldn’t hide', 'toast.published': 'Published!', 'toast.onMap': 'is on the map.',
     'toast.error': 'Something went wrong',
-    'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.sources': 'SOURCE VIDEOS',
+    'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.dishesUpdated': 'Menu updated', 'place.sources': 'SOURCE VIDEOS',
     'place.reviews': 'REVIEWS', 'place.fromGoogle': 'FROM GOOGLE', 'place.watch': 'Watch original ↗',
     'place.sharedBy': 'shared by', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reviews',
     'review.rate': 'Rate this place', 'review.your': 'Your review', 'review.ph': 'Share a quick thought…',
@@ -426,6 +426,16 @@ const I18N = {
 };
 let lang = localStorage.getItem("reelmap_lang") || "es";
 const t = (k) => (I18N[lang] || I18N.es)[k] ?? I18N.en[k] ?? k;
+const MONTHS = {
+  es: ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"],
+  en: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+};
+function shortDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const m = (MONTHS[lang] || MONTHS.es)[d.getMonth()];
+  return lang === "es" ? `${d.getDate()} ${m} ${d.getFullYear()}` : `${m} ${d.getDate()}, ${d.getFullYear()}`;
+}
 function applyStaticI18n() {
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
@@ -663,7 +673,7 @@ function renderPlace(p) {
   const g = (p.rating && p.rating.google) || {}, a = (p.rating && p.rating.app) || {};
   const chip = (t, cls="") => `<span class="chip ${cls}">${esc(t)}</span>`;
   const tags = (p.cuisines||[]).map(t=>chip(t)).join("") + (p.vibe_tags||[]).map(t=>chip(t)).join("") + (p.dietary_tags||[]).map(t=>chip(t)).join("");
-  const dishes = (p.dishes || []).map(d => chip(d.name + (d.shown_in_video ? " 🎬" : ""), "dish")).join("");
+  const dishes = (p.dishes || []).map(d => chip(d.name + (d.price ? " · " + d.price : "") + (d.shown_in_video ? " 🎬" : ""), "dish")).join("");
   const sources = (p.sources || []).map(s => {
     const post = s.source_post || {};
     const label = `${(post.platform || "post")}`;
@@ -717,7 +727,7 @@ function renderPlace(p) {
       </div>
       ${p.address ? `<div style="font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6"><span style="color:var(--primary)">◆</span> ${esc(p.address)}</div>` : ""}
       ${tags ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.tags")}</div>${tags}</div>` : ""}
-      ${dishes ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.dishes")}</div>${dishes}</div>` : ""}
+      ${dishes ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.dishes")}</div>${dishes}${p.dishes_updated_at ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px">${t("place.dishesUpdated")} ${esc(shortDate(p.dishes_updated_at))}</div>` : ""}</div>` : ""}
       ${sources ? `<div><div class="sec-h" style="margin-bottom:10px">${t("place.sources")} · ${Number(p.source_count||0)}</div>${sources}</div>` : ""}
       ${composer}
       <div><div class="sec-h" style="margin-bottom:10px">${t("place.reviews")}</div>
