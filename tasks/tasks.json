@@ -1632,7 +1632,7 @@
    "id": "T-065",
    "title": "Place-detail enrichments: opening hours + Google Maps link",
    "phase": "M2",
-   "status": "pending",
+   "status": "done",
    "depends_on": [
     "T-030",
     "T-033",
@@ -1655,7 +1655,7 @@
     "Localized (es default); no regression to the existing detail layout"
    ],
    "agent": "executor",
-   "notes": "Requested 2026-07-13. Small display-only enrichments. NOTE: the 'last time prices were updated' ask is ALREADY DONE (dishes_updated_at, PRs #53/#54 — 'Menú actualizado el <fecha>'); opening-hours summary already exists on mobile (summarizeHours) — main new work is the Google Maps link + porting hours to the web demo."
+   "notes": "Requested 2026-07-13. Small display-only enrichments. NOTE: the 'last time prices were updated' ask is ALREADY DONE (dishes_updated_at, PRs #53/#54 — 'Menú actualizado el <fecha>'); opening-hours summary already exists on mobile (summarizeHours) — main new work is the Google Maps link + porting hours to the web demo. | DONE 2026-07-13 (PR #61 991b458): mobile Google Maps link row + web demo opening hours (weekday_text) + Google Maps link; menu-updated line already shipped (#53/#54); mobile opening hours already existed."
   }
  ]
 }
