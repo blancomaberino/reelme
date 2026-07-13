@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\PlaceController;
+use App\Http\Controllers\Api\V1\PlaceListController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SearchController;
@@ -112,6 +113,18 @@ Route::prefix('v1')->group(function () {
         Route::middleware('throttle:60,1')->group(function () {
             Route::post('/feed/hidden', [FeedDismissalController::class, 'store']);
             Route::delete('/feed/hidden/{share}', [FeedDismissalController::class, 'destroy']);
+        });
+
+        // Personal place lists (T-062): owner-scoped collections. A light write
+        // throttle matches the other write surfaces.
+        Route::middleware('throttle:60,1')->group(function () {
+            Route::get('/me/lists', [PlaceListController::class, 'index']);
+            Route::post('/me/lists', [PlaceListController::class, 'store']);
+            Route::get('/me/lists/{list}', [PlaceListController::class, 'show']);
+            Route::patch('/me/lists/{list}', [PlaceListController::class, 'update']);
+            Route::delete('/me/lists/{list}', [PlaceListController::class, 'destroy']);
+            Route::post('/me/lists/{list}/places/{place}', [PlaceListController::class, 'addPlace']);
+            Route::delete('/me/lists/{list}/places/{place}', [PlaceListController::class, 'removePlace']);
         });
 
         // Native reviews (T-059): one review per (place, user). POST creates
