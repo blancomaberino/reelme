@@ -71,6 +71,7 @@ it('sends base64 images and format json on chat, mapping token counts', function
             && $body['model'] === 'qwen2.5-vl:7b'
             && $body['format'] === 'json'
             && $body['stream'] === false
+            && $body['keep_alive'] === '30m'
             && $body['messages'][1]['images'] === ['AAAABBBB'];
     });
 });

@@ -80,6 +80,10 @@ class OllamaClient
             // supplied. Post-parse opis validation still runs (T-021).
             'format' => $request->jsonSchema ?? 'json',
             'options' => ['temperature' => $request->temperature],
+            // Keep the model resident between pipeline steps so a later call
+            // (extract, or a repair retry) doesn't pay a cold reload that can
+            // exceed the generation timeout and fail an otherwise-fine share.
+            'keep_alive' => $this->stringConfig('keep_alive', '30m'),
         ];
 
         $startedAt = hrtime(true);
@@ -186,5 +190,12 @@ class OllamaClient
         $value = config("ai.ollama.$key");
 
         return is_numeric($value) ? (int) $value : $default;
+    }
+
+    private function stringConfig(string $key, string $default): string
+    {
+        $value = config("ai.ollama.$key");
+
+        return is_string($value) && $value !== '' ? $value : $default;
     }
 }
