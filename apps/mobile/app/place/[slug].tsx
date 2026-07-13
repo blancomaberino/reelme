@@ -8,6 +8,7 @@ import { usePlace } from '@/api/hooks/usePlace';
 import type { PlaceDetail } from '@/api/places';
 import { Chip } from '@/components/place/chip';
 import { MiniMap } from '@/components/place/mini-map';
+import { ReviewComposer } from '@/components/place/review-composer';
 import { SourceCard } from '@/components/place/source-card';
 import { Thumbnail } from '@/components/place/thumbnail';
 import { useT } from '@/i18n';
@@ -65,6 +66,9 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
   }, [place.sources]);
   const appReviews = place.reviews ?? [];
   const googleReviews = place.google_reviews ?? [];
+  // The viewer's own review (prefills the composer); listed rows exclude it.
+  const ownReview = appReviews.find((r) => r.is_own) ?? null;
+  const otherReviews = appReviews.filter((r) => !r.is_own);
 
   const openMap = () =>
     router.push({ pathname: '/(main)/map', params: { lat: String(place.lat), lng: String(place.lng) } });
@@ -207,22 +211,21 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         </View>
       ) : null}
 
-      {/* Reviews: in-app + Google (with reviewer photos, like Google) */}
-      {appReviews.length > 0 || googleReviews.length > 0 ? (
-        <View style={styles.block}>
-          <Text style={styles.sectionTitle}>{t('place.reviews')}</Text>
-          {appReviews.map((r) => (
-            <ReviewRow
-              key={`a-${r.id}`}
-              name={r.author ? `@${r.author.username}` : t('place.anonymous')}
-              suffix={r.is_own ? t('place.you') : ''}
-              rating={r.rating}
-              text={r.body}
-              c={c}
-              styles={styles}
-            />
-          ))}
-          {googleReviews.length > 0 ? (
+      {/* Reviews: your composer, then in-app + Google (with reviewer photos) */}
+      <View style={styles.block}>
+        <Text style={styles.sectionTitle}>{t('place.reviews')}</Text>
+        <ReviewComposer placeId={place.id} slug={place.slug} own={ownReview} />
+        {otherReviews.map((r) => (
+          <ReviewRow
+            key={`a-${r.id}`}
+            name={r.author ? `@${r.author.username}` : t('place.anonymous')}
+            rating={r.rating}
+            text={r.body}
+            c={c}
+            styles={styles}
+          />
+        ))}
+        {googleReviews.length > 0 ? (
             <>
               <Text style={styles.reviewSub}>{t('place.fromGoogle')}</Text>
               {googleReviews.map((r, i) => (
@@ -239,7 +242,6 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
             </>
           ) : null}
         </View>
-      ) : null}
 
       <View style={styles.footer} />
     </ScrollView>
