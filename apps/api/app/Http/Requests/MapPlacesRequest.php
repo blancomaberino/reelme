@@ -49,6 +49,8 @@ class MapPlacesRequest extends FormRequest
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'filter' => ['nullable', Rule::in(['all', 'following', 'mine'])],
+            // Restrict the map to a single owned place list (T-062 → map filter).
+            'list' => ['nullable', 'integer'],
         ];
     }
 
