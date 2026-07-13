@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Image, type ImageStyle, type StyleProp, StyleSheet, View, type ViewStyle } from 'react-native';
 
+import { isHttpUrl } from '@/lib/linking';
 import { type Palette, useColors } from '@/theme/colors';
 
 type Props = {
@@ -21,7 +22,8 @@ export function Thumbnail({ uri, style }: Props) {
   const styles = useMemo(() => makeStyles(c), [c]);
   const [failed, setFailed] = useState(false);
 
-  if (!uri || failed) {
+  // Only http(s) thumbnails are loaded — never a file:/other scheme from the API.
+  if (!isHttpUrl(uri) || failed) {
     return (
       <View style={[styles.fallback, style as StyleProp<ViewStyle>]}>
         <Ionicons name="image-outline" size={22} color={c.placeholder} />

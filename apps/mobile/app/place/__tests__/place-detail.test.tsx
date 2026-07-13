@@ -114,6 +114,33 @@ it('dials the phone number via tel:', async () => {
   expect(Linking.openURL).toHaveBeenCalledWith('tel:+59829021621');
 });
 
+it('opens directions in the maps app', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+
+  fireEvent.press(await screen.findByLabelText('Directions'));
+  // Default Platform.OS in jest-expo is 'ios' → Apple Maps URL.
+  expect(Linking.openURL).toHaveBeenCalledWith(expect.stringContaining('maps.apple.com'));
+});
+
+it('renders an open/closed hours summary when hours are present', async () => {
+  const withHours = {
+    ...PLACE,
+    // Open every day 00:00–23:59 → always "Open now" regardless of test clock.
+    opening_hours: {
+      periods: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+        open: { day, time: '0000' },
+        close: { day, time: '2359' },
+      })),
+    },
+  };
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+  expect(await screen.findByText(/Open now/)).toBeOnTheScreen();
+});
+
 it('shows the not-found state on a 404', async () => {
   mock.onGet(`/places/${PLACE.slug}`).reply(404, { error: { message: 'not found' } });
 

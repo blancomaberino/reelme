@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { memo, useMemo } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PlaceSourceItem } from '@/api/places';
 import { platformIcon } from '@/lib/format';
+import { openWebUrl } from '@/lib/linking';
 import { type Palette, useColors } from '@/theme/colors';
 
 import { Thumbnail } from './thumbnail';
@@ -23,9 +24,7 @@ function SourceCardBase({ source }: Props) {
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const { source_post: post, influencer, sharer } = source;
-  const open = () => {
-    void Linking.openURL(post.url);
-  };
+  const open = () => openWebUrl(post.url);
 
   // A private sharer is anonymized by the API (null) — never crash on it.
   const sharerLabel = sharer ? `@${sharer.username}` : 'a Reelmap user';

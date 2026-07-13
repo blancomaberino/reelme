@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { usePlace } from '@/api/hooks/usePlace';
@@ -12,6 +12,7 @@ import { SourceCard } from '@/components/place/source-card';
 import { cuisinePriceLine } from '@/lib/format';
 import { summarizeHours } from '@/lib/opening-hours';
 import { directionsUrl, placeShareUrl } from '@/lib/directions';
+import { openExternal, openWebUrl } from '@/lib/linking';
 import { type Palette, useColors } from '@/theme/colors';
 
 export default function PlaceDetailScreen() {
@@ -56,7 +57,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
   const openMap = () =>
     router.push({ pathname: '/(main)/map', params: { lat: String(place.lat), lng: String(place.lng) } });
 
-  const openDirections = () => void Linking.openURL(directionsUrl(place.lat, place.lng, place.name));
+  const openDirections = () => void openExternal(directionsUrl(place.lat, place.lng, place.name));
 
   const share = () =>
     void Share.share({ message: `${place.name} on Reelmap`, url: placeShareUrl(place.slug) });
@@ -98,7 +99,13 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         ) : null}
 
         {hours.label ? (
-          <Pressable onPress={() => setHoursOpen((v) => !v)} disabled={hours.weekly.length === 0}>
+          <Pressable
+            onPress={() => setHoursOpen((v) => !v)}
+            disabled={hours.weekly.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel={hoursOpen ? 'Hide weekly hours' : 'Show weekly hours'}
+            accessibilityState={{ expanded: hoursOpen }}
+          >
             <Row icon="time-outline" c={c} styles={styles}>
               <Text style={[styles.rowText, hours.openNow ? styles.open : styles.closed]}>{hours.label}</Text>
               {hours.weekly.length > 0 ? (
@@ -123,7 +130,11 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         ) : null}
 
         {place.phone ? (
-          <Pressable onPress={() => void Linking.openURL(`tel:${place.phone}`)}>
+          <Pressable
+            onPress={() => void openExternal(`tel:${place.phone}`)}
+            accessibilityRole="button"
+            accessibilityLabel={`Call ${place.phone}`}
+          >
             <Row icon="call-outline" c={c} styles={styles}>
               <Text style={[styles.rowText, styles.link]}>{place.phone}</Text>
             </Row>
@@ -131,7 +142,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         ) : null}
 
         {place.website ? (
-          <Pressable onPress={() => void Linking.openURL(place.website!)}>
+          <Pressable onPress={() => openWebUrl(place.website)} accessibilityRole="link" accessibilityLabel="Open website">
             <Row icon="globe-outline" c={c} styles={styles}>
               <Text style={[styles.rowText, styles.link]} numberOfLines={1}>
                 {place.website.replace(/^https?:\/\//, '')}

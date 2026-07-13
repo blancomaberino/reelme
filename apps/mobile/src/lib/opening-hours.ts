@@ -53,10 +53,10 @@ export function summarizeHours(hours: OpeningHours | null | undefined, now: Date
       continue;
     }
     const start = toWeekMinutes(period.open.day, period.open.time);
-    // No close ⇒ open 24h from `open`. Close before open ⇒ wraps past midnight.
-    let end = period.close
-      ? toWeekMinutes(period.close.day, period.close.time)
-      : start + 1440;
+    // No close ⇒ the Google 24/7 sentinel (a single day-0 00:00 period with no
+    // close): open the whole week, so any `now` matches. Close before open ⇒
+    // wraps past midnight.
+    let end = period.close ? toWeekMinutes(period.close.day, period.close.time) : start + week;
     if (end <= start) end += week;
 
     // Test `now` and `now + 1 week` so a Sun-night→Mon-morning window matches

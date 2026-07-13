@@ -49,10 +49,15 @@ describe('summarizeHours', () => {
     expect(s.openNow).toBe(true);
   });
 
-  it('treats a period with no close as open 24h', () => {
-    const s = summarizeHours({ periods: [{ open: { day: 3, time: '0000' } }] }, wed1430);
+  it('treats the Google 24/7 sentinel (day-0 open, no close) as always open', () => {
+    // The canonical always-open shape: a single Sunday-00:00 period, no close.
+    // Must read open on a *weekday*, not just Sunday.
+    const s = summarizeHours({ periods: [{ open: { day: 0, time: '0000' } }] }, wed1430);
     expect(s.openNow).toBe(true);
     expect(s.label).toBe('Open now');
+
+    const sun = summarizeHours({ periods: [{ open: { day: 0, time: '0000' } }] }, new Date(2026, 6, 19, 8, 0));
+    expect(sun.openNow).toBe(true);
   });
 
   it('builds a seven-day weekly list', () => {

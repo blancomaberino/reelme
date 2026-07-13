@@ -12,9 +12,10 @@ export async function fetchPlace(slug: string): Promise<PlaceDetail> {
 }
 
 /**
- * Place detail (T-033). `staleTime` is modest (60s, not the map's 120s) because
- * the embedded source thumbnails are presigned R2 URLs that expire — a long
- * cache would serve dead image links.
+ * Place detail (T-033). `staleTime` is modest (60s, not the map's 120s) so a
+ * revisit refetches sooner; the real guard against expired presigned R2
+ * thumbnail URLs is the Thumbnail's onError → placeholder fallback (staleTime
+ * alone can't guarantee a fresh URL for an already-mounted screen).
  */
 export function usePlace(slug: string) {
   return useQuery({
