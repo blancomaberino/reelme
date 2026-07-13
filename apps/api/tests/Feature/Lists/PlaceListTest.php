@@ -91,6 +91,24 @@ it('derives a unique slug per owner', function () {
     $this->postJson('/api/v1/me/lists', ['name' => 'Lisbon'])->assertJsonPath('data.slug', 'lisbon-2');
 });
 
+it('flags which lists contain a place via ?contains', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+    $place = Place::factory()->active()->atPoint(0, 0)->create();
+    $withIt = PlaceList::factory()->for($user)->create(['name' => 'Has it']);
+    $without = PlaceList::factory()->for($user)->create(['name' => 'Empty']);
+    $this->postJson("/api/v1/me/lists/{$withIt->id}/places/{$place->id}")->assertCreated();
+
+    $data = collect($this->getJson("/api/v1/me/lists?contains={$place->id}")->assertOk()->json('data'))
+        ->keyBy('name');
+    expect($data['Has it']['contains'])->toBeTrue()
+        ->and($data['Empty']['contains'])->toBeFalse();
+
+    // Without the param, `contains` is omitted entirely.
+    $plain = $this->getJson('/api/v1/me/lists')->assertOk()->json('data.0');
+    expect($plain)->not->toHaveKey('contains');
+});
+
 it('requires authentication', function () {
     $this->postJson('/api/v1/me/lists', ['name' => 'x'])->assertUnauthorized();
 });

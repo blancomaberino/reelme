@@ -43,6 +43,8 @@ export default function RootLayout() {
                 <Stack.Screen name="search" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="settings" />
                 <Stack.Screen name="profile/edit" />
+                <Stack.Screen name="lists/index" />
+                <Stack.Screen name="lists/[id]" />
               </Stack>
             </ThemeProvider>
           </SafeAreaProvider>
