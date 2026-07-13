@@ -86,6 +86,11 @@ export const en = {
   'map.zoomInLabel': 'Zoom in',
   'map.zoomOutLabel': 'Zoom out',
   'map.clearList': 'Clear list filter',
+  'map.quickAdd': 'Add from a link',
+
+  'quickShare.title': 'Add from a link',
+  'quickShare.placeholder': 'Paste a link or describe the place',
+  'quickShare.submit': 'Add',
 
   'profile.title': 'Profile',
   'profile.note': 'Your shares, followers & settings land here (T-039).',

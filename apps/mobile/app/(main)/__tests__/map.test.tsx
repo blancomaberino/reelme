@@ -26,6 +26,17 @@ jest.mock('@/api/hooks/useMapPlaces', () => ({
   }),
 }));
 jest.mock('@/api/hooks/useTags', () => ({ usePopularTags: () => ({ data: [] }) }));
+// The quick-share popup drives its own react-query hooks (create + poll) that
+// need a QueryClientProvider the map test doesn't set up — it has its own test.
+// Here, a light stub that just reflects `visible`, so the "+" button is testable.
+jest.mock('@/components/map/quick-share', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+  return {
+    QuickShareModal: ({ visible }: { visible: boolean }) =>
+      visible ? React.createElement(Text, null, 'quick-share-open') : null,
+  };
+});
 
 const markerRenders: string[] = [];
 // Mock PlaceMarker with the SAME memo comparator as the real component, so the
@@ -134,4 +145,11 @@ it('routes to search from the header search button', () => {
   render(<MapScreen />);
   fireEvent.press(screen.getByLabelText('Search'));
   expect(mockRouter.push).toHaveBeenCalledWith('/search');
+});
+
+it('opens the quick-add popup from the header "+" button', () => {
+  render(<MapScreen />);
+  expect(screen.queryByText('quick-share-open')).toBeNull();
+  fireEvent.press(screen.getByLabelText('Add from a link'));
+  expect(screen.getByText('quick-share-open')).toBeOnTheScreen();
 });

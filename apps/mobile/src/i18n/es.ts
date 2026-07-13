@@ -86,6 +86,11 @@ export const es: Record<MessageKey, string> = {
   'map.zoomInLabel': 'Acercar',
   'map.zoomOutLabel': 'Alejar',
   'map.clearList': 'Quitar filtro de lista',
+  'map.quickAdd': 'Agregar desde un enlace',
+
+  'quickShare.title': 'Agregar desde un enlace',
+  'quickShare.placeholder': 'Pegá un enlace o describí el lugar',
+  'quickShare.submit': 'Agregar',
 
   'profile.title': 'Perfil',
   'profile.note': 'Tus publicaciones, seguidores y ajustes aparecerán acá (T-039).',
