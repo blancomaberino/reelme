@@ -23,7 +23,10 @@ export function PinGlyph({ priceRange, selected }: Props) {
   const size = selected ? 40 : 34;
   const color = selected ? PIN_SELECTED : PIN;
   return (
-    <View style={[styles.teardrop, { width: size, height: size, backgroundColor: color }]}>
+    // pointerEvents none is load-bearing: a touchable custom child swallows the
+    // tap and the parent <Marker onPress> never fires on iOS. Letting the touch
+    // fall through to the Marker is what makes tapping a pin open the sheet.
+    <View pointerEvents="none" style={[styles.teardrop, { width: size, height: size, backgroundColor: color }]}>
       <Text style={styles.label}>{price}</Text>
     </View>
   );

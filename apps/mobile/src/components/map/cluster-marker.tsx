@@ -26,7 +26,8 @@ function ClusterMarkerBase({ id, lat, lng, count, onPress }: Props) {
       onPress={() => onPress(id)}
       accessibilityLabel={`Cluster of ${count} places`}
     >
-      <View style={[styles.bubble, { width: size, height: size, borderRadius: size / 2 }]}>
+      {/* pointerEvents none so the tap reaches <Marker onPress> (iOS). */}
+      <View pointerEvents="none" style={[styles.bubble, { width: size, height: size, borderRadius: size / 2 }]}>
         <Text style={styles.count}>{count}</Text>
       </View>
     </Marker>
