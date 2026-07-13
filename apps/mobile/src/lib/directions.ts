@@ -25,3 +25,13 @@ export function directionsUrl(
 export function placeShareUrl(slug: string): string {
   return `reelmap://place/${slug}`;
 }
+
+/**
+ * A link to the place's Google Maps page. `query_place_id` pins the exact
+ * place; `query` (the name) is the required human-readable fallback per the
+ * Maps URL API. Returns null when there's no Google place id.
+ */
+export function googleMapsUrl(name: string, placeId: string | null): string | null {
+  if (!placeId) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${encodeURIComponent(placeId)}`;
+}

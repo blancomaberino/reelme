@@ -361,7 +361,7 @@ const I18N = {
     'toast.hidden.title': 'Ocultado', 'toast.hidden.body': 'Quitado de tu feed.',
     'toast.hideFail': 'No se pudo ocultar', 'toast.published': '¡Publicado!', 'toast.onMap': 'está en el mapa.',
     'toast.error': 'Algo salió mal',
-    'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.dishesUpdated': 'Menú actualizado el', 'place.sources': 'VIDEOS DE ORIGEN',
+    'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.hours': 'HORARIO', 'place.googleMaps': 'Ver en Google Maps', 'place.dishesUpdated': 'Menú actualizado el', 'place.sources': 'VIDEOS DE ORIGEN',
     'place.reviews': 'RESEÑAS', 'place.fromGoogle': 'DE GOOGLE', 'place.watch': 'Ver original ↗',
     'place.sharedBy': 'compartido por', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reseñas',
     'review.rate': 'Calificá este lugar', 'review.your': 'Tu reseña', 'review.ph': 'Escribí una impresión…',
@@ -403,7 +403,7 @@ const I18N = {
     'toast.hidden.title': 'Hidden', 'toast.hidden.body': 'Removed from your feed.',
     'toast.hideFail': 'Couldn’t hide', 'toast.published': 'Published!', 'toast.onMap': 'is on the map.',
     'toast.error': 'Something went wrong',
-    'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.dishesUpdated': 'Menu updated', 'place.sources': 'SOURCE VIDEOS',
+    'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.hours': 'HOURS', 'place.googleMaps': 'View on Google Maps', 'place.dishesUpdated': 'Menu updated', 'place.sources': 'SOURCE VIDEOS',
     'place.reviews': 'REVIEWS', 'place.fromGoogle': 'FROM GOOGLE', 'place.watch': 'Watch original ↗',
     'place.sharedBy': 'shared by', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reviews',
     'review.rate': 'Rate this place', 'review.your': 'Your review', 'review.ph': 'Share a quick thought…',
@@ -674,6 +674,14 @@ function renderPlace(p) {
   const chip = (t, cls="") => `<span class="chip ${cls}">${esc(t)}</span>`;
   const tags = (p.cuisines||[]).map(t=>chip(t)).join("") + (p.vibe_tags||[]).map(t=>chip(t)).join("") + (p.dietary_tags||[]).map(t=>chip(t)).join("");
   const dishes = (p.dishes || []).map(d => chip(d.name + (d.price ? " · " + d.price : "") + (d.shown_in_video ? " 🎬" : ""), "dish")).join("");
+  // Opening hours (Google weekday_text) + a link to the place's Google Maps page.
+  const weekdays = (p.opening_hours && Array.isArray(p.opening_hours.weekday_text)) ? p.opening_hours.weekday_text : [];
+  const hours = weekdays.length
+    ? `<div>${weekdays.map(line => `<div style="font-size:var(--fs-sm);color:var(--ink-2);line-height:1.7">${esc(line)}</div>`).join("")}</div>` : "";
+  const gmapsUrl = p.google_place_id
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name || "")}&query_place_id=${encodeURIComponent(p.google_place_id)}` : null;
+  const gmaps = gmapsUrl
+    ? `<div><a href="${esc(safeUrl(gmapsUrl))}" target="_blank" rel="noopener"><span style="color:var(--primary)">◆</span> ${t("place.googleMaps")}</a></div>` : "";
   const sources = (p.sources || []).map(s => {
     const post = s.source_post || {};
     const label = `${(post.platform || "post")}`;
@@ -726,6 +734,8 @@ function renderPlace(p) {
           <div style="font-size:var(--fs-xs);color:var(--ink-2)">${t("rating.google")} · ${Number(g.count||0)} ${t("rating.reviews")}</div></div>
       </div>
       ${p.address ? `<div style="font-size:var(--fs-sm);color:var(--ink-2);line-height:1.6"><span style="color:var(--primary)">◆</span> ${esc(p.address)}</div>` : ""}
+      ${gmaps}
+      ${hours ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.hours")}</div>${hours}</div>` : ""}
       ${tags ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.tags")}</div>${tags}</div>` : ""}
       ${dishes ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.dishes")}</div>${dishes}${p.dishes_updated_at ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px">${t("place.dishesUpdated")} ${esc(shortDate(p.dishes_updated_at))}</div>` : ""}</div>` : ""}
       ${sources ? `<div><div class="sec-h" style="margin-bottom:10px">${t("place.sources")} · ${Number(p.source_count||0)}</div>${sources}</div>` : ""}
