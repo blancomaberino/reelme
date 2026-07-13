@@ -20,9 +20,16 @@ class PlaceListController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        // `?contains={placeId}` flags which lists already hold a place — powers
+        // the mobile "save to list" picker without N per-list fetches.
+        $placeId = $request->integer('contains');
+
         $lists = PlaceList::query()
             ->where('user_id', $request->user()->id)
             ->withCount('items')
+            ->when($placeId > 0, fn ($q) => $q->withExists([
+                'items as contains' => fn ($sub) => $sub->where('place_id', $placeId),
+            ]))
             ->orderByDesc('updated_at')
             ->get();
 

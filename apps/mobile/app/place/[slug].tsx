@@ -9,6 +9,7 @@ import type { PlaceDetail } from '@/api/places';
 import { Chip } from '@/components/place/chip';
 import { MiniMap } from '@/components/place/mini-map';
 import { ReviewComposer } from '@/components/place/review-composer';
+import { SaveToListSheet } from '@/components/place/save-to-list';
 import { SourceCard } from '@/components/place/source-card';
 import { Thumbnail } from '@/components/place/thumbnail';
 import { useT } from '@/i18n';
@@ -16,6 +17,7 @@ import { useFormat } from '@/lib/use-format';
 import { summarizeHours } from '@/lib/opening-hours';
 import { directionsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
+import { useSessionStore } from '@/stores/session';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 export default function PlaceDetailScreen() {
@@ -23,11 +25,18 @@ export default function PlaceDetailScreen() {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
   const { data: place, isLoading, isError, refetch } = usePlace(slug ?? '');
+  const authed = useSessionStore((s) => s.status === 'authed');
+  const [saveOpen, setSaveOpen] = useState(false);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <Header onBack={() => (router.canGoBack() ? router.back() : router.replace('/(main)/map'))} styles={styles} c={c} />
+      <Header
+        onBack={() => (router.canGoBack() ? router.back() : router.replace('/(main)/map'))}
+        onSave={authed && place ? () => setSaveOpen(true) : undefined}
+        styles={styles}
+        c={c}
+      />
       {isLoading ? (
         <PlaceSkeleton styles={styles} />
       ) : isError || !place ? (
@@ -35,17 +44,33 @@ export default function PlaceDetailScreen() {
       ) : (
         <PlaceBody place={place} styles={styles} c={c} />
       )}
+      {place ? <SaveToListSheet placeId={place.id} visible={saveOpen} onClose={() => setSaveOpen(false)} /> : null}
     </SafeAreaView>
   );
 }
 
-function Header({ onBack, styles, c }: { onBack: () => void; styles: Styles; c: Palette }) {
+function Header({
+  onBack,
+  onSave,
+  styles,
+  c,
+}: {
+  onBack: () => void;
+  onSave?: () => void;
+  styles: Styles;
+  c: Palette;
+}) {
   const t = useT();
   return (
     <View style={styles.header}>
       <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={onBack} hitSlop={12}>
         <Ionicons name="chevron-back" size={26} color={c.text} />
       </Pressable>
+      {onSave ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={t('save.title')} onPress={onSave} hitSlop={12}>
+          <Ionicons name="bookmark-outline" size={24} color={c.text} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -361,7 +386,7 @@ type Styles = ReturnType<typeof makeStyles>;
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: { paddingHorizontal: 16, paddingVertical: 8 },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8 },
     scroll: { padding: 20, gap: 20 },
     block: { gap: 10 },
     name: { fontFamily: fonts.display, fontSize: 27, fontWeight: '700', letterSpacing: -0.4, color: c.text },

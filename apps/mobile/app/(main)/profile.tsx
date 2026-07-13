@@ -45,6 +45,16 @@ export default function ProfileScreen() {
         </Pressable>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={t('profile.lists')}
+          onPress={() => router.push('/lists')}
+          style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+        >
+          <Ionicons name="bookmark-outline" size={20} color={c.text} />
+          <Text style={styles.settingsLabel}>{t('profile.lists')}</Text>
+          <Ionicons name="chevron-forward" size={18} color={c.muted} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={t('profile.settings')}
           onPress={() => router.push('/settings')}
           style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}

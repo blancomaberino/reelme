@@ -19,6 +19,8 @@ use Illuminate\Support\Str;
  * @property string $name
  * @property string|null $slug
  * @property bool $is_public
+ * @property-read int|null $items_count withCount('items')
+ * @property-read bool|null $contains withExists, only on the ?contains index query
  */
 class PlaceList extends Model
 {
