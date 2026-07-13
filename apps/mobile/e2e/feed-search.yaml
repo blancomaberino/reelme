@@ -1,0 +1,68 @@
+# Maestro E2E — T-034 feed + search against the live API.
+# Registers a fresh user, opens the Feed tab (live GET /feed), then the Search
+# modal (live GET /search), and taps a place result through to place detail.
+#
+# Run: maestro --device <sim-udid> test feed-search.yaml -e RUN=$(date +%s)
+appId: pet.one.reelmap
+tags:
+  - feed
+  - search
+---
+- launchApp:
+    clearState: true
+
+# Keychain token can survive clearState → boot straight to tabs; sign out.
+- runFlow:
+    when:
+      visible: "Search"
+    commands:
+      - tapOn: ".*Profile.*"
+      - tapOn: "Log out"
+
+# --- Register to reach the tabs ---
+- assertVisible: "Create account"
+- tapOn: "Create account"
+- assertVisible: "Create your account"
+- tapOn:
+    below: "Name"
+- inputText: "Feed ${RUN}"
+- tapOn:
+    below: "Username"
+- inputText: "feed_${RUN}"
+- tapOn:
+    below: "Email"
+- inputText: "feed_${RUN}@example.com"
+- tapOn:
+    below: "Password"
+- inputText: "Sup3r-secret-${RUN}"
+- hideKeyboard
+- tapOn: "Create account"
+- tapOn:
+    text: "Not Now"
+    optional: true
+
+# --- Feed tab (live GET /feed of published shares) ---
+- tapOn: ".*Feed.*"
+- assertVisible: "Feed"
+# The seeded published shares render newest-first as cards — assert the top one.
+- extendedWaitUntil:
+    visible: ".*1921 Restaurant.*"
+    timeout: 8000
+
+# --- Search modal (live GET /search) ---
+# The feed header's search button (accessibilityLabel "Search").
+- tapOn: "Search"
+- assertVisible: "Search places, tags…"
+- inputText: "nood"
+# Typo-tolerant Meilisearch returns the Lanzhou places under a Places section.
+- extendedWaitUntil:
+    visible: "Places"
+    timeout: 8000
+- assertVisible: ".*Lanzhou.*"
+
+# --- Search → place detail ---
+- tapOn: ".*Lanzhou Noodle House.*"
+- extendedWaitUntil:
+    visible: ".*Lanzhou Noodle House.*"
+    timeout: 8000
+- assertVisible: "Directions"

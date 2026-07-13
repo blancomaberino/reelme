@@ -17,4 +17,5 @@ export const queryKeys = {
   feed: (scope: string) => ['feed', scope] as const,
   search: (q: string, types: string) => ['search', q, types] as const,
   tagsPopular: () => ['tags', 'popular'] as const,
+  placesByTag: (slug: string) => ['places', 'tag', slug] as const,
 };
