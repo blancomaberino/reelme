@@ -87,6 +87,8 @@ it('renders the place name, cuisine, rating and address', async () => {
   expect(screen.getByText(/Rbla\. República/)).toBeOnTheScreen();
   // Tag chip from cuisines/vibe_tags union (title-cased for display).
   expect(screen.getByText('Fine Dining')).toBeOnTheScreen();
+  // A Google Maps link shows when google_place_id is present.
+  expect(screen.getByText('View on Google Maps')).toBeOnTheScreen();
   // Dish chip carries the menu price; a price-less dish shows just its name.
   expect(screen.getByText('Ojo de bife · $780')).toBeOnTheScreen();
   expect(screen.getByText('Flan')).toBeOnTheScreen();

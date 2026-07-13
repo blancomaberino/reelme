@@ -54,6 +54,7 @@ export const en = {
   'place.hoursHide': 'Hide weekly hours',
   'place.openInMap': 'Open in map',
   'place.website': 'Open website',
+  'place.googleMaps': 'View on Google Maps',
   'place.call': 'Call {{phone}}',
   'place.view': 'View place',
 

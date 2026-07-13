@@ -15,7 +15,7 @@ import { Thumbnail } from '@/components/place/thumbnail';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { summarizeHours } from '@/lib/opening-hours';
-import { directionsUrl, placeShareUrl } from '@/lib/directions';
+import { directionsUrl, googleMapsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
 import { useSessionStore } from '@/stores/session';
 import { fonts, type Palette, useColors } from '@/theme/colors';
@@ -191,6 +191,18 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
               <Text style={[styles.rowText, styles.link]} numberOfLines={1}>
                 {place.website.replace(/^https?:\/\//, '')}
               </Text>
+            </Row>
+          </Pressable>
+        ) : null}
+
+        {googleMapsUrl(place.name, place.google_place_id) ? (
+          <Pressable
+            onPress={() => openWebUrl(googleMapsUrl(place.name, place.google_place_id))}
+            accessibilityRole="link"
+            accessibilityLabel={t('place.googleMaps')}
+          >
+            <Row icon="map-outline" c={c} styles={styles}>
+              <Text style={[styles.rowText, styles.link]}>{t('place.googleMaps')}</Text>
             </Row>
           </Pressable>
         ) : null}

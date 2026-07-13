@@ -1,4 +1,4 @@
-import { directionsUrl, placeShareUrl } from '../directions';
+import { directionsUrl, googleMapsUrl, placeShareUrl } from '../directions';
 
 describe('directionsUrl', () => {
   it('routes to the exact coordinates on iOS (no name search)', () => {
@@ -21,5 +21,16 @@ describe('directionsUrl', () => {
 describe('placeShareUrl', () => {
   it('produces the reelmap deep link', () => {
     expect(placeShareUrl('clara-cafe-abc123')).toBe('reelmap://place/clara-cafe-abc123');
+  });
+});
+
+describe('googleMapsUrl', () => {
+  it('builds a place-pinned Maps URL when a place id is present', () => {
+    expect(googleMapsUrl('Clara Café', 'ChIJabc')).toBe(
+      'https://www.google.com/maps/search/?api=1&query=Clara%20Caf%C3%A9&query_place_id=ChIJabc',
+    );
+  });
+  it('returns null without a place id', () => {
+    expect(googleMapsUrl('Clara Café', null)).toBeNull();
   });
 });

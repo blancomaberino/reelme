@@ -54,6 +54,7 @@ export const es: Record<MessageKey, string> = {
   'place.hoursHide': 'Ocultar horario semanal',
   'place.openInMap': 'Abrir en el mapa',
   'place.website': 'Abrir sitio web',
+  'place.googleMaps': 'Ver en Google Maps',
   'place.call': 'Llamar a {{phone}}',
   'place.view': 'Ver lugar',
 
