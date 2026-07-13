@@ -65,6 +65,8 @@ export const en = {
 
   'map.search': 'Search',
   'map.zoomIn': 'Zoom in for more places',
+  'map.zoomInLabel': 'Zoom in',
+  'map.zoomOutLabel': 'Zoom out',
 
   'profile.title': 'Profile',
   'profile.note': 'Your shares, followers & settings land here (T-039).',

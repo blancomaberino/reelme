@@ -49,6 +49,8 @@ export default function MapScreen() {
   }, [params.lat, params.lng]);
 
   const mapRef = useRef<MapView>(null);
+  // Latest settled region — drives the zoom buttons (the map is uncontrolled).
+  const regionRef = useRef<Region>(initialRegion);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The region that drives fetching — updated only on settle (debounced), never
   // per gesture frame, and never the MapView's own region prop (uncontrolled).
@@ -61,8 +63,21 @@ export default function MapScreen() {
   const { data, isFetching } = useMapPlaces(queryRegion, filters);
 
   const onRegionChangeComplete = useCallback((region: Region) => {
+    regionRef.current = region;
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(() => setQueryRegion(region), 400);
+  }, []);
+
+  // On-screen zoom controls (Apple Maps has none): factor 0.5 zooms in, 2 out.
+  // Deltas are clamped so the map can't zoom past street level or out past the
+  // whole world.
+  const zoomBy = useCallback((factor: number) => {
+    const r = regionRef.current;
+    const latitudeDelta = Math.min(Math.max(r.latitudeDelta * factor, 0.0025), 140);
+    const longitudeDelta = Math.min(Math.max(r.longitudeDelta * factor, 0.0025), 140);
+    const next = { latitude: r.latitude, longitude: r.longitude, latitudeDelta, longitudeDelta };
+    regionRef.current = next;
+    mapRef.current?.animateToRegion(next, 220);
   }, []);
 
   // Band + bbox for the *rendered* frame (from queryRegion, so it tracks fetches).
@@ -207,6 +222,29 @@ export default function MapScreen() {
         ) : null}
       </SafeAreaView>
 
+      {/* Zoom controls (bottom-right) — Apple Maps has none of its own. */}
+      <SafeAreaView edges={['bottom']} style={styles.zoomControls} pointerEvents="box-none">
+        <View style={styles.zoomStack}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('map.zoomInLabel')}
+            onPress={() => zoomBy(0.5)}
+            style={({ pressed }) => [styles.zoomBtn, styles.zoomBtnTop, pressed && styles.zoomBtnPressed]}
+          >
+            <Ionicons name="add" size={24} color={c.text} />
+          </Pressable>
+          <View style={styles.zoomDivider} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('map.zoomOutLabel')}
+            onPress={() => zoomBy(2)}
+            style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
+          >
+            <Ionicons name="remove" size={24} color={c.text} />
+          </Pressable>
+        </View>
+      </SafeAreaView>
+
       <PreviewSheet
         pin={selected}
         onClose={() => select(null)}
@@ -274,4 +312,19 @@ const makeStyles = (c: Palette) =>
       borderRadius: 999,
     },
     zoomChipText: { color: c.background, fontSize: 13, fontWeight: '600' },
+    zoomControls: { position: 'absolute', right: 0, bottom: 0, padding: 16, alignItems: 'flex-end' },
+    zoomStack: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOpacity: 0.18,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    zoomBtn: { width: 46, height: 44, alignItems: 'center', justifyContent: 'center' },
+    zoomBtnTop: {},
+    zoomBtnPressed: { backgroundColor: c.primarySoft },
+    zoomDivider: { height: StyleSheet.hairlineWidth, backgroundColor: c.border },
   });

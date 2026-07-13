@@ -13,7 +13,10 @@ export function directionsUrl(
 ): string {
   const coords = `${lat},${lng}`;
   if (os === 'ios') {
-    return `http://maps.apple.com/?daddr=${coords}&q=${encodeURIComponent(name)}`;
+    // Route to the exact coordinates. `daddr` alone pins the destination; a `q`
+    // here makes Apple Maps do a NAME SEARCH instead and land on some other
+    // same-named place (the reported "wrong location" bug).
+    return `http://maps.apple.com/?daddr=${coords}&dirflg=d`;
   }
   return `geo:${coords}?q=${coords}(${encodeURIComponent(name)})`;
 }
