@@ -1546,7 +1546,7 @@
    "id": "T-062",
    "title": "Lists: save a place to a personal collection",
    "phase": "M3",
-   "status": "pending",
+   "status": "done",
    "depends_on": [
     "T-030",
     "T-033",
@@ -1571,7 +1571,7 @@
     "Fully localized (es default); tests for the API (owner scope, dedupe) and the mobile save flow"
    ],
    "agent": "executor",
-   "notes": "Requested 2026-07-13. 'Store places from a country then travel there and see them all together.' Reuses MapViewport for the list map. Foundation for T-063 (sharing)."
+   "notes": "Requested 2026-07-13. 'Store places from a country then travel there and see them all together.' Reuses MapViewport for the list map. Foundation for T-063 (sharing). | DONE 2026-07-13: backend PR #59 (3f4d0ce) + mobile PR #60 (dd1bb67). SaveToListSheet + Lists/list-detail screens; GET /me/lists?contains flag. Verified live (Montevideo favoritos with 2 places on a map)."
   },
   {
    "id": "T-063",
