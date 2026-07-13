@@ -89,11 +89,25 @@ it('renders the place name, cuisine, rating and address', async () => {
   expect(screen.getByText('Fine Dining')).toBeOnTheScreen();
   // A Google Maps link shows when google_place_id is present.
   expect(screen.getByText('View on Google Maps')).toBeOnTheScreen();
-  // Dish chip carries the menu price; a price-less dish shows just its name.
-  expect(screen.getByText('Ojo de bife · $780')).toBeOnTheScreen();
-  expect(screen.getByText('Flan')).toBeOnTheScreen();
-  // "Menu updated <date>" line (jest locale is English → "Jul 10, 2026").
+  // Dishes are behind a "View menu" button (with an item count), not inline.
+  expect(screen.getByText('View menu')).toBeOnTheScreen();
+  expect(screen.getByText('2 items')).toBeOnTheScreen();
+});
+
+it('opens the menu sheet with dish prices, updated date, and the source', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+  fireEvent.press(await screen.findByText('View menu'));
+
+  // Dishes + prices in the sheet.
+  expect(await screen.findByText(/Ojo de bife/)).toBeOnTheScreen();
+  expect(screen.getByText('$780')).toBeOnTheScreen();
+  // Updated date (jest locale is English) + extraction source reference.
   expect(screen.getByText(/Menu updated Jul 10, 2026/)).toBeOnTheScreen();
+  expect(screen.getByText('Extracted from')).toBeOnTheScreen();
+  // @comeren.uy appears both on the source card and in the menu's source ref.
+  expect(screen.getAllByText('@comeren.uy').length).toBeGreaterThan(1);
 });
 
 it('links out to the original post when a source card is tapped', async () => {

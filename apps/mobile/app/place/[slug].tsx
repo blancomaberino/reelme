@@ -9,6 +9,7 @@ import type { PlaceDetail } from '@/api/places';
 import { Chip } from '@/components/place/chip';
 import { MiniMap } from '@/components/place/mini-map';
 import { ReviewComposer } from '@/components/place/review-composer';
+import { MenuSheet } from '@/components/place/menu-sheet';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { SourceCard } from '@/components/place/source-card';
 import { Thumbnail } from '@/components/place/thumbnail';
@@ -79,6 +80,7 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
   const t = useT();
   const fmt = useFormat();
   const [hoursOpen, setHoursOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const hours = useMemo(() => summarizeHours(place.opening_hours), [place.opening_hours]);
   const tags = useMemo(
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
@@ -219,20 +221,20 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         <ActionButton icon="share-outline" label={t('place.share')} onPress={share} c={c} styles={styles} />
       </View>
 
-      {/* Dishes — with menu prices when the source showed a carta */}
+      {/* Menu — a button into the full dish/price list + its source & date */}
       {place.dishes.length > 0 ? (
         <View style={styles.block}>
-          <Text style={styles.sectionTitle}>{t('place.dishes')}</Text>
-          <View style={styles.chips}>
-            {place.dishes.map((d) => (
-              <Chip key={d.name} label={d.price ? `${d.name} · ${d.price}` : d.name} />
-            ))}
-          </View>
-          {place.dishes_updated_at ? (
-            <Text style={styles.updatedAt}>
-              {t('place.dishesUpdated', { date: fmt.date(place.dishes_updated_at) })}
-            </Text>
-          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('menu.view')}
+            onPress={() => setMenuOpen(true)}
+            style={({ pressed }) => [styles.menuButton, pressed && styles.menuButtonPressed]}
+          >
+            <Ionicons name="restaurant-outline" size={20} color={c.primary} />
+            <Text style={styles.menuButtonText}>{t('menu.view')}</Text>
+            <Text style={styles.menuCount}>{t('place.dishesCount', { count: place.dishes.length })}</Text>
+            <Ionicons name="chevron-forward" size={18} color={c.muted} />
+          </Pressable>
         </View>
       ) : null}
 
@@ -281,6 +283,14 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         </View>
 
       <View style={styles.footer} />
+
+      <MenuSheet
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        dishes={place.dishes}
+        updatedAt={place.dishes_updated_at}
+        sources={place.sources ?? []}
+      />
     </ScrollView>
   );
 }
@@ -433,6 +443,20 @@ const makeStyles = (c: Palette) =>
     hero: { width: '100%', height: 190, borderRadius: 16, marginBottom: 4 },
     sectionTitle: { fontFamily: fonts.display, fontSize: 19, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
     updatedAt: { fontSize: 12, color: c.muted, marginTop: 6 },
+    menuButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: c.primary,
+      backgroundColor: c.primarySoft,
+    },
+    menuButtonPressed: { opacity: 0.7 },
+    menuButtonText: { flex: 1, fontSize: 16, fontWeight: '700', color: c.primary },
+    menuCount: { fontSize: 13, color: c.muted },
     reviewSub: { fontFamily: fonts.display, fontSize: 15, fontWeight: '700', color: c.ink2, marginTop: 8, marginBottom: 2 },
     review: { flexDirection: 'row', gap: 10, paddingVertical: 8 },
     reviewAvatar: { width: 36, height: 36, borderRadius: 18 },
