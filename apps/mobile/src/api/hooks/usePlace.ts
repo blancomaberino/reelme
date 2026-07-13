@@ -6,7 +6,7 @@ import type { PlaceDetail } from '../places';
 
 export async function fetchPlace(slug: string): Promise<PlaceDetail> {
   const { data } = await api.get<{ data: PlaceDetail }>(`/places/${encodeURIComponent(slug)}`, {
-    params: { include: 'sources' },
+    params: { include: 'sources,reviews' },
   });
   return data.data;
 }

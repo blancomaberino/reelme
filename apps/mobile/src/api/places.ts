@@ -58,6 +58,17 @@ export type GoogleReview = {
   text: string | null;
   relative_time?: string | null;
   time?: number | null;
+  profile_photo_url?: string | null;
+};
+
+/** A native (in-app) review (place detail `reviews`, via ?include=reviews). */
+export type AppReview = {
+  id: string;
+  rating: number;
+  body: string | null;
+  author: { username: string; avatar_path: string | null } | null;
+  is_own: boolean;
+  created_at: string | null;
 };
 
 /**
@@ -106,6 +117,7 @@ export type PlaceDetail = {
   source_count: number;
   rating: { google: RatingBlock; app: RatingBlock };
   google_reviews?: GoogleReview[];
+  reviews?: AppReview[];
   sources?: PlaceSourceItem[];
 };
 
