@@ -149,6 +149,63 @@ it('shows the not-found state on a 404', async () => {
   expect(await screen.findByText('Place not found')).toBeOnTheScreen();
 });
 
+it('renders app + Google reviews with names, stars and text', async () => {
+  const withReviews: PlaceDetail = {
+    ...PLACE,
+    rating: { google: { value: 4.5, count: 527 }, app: { value: 5, count: 1 } },
+    reviews: [
+      {
+        id: '9',
+        rating: 5,
+        body: 'Impecable, volvería.',
+        author: { username: 'foodie', avatar_path: null },
+        is_own: false,
+        created_at: '2026-07-01T00:00:00Z',
+      },
+    ],
+    google_reviews: [
+      {
+        author: 'Ana Pérez',
+        rating: 4,
+        text: 'Buena comida y atención.',
+        profile_photo_url: 'https://lh3.googleusercontent.com/a/ana.jpg',
+      },
+      { author: 'Sin foto', rating: 3, text: 'Correcto.', profile_photo_url: null },
+    ],
+  };
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withReviews });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Reviews')).toBeOnTheScreen();
+  // The app review renders its body (the @foodie name also appears on the
+  // source card, so the body is the unambiguous signal it rendered).
+  expect(screen.getByText('Impecable, volvería.')).toBeOnTheScreen();
+  expect(screen.getByText('From Google')).toBeOnTheScreen();
+  // Google review name + stars share a Text node → match the name as a substring.
+  expect(screen.getByText(/Ana Pérez/)).toBeOnTheScreen();
+  expect(screen.getByText('Buena comida y atención.')).toBeOnTheScreen();
+  // The photo-less Google review falls back to an initial avatar, not a crash.
+  expect(screen.getByText(/Sin foto/)).toBeOnTheScreen();
+});
+
+it('shows a hero image when the primary source has a thumbnail', async () => {
+  const withHero: PlaceDetail = {
+    ...PLACE,
+    sources: [
+      {
+        ...PLACE.sources![0],
+        source_post: { ...PLACE.sources![0].source_post, thumbnail_url: 'https://cdn.example/reel.jpg' },
+      },
+    ],
+  };
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHero });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+  await screen.findByText('1921 Restaurant');
+  expect(await screen.findByTestId('place-hero')).toBeOnTheScreen();
+});
+
 it('navigates to the map tab when the mini-map is tapped', async () => {
   mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
 

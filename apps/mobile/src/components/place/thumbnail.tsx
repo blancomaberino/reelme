@@ -10,6 +10,7 @@ type Props = {
   // Image and the fallback View.
   uri: string | null;
   style?: StyleProp<ImageStyle>;
+  testID?: string;
 };
 
 /**
@@ -17,7 +18,7 @@ type Props = {
  * fails to load. Source thumbnails are presigned R2 URLs that can expire out
  * from under a cached response (T-033 gotcha), so tolerance is required.
  */
-export function Thumbnail({ uri, style }: Props) {
+export function Thumbnail({ uri, style, testID }: Props) {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
   const [failed, setFailed] = useState(false);
@@ -25,14 +26,20 @@ export function Thumbnail({ uri, style }: Props) {
   // Only http(s) thumbnails are loaded — never a file:/other scheme from the API.
   if (!isHttpUrl(uri) || failed) {
     return (
-      <View style={[styles.fallback, style as StyleProp<ViewStyle>]}>
+      <View testID={testID} style={[styles.fallback, style as StyleProp<ViewStyle>]}>
         <Ionicons name="image-outline" size={22} color={c.placeholder} />
       </View>
     );
   }
 
   return (
-    <Image source={{ uri }} style={[styles.image, style]} onError={() => setFailed(true)} resizeMode="cover" />
+    <Image
+      testID={testID}
+      source={{ uri }}
+      style={[styles.image, style]}
+      onError={() => setFailed(true)}
+      resizeMode="cover"
+    />
   );
 }
 

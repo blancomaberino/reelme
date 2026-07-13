@@ -1,20 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { router } from 'expo-router';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useDismissShare } from '@/api/hooks/useDismissShare';
 import { useFeed } from '@/api/hooks/useFeed';
 import type { FeedItem } from '@/api/places';
 import { FeedCard } from '@/components/feed/feed-card';
+import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
 
 export default function FeedScreen() {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
+  const authed = useSessionStore((s) => s.status === 'authed');
   const { data, isLoading, isError, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useFeed('global');
+  const { hide, undo } = useDismissShare('global');
 
   const items = useMemo(() => data?.pages.flatMap((p) => p.data) ?? [], [data]);
 
@@ -22,9 +26,36 @@ export default function FeedScreen() {
     router.push({ pathname: '/place/[slug]', params: { slug } });
   }, []);
 
+  // Undo snackbar: optimistically hide on ⋯, keep the item ~5s for an undo.
+  const [hidden, setHidden] = useState<FeedItem | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onHide = useCallback(
+    (item: FeedItem) => {
+      hide.mutate(item.id);
+      setHidden(item);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setHidden(null), 5000);
+    },
+    [hide],
+  );
+  const onUndo = useCallback(() => {
+    if (hidden) undo.mutate(hidden.id);
+    if (timer.current) clearTimeout(timer.current);
+    setHidden(null);
+  }, [hidden, undo]);
+  // Don't leave the auto-dismiss timer running after the screen unmounts.
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+
   const renderItem = useCallback(
-    ({ item }: { item: FeedItem }) => <FeedCard item={item} onPress={onPressCard} />,
-    [onPressCard],
+    ({ item }: { item: FeedItem }) => (
+      <FeedCard
+        item={item}
+        onPress={onPressCard}
+        onHide={authed ? onHide : undefined}
+        hideLabel="Hide from my feed"
+      />
+    ),
+    [onPressCard, onHide, authed],
   );
 
   const onEndReached = useCallback(() => {
@@ -69,6 +100,17 @@ export default function FeedScreen() {
           }
         />
       )}
+
+      {hidden ? (
+        <View style={styles.snackbar}>
+          <Text style={styles.snackText}>Hidden from your feed</Text>
+          {/* Gate Undo until the hide POST settles so the DELETE can't race
+              ahead of the row it's meant to remove. */}
+          <Pressable accessibilityRole="button" onPress={onUndo} hitSlop={8} disabled={hide.isPending}>
+            <Text style={[styles.snackUndo, hide.isPending && styles.snackUndoDisabled]}>Undo</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -128,4 +170,20 @@ const makeStyles = (c: Palette) =>
       borderColor: c.primary,
     },
     retryText: { color: c.primary, fontWeight: '600', fontSize: 15 },
+    snackbar: {
+      position: 'absolute',
+      left: 16,
+      right: 16,
+      bottom: 20,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: c.text,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    snackText: { color: c.background, fontSize: 14, fontWeight: '600' },
+    snackUndo: { color: c.primary, fontSize: 14, fontWeight: '800' },
+    snackUndoDisabled: { opacity: 0.5 },
   });

@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 
 import FeedScreen from '../feed';
 import { api } from '@/api/client';
 import type { FeedItem } from '@/api/places';
+import { useSessionStore } from '@/stores/session';
 
 import { mockRouter } from '../../../jest.setup';
 
@@ -52,6 +53,7 @@ beforeEach(() => {
 afterEach(() => {
   mock.restore();
   qc.clear();
+  useSessionStore.setState({ user: null, status: 'guest' });
 });
 
 it('renders feed cards with place + attribution', async () => {
@@ -105,6 +107,44 @@ it('shows an error state on failure', async () => {
 
   render(<FeedScreen />, { wrapper: Providers });
   expect(await screen.findByText(/Couldn’t load the feed/)).toBeOnTheScreen();
+});
+
+it('hides a card optimistically and offers undo when authed', async () => {
+  useSessionStore.setState({ status: 'authed' });
+  mock.onGet('/feed').reply(200, {
+    data: [feedItem('1'), feedItem('2')],
+    meta: { pagination: { next_cursor: null, prev_cursor: null, limit: 20 } },
+  });
+  let posted = false;
+  mock.onPost('/feed/hidden').reply(() => {
+    posted = true;
+    return [201];
+  });
+
+  render(<FeedScreen />, { wrapper: Providers });
+  await screen.findByText('Place 1');
+
+  const hideButtons = screen.getAllByLabelText('Hide from my feed');
+  fireEvent.press(hideButtons[0]);
+
+  // Once the dismissal POSTs, the optimistic cache write has run: the card is
+  // gone (but the sibling stays) and an undo snackbar is offered.
+  await waitFor(() => expect(posted).toBe(true));
+  expect(screen.queryByText('Place 1')).toBeNull();
+  expect(screen.getByText('Place 2')).toBeOnTheScreen();
+  expect(screen.getByText('Hidden from your feed')).toBeOnTheScreen();
+  expect(screen.getByText('Undo')).toBeOnTheScreen();
+});
+
+it('does not show the hide control for guests', async () => {
+  mock.onGet('/feed').reply(200, {
+    data: [feedItem('1')],
+    meta: { pagination: { next_cursor: null, prev_cursor: null, limit: 20 } },
+  });
+
+  render(<FeedScreen />, { wrapper: Providers });
+  await screen.findByText('Place 1');
+  expect(screen.queryByLabelText('Hide from my feed')).toBeNull();
 });
 
 it('appends the next page when the list reaches its end', async () => {

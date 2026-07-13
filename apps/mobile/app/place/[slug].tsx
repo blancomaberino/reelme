@@ -9,6 +9,7 @@ import type { PlaceDetail } from '@/api/places';
 import { Chip } from '@/components/place/chip';
 import { MiniMap } from '@/components/place/mini-map';
 import { SourceCard } from '@/components/place/source-card';
+import { Thumbnail } from '@/components/place/thumbnail';
 import { cuisinePriceLine } from '@/lib/format';
 import { summarizeHours } from '@/lib/opening-hours';
 import { directionsUrl, placeShareUrl } from '@/lib/directions';
@@ -53,6 +54,13 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
     [place.cuisines, place.vibe_tags, place.dietary_tags],
   );
+  // Hero picture from the reel: prefer the primary source, else the first.
+  const heroUri = useMemo(() => {
+    const s = place.sources?.find((x) => x.is_primary) ?? place.sources?.[0];
+    return s?.source_post?.thumbnail_url ?? null;
+  }, [place.sources]);
+  const appReviews = place.reviews ?? [];
+  const googleReviews = place.google_reviews ?? [];
 
   const openMap = () =>
     router.push({ pathname: '/(main)/map', params: { lat: String(place.lat), lng: String(place.lng) } });
@@ -64,6 +72,9 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      {/* Hero picture from the shared reel (full-bleed) */}
+      {heroUri ? <Thumbnail uri={heroUri} style={styles.hero} testID="place-hero" /> : null}
+
       {/* Header block */}
       <View style={styles.block}>
         <Text style={styles.name}>{place.name}</Text>
@@ -187,6 +198,40 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
         </View>
       ) : null}
 
+      {/* Reviews: in-app + Google (with reviewer photos, like Google) */}
+      {appReviews.length > 0 || googleReviews.length > 0 ? (
+        <View style={styles.block}>
+          <Text style={styles.sectionTitle}>Reviews</Text>
+          {appReviews.map((r) => (
+            <ReviewRow
+              key={`a-${r.id}`}
+              name={r.author ? `@${r.author.username}` : 'anonymous'}
+              suffix={r.is_own ? ' (you)' : ''}
+              rating={r.rating}
+              text={r.body}
+              c={c}
+              styles={styles}
+            />
+          ))}
+          {googleReviews.length > 0 ? (
+            <>
+              <Text style={styles.reviewSub}>From Google</Text>
+              {googleReviews.map((r, i) => (
+                <ReviewRow
+                  key={`g-${i}`}
+                  name={r.author ?? 'Google user'}
+                  rating={r.rating}
+                  text={r.text}
+                  photo={r.profile_photo_url}
+                  c={c}
+                  styles={styles}
+                />
+              ))}
+            </>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={styles.footer} />
     </ScrollView>
   );
@@ -234,6 +279,44 @@ function ActionButton({
       <Ionicons name={icon} size={20} color={c.onPrimary} />
       <Text style={styles.actionLabel}>{label}</Text>
     </Pressable>
+  );
+}
+
+function ReviewRow({
+  name,
+  suffix,
+  rating,
+  text,
+  photo,
+  c,
+  styles,
+}: {
+  name: string;
+  suffix?: string;
+  rating: number | null;
+  text: string | null;
+  photo?: string | null;
+  c: Palette;
+  styles: Styles;
+}) {
+  const stars = rating != null ? '★'.repeat(Math.max(0, Math.min(5, Math.round(rating)))) : '';
+  return (
+    <View style={styles.review}>
+      {photo ? (
+        <Thumbnail uri={photo} style={styles.reviewAvatar} />
+      ) : (
+        <View style={[styles.reviewAvatar, styles.reviewAvatarFallback]}>
+          <Text style={styles.reviewInitial}>{name.replace(/^@/, '').charAt(0).toUpperCase() || '?'}</Text>
+        </View>
+      )}
+      <View style={styles.reviewBody}>
+        <Text style={styles.reviewName} numberOfLines={1}>
+          {name}
+          {suffix} <Text style={styles.reviewStars}>{stars}</Text>
+        </Text>
+        {text ? <Text style={styles.reviewText}>{text}</Text> : null}
+      </View>
+    </View>
   );
 }
 
@@ -298,7 +381,17 @@ const makeStyles = (c: Palette) =>
     },
     actionPressed: { backgroundColor: c.primaryPressed },
     actionLabel: { color: c.onPrimary, fontSize: 15, fontWeight: '600' },
+    hero: { width: '100%', height: 190, borderRadius: 16, marginBottom: 4 },
     sectionTitle: { fontFamily: fonts.display, fontSize: 19, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
+    reviewSub: { fontFamily: fonts.display, fontSize: 15, fontWeight: '700', color: c.ink2, marginTop: 8, marginBottom: 2 },
+    review: { flexDirection: 'row', gap: 10, paddingVertical: 8 },
+    reviewAvatar: { width: 36, height: 36, borderRadius: 18 },
+    reviewAvatarFallback: { backgroundColor: c.secondarySoft, alignItems: 'center', justifyContent: 'center' },
+    reviewInitial: { color: c.secondary, fontWeight: '700', fontSize: 15 },
+    reviewBody: { flex: 1, gap: 3 },
+    reviewName: { fontSize: 14, color: c.text, fontWeight: '600' },
+    reviewStars: { color: c.gold },
+    reviewText: { fontSize: 14, color: c.ink2, lineHeight: 19 },
     sourceList: { gap: 12 },
     footer: { height: 24 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },

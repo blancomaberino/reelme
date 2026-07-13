@@ -10,10 +10,14 @@ import { fonts, type Palette, useColors } from '@/theme/colors';
 type Props = {
   item: FeedItem;
   onPress: (slug: string) => void;
+  /** When provided (authed viewers), shows a ⋯ button to hide the item. */
+  onHide?: (item: FeedItem) => void;
+  /** Accessibility label for the hide control (localized by the caller). */
+  hideLabel?: string;
 };
 
 /** One feed row (T-034): thumbnail, place + cuisine/price, attribution, time. */
-function FeedCardBase({ item, onPress }: Props) {
+function FeedCardBase({ item, onPress, onHide, hideLabel }: Props) {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
 
@@ -37,16 +41,20 @@ function FeedCardBase({ item, onPress }: Props) {
           {line ? <Text style={styles.meta}>{line}</Text> : null}
           {place.city ? <Text style={styles.muted}>{place.city}</Text> : null}
         </View>
+        {/* Attribution: the influencer + sharer group shrinks/truncates so a
+            long username can't push the row (and the timestamp) off-screen. */}
         <View style={styles.attrRow}>
           <Ionicons name={platformIcon(post.platform)} size={13} color={c.muted} />
-          {influencer ? (
-            <Text style={styles.attr} numberOfLines={1}>
-              @{influencer.handle}
+          <View style={styles.attrGroup}>
+            {influencer ? (
+              <Text style={styles.attr} numberOfLines={1}>
+                @{influencer.handle}
+              </Text>
+            ) : null}
+            <Text style={styles.sharer} numberOfLines={1}>
+              · {sharerLabel}
             </Text>
-          ) : null}
-          <Text style={styles.muted} numberOfLines={1}>
-            · {sharerLabel}
-          </Text>
+          </View>
           <Text style={styles.time}>{relativeTime(item.published_at)}</Text>
         </View>
         {place.rating?.google?.value != null ? (
@@ -55,6 +63,17 @@ function FeedCardBase({ item, onPress }: Props) {
           </View>
         ) : null}
       </View>
+      {onHide ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={hideLabel ?? 'Hide from my feed'}
+          hitSlop={10}
+          onPress={() => onHide(item)}
+          style={styles.more}
+        >
+          <Ionicons name="ellipsis-horizontal" size={18} color={c.muted} />
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }
@@ -75,13 +94,18 @@ const makeStyles = (c: Palette) =>
     pressed: { opacity: 0.7 },
     thumb: { width: 72, height: 72, borderRadius: 12 },
     body: { flex: 1, gap: 4, justifyContent: 'center' },
-    name: { fontFamily: fonts.display, fontSize: 17, fontWeight: '700', color: c.text, letterSpacing: -0.2 },
+    // paddingRight keeps a long (truncated) name clear of the absolute ⋯ button.
+    name: { fontFamily: fonts.display, fontSize: 17, fontWeight: '700', color: c.text, letterSpacing: -0.2, paddingRight: 24 },
     ratingChip: { alignSelf: 'flex-start', backgroundColor: c.goldSoft, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2 },
     ratingText: { color: c.gold, fontSize: 11, fontWeight: '700' },
     metaRow: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
     meta: { fontSize: 14, color: c.text, textTransform: 'capitalize' },
     muted: { fontSize: 13, color: c.muted },
     attrRow: { flexDirection: 'row', gap: 5, alignItems: 'center' },
-    attr: { fontSize: 13, color: c.text, fontWeight: '600', maxWidth: 120 },
-    time: { fontSize: 12, color: c.muted, marginLeft: 'auto' },
+    // flex + minWidth:0 lets the group shrink so its children can truncate.
+    attrGroup: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 5 },
+    attr: { fontSize: 13, color: c.text, fontWeight: '600', flexShrink: 1, maxWidth: 120 },
+    sharer: { fontSize: 13, color: c.muted, flexShrink: 1 },
+    time: { fontSize: 12, color: c.muted },
+    more: { position: 'absolute', top: 8, right: 8, padding: 4 },
   });
