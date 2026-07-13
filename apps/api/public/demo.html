@@ -114,8 +114,11 @@ button{font-family:inherit;cursor:pointer;}
 .switch input:checked + .track{background:var(--primary);}
 .switch input:checked + .track::after{left:16px;}
 
-.feed-card{display:flex;gap:12px;padding:10px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line);cursor:pointer;}
+.feed-card{position:relative;display:flex;gap:12px;padding:10px;border-radius:var(--r-md);background:var(--surface);border:1px solid var(--line);cursor:pointer;}
 .feed-card:hover{border-color:var(--line-2);}
+.feed-hide{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;opacity:.5;transition:opacity .12s,color .12s;}
+.feed-card:hover .feed-hide{opacity:1;}
+.feed-hide:hover,.feed-hide:focus-visible{color:var(--danger);border-color:var(--danger);opacity:1;}
 .thumb{width:52px;height:70px;border-radius:8px;flex:none;position:relative;overflow:hidden;}
 .thumb::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 6px,transparent 6px 12px);}
 .feed-name{font-family:var(--font-display);font-weight:700;font-size:var(--fs-md);line-height:1.15;}
@@ -326,6 +329,12 @@ const safeUrl = u => /^https?:\/\//i.test(u||"") ? u : "#";
 const price = n => n ? "€".repeat(Math.max(1,Math.min(4,n))) : "";
 const starStr = v => { if (v == null) return ""; const n = Math.max(0, Math.min(5, Math.round(v))); return "★".repeat(n) + "☆".repeat(5 - n); };
 const heroGrad = seed => { const g = ["linear-gradient(160deg,#E8A15C,#C24B2E)","linear-gradient(160deg,#7FA968,#39694A)","linear-gradient(160deg,#E7C25A,#B5772C)","linear-gradient(160deg,#D98A8A,#8E3B54)","linear-gradient(160deg,#8FB0C6,#356E86)"]; let h=0; for (const ch of String(seed||"")) h=(h*31+ch.charCodeAt(0))>>>0; return g[h%g.length]; };
+// Reviewer avatar: an <img> only for http(s) photos (like Google author photos),
+// else the seeded gradient. onerror falls back to the gradient so a dead photo
+// URL never shows a broken image. no-referrer keeps the demo origin off Google.
+const reviewAvatar = (url, seed) => /^https?:\/\//i.test(url || "")
+  ? `<img class="ra" style="object-fit:cover" alt="" loading="lazy" referrerpolicy="no-referrer" src="${esc(safeUrl(url))}" onerror="this.onerror=null;this.removeAttribute('src');this.style.background='${heroGrad(seed)}'">`
+  : `<div class="ra" style="background:${heroGrad(seed)}"></div>`;
 
 // ── Theme ───────────────────────────────────────────────────────────────────
 let theme = localStorage.getItem("reelmap_theme") ||
@@ -446,7 +455,10 @@ async function loadFeed() {
       const creator = item.influencer ? `@${esc(item.influencer.handle)} <span style="color:var(--muted)">via</span> ` : "";
       const when = item.published_at ? timeAgo(item.published_at) : "";
       const g = place.rating && place.rating.google;
+      // Authed viewers can dismiss a share from their own feed (per-user, non-destructive).
+      const hide = token ? `<button class="feed-hide" title="Hide from my feed" aria-label="Hide from my feed" onclick="event.stopPropagation();hideFromFeed(${Number(item.id)})">✕</button>` : "";
       return `<div class="feed-card" onclick="goToPlace(${Number(place.id)}, ${Number(place.lat)}, ${Number(place.lng)})">
+        ${hide}
         <div class="thumb" style="background:${heroGrad(place.name)}"></div>
         <div style="min-width:0">
           <div class="feed-name">${esc(place.name || "a place")}</div>
@@ -460,6 +472,14 @@ async function loadFeed() {
   } catch (err) {
     el.innerHTML = `<div class="empty"><div style="color:var(--danger)">${esc(err.message)}</div></div>`;
   }
+}
+// Hide-from-feed (T-059-adjacent): per-user dismiss, mirrors the deleteReview flow.
+async function hideFromFeed(shareId) {
+  try {
+    await api("/feed/hidden", { method: "POST", body: JSON.stringify({ share_id: Number(shareId) }) });
+    showToast("Hidden", "Removed from your feed.");
+    loadFeed();
+  } catch (e) { showToast("Couldn’t hide", e.message); }
 }
 function timeAgo(iso) {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -553,11 +573,11 @@ function renderPlace(p) {
         ${post.url ? `<div style="margin-top:2px">${link}</div>` : ""}</div></div>`;
   }).join("");
   const gReviews = (p.google_reviews || []).slice(0, 3).map(r =>
-    `<div class="review"><div class="ra" style="background:${heroGrad(r.author)}"></div>
+    `<div class="review">${reviewAvatar(r.profile_photo_url, r.author)}
        <div><div style="font-size:var(--fs-sm)"><b>${esc(r.author || "Google user")}</b> <span class="stars">${starStr(r.rating)}</span></div>
        <p style="font-size:var(--fs-sm);color:var(--ink-2);margin:4px 0 0;line-height:1.5">${esc((r.text || "").slice(0, 200))}</p></div></div>`).join("");
   const appReviews = (p.reviews || []).map(r =>
-    `<div class="review"><div class="ra" style="background:${heroGrad(r.author?r.author.username:"a")}"></div>
+    `<div class="review">${reviewAvatar(r.author && r.author.avatar_path, r.author ? r.author.username : "a")}
        <div><div style="font-size:var(--fs-sm)"><b>@${esc(r.author ? r.author.username : "anonymous")}</b>${r.is_own?' <span class="muted" style="color:var(--muted)">(you)</span>':""} <span class="stars">${starStr(r.rating)}</span></div>
        ${r.body ? `<p style="font-size:var(--fs-sm);color:var(--ink-2);margin:4px 0 0;line-height:1.5">${esc(r.body.slice(0,200))}</p>`:""}</div></div>`).join("");
   const own = (p.reviews || []).find(r => r.is_own);
