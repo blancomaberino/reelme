@@ -41,6 +41,9 @@ beforeEach(() => {
   mock = new AxiosMockAdapter(api);
   mockRouter.push.mockClear();
   mockRouter.params = {};
+  // Recent-shares list: default to empty so the section stays hidden unless a
+  // test opts in.
+  mock.onGet('/shares').reply(200, { data: [] });
 });
 afterEach(() => {
   mock.restore();
@@ -103,6 +106,24 @@ it('auto-submits a link shared in from the iOS share sheet', async () => {
 
   expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
   expect(sent).toMatchObject({ url: 'https://instagram.com/reel/abc', shared_via: 'paste_url' });
+});
+
+it('lists recent shares with a status pill and taps a published one through', async () => {
+  mock.onGet('/shares').reply(200, {
+    data: [
+      shareDetail({ id: '5', status: 'analyzing', source_post: { ...shareDetail({}).source_post, caption: 'ramen spot' } }),
+      shareDetail({ id: '6', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+    ],
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Recent shares')).toBeOnTheScreen();
+  expect(screen.getByText('Analyzing')).toBeOnTheScreen();
+  expect(screen.getByText('Published')).toBeOnTheScreen();
+
+  fireEvent.press(screen.getByText('Clara Café'));
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '9' } });
 });
 
 it('shows a validation error and does not POST when both inputs are empty', async () => {

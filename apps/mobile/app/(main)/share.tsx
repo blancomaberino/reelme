@@ -5,6 +5,7 @@ import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, V
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCreateShare } from '@/api/hooks/useCreateShare';
+import { useShares } from '@/api/hooks/useShares';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
 import { isTerminal, type ShareDetail, type ShareStatus } from '@/api/shares';
 import { Button } from '@/components/button';
@@ -109,10 +110,67 @@ export default function ShareScreen() {
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Button title={t('share.submit')} onPress={submit} loading={create.isPending} />
+            <RecentShares c={c} styles={styles} t={t} />
           </View>
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+const STATUS_KEY: Record<ShareStatus, MessageKey> = {
+  pending: 'share.status.pending',
+  fetching: 'share.status.fetching',
+  analyzing: 'share.status.analyzing',
+  review: 'share.status.review',
+  published: 'share.status.published',
+  failed: 'share.status.failed',
+  rejected: 'share.status.rejected',
+};
+
+/** The viewer's own recent submissions, with a live-updating status pill. */
+function RecentShares({ c, styles, t }: { c: Palette; styles: Styles; t: (key: MessageKey) => string }) {
+  const { data: shares } = useShares(10);
+  if (!shares || shares.length === 0) return null;
+
+  return (
+    <View style={styles.recent}>
+      <Text style={styles.recentTitle}>{t('share.recent')}</Text>
+      {shares.map((s) => {
+        const label =
+          s.place?.name ?? s.source_post.caption ?? s.source_post.url?.replace(/^https?:\/\//, '') ?? '—';
+        const tone =
+          s.status === 'published'
+            ? { bg: c.greenSoft, fg: c.green }
+            : s.status === 'review'
+              ? { bg: c.goldSoft, fg: c.gold }
+              : s.status === 'failed' || s.status === 'rejected'
+                ? { bg: c.dangerSoft, fg: c.danger }
+                : { bg: c.primarySoft, fg: c.primary };
+        const go =
+          s.place != null
+            ? () => router.push({ pathname: '/place/[slug]', params: { slug: s.place!.id } })
+            : undefined;
+        return (
+          <Pressable
+            key={s.id}
+            accessibilityRole={go ? 'button' : undefined}
+            accessibilityLabel={label}
+            onPress={go}
+            disabled={!go}
+            style={({ pressed }) => [styles.recentRow, pressed && go ? styles.rowPressed : null]}
+          >
+            <Text style={styles.recentLabel} numberOfLines={1}>
+              {label}
+            </Text>
+            <View style={[styles.pill, { backgroundColor: tone.bg }]}>
+              <Text style={[styles.pillText, { color: tone.fg }]}>{t(STATUS_KEY[s.status])}</Text>
+            </View>
+            {go ? <Ionicons name="chevron-forward" size={16} color={c.muted} /> : null}
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -196,4 +254,19 @@ const makeStyles = (c: Palette) =>
     badgeWarn: { backgroundColor: c.goldSoft },
     badgeErr: { backgroundColor: c.dangerSoft },
     link: { color: c.primary, fontSize: 15, fontWeight: '700', marginTop: 4 },
+    recent: { marginTop: 28, gap: 8 },
+    recentTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: c.muted },
+    recentRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    rowPressed: { opacity: 0.6 },
+    recentLabel: { flex: 1, fontSize: 15, color: c.text },
+    pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
+    pillText: { fontSize: 12, fontWeight: '700' },
   });
