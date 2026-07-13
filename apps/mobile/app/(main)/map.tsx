@@ -34,7 +34,15 @@ export default function MapScreen() {
   const c = useColors();
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const params = useLocalSearchParams<{ lat?: string; lng?: string }>();
+  const params = useLocalSearchParams<{ lat?: string; lng?: string; list?: string; listName?: string }>();
+  const setList = useMapStore((s) => s.setList);
+  const activeList = useMapStore((s) => s.filters.list);
+
+  // "View on map" from a list deep-links here with ?list=&listName= — apply it
+  // as the map's list filter once (then it lives in the map store).
+  useEffect(() => {
+    if (params.list && params.listName) setList({ id: params.list, name: params.listName });
+  }, [params.list, params.listName, setList]);
 
   const initialRegion = useMemo<Region>(() => {
     const lat = Number(params.lat);
@@ -232,7 +240,22 @@ export default function MapScreen() {
             <Ionicons name="search" size={20} color={c.primary} />
           </Pressable>
         </View>
-        {data?.truncated ? (
+        {activeList ? (
+          <View style={styles.listBanner}>
+            <Ionicons name="bookmark" size={14} color={c.onPrimary} />
+            <Text style={styles.listBannerText} numberOfLines={1}>
+              {activeList.name}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('map.clearList')}
+              onPress={() => setList(null)}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={16} color={c.onPrimary} />
+            </Pressable>
+          </View>
+        ) : data?.truncated ? (
           <View style={styles.zoomChip}>
             <Text style={styles.zoomChipText}>{t('map.zoomIn')}</Text>
           </View>
@@ -329,6 +352,19 @@ const makeStyles = (c: Palette) =>
       borderRadius: 999,
     },
     zoomChipText: { color: c.background, fontSize: 13, fontWeight: '600' },
+    listBanner: {
+      alignSelf: 'center',
+      marginTop: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      maxWidth: '80%',
+      backgroundColor: c.primary,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+    },
+    listBannerText: { color: c.onPrimary, fontSize: 13, fontWeight: '700', flexShrink: 1 },
     zoomControls: { position: 'absolute', right: 0, bottom: 0, padding: 16, alignItems: 'flex-end' },
     zoomStack: {
       backgroundColor: c.surface,

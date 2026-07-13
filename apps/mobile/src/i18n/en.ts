@@ -79,6 +79,7 @@ export const en = {
   'map.zoomIn': 'Zoom in for more places',
   'map.zoomInLabel': 'Zoom in',
   'map.zoomOutLabel': 'Zoom out',
+  'map.clearList': 'Clear list filter',
 
   'profile.title': 'Profile',
   'profile.note': 'Your shares, followers & settings land here (T-039).',
@@ -100,6 +101,7 @@ export const en = {
   'lists.deleteConfirm.title': 'Delete this list?',
   'lists.deleteConfirm.message': '“{{name}}” and its saved places will be removed.',
   'lists.empty.places': 'No places in this list yet.',
+  'lists.viewOnMap': 'View on map',
 
   'save.title': 'Save to a list',
   'save.saved': 'Saved',
