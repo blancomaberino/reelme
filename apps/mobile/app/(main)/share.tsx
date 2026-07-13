@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -31,23 +31,28 @@ export default function ShareScreen() {
   const create = useCreateShare();
   const { data: share } = useShareStatus(shareId);
 
-  const submit = useCallback(() => {
-    const u = url.trim();
-    const cap = caption.trim();
-    if (!u && !cap) {
-      setError(t('share.needInput'));
-      return;
-    }
-    setError(null);
-    Keyboard.dismiss();
-    create.mutate(
-      { url: u, caption: cap },
-      {
-        onSuccess: (s) => setShareId(s.id),
-        onError: () => setError(t('share.submitError')),
-      },
-    );
-  }, [url, caption, create, t]);
+  const doSubmit = useCallback(
+    (rawUrl: string, rawCaption: string) => {
+      const u = rawUrl.trim();
+      const cap = rawCaption.trim();
+      if (!u && !cap) {
+        setError(t('share.needInput'));
+        return;
+      }
+      setError(null);
+      Keyboard.dismiss();
+      create.mutate(
+        { url: u, caption: cap },
+        {
+          onSuccess: (s) => setShareId(s.id),
+          onError: () => setError(t('share.submitError')),
+        },
+      );
+    },
+    [create, t],
+  );
+
+  const submit = useCallback(() => doSubmit(url, caption), [doSubmit, url, caption]);
 
   const reset = useCallback(() => {
     setShareId(null);
@@ -55,6 +60,25 @@ export default function ShareScreen() {
     setCaption('');
     setError(null);
   }, []);
+
+  // A link/text shared in from another app (Instagram, Safari…) via the iOS
+  // share sheet: prefill and auto-submit once. A non-URL payload goes to the
+  // caption; `handled` guards against re-firing on re-render / re-focus.
+  const { sharedUrl, sharedText } = useLocalSearchParams<{ sharedUrl?: string; sharedText?: string }>();
+  const handled = useRef('');
+  useEffect(() => {
+    const u = (sharedUrl ?? '').trim();
+    const txt = (sharedText ?? '').trim();
+    const payload = u || txt;
+    if (!payload || handled.current === payload) return;
+    handled.current = payload;
+    const looksUrl = /^https?:\/\//i.test(txt);
+    const finalUrl = u || (looksUrl ? txt : '');
+    const finalCap = finalUrl ? '' : txt;
+    setUrl(finalUrl);
+    setCaption(finalCap);
+    doSubmit(finalUrl, finalCap);
+  }, [sharedUrl, sharedText, doSubmit]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

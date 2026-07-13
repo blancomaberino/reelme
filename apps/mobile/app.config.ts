@@ -44,9 +44,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-splash-screen',
       { backgroundColor: '#208AEF', image: './assets/images/splash-icon.png', imageWidth: 76 },
     ],
-    // Native modules the app needs early. Share-intent + maps arrive in T-025/T-032.
     'expo-secure-store',
     'expo-notifications',
+    // Share extension (T-025): receive links/text shared from other apps (e.g.
+    // Instagram) into Reelmap. iOS app group defaults to group.<bundleId>.
+    [
+      'expo-share-intent',
+      {
+        iosActivationRules: {
+          NSExtensionActivationSupportsWebURLWithMaxCount: 1,
+          NSExtensionActivationSupportsWebPageWithMaxCount: 1,
+          NSExtensionActivationSupportsText: true,
+        },
+      },
+    ],
   ],
   experiments: { typedRoutes: true, reactCompiler: true },
 });

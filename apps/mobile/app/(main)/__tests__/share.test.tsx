@@ -40,6 +40,7 @@ beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   mock = new AxiosMockAdapter(api);
   mockRouter.push.mockClear();
+  mockRouter.params = {};
 });
 afterEach(() => {
   mock.restore();
@@ -83,6 +84,25 @@ it('fetches the real state when POST replays an already-published share (no fals
 
   expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
   expect(screen.getByText('Clara Café')).toBeOnTheScreen();
+});
+
+it('auto-submits a link shared in from the iOS share sheet', async () => {
+  // The root ShareIntentRedirect routes here with sharedUrl set; the screen
+  // should POST it without any tap and drive to the published result.
+  mockRouter.params = { sharedUrl: 'https://instagram.com/reel/abc' };
+  let sent: Record<string, unknown> = {};
+  mock.onPost('/shares').reply((cfg) => {
+    sent = JSON.parse(cfg.data);
+    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
+  });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
+  expect(sent).toMatchObject({ url: 'https://instagram.com/reel/abc', shared_via: 'paste_url' });
 });
 
 it('shows a validation error and does not POST when both inputs are empty', async () => {
