@@ -70,6 +70,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/users/{user:username}/map', [ProfileController::class, 'map']);
         Route::get('/influencers/{influencer}', [InfluencerController::class, 'show']);
         Route::get('/influencers/{influencer}/map', [InfluencerController::class, 'map']);
+
+        // Shared lists (T-063): public read of a list by its global public_slug.
+        // A private/never-shared list 404s (privacy in PublicListShowRequest).
+        Route::get('/lists/{list:public_slug}', [PlaceListController::class, 'publicShow']);
     });
 
     // Auth — 5/min per IP (03-api-design §1). Pure bearer tokens, no cookies.
@@ -126,6 +130,9 @@ Route::prefix('v1')->group(function () {
             Route::delete('/me/lists/{list}', [PlaceListController::class, 'destroy']);
             Route::post('/me/lists/{list}/places/{place}', [PlaceListController::class, 'addPlace']);
             Route::delete('/me/lists/{list}/places/{place}', [PlaceListController::class, 'removePlace']);
+            // Save-a-copy of a shared list into the caller's own lists (T-063);
+            // {slug} is the SOURCE list's public_slug, not an owned list.
+            Route::post('/me/lists/{slug}/copy', [PlaceListController::class, 'copy']);
         });
 
         // Private per-user place tags (T-064): personal annotations (e.g.

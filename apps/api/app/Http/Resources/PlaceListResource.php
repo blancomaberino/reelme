@@ -24,11 +24,16 @@ class PlaceListResource extends JsonResource
             'id' => (string) $this->id,
             'name' => $this->name,
             'slug' => $this->slug,
+            'public_slug' => $this->public_slug,
             'is_public' => (bool) $this->is_public,
             'items_count' => (int) ($this->items_count ?? $this->items()->count()),
             // Present only when the index was queried with ?contains={placeId}.
             'contains' => $this->when(isset($this->contains), fn () => (bool) $this->contains),
-            'owner' => new UserSummaryResource($this->whenLoaded('user')),
+            // Only attribute a public-profile owner (see PlaceListDetailResource).
+            'owner' => $this->whenLoaded(
+                'user',
+                fn () => $this->user->is_public ? new UserSummaryResource($this->user) : null,
+            ),
             'created_at' => $this->created_at?->toIso8601ZuluString(),
             'updated_at' => $this->updated_at?->toIso8601ZuluString(),
         ];

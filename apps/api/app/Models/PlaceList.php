@@ -18,6 +18,7 @@ use Illuminate\Support\Str;
  * @property int $user_id
  * @property string $name
  * @property string|null $slug
+ * @property string|null $public_slug globally-unique share token, minted on first publish (T-063)
  * @property bool $is_public
  * @property-read int|null $items_count withCount('items')
  * @property-read bool|null $contains withExists, only on the ?contains index query
@@ -42,7 +43,25 @@ class PlaceList extends Model
             if ($list->isDirty('name') || blank($list->slug)) {
                 $list->slug = $list->uniqueSlug((string) $list->name);
             }
+            // Mint a stable, globally-unique public slug the first time a list
+            // goes public; never regenerate it (a rename or re-share must not
+            // change an already-shared link) (T-063).
+            if ($list->is_public && blank($list->public_slug)) {
+                $list->public_slug = $list->uniquePublicSlug((string) $list->name);
+            }
         });
+    }
+
+    /** A globally-unique, readable-but-unguessable share token: name-slug + a
+     *  6-char random suffix (retried on the astronomically-rare collision). */
+    private function uniquePublicSlug(string $name): string
+    {
+        $base = Str::slug($name) ?: 'list';
+        do {
+            $slug = $base.'-'.Str::lower(Str::random(6));
+        } while (static::query()->where('public_slug', $slug)->exists());
+
+        return $slug;
     }
 
     private function uniqueSlug(string $name): string

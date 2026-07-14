@@ -26,6 +26,20 @@ export function placeShareUrl(slug: string): string {
   return `reelmap://place/${slug}`;
 }
 
+/** Deep link that opens a shared list in the app (T-063). */
+export function listShareUrl(publicSlug: string): string {
+  return `reelmap://list/${publicSlug}`;
+}
+
+/**
+ * Human-facing web URL for a shared list (T-063) — the API serves `/l/{slug}`.
+ * Derived from the configured API origin; null when unset (dev without a host).
+ */
+export function listWebUrl(publicSlug: string, base = process.env.EXPO_PUBLIC_API_URL): string | null {
+  if (!base) return null;
+  return `${base.replace(/\/+$/, '')}/l/${publicSlug}`;
+}
+
 /**
  * A link to the place's Google Maps page. `query_place_id` pins the exact
  * place; `query` (the name) is the required human-readable fallback per the

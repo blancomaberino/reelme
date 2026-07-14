@@ -25,8 +25,15 @@ class PlaceListDetailResource extends JsonResource
             'id' => (string) $this->id,
             'name' => $this->name,
             'slug' => $this->slug,
+            'public_slug' => $this->public_slug,
             'is_public' => (bool) $this->is_public,
-            'owner' => new UserSummaryResource($this->whenLoaded('user')),
+            // Attribute only owners who consented to public attribution — a
+            // private-profile user who shares a list must not leak their
+            // identity (matches FeedItemResource/PlaceSourceResource).
+            'owner' => $this->whenLoaded(
+                'user',
+                fn () => $this->user->is_public ? new UserSummaryResource($this->user) : null,
+            ),
             'items_count' => $this->items->count(),
             'items' => $this->items->map(fn ($item) => [
                 'note' => $item->note,
