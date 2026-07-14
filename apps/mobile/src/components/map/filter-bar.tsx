@@ -5,13 +5,15 @@ import { usePopularTags } from '@/api/hooks/useTags';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { useMapStore } from '@/stores/map';
+import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
 
 /**
- * Horizontal filter chips over the map (T-032 §7): price tiers, top tags, and a
- * disabled "Following" chip (M3). Active filters live in the map store and feed
- * the query key, so toggling one refetches. Rendered above the MapView; it does
- * not subscribe the MapView subtree to changes.
+ * Horizontal filter chips over the map (T-032 §7): price tiers, top tags, and —
+ * for authed viewers — "Following"/"Mine" scope chips (T-039) that map to
+ * `GET /map/places?filter=`. Active filters live in the map store and feed the
+ * query key, so toggling one refetches. Rendered above the MapView; it does not
+ * subscribe the MapView subtree to changes.
  */
 export function FilterBar() {
   const c = useColors();
@@ -21,6 +23,8 @@ export function FilterBar() {
   const filters = useMapStore((s) => s.filters);
   const togglePrice = useMapStore((s) => s.togglePrice);
   const toggleTag = useMapStore((s) => s.toggleTag);
+  const setScope = useMapStore((s) => s.setScope);
+  const authed = useSessionStore((s) => s.status === 'authed');
   const { data: tags } = usePopularTags();
 
   return (
@@ -50,7 +54,22 @@ export function FilterBar() {
         />
       ))}
 
-      <FilterChip label={t('filter.following')} active={false} disabled onPress={() => {}} styles={styles} />
+      {authed ? (
+        <>
+          <FilterChip
+            label={t('filter.following')}
+            active={filters.filter === 'following'}
+            onPress={() => setScope('following')}
+            styles={styles}
+          />
+          <FilterChip
+            label={t('filter.mine')}
+            active={filters.filter === 'mine'}
+            onPress={() => setScope('mine')}
+            styles={styles}
+          />
+        </>
+      ) : null}
     </ScrollView>
   );
 }

@@ -19,6 +19,7 @@ async function fetchMapPlaces(region: Region, filters: MapFilters): Promise<MapD
   if (filters.price_range) params.price_range = filters.price_range;
   if (filters.tags && filters.tags.length > 0) params['tags[]'] = filters.tags;
   if (filters.list) params.list = Number(filters.list.id);
+  if (filters.filter) params.filter = filters.filter;
 
   const { data } = await api.get<MapResponse>('/map/places', { params });
   return { pins: data.data.pins, clusters: data.data.clusters, truncated: data.meta.truncated ?? false };

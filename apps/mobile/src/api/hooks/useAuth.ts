@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Device from 'expo-device';
 
+import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
 
 import { api } from '../client';
@@ -76,6 +77,9 @@ export function useLogout() {
     onSuccess: async () => {
       await clearToken();
       useSessionStore.getState().clear();
+      // Drop any authed-only map scope (following/mine) so the now-guest map
+      // doesn't send a filter that 401s (T-039).
+      useMapStore.getState().clearFilters();
       qc.clear();
     },
   });

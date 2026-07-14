@@ -68,6 +68,7 @@ export const en = {
   'source.firstShared': 'First shared',
 
   'filter.following': 'Following',
+  'filter.mine': 'Mine',
 
   'search.placeholder': 'Search places, tags…',
   'search.cancel': 'Cancel',
