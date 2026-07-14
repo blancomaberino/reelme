@@ -32,7 +32,7 @@ class PublishShare extends PipelineStubJob
 
     protected function queueName(): string
     {
-        return 'analysis';
+        return 'publish';
     }
 
     protected function expectedStatus(): ShareStatus

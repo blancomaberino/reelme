@@ -188,6 +188,65 @@ it('scores name similarity and boosts on a matching locality', function () {
         ->and($weak)->toBeLessThan(0.5);
 });
 
+it('scores a short leading name in the longer official name as a strong match', function () {
+    // Regression: "Erevan" leads "Erevan Cocina Armenia" but the symmetric
+    // similar_text ratio is only 0.44 — below min_score — so a correctly-resolved
+    // place used to be sent to manual review. A leading match must clear the cutoff.
+    $score = geocoder()->score(
+        'Erevan',
+        'Erevan Cocina Armenia',
+        'José Ellauri 1308, 11300 Montevideo, Uruguay',
+        new GeoHints,
+    );
+
+    expect($score)->toBeGreaterThanOrEqual((float) config('places.geocode.min_score'))
+        ->and($score)->toBeGreaterThanOrEqual(0.85);
+});
+
+it('folds accents when matching a leading name', function () {
+    // An accented caption name must still lead-match the folded official name.
+    $score = geocoder()->score('Erévan', 'Erevan Cocina Armenia', 'Montevideo, Uruguay', new GeoHints);
+
+    expect($score)->toBeGreaterThanOrEqual(0.85);
+});
+
+it('requires a whole-word leading match, not a bare substring', function () {
+    // "Bar" is a substring of "Barbagelata" but not one of its tokens — it must
+    // not earn the strong-match score, or every "Bar…" name would false-match.
+    $score = geocoder()->score('Bar', 'Barbagelata Heladería', 'Pocitos, Montevideo', new GeoHints);
+
+    expect($score)->toBeLessThan(0.5);
+});
+
+it('does not strong-match a query that is only a trailing word of the official name', function () {
+    // "Armenia" (a cuisine word) sits inside "Erevan Cocina Armenia" but does not
+    // lead it — it must not earn the 0.85 leading-match score.
+    $score = geocoder()->score('Armenia', 'Erevan Cocina Armenia', 'Montevideo, Uruguay', new GeoHints);
+
+    expect($score)->toBeLessThan(0.85);
+});
+
+it('adds one locality boost when the address confirms any hinted city/region/country', function () {
+    $g = geocoder();
+    $base = $g->score('Totally Different Bar', 'Some Other Place', 'Rua X, Lisboa, Portugal', new GeoHints);
+
+    $region = $g->score('Totally Different Bar', 'Some Other Place', 'Rua X, Lisboa, Portugal', new GeoHints(region: 'Lisboa'));
+    $country = $g->score('Totally Different Bar', 'Some Other Place', 'Rua X, Lisboa, Portugal', new GeoHints(country: 'Portugal'));
+
+    expect($region - $base)->toEqualWithDelta(0.1, 0.002)
+        ->and($country - $base)->toEqualWithDelta(0.1, 0.002);
+});
+
+it('does not stack the locality boost across multiple matching hints', function () {
+    // Guards min_score: city+region+country all present in the address must still
+    // yield a single +0.1, so a wrong name in the right country can't clear the bar.
+    $g = geocoder();
+    $base = $g->score('Totally Different Bar', 'Some Other Place', 'Rua X, Lisboa, Portugal', new GeoHints);
+    $all = $g->score('Totally Different Bar', 'Some Other Place', 'Rua X, Lisboa, Portugal', new GeoHints(city: 'Lisboa', region: 'Lisboa', country: 'Portugal'));
+
+    expect($all - $base)->toEqualWithDelta(0.1, 0.002);
+});
+
 it('FakeGeocoder returns seeded results and records calls, null otherwise', function () {
     $fake = new FakeGeocoder;
     $seeded = new GeocodeResult('ChIJfake', 'Seeded Spot', 'Some Address', [], 1.0, 2.0, ['restaurant'], 0.9);

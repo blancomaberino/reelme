@@ -24,6 +24,9 @@ class GooglePlacesGeocoder implements Geocoder
 
     private const CACHE_DAYS = 30;
 
+    /** A name that leads the (usually longer) official name is a strong match. */
+    private const LEADING_MATCH_SCORE = 0.85;
+
     public function findPlace(string $name, GeoHints $hints): ?GeocodeResult
     {
         $key = $this->cacheKey($name, $hints);
@@ -154,20 +157,70 @@ class GooglePlacesGeocoder implements Geocoder
 
     /**
      * Honest 0–1 confidence: name similarity to the query, boosted when the
-     * result's formatted address contains the hinted locality. Pure and public so
+     * result's formatted address confirms a hinted locality. Pure and public so
      * T-023's dedup tests can target the heuristic directly.
+     *
+     * A raw similar_text ratio punishes the common case where the official name
+     * is longer than the name lifted from a caption — "Erevan" vs "Erevan Cocina
+     * Armenia" scores only 0.44 and would fall below min_score, sending a
+     * correctly-resolved place to manual review. So when the query leads the
+     * official name, treat it as a strong match instead.
      */
     public function score(string $query, string $resultName, string $formattedAddress, GeoHints $hints): float
     {
         similar_text(mb_strtolower($query), mb_strtolower($resultName), $percent);
         $score = $percent / 100;
 
-        if ($hints->city !== null && $hints->city !== ''
-            && str_contains(mb_strtolower($formattedAddress), mb_strtolower($hints->city))) {
-            $score += 0.1;
+        if ($this->isLeadingNameMatch($query, $resultName)) {
+            $score = max($score, self::LEADING_MATCH_SCORE);
+        }
+
+        // A single locality confirmation (+0.1) when the resolved address agrees
+        // with any hinted city/region/country. Not cumulative — a result merely
+        // sitting in the right country must not clear min_score on its own.
+        foreach ([$hints->city, $hints->region, $hints->country] as $locality) {
+            if ($locality !== null && $locality !== ''
+                && str_contains(mb_strtolower($formattedAddress), mb_strtolower($locality))) {
+                $score += 0.1;
+                break;
+            }
         }
 
         return round(max(0.0, min(1.0, $score)), 3);
+    }
+
+    /**
+     * True when the shorter name's tokens are the *leading* tokens of the longer —
+     * "Erevan" ⊂ "Erevan Cocina Armenia". Leading (not any-subset, not substring)
+     * so a trailing descriptor ("Armenia") or an intra-word hit ("Bar" inside
+     * "Barbagelata") does not earn the strong-match score.
+     */
+    private function isLeadingNameMatch(string $a, string $b): bool
+    {
+        $ta = $this->tokens($a);
+        $tb = $this->tokens($b);
+
+        if ($ta === [] || $tb === []) {
+            return false;
+        }
+
+        [$short, $long] = count($ta) <= count($tb) ? [$ta, $tb] : [$tb, $ta];
+
+        return $short === array_slice($long, 0, count($short));
+    }
+
+    /**
+     * Lowercased alphanumeric word tokens, accent- and punctuation-insensitive.
+     *
+     * @return list<string>
+     */
+    private function tokens(string $s): array
+    {
+        // Str::ascii folds accents (matching this class's cache-key normalize())
+        // so "Erévan" and "Erevan" tokenize alike.
+        $parts = preg_split('/[^a-z0-9]+/', mb_strtolower(Str::ascii($s)), -1, PREG_SPLIT_NO_EMPTY);
+
+        return $parts === false ? [] : $parts;
     }
 
     /**
