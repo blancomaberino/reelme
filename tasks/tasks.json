@@ -1656,6 +1656,108 @@
       ],
       "agent": "executor",
       "notes": "Requested 2026-07-13. Small display-only enrichments. NOTE: the 'last time prices were updated' ask is ALREADY DONE (dishes_updated_at, PRs #53/#54 — 'Menú actualizado el <fecha>'); opening-hours summary already exists on mobile (summarizeHours) — main new work is the Google Maps link + porting hours to the web demo. | DONE 2026-07-13 (PR #61 991b458): mobile Google Maps link row + web demo opening hours (weekday_text) + Google Maps link; menu-updated line already shipped (#53/#54); mobile opening hours already existed."
+    },
+    {
+      "id": "T-066",
+      "title": "Email confirmation on signup (code + login gate)",
+      "phase": "M3",
+      "status": "done",
+      "depends_on": [
+        "T-003",
+        "T-010"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/Auth/EmailVerificationService.php",
+        "apps/api/app/Http/Controllers/Api/V1/Auth/EmailVerificationController.php",
+        "apps/mobile/app/(auth)/verify-email.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#auth"
+      ],
+      "acceptance": [
+        "6-digit code emailed on register; soft first session (banner)",
+        "Login hard-gated for unverified accounts (403 email_not_verified) after first logout; resend",
+        "Brute-force cap + no account enumeration; existing users grandfathered",
+        "Localized; API + mobile tests"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-14. Apple+Google social-login users bypass (email pre-verified). DONE PR #68."
+    },
+    {
+      "id": "T-067",
+      "title": "Social login: Sign in with Apple + Google (id-token verify)",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-066"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Http/Controllers/Api/V1/Auth/SocialController.php",
+        "apps/mobile/src/components/auth-screen-layout.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#auth"
+      ],
+      "acceptance": [
+        "POST /auth/social verifies Google + Apple id_token; create-or-link by verified email; oauth_identities table",
+        "email_verified_at set on social signup; never link on unverified provider email (no takeover)",
+        "Mobile Apple + Google buttons on welcome/login/register",
+        "Tests (mocked verifier)"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-14. PREREQ: Google client IDs + Apple Sign In capability/keys from the user; native rebuild. SocialController is currently a 501 stub."
+    },
+    {
+      "id": "T-068",
+      "title": "Two-factor auth (TOTP authenticator + recovery codes)",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-066"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Http/Controllers/Api/V1/TwoFactorController.php",
+        "apps/mobile/app/settings/two-factor.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#auth"
+      ],
+      "acceptance": [
+        "Enable/confirm/disable 2FA (pragmarx/google2fa); encrypted secret + recovery codes",
+        "Login challenge: password ok + 2FA on => challenge token => POST /auth/two-factor-challenge => full token",
+        "Mobile: Settings Security section (QR + confirm + recovery codes); login 2FA screen",
+        "Tests: enable/confirm/enforce/recovery single-use/disable"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-14. PREREQ: native rebuild for a QR lib. Layers a challenge step on the T-066/T-067 login flow."
+    },
+    {
+      "id": "T-069",
+      "title": "Invite friends to Reelmap by email",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-066"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Http/Controllers/Api/V1/InviteController.php",
+        "apps/mobile/app/invite.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#social"
+      ],
+      "acceptance": [
+        "POST /invites {emails[]} sends queued FriendInvite mail (install/deep link); rate-limited",
+        "Existing-user addresses silently skipped (no enumeration to the inviter)",
+        "Mobile invite screen (email chip input); localized",
+        "Tests: sends N mails, throttled, skip-existing, validation"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-14. Reuses T-066 Mailpit + notifications queue."
     }
   ]
 }
