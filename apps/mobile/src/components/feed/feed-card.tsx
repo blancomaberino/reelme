@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { memo, useMemo, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { RectButton, Swipeable } from 'react-native-gesture-handler';
@@ -81,9 +82,22 @@ function FeedCardBase({ item, onPress, onHide, hideLabel }: Props) {
                 @{influencer.handle}
               </Text>
             ) : null}
-            <Text style={styles.sharer} numberOfLines={1}>
-              · {sharerLabel}
-            </Text>
+            {sharer ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={sharerLabel}
+                hitSlop={6}
+                onPress={() => router.push({ pathname: '/users/[username]', params: { username: sharer.username } })}
+              >
+                <Text style={styles.sharer} numberOfLines={1}>
+                  · {sharerLabel}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.sharer} numberOfLines={1}>
+                · {sharerLabel}
+              </Text>
+            )}
           </View>
           <Text style={styles.time}>{relativeTime(item.published_at)}</Text>
         </View>

@@ -69,6 +69,9 @@ Route::prefix('v1')->group(function () {
     Route::middleware('throttle:map')->group(function () {
         Route::get('/users/{user:username}', [ProfileController::class, 'show']);
         Route::get('/users/{user:username}/map', [ProfileController::class, 'map']);
+        // Followers / following lists (T-039). Same private-profile 404 gate.
+        Route::get('/users/{user:username}/followers', [ProfileController::class, 'followers']);
+        Route::get('/users/{user:username}/following', [ProfileController::class, 'following']);
         Route::get('/influencers/{influencer}', [InfluencerController::class, 'show']);
         Route::get('/influencers/{influencer}/map', [InfluencerController::class, 'map']);
 

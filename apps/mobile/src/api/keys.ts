@@ -25,4 +25,8 @@ export const queryKeys = {
   list: (id: string) => ['lists', id] as const,
   /** A public, shared list keyed by its global public_slug (T-063). */
   publicList: (slug: string) => ['lists', 'public', slug] as const,
+  /** Another user's public profile + viewer follow state (T-039). */
+  profile: (username: string) => ['profile', username] as const,
+  followers: (username: string) => ['profile', username, 'followers'] as const,
+  following: (username: string) => ['profile', username, 'following'] as const,
 };

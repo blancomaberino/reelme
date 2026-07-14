@@ -219,6 +219,17 @@ export const en = {
   'verify.resent': 'We sent you a new code.',
   'verify.banner': 'Confirm your email so you don’t lose access.',
   'verify.bannerAction': 'Confirm',
+
+  'profileUser.notFound': 'Profile not found',
+  'profileUser.followers': 'Followers',
+  'profileUser.following': 'Following',
+  'profileUser.shares': 'Shares',
+  'profileUser.noShares': 'No shares yet.',
+  'profileUser.noFollowers': 'No followers yet.',
+  'profileUser.noFollowing': 'Not following anyone yet.',
+  'profileUser.privateUser': 'Private user',
+  'follow.follow': 'Follow',
+  'follow.following': 'Following',
 } as const;
 
 export type MessageKey = keyof typeof en;
