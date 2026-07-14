@@ -21,6 +21,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: IS_DEV ? 'pet.one.reelmap.dev' : 'pet.one.reelmap',
+    // react-native-maps on Android is Google Maps and needs an API key (iOS uses
+    // Apple Maps, no key). Set GOOGLE_MAPS_ANDROID_KEY to render the map on
+    // Android; omitted (no-op) when unset so builds still work without it.
+    ...(process.env.GOOGLE_MAPS_ANDROID_KEY
+      ? { config: { googleMaps: { apiKey: process.env.GOOGLE_MAPS_ANDROID_KEY } } }
+      : {}),
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/images/android-icon-foreground.png',
