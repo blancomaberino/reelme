@@ -187,6 +187,18 @@ class Place extends Model
     }
 
     /**
+     * Private per-user annotations (T-064) — owner-only, distinct from the
+     * public discovery `tags()` above. Always constrain by the caller's
+     * user_id when loading; a place detail only ever exposes the viewer's own.
+     *
+     * @return HasMany<UserPlaceTag, $this>
+     */
+    public function userPlaceTags(): HasMany
+    {
+        return $this->hasMany(UserPlaceTag::class);
+    }
+
+    /**
      * Same visibility rule as the public read surfaces (map/browse): pending +
      * active places are searchable — the documented deviation from "active
      * only", since a first auto-publish stays pending (02 §3.8) and would

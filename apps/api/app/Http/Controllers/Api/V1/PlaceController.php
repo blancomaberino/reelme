@@ -144,8 +144,17 @@ class PlaceController extends Controller
             ]);
         }
 
+        // Private per-user tags (T-064): attach the caller's own labels for the
+        // owner-only `my_tags` field. Guests get null → the key is omitted, so
+        // one user's annotations can never leak to another. Optional auth is
+        // resolved via the sanctum guard (the route itself is public).
+        $viewer = $request->user('sanctum');
+        $myTags = $viewer !== null
+            ? $place->userPlaceTags()->where('user_id', $viewer->id)->orderByDesc('id')->get()
+            : null;
+
         return response()->json([
-            'data' => (new PlaceResource($place))->withIncludes($includes),
+            'data' => (new PlaceResource($place))->withIncludes($includes)->withMyTags($myTags),
             'meta' => (object) $meta,
         ]);
     }

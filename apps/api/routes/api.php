@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\ShareController;
 use App\Http\Controllers\Api\V1\TagController;
+use App\Http\Controllers\Api\V1\UserPlaceTagController;
 use App\Http\Controllers\MediaUploadController;
 use Illuminate\Support\Facades\Route;
 
@@ -125,6 +126,15 @@ Route::prefix('v1')->group(function () {
             Route::delete('/me/lists/{list}', [PlaceListController::class, 'destroy']);
             Route::post('/me/lists/{list}/places/{place}', [PlaceListController::class, 'addPlace']);
             Route::delete('/me/lists/{list}/places/{place}', [PlaceListController::class, 'removePlace']);
+        });
+
+        // Private per-user place tags (T-064): personal annotations (e.g.
+        // "visitar a las 5"), owner-only and never aggregated into the public
+        // discovery tags. Same light write throttle as the other write surfaces.
+        Route::middleware('throttle:60,1')->group(function () {
+            Route::get('/me/places/{place}/tags', [UserPlaceTagController::class, 'index']);
+            Route::post('/me/places/{place}/tags', [UserPlaceTagController::class, 'store']);
+            Route::delete('/me/places/{place}/tags/{tag}', [UserPlaceTagController::class, 'destroy']);
         });
 
         // Native reviews (T-059): one review per (place, user). POST creates

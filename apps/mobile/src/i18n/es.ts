@@ -114,6 +114,13 @@ export const es: Record<MessageKey, string> = {
   'save.done': 'Listo',
   'save.newList': 'Nueva lista',
 
+  'myTags.title': 'Mis etiquetas',
+  'myTags.hint': 'Notas privadas que solo ves vos.',
+  'myTags.placeholder': 'ej. visitar a las 5',
+  'myTags.add': 'Agregar etiqueta',
+  'myTags.remove': 'Quitar {{label}}',
+  'myTags.error': 'No se pudo guardar la etiqueta. Reintentá.',
+
   'editProfile.title': 'Editar perfil',
   'editProfile.name': 'Nombre',
   'editProfile.bio': 'Bio',

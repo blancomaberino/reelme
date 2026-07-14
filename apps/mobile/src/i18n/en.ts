@@ -114,6 +114,13 @@ export const en = {
   'save.done': 'Done',
   'save.newList': 'New list',
 
+  'myTags.title': 'My tags',
+  'myTags.hint': 'Private notes only you can see.',
+  'myTags.placeholder': 'e.g. visit at 5pm',
+  'myTags.add': 'Add tag',
+  'myTags.remove': 'Remove {{label}}',
+  'myTags.error': 'Couldn’t save that tag. Try again.',
+
   'editProfile.title': 'Edit profile',
   'editProfile.name': 'Name',
   'editProfile.bio': 'Bio',

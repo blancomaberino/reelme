@@ -123,6 +123,18 @@ export type PlaceDetail = {
   google_reviews?: GoogleReview[];
   reviews?: AppReview[];
   sources?: PlaceSourceItem[];
+  /**
+   * The viewer's own private tags (T-064). Present only when authenticated;
+   * absent for guests, and never carries another user's labels.
+   */
+  my_tags?: MyPlaceTag[];
+};
+
+/** A private, owner-only label the viewer pinned to a place (T-064). */
+export type MyPlaceTag = {
+  id: string;
+  label: string;
+  created_at?: string | null;
 };
 
 /**
