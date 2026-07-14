@@ -118,6 +118,7 @@ export const es: Record<MessageKey, string> = {
   'save.saved': 'Guardado',
   'save.done': 'Listo',
   'save.newList': 'Nueva lista',
+  'save.addPlace': 'Agregar un lugar',
 
   'myTags.title': 'Mis etiquetas',
   'myTags.hint': 'Notas privadas que solo ves vos.',

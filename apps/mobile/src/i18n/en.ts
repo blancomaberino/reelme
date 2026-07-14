@@ -118,6 +118,7 @@ export const en = {
   'save.saved': 'Saved',
   'save.done': 'Done',
   'save.newList': 'New list',
+  'save.addPlace': 'Add a place',
 
   'myTags.title': 'My tags',
   'myTags.hint': 'Private notes only you can see.',

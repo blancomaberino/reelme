@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useDeleteList, useList } from '@/api/hooks/useLists';
 import type { PlaceListItem } from '@/api/lists';
+import { AddPlaceToListSheet } from '@/components/place/add-to-list-search';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
@@ -37,9 +38,11 @@ export default function ListDetailScreen() {
   const styles = useMemo(() => makeStyles(c), [c]);
   const { data: list, isLoading } = useList(id ?? null);
   const del = useDeleteList();
+  const [addOpen, setAddOpen] = useState(false);
 
   const items = useMemo(() => list?.items ?? [], [list?.items]);
   const region = useMemo(() => fitRegion(items), [items]);
+  const memberIds = useMemo(() => new Set(items.map((i) => i.place.id)), [items]);
 
   const onDelete = () => {
     Alert.alert(t('lists.deleteConfirm.title'), t('lists.deleteConfirm.message', { name: list?.name ?? '' }), [
@@ -64,6 +67,14 @@ export default function ListDetailScreen() {
         </Text>
         {list ? (
           <View style={styles.headerActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('save.addPlace')}
+              onPress={() => setAddOpen(true)}
+              hitSlop={12}
+            >
+              <Ionicons name="add-circle-outline" size={24} color={c.primary} />
+            </Pressable>
             {items.length > 0 ? (
               <Pressable
                 accessibilityRole="button"
@@ -91,6 +102,15 @@ export default function ListDetailScreen() {
         <View style={styles.empty}>
           <Ionicons name="location-outline" size={40} color={c.muted} />
           <Text style={styles.emptyText}>{t('lists.empty.places')}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('save.addPlace')}
+            onPress={() => setAddOpen(true)}
+            style={({ pressed }) => [styles.emptyCta, pressed && styles.pressed]}
+          >
+            <Ionicons name="add" size={18} color={c.onPrimary} />
+            <Text style={styles.emptyCtaText}>{t('save.addPlace')}</Text>
+          </Pressable>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
@@ -140,6 +160,10 @@ export default function ListDetailScreen() {
           ))}
         </ScrollView>
       )}
+
+      {addOpen && id ? (
+        <AddPlaceToListSheet visible onClose={() => setAddOpen(false)} listId={id} memberIds={memberIds} />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -154,6 +178,17 @@ const makeStyles = (c: Palette) =>
     loading: { paddingVertical: 40 },
     empty: { alignItems: 'center', gap: 10, paddingTop: 80, paddingHorizontal: 40 },
     emptyText: { fontSize: 15, color: c.muted, textAlign: 'center' },
+    emptyCta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 8,
+      backgroundColor: c.primary,
+      paddingHorizontal: 18,
+      paddingVertical: 11,
+      borderRadius: 999,
+    },
+    emptyCtaText: { color: c.onPrimary, fontSize: 15, fontWeight: '700' },
     scroll: { padding: 16, gap: 4 },
     map: { height: 200, borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
     row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border },
