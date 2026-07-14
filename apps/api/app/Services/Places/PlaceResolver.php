@@ -29,6 +29,11 @@ class PlaceResolver
         $run = $this->winningRun($share);
         $result = $this->payload($share, $run);
         $place = is_array($result['place'] ?? null) ? $result['place'] : [];
+        // Stash the detected post language into the snapshot so clients can label
+        // the menu's language (dishes are kept verbatim in the source language).
+        if (isset($result['post']['language']) && is_string($result['post']['language'])) {
+            $place['language'] = $result['post']['language'];
+        }
         $name = trim((string) ($place['name'] ?? ''));
 
         if ($name === '') {

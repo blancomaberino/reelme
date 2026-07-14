@@ -37,6 +37,8 @@ export const en = {
   'menu.title': 'Menu',
   'menu.view': 'View menu',
   'menu.extractedFrom': 'Extracted from',
+  'menu.language': 'Menu in {{language}}',
+  'menu.videoLegend': '🎬 shown in the video',
   'place.sources': 'Where it came from',
   'place.reviews': 'Reviews',
   'place.fromGoogle': 'From Google',

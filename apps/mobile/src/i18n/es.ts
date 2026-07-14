@@ -37,6 +37,8 @@ export const es: Record<MessageKey, string> = {
   'menu.title': 'Menú',
   'menu.view': 'Ver menú',
   'menu.extractedFrom': 'Extraído de',
+  'menu.language': 'Menú en {{language}}',
+  'menu.videoLegend': '🎬 aparece en el video',
   'place.sources': 'De dónde salió',
   'place.reviews': 'Reseñas',
   'place.fromGoogle': 'De Google',

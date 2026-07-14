@@ -293,6 +293,7 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
         onClose={() => setMenuOpen(false)}
         dishes={place.dishes}
         updatedAt={place.dishes_updated_at}
+        language={place.dishes_language}
         sources={place.sources ?? []}
       />
     </ScrollView>

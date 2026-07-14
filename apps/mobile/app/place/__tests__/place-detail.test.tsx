@@ -37,6 +37,7 @@ const PLACE: PlaceDetail = {
     { name: 'Flan', shown_in_video: true, price: null },
   ],
   dishes_updated_at: '2026-07-10T12:00:00Z',
+  dishes_language: 'en',
   source_count: 1,
   rating: { google: { value: 4.5, count: 527 }, app: { value: null, count: 0 } },
   sources: [

@@ -5,9 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { Dish, PlaceSourceItem } from '@/api/places';
 import { useT } from '@/i18n';
+import { languageName } from '@/lib/language';
 import { useFormat } from '@/lib/use-format';
 import { platformIcon } from '@/lib/format';
 import { openWebUrl } from '@/lib/linking';
+import { useSettingsStore } from '@/stores/settings';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 type Props = {
@@ -15,6 +17,8 @@ type Props = {
   onClose: () => void;
   dishes: Dish[];
   updatedAt: string | null;
+  /** BCP-47 language of the menu source — dish names are shown verbatim in it. */
+  language?: string | null;
   /** The place's sources — the menu was extracted from these posts. */
   sources: PlaceSourceItem[];
 };
@@ -24,10 +28,11 @@ type Props = {
  * reference to the source post(s) the data was extracted from — tappable to the
  * original reel.
  */
-export function MenuSheet({ visible, onClose, dishes, updatedAt, sources }: Props) {
+export function MenuSheet({ visible, onClose, dishes, updatedAt, language, sources }: Props) {
   const c = useColors();
   const t = useT();
   const fmt = useFormat();
+  const locale = useSettingsStore((s) => s.locale);
   const styles = useMemo(() => makeStyles(c), [c]);
 
   // The extraction source(s): prefer the primary, then the rest.
@@ -35,6 +40,8 @@ export function MenuSheet({ visible, onClose, dishes, updatedAt, sources }: Prop
     () => [...sources].sort((a, b) => Number(b.is_primary) - Number(a.is_primary)),
     [sources],
   );
+  const langLabel = languageName(language, locale);
+  const hasVideoDish = dishes.some((d) => d.shown_in_video);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -42,7 +49,10 @@ export function MenuSheet({ visible, onClose, dishes, updatedAt, sources }: Prop
       <SafeAreaView style={styles.sheet} edges={['bottom']}>
         <View style={styles.handle} />
         <View style={styles.header}>
-          <Text style={styles.title}>{t('menu.title')}</Text>
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>{t('menu.title')}</Text>
+            {langLabel ? <Text style={styles.subtitle}>{t('menu.language', { language: langLabel })}</Text> : null}
+          </View>
           <Pressable accessibilityRole="button" accessibilityLabel={t('save.done')} onPress={onClose} hitSlop={8}>
             <Ionicons name="close" size={24} color={c.text} />
           </Pressable>
@@ -58,6 +68,8 @@ export function MenuSheet({ visible, onClose, dishes, updatedAt, sources }: Prop
               {d.price ? <Text style={styles.price}>{d.price}</Text> : null}
             </View>
           ))}
+
+          {hasVideoDish ? <Text style={styles.legend}>{t('menu.videoLegend')}</Text> : null}
 
           {updatedAt ? (
             <Text style={styles.updated}>{t('place.dishesUpdated', { date: fmt.date(updatedAt) })}</Text>
@@ -106,8 +118,11 @@ const makeStyles = (c: Palette) =>
       maxHeight: '80%',
     },
     handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.border, marginBottom: 10 },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+    header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 },
+    titleBlock: { flex: 1, gap: 2 },
     title: { fontFamily: fonts.display, fontSize: 21, fontWeight: '700', color: c.text },
+    subtitle: { fontSize: 13, color: c.muted },
+    legend: { fontSize: 12, color: c.muted, marginTop: 12 },
     scroll: { paddingBottom: 16 },
     row: {
       flexDirection: 'row',
