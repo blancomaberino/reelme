@@ -16,11 +16,13 @@ type MapState = {
   toggleTag: (tag: string) => void;
   /** Restrict the map to a list (or null to clear); keeps other filters. */
   setList: (list: { id: string; name: string } | null) => void;
+  /** Scope to who you follow / your own shares (T-039), toggling off if same. */
+  setScope: (scope: 'following' | 'mine') => void;
   clearFilters: () => void;
   select: (pin: MapPin | null) => void;
 };
 
-const EMPTY: MapFilters = { cuisine: null, price_range: null, tags: [], list: null };
+const EMPTY: MapFilters = { cuisine: null, price_range: null, tags: [], list: null, filter: null };
 
 export const useMapStore = create<MapState>((set) => ({
   filters: EMPTY,
@@ -46,7 +48,13 @@ export const useMapStore = create<MapState>((set) => ({
         selected: null,
       };
     }),
-  setList: (list) => set((s) => ({ filters: { ...s.filters, list }, selected: null })),
+  // A list scope and a follow/mine scope are mutually exclusive views.
+  setList: (list) => set((s) => ({ filters: { ...s.filters, list, filter: list ? null : s.filters.filter }, selected: null })),
+  setScope: (scope) =>
+    set((s) => ({
+      filters: { ...s.filters, filter: s.filters.filter === scope ? null : scope, list: null },
+      selected: null,
+    })),
   clearFilters: () => set({ filters: EMPTY, selected: null }),
   select: (selected) => set({ selected }),
 }));

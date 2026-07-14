@@ -7,6 +7,8 @@ export type MapFilters = {
   tags?: string[];
   /** Restrict the map to a single owned place list (T-062). */
   list?: { id: string; name: string } | null;
+  /** Scope the map to who you follow / your own shares (T-039). Authed only. */
+  filter?: 'following' | 'mine' | null;
 };
 
 export const queryKeys = {

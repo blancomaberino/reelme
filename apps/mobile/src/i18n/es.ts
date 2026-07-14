@@ -68,6 +68,7 @@ export const es: Record<MessageKey, string> = {
   'source.firstShared': 'Compartido primero',
 
   'filter.following': 'Siguiendo',
+  'filter.mine': 'Míos',
 
   'search.placeholder': 'Buscar lugares, etiquetas…',
   'search.cancel': 'Cancelar',
