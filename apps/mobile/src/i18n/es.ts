@@ -232,4 +232,15 @@ export const es: Record<MessageKey, string> = {
   'verify.resent': 'Te enviamos un nuevo código.',
   'verify.banner': 'Confirmá tu correo para no perder el acceso.',
   'verify.bannerAction': 'Confirmar',
+
+  'profileUser.notFound': 'Perfil no encontrado',
+  'profileUser.followers': 'Seguidores',
+  'profileUser.following': 'Siguiendo',
+  'profileUser.shares': 'Compartidos',
+  'profileUser.noShares': 'Todavía no compartió nada.',
+  'profileUser.noFollowers': 'Todavía no tiene seguidores.',
+  'profileUser.noFollowing': 'Todavía no sigue a nadie.',
+  'profileUser.privateUser': 'Usuario privado',
+  'follow.follow': 'Seguir',
+  'follow.following': 'Siguiendo',
 };
