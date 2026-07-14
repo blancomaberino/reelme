@@ -1577,7 +1577,7 @@
       "id": "T-063",
       "title": "Share lists: public/shareable place collections",
       "phase": "M3",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-062"
       ],
