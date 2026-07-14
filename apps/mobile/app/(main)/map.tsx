@@ -8,10 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useMapPlaces } from '@/api/hooks/useMapPlaces';
 import type { MapPin } from '@/api/places';
+import type { SharePlace } from '@/api/shares';
 import { ClusterMarker } from '@/components/map/cluster-marker';
 import { FilterBar } from '@/components/map/filter-bar';
 import { PlaceMarker } from '@/components/map/place-marker';
 import { PlaceSheet } from '@/components/map/place-sheet';
+import { QuickShareModal } from '@/components/map/quick-share';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
 import { useT } from '@/i18n';
@@ -72,6 +74,10 @@ export default function MapScreen() {
   const filters = useMapStore((s) => s.filters);
   const selected = useMapStore((s) => s.selected);
   const select = useMapStore((s) => s.select);
+
+  // Quick "add from a link" popup — paste a link/caption, and on publish fly the
+  // map to the new pin without leaving the screen.
+  const [quickOpen, setQuickOpen] = useState(false);
 
   const { data, isFetching } = useMapPlaces(queryRegion, filters);
 
@@ -144,6 +150,15 @@ export default function MapScreen() {
     if (server) {
       mapRef.current?.animateToRegion(bboxToRegion(server.expand.bbox), 350);
     }
+  }, []);
+
+  // A quick-share published → fly to its pin. Animating settles the region,
+  // which (debounced) refetches the viewport so the fresh pin renders.
+  const onQuickPublished = useCallback((place: SharePlace) => {
+    mapRef.current?.animateToRegion(
+      { latitude: place.lat, longitude: place.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+      350,
+    );
   }, []);
 
   const onClientClusterPress = useCallback((clusterId: string) => {
@@ -233,6 +248,14 @@ export default function MapScreen() {
           ) : null}
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={t('map.quickAdd')}
+            onPress={() => setQuickOpen(true)}
+            style={styles.searchButton}
+          >
+            <Ionicons name="add" size={24} color={c.primary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel={t('map.search')}
             onPress={() => router.push('/search')}
             style={styles.searchButton}
@@ -293,6 +316,11 @@ export default function MapScreen() {
           router.push({ pathname: '/place/[slug]', params: { slug: id } });
         }}
       />
+
+      {/* Mounted only while open so each session starts fresh (no stale share). */}
+      {quickOpen ? (
+        <QuickShareModal visible onClose={() => setQuickOpen(false)} onPublished={onQuickPublished} />
+      ) : null}
     </View>
   );
 }
