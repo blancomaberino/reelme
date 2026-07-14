@@ -209,6 +209,16 @@ export const en = {
   'auth.register.submit': 'Create account',
   'auth.register.haveAccount': 'Already have an account? ',
   'auth.register.login': 'Log in',
+
+  'verify.title': 'Confirm your email',
+  'verify.subtitle': 'Enter the 6-digit code we sent to {{email}}.',
+  'verify.codeLabel': 'Code',
+  'verify.submit': 'Confirm',
+  'verify.resend': 'Resend code',
+  'verify.resendIn': 'Resend in {{seconds}}s',
+  'verify.resent': 'We sent you a new code.',
+  'verify.banner': 'Confirm your email so you don’t lose access.',
+  'verify.bannerAction': 'Confirm',
 } as const;
 
 export type MessageKey = keyof typeof en;

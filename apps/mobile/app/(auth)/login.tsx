@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { useLogin } from '@/api/hooks/useAuth';
+import { EmailNotVerifiedError } from '@/api/types';
 import { AuthScreenLayout, useAuthFormStyles } from '@/components/auth-screen-layout';
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
@@ -23,7 +24,16 @@ export default function LoginScreen() {
       { email: email.trim(), password },
       {
         onSuccess: () => router.replace('/(main)/map'),
-        onError: () => setPassword(''),
+        onError: (err) => {
+          setPassword('');
+          // Unconfirmed account → send them to the verify flow prefilled. Reset
+          // first so the (non-field) error doesn't linger on the login form if
+          // they swipe back.
+          if (err instanceof EmailNotVerifiedError) {
+            login.reset();
+            router.push({ pathname: '/(auth)/verify-email', params: { email: err.email || email.trim() } });
+          }
+        },
       },
     );
   }

@@ -44,6 +44,24 @@ export function useLogin() {
   });
 }
 
+export type VerifyEmailInput = { email: string; code: string };
+
+/** Confirm the account with the emailed 6-digit code, then log in (T-066). */
+export function useVerifyEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: VerifyEmailInput) => authenticate('/auth/verify-email', input),
+    onSuccess: (res) => onAuthenticated(qc, res),
+  });
+}
+
+/** Re-send the email confirmation code (T-066). Always resolves (no enumeration). */
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: (email: string) => api.post('/auth/resend-verification', { email }),
+  });
+}
+
 export function useLogout() {
   const qc = useQueryClient();
   return useMutation({

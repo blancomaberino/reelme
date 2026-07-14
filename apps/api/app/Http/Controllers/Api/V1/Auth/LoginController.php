@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Auth;
 
+use App\Exceptions\EmailNotVerifiedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
@@ -21,6 +22,13 @@ class LoginController extends Controller
             throw ValidationException::withMessages([
                 'email' => [__('auth.failed')],
             ]);
+        }
+
+        // Hard email-verification gate at login (T-066): after the first logout
+        // an unverified account cannot sign in until it confirms. Thrown only
+        // after a valid password, so it reveals nothing to a non-owner.
+        if (! $user->hasVerifiedEmail()) {
+            throw new EmailNotVerifiedException($user->email);
         }
 
         $deviceName = (string) $request->string('device_name');

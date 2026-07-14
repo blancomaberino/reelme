@@ -209,4 +209,14 @@ export const es: Record<MessageKey, string> = {
   'auth.register.submit': 'Crear cuenta',
   'auth.register.haveAccount': '¿Ya tenés cuenta? ',
   'auth.register.login': 'Iniciar sesión',
+
+  'verify.title': 'Confirmá tu correo',
+  'verify.subtitle': 'Ingresá el código de 6 dígitos que enviamos a {{email}}.',
+  'verify.codeLabel': 'Código',
+  'verify.submit': 'Confirmar',
+  'verify.resend': 'Reenviar código',
+  'verify.resendIn': 'Reenviar en {{seconds}}s',
+  'verify.resent': 'Te enviamos un nuevo código.',
+  'verify.banner': 'Confirmá tu correo para no perder el acceso.',
+  'verify.bannerAction': 'Confirmar',
 };

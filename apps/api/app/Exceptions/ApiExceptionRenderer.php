@@ -52,6 +52,7 @@ class ApiExceptionRenderer
     {
         return match (true) {
             $e instanceof ValidationException => [422, 'validation_failed', $e->getMessage(), $e->errors()],
+            $e instanceof EmailNotVerifiedException => [403, 'email_not_verified', $e->getMessage(), $e->details()],
             $e instanceof AuthenticationException => [401, 'unauthenticated', 'Unauthenticated.', []],
             $e instanceof AuthorizationException, $e instanceof AccessDeniedHttpException => [403, 'forbidden', 'This action is unauthorized.', []],
             $e instanceof ModelNotFoundException, $e instanceof NotFoundHttpException => [404, 'not_found', 'Resource not found.', []],
