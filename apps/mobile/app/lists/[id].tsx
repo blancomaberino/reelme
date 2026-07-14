@@ -1,34 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useDeleteList, useList } from '@/api/hooks/useLists';
-import type { PlaceListItem } from '@/api/lists';
+import { useDeleteList, useList, useUpdateList } from '@/api/hooks/useLists';
+import type { PlaceListSummary } from '@/api/lists';
 import { AddPlaceToListSheet } from '@/components/place/add-to-list-search';
 import { useT } from '@/i18n';
+import { listShareUrl, listWebUrl } from '@/lib/directions';
+import { fitRegion } from '@/lib/map-region';
 import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
-
-/** Region that fits all of a list's places (with padding). */
-function fitRegion(items: PlaceListItem[]): Region | null {
-  const pts = items.map((i) => i.place).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
-  if (pts.length === 0) return null;
-  const lats = pts.map((p) => p.lat);
-  const lngs = pts.map((p) => p.lng);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  return {
-    latitude: (minLat + maxLat) / 2,
-    longitude: (minLng + maxLng) / 2,
-    latitudeDelta: Math.max(0.02, (maxLat - minLat) * 1.4),
-    longitudeDelta: Math.max(0.02, (maxLng - minLng) * 1.4),
-  };
-}
 
 export default function ListDetailScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
@@ -38,10 +22,41 @@ export default function ListDetailScreen() {
   const styles = useMemo(() => makeStyles(c), [c]);
   const { data: list, isLoading } = useList(id ?? null);
   const del = useDeleteList();
+  const update = useUpdateList();
   const [addOpen, setAddOpen] = useState(false);
 
+  const openShareSheet = (publicSlug: string, listName: string) => {
+    const deepLink = listShareUrl(publicSlug);
+    // Prefer the web URL for the message (universal), falling back to the deep
+    // link — Android drops `url` and only surfaces `message`, so the message
+    // must always carry a link.
+    const link = listWebUrl(publicSlug) ?? deepLink;
+    void Share.share({
+      message: `${t('shareList.message', { name: listName })}\n${link}`,
+      url: deepLink,
+    });
+  };
+
+  // Share = publish-if-needed, then open the OS sheet with the shareable link.
+  const onShare = () => {
+    if (!list) return;
+    if (list.is_public && list.public_slug) {
+      openShareSheet(list.public_slug, list.name);
+      return;
+    }
+    update.mutate(
+      { id: id as string, is_public: true },
+      {
+        onSuccess: (updated: PlaceListSummary) => {
+          if (updated.public_slug) openShareSheet(updated.public_slug, updated.name);
+        },
+        onError: () => Alert.alert(t('shareList.error')),
+      },
+    );
+  };
+
   const items = useMemo(() => list?.items ?? [], [list?.items]);
-  const region = useMemo(() => fitRegion(items), [items]);
+  const region = useMemo(() => fitRegion(items.map((i) => i.place)), [items]);
   const memberIds = useMemo(() => new Set(items.map((i) => i.place.id)), [items]);
 
   const onDelete = () => {
@@ -87,6 +102,15 @@ export default function ListDetailScreen() {
                 <Ionicons name="map-outline" size={22} color={c.primary} />
               </Pressable>
             ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('lists.share')}
+              onPress={onShare}
+              disabled={update.isPending}
+              hitSlop={12}
+            >
+              <Ionicons name="share-outline" size={22} color={update.isPending ? c.muted : c.primary} />
+            </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={t('lists.delete')} onPress={onDelete} hitSlop={12}>
               <Ionicons name="trash-outline" size={22} color={c.danger} />
             </Pressable>

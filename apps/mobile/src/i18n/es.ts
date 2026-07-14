@@ -113,6 +113,17 @@ export const es: Record<MessageKey, string> = {
   'lists.deleteConfirm.message': 'Se eliminará «{{name}}» y sus lugares guardados.',
   'lists.empty.places': 'Todavía no hay lugares en esta lista.',
   'lists.viewOnMap': 'Ver en el mapa',
+  'lists.share': 'Compartir lista',
+
+  'shareList.message': 'Mirá «{{name}}» en Reelmap',
+  'shareList.error': 'No se pudo compartir la lista. Reintentá.',
+
+  'publicList.sharedBy': 'Compartida por @{{username}}',
+  'publicList.saveCopy': 'Guardar una copia',
+  'publicList.copyError': 'No se pudo guardar la copia. Reintentá.',
+  'publicList.empty': 'Esta lista todavía no tiene lugares.',
+  'publicList.notFound.title': 'Lista no disponible',
+  'publicList.notFound.body': 'Puede ser privada o ya no existir.',
 
   'save.title': 'Guardar en una lista',
   'save.saved': 'Guardado',

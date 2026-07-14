@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '../client';
 import { queryKeys } from '../keys';
-import type { PlaceListDetail, PlaceListSummary } from '../lists';
+import type { PlaceListDetail, PlaceListSummary, PublicPlaceList } from '../lists';
 
 /**
  * The viewer's place lists (T-062), newest-touched first. Pass `containsPlaceId`
@@ -30,6 +30,55 @@ export function useList(id: string | null) {
       return data.data;
     },
     enabled: !!id,
+  });
+}
+
+/**
+ * A shared list read by its public_slug (T-063). Public — works for guests; the
+ * API 404s a private/missing list, which surfaces here as a query error.
+ */
+export function usePublicList(slug: string | null) {
+  return useQuery({
+    queryKey: queryKeys.publicList(slug ?? ''),
+    queryFn: async () => {
+      const { data } = await api.get<{ data: PublicPlaceList }>(`/lists/${encodeURIComponent(slug as string)}`);
+      return data.data;
+    },
+    enabled: !!slug,
+    retry: false,
+  });
+}
+
+/** Update a list's name and/or public flag (T-062/T-063). Returns the updated
+ *  summary — including the minted `public_slug` when it is toggled public. */
+export function useUpdateList() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { id: string; name?: string; is_public?: boolean }): Promise<PlaceListSummary> => {
+      const { data } = await api.patch<{ data: PlaceListSummary }>(
+        `/me/lists/${encodeURIComponent(v.id)}`,
+        { name: v.name, is_public: v.is_public },
+      );
+      return data.data;
+    },
+    onSuccess: (_r, v) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.list(v.id) });
+      void qc.invalidateQueries({ queryKey: queryKeys.lists() });
+    },
+  });
+}
+
+/** Save a copy of a shared (public) list into the caller's own lists (T-063). */
+export function useCopyList() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (publicSlug: string): Promise<PlaceListDetail> => {
+      const { data } = await api.post<{ data: PlaceListDetail }>(
+        `/me/lists/${encodeURIComponent(publicSlug)}/copy`,
+      );
+      return data.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.lists() }),
   });
 }
 

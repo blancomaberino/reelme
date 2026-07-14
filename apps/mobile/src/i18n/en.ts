@@ -113,6 +113,17 @@ export const en = {
   'lists.deleteConfirm.message': '“{{name}}” and its saved places will be removed.',
   'lists.empty.places': 'No places in this list yet.',
   'lists.viewOnMap': 'View on map',
+  'lists.share': 'Share list',
+
+  'shareList.message': 'Check out “{{name}}” on Reelmap',
+  'shareList.error': 'Couldn’t share the list. Try again.',
+
+  'publicList.sharedBy': 'Shared by @{{username}}',
+  'publicList.saveCopy': 'Save a copy',
+  'publicList.copyError': 'Couldn’t save a copy. Try again.',
+  'publicList.empty': 'This list has no places yet.',
+  'publicList.notFound.title': 'List not available',
+  'publicList.notFound.body': 'It may be private or no longer exist.',
 
   'save.title': 'Save to a list',
   'save.saved': 'Saved',
