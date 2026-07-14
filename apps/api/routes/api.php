@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AnalysisPreferenceController;
+use App\Http\Controllers\Api\V1\Auth\EmailVerificationController;
 use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
 use App\Http\Controllers\Api\V1\Auth\PasswordResetController;
@@ -83,6 +84,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/social', SocialController::class);
         Route::post('/forgot-password', [PasswordResetController::class, 'forgot']);
         Route::post('/reset-password', [PasswordResetController::class, 'reset']);
+
+        // Email confirmation (T-066): confirm with the 6-digit code (+ get a
+        // token) or resend it. Public — an unverified account can't sign in.
+        Route::post('/verify-email', [EmailVerificationController::class, 'verify']);
+        Route::post('/resend-verification', [EmailVerificationController::class, 'resend']);
 
         Route::middleware('auth:sanctum')->group(function () {
             Route::post('/logout', LogoutController::class);

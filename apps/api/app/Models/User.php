@@ -5,6 +5,8 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
+use Illuminate\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -35,10 +37,15 @@ use Laravel\Sanctum\HasApiTokens;
  */
 #[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'birthdate', 'favorite_topics', 'favorite_foods', 'is_public', 'preferred_analysis_model'])]
 #[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable implements FilamentUser
+class User extends Authenticatable implements FilamentUser, MustVerifyEmailContract
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+
+    // MustVerifyEmail: gives hasVerifiedEmail()/markEmailAsVerified() (T-066).
+    // We send our own 6-digit code (EmailVerificationService), NOT Laravel's
+    // link-based sendEmailVerificationNotification(), which is left unused.
+    use MustVerifyEmail;
 
     /**
      * Gate the Filament admin panel to admins — enforced in EVERY environment

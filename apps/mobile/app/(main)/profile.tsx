@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLogout } from '@/api/hooks/useAuth';
 import { Button } from '@/components/button';
+import { VerifyEmailBanner } from '@/components/verify-email-banner';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
@@ -33,6 +34,7 @@ export default function ProfileScreen() {
         {user ? <Text style={styles.username}>@{user.username}</Text> : null}
       </View>
       <View style={styles.body}>
+        <VerifyEmailBanner />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('profile.edit')}

@@ -36,3 +36,15 @@ export class ValidationError extends Error {
     this.name = 'ValidationError';
   }
 }
+
+/**
+ * Thrown for a 403 `email_not_verified` (T-066) — a correct password on an
+ * unconfirmed account. Carries the email so the screen can route to the verify
+ * flow prefilled.
+ */
+export class EmailNotVerifiedError extends Error {
+  constructor(public readonly email: string) {
+    super('Email not verified.');
+    this.name = 'EmailNotVerifiedError';
+  }
+}

@@ -7,10 +7,10 @@ import { useSessionStore } from '@/stores/session';
 import { useUiStore } from '@/stores/ui';
 
 import { clearToken, getToken } from './token';
-import { ValidationError, type FieldErrors } from './types';
+import { EmailNotVerifiedError, ValidationError, type FieldErrors } from './types';
 
 type ApiErrorEnvelope = {
-  error?: { message?: string; details?: Record<string, string[] | string> };
+  error?: { code?: string; message?: string; details?: Record<string, string[] | string> };
 };
 
 const baseURL = `${process.env.EXPO_PUBLIC_API_URL ?? ''}/api/v1`;
@@ -81,6 +81,13 @@ api.interceptors.response.use(
 
     if (status === 429) {
       useUiStore.getState().setRateLimited(true);
+    }
+
+    // Unconfirmed email at login (T-066): surface a typed error so the screen
+    // can route to the verify flow prefilled with the account's email.
+    if (status === 403 && error.response?.data?.error?.code === 'email_not_verified') {
+      const email = String(error.response?.data?.error?.details?.email ?? '');
+      return Promise.reject(new EmailNotVerifiedError(email));
     }
 
     return Promise.reject(error);
