@@ -33,6 +33,10 @@ export interface PlaceDetail {
    * When the dish/menu list was last refreshed by a source (ISO 8601).
    */
   dishes_updated_at: string | null;
+  /**
+   * BCP-47 language of the menu source; dish names are kept verbatim in this language so the client can label it.
+   */
+  dishes_language: string | null;
   source_count: number;
   rating: {
     google: RatingBlock;

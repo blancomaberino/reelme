@@ -85,6 +85,7 @@ class PlaceResource extends JsonResource
             'dietary_tags' => $tags['dietary_tags'],
             'dishes' => $tags['dishes'],
             'dishes_updated_at' => $this->dishesUpdatedAt(),
+            'dishes_language' => $this->dishesLanguage(),
             'source_count' => (int) $this->shares_count,
             'rating' => [
                 'google' => [

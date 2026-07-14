@@ -144,6 +144,33 @@ it('carries menu prices on dishes and reports when the list was updated', functi
         ->and($data['dishes_updated_at'])->not->toBeNull();
 });
 
+it('reports the menu language from the source that contributed dishes', function () {
+    $place = Place::factory()->active()->atPoint(0, 0)->create(['name' => 'Sahure']);
+
+    // Primary source has no dishes but is English; the source WITH the menu is
+    // the one whose language should label it.
+    attachSource($place, ['name' => 'Sahure', 'language' => 'en', 'dishes' => []], 'instagram', 'a.uy', 'A', primary: true);
+    attachSource($place, [
+        'name' => 'Sahure', 'language' => 'es',
+        'dishes' => [['name' => 'shawarma', 'shown_in_video' => true, 'price' => '$460']],
+    ], 'instagram', 'b.uy', 'B');
+
+    $this->getJson("/api/v1/places/{$place->id}")
+        ->assertOk()
+        ->assertJsonPath('data.dishes_language', 'es')
+        // Dish name stays verbatim in the source language.
+        ->assertJsonPath('data.dishes.0.name', 'shawarma');
+});
+
+it('reports a null menu language for an older snapshot without one', function () {
+    $place = Place::factory()->active()->atPoint(0, 0)->create();
+    attachSource($place, [
+        'name' => 'X', 'dishes' => [['name' => 'falafel', 'shown_in_video' => false, 'price' => null]],
+    ], 'instagram', 'c.uy', 'C', primary: true);
+
+    $this->getJson("/api/v1/places/{$place->id}")->assertOk()->assertJsonPath('data.dishes_language', null);
+});
+
 it('binds by slug (canonical) as well as by numeric id', function () {
     $place = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Slug Cafe']);
 

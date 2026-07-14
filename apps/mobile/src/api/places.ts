@@ -118,6 +118,8 @@ export type PlaceDetail = {
   dishes: Dish[];
   /** When the dish/menu list was last refreshed by a source (ISO 8601). */
   dishes_updated_at: string | null;
+  /** BCP-47 language of the menu source; dish names are verbatim in it. */
+  dishes_language: string | null;
   source_count: number;
   rating: { google: RatingBlock; app: RatingBlock };
   google_reviews?: GoogleReview[];

@@ -340,6 +340,26 @@ class Place extends Model
     }
 
     /**
+     * BCP-47 language of the source that contributed the menu — dishes are kept
+     * verbatim in the post's language, so the client can label the menu ("in
+     * English", etc.). Prefers the primary source; null when unknown (e.g. an
+     * older snapshot that predates language capture).
+     */
+    public function dishesLanguage(): ?string
+    {
+        foreach ($this->sources->sortByDesc('is_primary') as $source) {
+            $snapshot = $source->extraction_snapshot_json;
+            $hasDishes = is_array($snapshot['dishes'] ?? null) && $snapshot['dishes'] !== [];
+            $language = $snapshot['language'] ?? null;
+            if ($hasDishes && is_string($language) && $language !== '') {
+                return $language;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Coerce a snapshot value to a deduped list of non-empty trimmed strings.
      *
      * @return list<string>
