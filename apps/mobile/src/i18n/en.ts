@@ -113,6 +113,7 @@ export const en = {
   'save.saved': 'Saved',
   'save.done': 'Done',
   'save.newList': 'New list',
+  'save.addPlace': 'Add a place',
 
   'editProfile.title': 'Edit profile',
   'editProfile.name': 'Name',

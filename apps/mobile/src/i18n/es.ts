@@ -113,6 +113,7 @@ export const es: Record<MessageKey, string> = {
   'save.saved': 'Guardado',
   'save.done': 'Listo',
   'save.newList': 'Nueva lista',
+  'save.addPlace': 'Agregar un lugar',
 
   'editProfile.title': 'Editar perfil',
   'editProfile.name': 'Nombre',
