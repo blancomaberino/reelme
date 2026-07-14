@@ -46,6 +46,7 @@ export default function RootLayout() {
                 <Stack.Screen name="lists/index" />
                 <Stack.Screen name="lists/[id]" />
                 <Stack.Screen name="list/[slug]" />
+                <Stack.Screen name="invite" />
               </Stack>
             </ThemeProvider>
           </SafeAreaProvider>

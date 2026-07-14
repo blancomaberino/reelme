@@ -57,6 +57,16 @@ export default function ProfileScreen() {
         </Pressable>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={t('profile.invite')}
+          onPress={() => router.push('/invite')}
+          style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+        >
+          <Ionicons name="person-add-outline" size={20} color={c.text} />
+          <Text style={styles.settingsLabel}>{t('profile.invite')}</Text>
+          <Ionicons name="chevron-forward" size={18} color={c.muted} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={t('profile.settings')}
           onPress={() => router.push('/settings')}
           style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
