@@ -10,6 +10,7 @@ import { Chip } from '@/components/place/chip';
 import { MiniMap } from '@/components/place/mini-map';
 import { ReviewComposer } from '@/components/place/review-composer';
 import { MenuSheet } from '@/components/place/menu-sheet';
+import { MyTags } from '@/components/place/my-tags';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { SourceCard } from '@/components/place/source-card';
 import { Thumbnail } from '@/components/place/thumbnail';
@@ -43,7 +44,7 @@ export default function PlaceDetailScreen() {
       ) : isError || !place ? (
         <ErrorState styles={styles} c={c} onRetry={() => void refetch()} />
       ) : (
-        <PlaceBody place={place} styles={styles} c={c} />
+        <PlaceBody place={place} authed={authed} styles={styles} c={c} />
       )}
       {place ? <SaveToListSheet placeId={place.id} visible={saveOpen} onClose={() => setSaveOpen(false)} /> : null}
     </SafeAreaView>
@@ -76,7 +77,7 @@ function Header({
   );
 }
 
-function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c: Palette }) {
+function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: boolean; styles: Styles; c: Palette }) {
   const t = useT();
   const fmt = useFormat();
   const [hoursOpen, setHoursOpen] = useState(false);
@@ -135,6 +136,9 @@ function PlaceBody({ place, styles, c }: { place: PlaceDetail; styles: Styles; c
           </View>
         ) : null}
       </View>
+
+      {/* My tags — private, owner-only annotations (T-064) */}
+      {authed ? <MyTags slug={place.slug} tags={place.my_tags ?? []} /> : null}
 
       {/* Info: address / hours / phone / website */}
       <View style={styles.block}>

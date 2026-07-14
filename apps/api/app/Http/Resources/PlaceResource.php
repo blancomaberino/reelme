@@ -3,8 +3,10 @@
 namespace App\Http\Resources;
 
 use App\Models\Place;
+use App\Models\UserPlaceTag;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 /**
  * GET /places/{id} shape (03-api-design §3.3) — the public place detail. IDs
@@ -23,11 +25,33 @@ class PlaceResource extends JsonResource
     private array $includes = [];
 
     /**
+     * The caller's own private tags (T-064), or null for a guest. Null keeps the
+     * `my_tags` key off the payload entirely — it is NEVER present for anyone but
+     * the owning viewer, and never carries another user's tags.
+     *
+     * @var Collection<int, UserPlaceTag>|null
+     */
+    private ?Collection $myTags = null;
+
+    /**
      * @param  list<string>  $includes
      */
     public function withIncludes(array $includes): static
     {
         $this->includes = $includes;
+
+        return $this;
+    }
+
+    /**
+     * Attach the authed caller's private tags for this place. Pass null (the
+     * default) for guests so `my_tags` is omitted rather than exposed empty.
+     *
+     * @param  Collection<int, UserPlaceTag>|null  $tags
+     */
+    public function withMyTags(?Collection $tags): static
+    {
+        $this->myTags = $tags;
 
         return $this;
     }
@@ -88,6 +112,12 @@ class PlaceResource extends JsonResource
             'reviews' => $this->when(
                 in_array('reviews', $this->includes, true),
                 fn () => ReviewResource::collection($this->reviews),
+            ),
+            // Private per-user tags (T-064): present only for the authed owner;
+            // absent for guests, never populated with another user's labels.
+            'my_tags' => $this->when(
+                $this->myTags !== null,
+                fn () => UserPlaceTagResource::collection($this->myTags),
             ),
         ];
     }

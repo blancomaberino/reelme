@@ -3,7 +3,7 @@
  * Source of truth: packages/contracts/schemas/place.json
  */
 /**
- * GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (empty until M4).
+ * GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (empty until M4). `my_tags` appears only for the authed owner (T-064) — the caller's private per-user labels, never present for guests or other users.
  */
 export interface PlaceDetail {
   id: string;
@@ -48,6 +48,14 @@ export interface PlaceDetail {
   }[];
   sources?: PlaceSource[];
   offers?: unknown[];
+  /**
+   * Owner-only private per-user tags (T-064). Present only when the caller is authenticated; absent for guests. Never contains another user's labels.
+   */
+  my_tags?: {
+    id: string;
+    label: string;
+    created_at: string | null;
+  }[];
 }
 export interface RatingBlock {
   value: number | null;

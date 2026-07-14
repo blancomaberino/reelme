@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://contracts.reelmap.app/schemas/place.json",
   "title": "PlaceDetail",
-  "description": "GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (empty until M4).",
+  "description": "GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (empty until M4). `my_tags` appears only for the authed owner (T-064) — the caller's private per-user labels, never present for guests or other users.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -72,7 +72,21 @@
       "type": "array",
       "items": { "$ref": "place-source.json" }
     },
-    "offers": { "type": "array" }
+    "offers": { "type": "array" },
+    "my_tags": {
+      "type": "array",
+      "description": "Owner-only private per-user tags (T-064). Present only when the caller is authenticated; absent for guests. Never contains another user's labels.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "created_at"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "created_at": { "type": ["string", "null"] }
+        }
+      }
+    }
   },
   "definitions": {
     "ratingBlock": {
