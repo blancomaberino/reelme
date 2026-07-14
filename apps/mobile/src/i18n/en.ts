@@ -68,6 +68,7 @@ export const en = {
   'source.firstShared': 'First shared',
 
   'filter.following': 'Following',
+  'filter.mine': 'Mine',
 
   'search.placeholder': 'Search places, tags…',
   'search.cancel': 'Cancel',
@@ -97,7 +98,19 @@ export const en = {
   'profile.settings': 'Settings',
   'profile.edit': 'Edit profile',
   'profile.lists': 'My lists',
+  'profile.invite': 'Invite friends',
   'profile.logout': 'Log out',
+
+  'invite.title': 'Invite friends',
+  'invite.hint': 'Send friends an email invite to join Reelmap.',
+  'invite.placeholder': 'friend@email.com',
+  'invite.add': 'Add email',
+  'invite.remove': 'Remove {{email}}',
+  'invite.send': 'Send invites',
+  'invite.invalidEmail': 'Enter a valid email address.',
+  'invite.error': 'Couldn’t send the invites. Try again.',
+  'invite.sentTitle': 'Invites sent',
+  'invite.sentBody': 'We’ve emailed your friends an invite to Reelmap.',
 
   'lists.title': 'My lists',
   'lists.empty': 'No lists yet. Save a place to start one.',

@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\FeedDismissalController;
 use App\Http\Controllers\Api\V1\FollowController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\InfluencerController;
+use App\Http\Controllers\Api\V1\InviteController;
 use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ModelController;
@@ -114,6 +115,10 @@ Route::prefix('v1')->group(function () {
         Route::patch('/shares/{share}', [ShareController::class, 'update']);
         Route::post('/shares/{share}/retry', [ShareController::class, 'retry']);
         Route::delete('/shares/{share}', [ShareController::class, 'destroy']);
+
+        // Invite friends to Reelmap by email (T-069). Abuse-sensitive (sends
+        // mail) → 10 requests/hour, ≤20 addresses each.
+        Route::post('/invites', [InviteController::class, 'store'])->middleware('throttle:10,60');
 
         // Follows (T-037, 03 §2.10): follow users or influencers; counters +
         // NewFollower notification handled transactionally in the controller.

@@ -30,7 +30,7 @@ class ResolvePlace extends PipelineStubJob
 
     protected function queueName(): string
     {
-        return 'analysis';
+        return 'resolve';
     }
 
     protected function expectedStatus(): ShareStatus

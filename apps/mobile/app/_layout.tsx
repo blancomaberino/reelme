@@ -49,6 +49,7 @@ export default function RootLayout() {
                 <Stack.Screen name="users/[username]/index" />
                 <Stack.Screen name="users/[username]/followers" />
                 <Stack.Screen name="users/[username]/following" />
+                <Stack.Screen name="invite" />
               </Stack>
             </ThemeProvider>
           </SafeAreaProvider>
