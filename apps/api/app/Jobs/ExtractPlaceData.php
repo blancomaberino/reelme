@@ -50,7 +50,7 @@ class ExtractPlaceData extends PipelineStubJob
 
     protected function queueName(): string
     {
-        return 'analysis';
+        return 'analyze';
     }
 
     protected function expectedStatus(): ShareStatus
