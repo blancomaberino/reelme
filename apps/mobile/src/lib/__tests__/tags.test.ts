@@ -21,4 +21,27 @@ describe('localizeTag', () => {
     expect(localizeTag(null, 'es')).toBe('');
     expect(localizeTag('', 'en')).toBe('');
   });
+
+  // Guards the "some tags show in English on a Spanish profile" bug: every value
+  // in the controlled vibe/occasion vocabulary must have a Spanish translation.
+  it('localizes the full controlled vibe/occasion vocabulary to Spanish', () => {
+    const cases: [string, string][] = [
+      ['rustic', 'Rústico'],
+      ['spacious', 'Espacioso'],
+      ['outdoor seating', 'Mesas afuera'],
+      ['great view', 'Con vista'],
+      ['good for groups', 'Para grupos'],
+      ['pet friendly', 'Admite mascotas'],
+      ['live music', 'Música en vivo'],
+      ['brunch spot', 'Para brunch'],
+      ['quick eats', 'Comida rápida'],
+      ['cozy', 'Acogedor'],
+      ['upscale', 'Elegante'],
+      ['date night', 'Para una cita'],
+      ['counter seating', 'Barra'],
+    ];
+    for (const [raw, es] of cases) {
+      expect(localizeTag(raw, 'es')).toBe(es);
+    }
+  });
 });
