@@ -7,6 +7,7 @@ use App\Enums\ShareStatus;
 use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Services\Places\TagMaterializer;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -47,18 +48,20 @@ class PublishShare extends PipelineStubJob
             return;
         }
 
-        $source = PlaceSource::query()->where('share_id', $share->id)->first();
-        if ($source === null) {
+        /** @var Collection<int, PlaceSource> $sources */
+        $sources = PlaceSource::query()->where('share_id', $share->id)->get();
+        if ($sources->isEmpty()) {
             return; // resolve parked the share to review — nothing to publish yet
         }
 
-        // Freeze the as-published snapshot: the corrected place payload when the
-        // user amended the extraction in review, else the resolver's original.
-        if (is_array($share->corrected_extraction_json)) {
-            $place = $share->corrected_extraction_json['place'] ?? null;
-            if (is_array($place)) {
-                $source->extraction_snapshot_json = $place;
-                $source->save();
+        // Freeze the as-published snapshot for a single-place share the user
+        // amended in review; a multi-place share keeps each source's resolver
+        // snapshot (per-place review corrections are applied at resolve time).
+        if ($sources->count() === 1 && is_array($share->corrected_extraction_json)) {
+            $corrected = $this->correctedPlace($share->corrected_extraction_json);
+            if ($corrected !== null) {
+                $sources->first()->extraction_snapshot_json = $corrected;
+                $sources->first()->save();
             }
         }
 
@@ -68,10 +71,33 @@ class PublishShare extends PipelineStubJob
             return;
         }
 
-        $share->published_place_source_id = $source->id;
-        $share->save();
+        $now = now();
+        foreach ($sources as $source) {
+            $source->published_at = $now;
+            $source->save();
+            $this->activateAndCount($source, $share);
+        }
 
-        $this->activateAndCount($source, $share);
+        // The primary source (or first) drives the map "jump to pin" affordance.
+        $primary = $sources->firstWhere('is_primary', true) ?? $sources->first();
+        $share->published_place_source_id = $primary->id;
+        $share->save();
+    }
+
+    /**
+     * The corrected place payload for a single-place share (places[] first entry,
+     * or the pre-v6 singular place).
+     *
+     * @param  array<string, mixed>  $corrected
+     * @return array<string, mixed>|null
+     */
+    private function correctedPlace(array $corrected): ?array
+    {
+        if (is_array($corrected['places'][0] ?? null)) {
+            return $corrected['places'][0];
+        }
+
+        return is_array($corrected['place'] ?? null) ? $corrected['place'] : null;
     }
 
     /**

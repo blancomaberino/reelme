@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Enums\ShareStatus;
 use App\Jobs\Pipeline;
+use App\Models\Place;
 use App\Models\Share;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -44,19 +45,59 @@ class ShareResource extends JsonResource
                 'extraction' => $run->result_json,
             ],
             'failure' => $this->failurePayload(),
+            // `place` = the primary published pin (back-compat single-place clients);
+            // `places` = EVERY published pin (a multi-place post resolves to several).
             'place' => $this->placePayload(),
+            'places' => $this->placesPayload(),
+            // How many extracted venues are still parked for review (partial publish).
+            'pending_place_count' => $this->pendingPlaceCount(),
         ];
     }
 
     /**
-     * The published place (with coordinates) so a client can drop/centre a pin
-     * without a separate map query. Null until the share publishes.
+     * The primary published place (with coordinates) so a client can drop/centre a
+     * pin without a separate map query. Null until the share publishes.
      *
      * @return array{id: string, name: string, lat: float, lng: float}|null
      */
     private function placePayload(): ?array
     {
-        $place = $this->publishedPlaceSource?->place;
+        return $this->placeCoords($this->publishedPlaceSource?->place);
+    }
+
+    /**
+     * Every published place for this share (a multi-place post fans out to N),
+     * primary first, deduped. Empty until the share publishes.
+     *
+     * @return list<array{id: string, name: string, lat: float, lng: float}>
+     */
+    private function placesPayload(): array
+    {
+        $primaryId = $this->published_place_source_id;
+
+        return $this->publishedPlaceSources
+            ->sortByDesc(fn ($source) => $source->id === $primaryId ? 1 : 0)
+            ->map(fn ($source) => $source->place)
+            ->filter()
+            ->unique('id')
+            ->map(fn ($place) => $this->placeCoords($place))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function pendingPlaceCount(): int
+    {
+        $pending = is_array($this->review_meta_json) ? ($this->review_meta_json['pending'] ?? null) : null;
+
+        return is_array($pending) ? count($pending) : 0;
+    }
+
+    /**
+     * @return array{id: string, name: string, lat: float, lng: float}|null
+     */
+    private function placeCoords(?Place $place): ?array
+    {
         if ($place === null) {
             return null;
         }

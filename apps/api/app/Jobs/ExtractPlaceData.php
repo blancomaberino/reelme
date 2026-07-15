@@ -193,10 +193,10 @@ class ExtractPlaceData extends PipelineStubJob
         $share->save();
 
         $result = $run->result_json ?? [];
-        $placeName = trim((string) ($result['place']['name'] ?? ''));
         $overall = $run->overall_confidence !== null ? (float) $run->overall_confidence : 0.0;
 
-        if ($placeName === '') {
+        // At least one identifiable venue (a multi-place post has several).
+        if (! $this->hasNamedPlace($result)) {
             $this->toReview($share, 'no_place_extracted');
 
             return;
@@ -220,6 +220,27 @@ class ExtractPlaceData extends PipelineStubJob
         $share->review_reason = $reason;
         $share->save();
         $share->transitionTo(ShareStatus::Review);
+    }
+
+    /**
+     * Whether the extraction produced at least one identifiable venue. Reads
+     * places[] (v6+); tolerates a pre-v6 singular place.
+     *
+     * @param  array<string, mixed>  $result
+     */
+    private function hasNamedPlace(array $result): bool
+    {
+        $places = is_array($result['places'] ?? null)
+            ? $result['places']
+            : (is_array($result['place'] ?? null) ? [$result['place']] : []);
+
+        foreach ($places as $place) {
+            if (is_array($place) && trim((string) ($place['name'] ?? '')) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

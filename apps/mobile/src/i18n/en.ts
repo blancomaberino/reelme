@@ -183,6 +183,8 @@ export const en = {
   'share.stage.fetching': 'Fetching the post',
   'share.stage.analyzing': 'Finding the place',
   'share.published.title': 'Pinned!',
+  'share.published.countLabel': 'places pinned',
+  'share.published.pendingLabel': 'more awaiting review',
   'share.review.title': 'Needs a quick review',
   'share.failed.title': 'Couldn’t pin this',
   'share.another': 'Share another',

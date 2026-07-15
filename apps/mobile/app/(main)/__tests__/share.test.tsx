@@ -28,6 +28,8 @@ function shareDetail(over: Partial<ShareDetail>): ShareDetail {
     analysis: null,
     failure: null,
     place: null,
+    places: [],
+    pending_place_count: 0,
     ...over,
   };
 }

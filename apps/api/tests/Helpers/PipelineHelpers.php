@@ -61,15 +61,16 @@ function analyzingShare(string $placeName = 'Lanzhou Beef Noodle House', float $
         'status' => AnalysisStatus::Succeeded,
         'overall_confidence' => $confidence,
         'result_json' => [
-            'place' => [
+            'places' => [[
                 'name' => $placeName,
+                'confidence' => $confidence,
                 'address' => ['street' => '45 Gerrard St', 'city' => 'London', 'region' => 'England', 'postal_code' => null, 'country' => 'GB'],
                 'geo' => null,
                 'cuisines' => ['chinese'],
                 'price_range' => 2,
                 'phone' => null,
                 'website' => null,
-            ],
+            ]],
             'post' => ['language' => 'en'],
             'confidence' => ['overall' => $confidence],
         ],
@@ -117,6 +118,7 @@ function publishedShare(Place $place, ?User $sharer = null, ?string $publishedAt
         'source_post_id' => $post->id,
         'share_id' => $share->id,
         'extraction_snapshot_json' => ['name' => $place->name],
+        'published_at' => $publishedAt ?? now(),
     ]);
     $share->published_place_source_id = $source->id;
     $share->save();

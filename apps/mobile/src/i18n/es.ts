@@ -183,6 +183,8 @@ export const es: Record<MessageKey, string> = {
   'share.stage.fetching': 'Obteniendo la publicación',
   'share.stage.analyzing': 'Buscando el lugar',
   'share.published.title': '¡Marcado!',
+  'share.published.countLabel': 'lugares marcados',
+  'share.published.pendingLabel': 'más para revisar',
   'share.review.title': 'Necesita una revisión',
   'share.failed.title': 'No se pudo marcar',
   'share.another': 'Compartir otro',

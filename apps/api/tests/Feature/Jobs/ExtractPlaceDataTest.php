@@ -110,9 +110,9 @@ it('routes a clean high-confidence local extraction onward to ResolvePlace', fun
     $run = $share->analysisRun;
     expect($run->engine)->toBe(AnalysisEngineEnum::Local)
         ->and($run->status)->toBe(AnalysisStatus::Succeeded)
-        ->and($run->prompt_version)->toBe('extraction.v5')
+        ->and($run->prompt_version)->toBe('extraction.v6')
         ->and((float) $run->overall_confidence)->toBe(0.91)
-        ->and($run->result_json['place']['name'])->toBe('Lanzhou Beef Noodle House');
+        ->and($run->result_json['places'][0]['name'])->toBe('Lanzhou Beef Noodle House');
 });
 
 it('tolerantly parses output wrapped in markdown fences and prose', function () {
@@ -165,7 +165,7 @@ it('falls back to OpenRouter after the local engine fails all repair attempts', 
         ->and($rows[0]->engine)->toBe(AnalysisEngineEnum::Local)
         ->and($rows[0]->status)->toBe(AnalysisStatus::Failed)
         ->and($rows[0]->error)->toStartWith('fallback:invalid_json')
-        ->and($rows[0]->prompt_version)->toBe('extraction.v5')
+        ->and($rows[0]->prompt_version)->toBe('extraction.v6')
         ->and($rows[1]->engine)->toBe(AnalysisEngineEnum::OpenRouter)
         ->and($rows[1]->status)->toBe(AnalysisStatus::Succeeded);
     expect($share->fresh()->status)->toBe(ShareStatus::Analyzing);
@@ -190,7 +190,7 @@ it('parks a low-confidence extraction in review', function () {
 it('parks a no-place extraction in review with no_place_extracted', function () {
     Http::fake([
         '*/api/tags' => Http::response(['models' => []]),
-        '*/api/chat' => Http::response(ollamaChat(extraction(['place.name' => null, 'confidence.overall' => 0.8]))),
+        '*/api/chat' => Http::response(ollamaChat(extraction(['places.0.name' => null, 'confidence.overall' => 0.8]))),
     ]);
     bindExtractionRouter(new FakeRemoteEngine);
     $share = analyzableShare();
@@ -246,7 +246,7 @@ it('salvages a low-confidence extraction to review when both engines stay under 
     $rows = AnalysisRun::orderBy('id')->get();
     expect($rows)->toHaveCount(2)
         ->and($rows->every(fn ($r) => $r->status === AnalysisStatus::Failed))->toBeTrue()
-        ->and($share->analysisRun->result_json['place']['name'])->toBe('Lanzhou Beef Noodle House');
+        ->and($share->analysisRun->result_json['places'][0]['name'])->toBe('Lanzhou Beef Noodle House');
 });
 
 it('fails fast (no retry rows) when the per-run cost cap is exceeded', function () {

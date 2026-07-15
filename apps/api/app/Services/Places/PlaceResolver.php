@@ -8,11 +8,13 @@ use App\Models\AnalysisRun;
 use App\Models\Place;
 use App\Models\PlaceSource;
 use App\Models\Share;
+use App\Services\Geo\Exceptions\GeocodeFailed;
 use App\Services\Geo\Geocoder;
 use App\Services\Geo\GeocodeResult;
 use App\Services\Geo\GeoHints;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The dedup decision tree (04 §6), pure and injectable. Given a share's winning
@@ -24,33 +26,88 @@ class PlaceResolver
 {
     public function __construct(private readonly Geocoder $geocoder) {}
 
+    /**
+     * Resolve a single extracted place — the first of the post's places[].
+     * Back-compat entry point for callers/tests that expect one outcome.
+     */
     public function resolve(Share $share): ResolutionOutcome
+    {
+        $all = $this->resolveAll($share);
+
+        return $all[0]['outcome'] ?? ResolutionOutcome::geocodeFailed();
+    }
+
+    /**
+     * Resolve EVERY extracted place (a multi-place post reviews several venues),
+     * one outcome per place, in source order. Each place is resolved and attached
+     * independently so a miss on one never blocks the others (partial publish).
+     *
+     * @return list<array{index: int, name: string, outcome: ResolutionOutcome}>
+     */
+    public function resolveAll(Share $share): array
     {
         $run = $this->winningRun($share);
         $result = $this->payload($share, $run);
-        $place = is_array($result['place'] ?? null) ? $result['place'] : [];
-        // Stash the detected post language into the snapshot so clients can label
-        // the menu's language (dishes are kept verbatim in the source language).
-        if (isset($result['post']['language']) && is_string($result['post']['language'])) {
-            $place['language'] = $result['post']['language'];
-        }
-        $name = trim((string) ($place['name'] ?? ''));
+        $places = $this->extractedPlaces($result);
+        // The detected post language is post-level; stash it onto each place so
+        // clients can label the menu language (dishes stay verbatim).
+        $language = is_string($result['post']['language'] ?? null) ? $result['post']['language'] : null;
+        // Review picker: a reviewer chose an existing place (validated at PATCH
+        // time). It targets a single-place re-resolve, so only apply it when there
+        // is exactly one place to resolve.
+        $pickedId = count($places) === 1 ? $this->pickedPlaceId($share) : null;
 
+        $out = [];
+        $attachedAny = false;
+        foreach ($places as $index => $place) {
+            if ($language !== null) {
+                $place['language'] = $language;
+            }
+            $name = trim((string) ($place['name'] ?? ''));
+
+            try {
+                $outcome = $this->resolveOne($share, $run, $place, $name, $pickedId);
+            } catch (GeocodeFailed $e) {
+                // A transient provider error. If nothing has attached yet, let it
+                // propagate so the job retries (preserves single-place retry
+                // semantics). Once a sibling has attached, a retry would re-resolve
+                // it — so contain the error as a per-place miss (parked for review)
+                // rather than dropping the already-resolved places.
+                if (! $attachedAny) {
+                    throw $e;
+                }
+                Log::warning('resolve.geocode_error', ['share_id' => $share->id, 'name' => $name, 'error' => $e->getMessage()]);
+                $outcome = ResolutionOutcome::geocodeFailed();
+            }
+
+            if (in_array($outcome->type, [ResolutionOutcome::ATTACHED, ResolutionOutcome::CREATED], true)) {
+                $attachedAny = true;
+            }
+            $out[] = ['index' => $index, 'name' => $name, 'outcome' => $outcome];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $place
+     */
+    private function resolveOne(Share $share, ?AnalysisRun $run, array $place, string $name, ?int $pickedId): ResolutionOutcome
+    {
         if ($name === '') {
             return ResolutionOutcome::geocodeFailed();
         }
 
-        // Review picker: the user chose one of the offered candidate places (by id,
-        // validated at PATCH time) — attach straight to it, short-circuiting geocode.
-        if (($picked = $this->pickedPlace($share)) !== null) {
+        // Review picker: attach straight to the chosen place, short-circuiting geocode.
+        if ($pickedId !== null && ($picked = $this->pickedPlace($pickedId)) !== null) {
             $target = $this->terminal($picked);
 
             return ResolutionOutcome::attached($target, $this->attach($target, $share, $run, $place));
         }
 
-        // A transient provider error throws GeocodeFailed here — let it propagate
-        // so the job retries; a null/low-score result is a legitimate miss.
-        $geo = $this->geocoder->findPlace($name, $this->hints($result));
+        // A transient provider error throws GeocodeFailed; resolveAll() decides
+        // whether to propagate it (retry) or contain it (a later place in a batch).
+        $geo = $this->geocoder->findPlace($name, $this->hints($place));
 
         $minScore = (float) config('places.geocode.min_score', 0.5);
         if ($geo === null || $geo->score < $minScore) {
@@ -61,6 +118,22 @@ class PlaceResolver
 
         return Cache::lock($lockKey, (int) config('places.lock_seconds', 30))
             ->block(5, fn () => $this->resolveLocked($share, $run, $place, $geo, $name));
+    }
+
+    /**
+     * The extracted place objects to resolve. Reads places[] (v6+); falls back to
+     * a single place object for any pre-v6 payload still in flight.
+     *
+     * @param  array<string, mixed>  $result
+     * @return list<array<string, mixed>>
+     */
+    private function extractedPlaces(array $result): array
+    {
+        if (is_array($result['places'] ?? null)) {
+            return array_values(array_filter($result['places'], 'is_array'));
+        }
+
+        return is_array($result['place'] ?? null) ? [$result['place']] : [];
     }
 
     /**
@@ -264,10 +337,10 @@ class PlaceResolver
 
     /**
      * Attach a share's extraction to a place as a (idempotent) place_source.
-     * firstOrCreate keys on (place_id, share_id); the table also has a global
-     * unique(share_id), so this only stays exception-free because
-     * ResolvePlace::run() early-returns when the share already has a source —
-     * a share never resolves to two different places.
+     * firstOrCreate keys on (place_id, share_id) — the surviving unique index —
+     * so a place repeated across the post's places[] collapses to one source and
+     * a re-resolve never duplicates. A share MAY now attach to several places.
+     * Sources start unpublished (published_at null); PublishShare marks them live.
      *
      * @param  array<string, mixed>  $extractedPlace
      */
@@ -315,15 +388,15 @@ class PlaceResolver
      * (`review_meta_json.picked_place_id`, already constrained to the offered set
      * by the controller), or null when none was chosen.
      */
-    private function pickedPlace(Share $share): ?Place
+    private function pickedPlaceId(Share $share): ?int
     {
         $meta = is_array($share->review_meta_json) ? $share->review_meta_json : [];
-        $pickedId = is_numeric($meta['picked_place_id'] ?? null) ? (int) $meta['picked_place_id'] : null;
 
-        if ($pickedId === null) {
-            return null;
-        }
+        return is_numeric($meta['picked_place_id'] ?? null) ? (int) $meta['picked_place_id'] : null;
+    }
 
+    private function pickedPlace(int $pickedId): ?Place
+    {
         return Place::query()
             ->whereKey($pickedId)
             ->whereIn('status', PlaceStatus::matchable())
@@ -343,12 +416,12 @@ class PlaceResolver
     }
 
     /**
-     * @param  array<string, mixed>  $result
+     * @param  array<string, mixed>  $place  a single extracted place (with `language` stashed in)
      */
-    private function hints(array $result): GeoHints
+    private function hints(array $place): GeoHints
     {
-        $address = is_array($result['place']['address'] ?? null) ? $result['place']['address'] : [];
-        $geo = is_array($result['place']['geo'] ?? null) ? $result['place']['geo'] : [];
+        $address = is_array($place['address'] ?? null) ? $place['address'] : [];
+        $geo = is_array($place['geo'] ?? null) ? $place['geo'] : [];
 
         return new GeoHints(
             street: $address['street'] ?? null,
@@ -358,7 +431,7 @@ class PlaceResolver
             country: $address['country'] ?? null,
             lat: isset($geo['lat']) ? (float) $geo['lat'] : null,
             lng: isset($geo['lng']) ? (float) $geo['lng'] : null,
-            language: $result['post']['language'] ?? null,
+            language: is_string($place['language'] ?? null) ? $place['language'] : null,
         );
     }
 

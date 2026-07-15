@@ -4,15 +4,21 @@
   "title": "ReelmapExtraction",
   "type": "object",
   "additionalProperties": false,
-  "required": ["place", "influencer", "post", "evidence", "confidence"],
+  "required": ["places", "influencer", "post", "evidence", "confidence"],
   "properties": {
-    "place": {
+    "places": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "EVERY distinct venue reviewed in the post, one entry each. A single-venue post has exactly one entry; a roundup (e.g. \"the 5 best cafés\") has one entry per venue. NEVER merge two venues into one entry, and NEVER split one venue into several.",
+      "items": {
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "category", "cuisines", "address", "geo", "price_range",
-                   "phone", "website", "opening_hours_text", "dishes", "vibe_tags", "dietary_tags"],
+                   "phone", "website", "opening_hours_text", "dishes", "vibe_tags", "dietary_tags", "confidence"],
       "properties": {
         "name": { "type": ["string", "null"], "description": "Restaurant/venue name exactly as stated in the source. null if not identifiable." },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "Confidence 0-1 that THIS venue is correctly identified from the source. Drives per-place auto-publish vs. review." },
         "category": {
           "type": ["string", "null"],
           "enum": ["restaurant", "cafe", "bar", "bakery", "street_food", "food_truck",
@@ -62,6 +68,7 @@
         "vibe_tags":    { "type": "array", "maxItems": 12, "items": { "type": "string", "enum": ["cozy", "romantic", "lively", "quiet", "casual", "upscale", "trendy", "minimalist", "rustic", "family friendly", "outdoor seating", "rooftop", "great view", "good for groups", "date night", "counter seating", "pet friendly", "live music", "brunch spot", "late night", "quick eats", "hidden gem", "spacious"] }, "description": "Ambiance/occasion — pick ONLY values from the fixed enum (map a stated quality to its closest match; OMIT anything that doesn't clearly fit). A caption praising the lighting, décor, or acoustics is NOT a tag." },
         "dietary_tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "enum": ["vegan", "vegan options", "vegetarian", "vegetarian options", "gluten-free", "dairy-free", "halal", "kosher", "organic", "plant-based"] }, "description": "ONLY values from the fixed enum, and only when stated or clearly shown." }
       }
+      }
     },
     "influencer": {
       "type": "object",
@@ -101,7 +108,7 @@
         "overall": { "type": "number", "minimum": 0, "maximum": 1 },
         "per_field": {
           "type": "object",
-          "description": "Map of dotted field path (e.g. \"place.name\", \"place.address.city\") to confidence 0-1.",
+          "description": "Map of dotted field path (e.g. \"places[0].name\", \"places[0].address.city\") to confidence 0-1.",
           "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
         }
       }

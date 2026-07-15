@@ -44,14 +44,51 @@ class ResolvePlace extends PipelineStubJob
             return; // already resolved — let the chain continue to PublishShare
         }
 
-        $outcome = app(PlaceResolver::class)->resolve($share);
+        // Resolve every extracted place. Attached/created ones become (unpublished)
+        // place_sources; the rest are recorded as pending review candidates.
+        $results = app(PlaceResolver::class)->resolveAll($share);
 
-        match ($outcome->type) {
-            ResolutionOutcome::ATTACHED, ResolutionOutcome::CREATED => null, // stay analyzing → PublishShare
-            ResolutionOutcome::AMBIGUOUS => $this->toReview($share, 'ambiguous_place', ['candidates' => $outcome->candidates]),
-            ResolutionOutcome::HIDDEN_MATCH => $this->toReview($share, 'place_hidden', null),
-            default => $this->toReview($share, 'geocode_failed', null), // GEOCODE_FAILED
-        };
+        $resolvedCount = 0;
+        $pending = [];
+        foreach ($results as $r) {
+            /** @var ResolutionOutcome $outcome */
+            $outcome = $r['outcome'];
+            if (in_array($outcome->type, [ResolutionOutcome::ATTACHED, ResolutionOutcome::CREATED], true)) {
+                $resolvedCount++;
+
+                continue;
+            }
+            $pending[] = [
+                'index' => $r['index'],
+                'name' => $r['name'],
+                'reason' => match ($outcome->type) {
+                    ResolutionOutcome::AMBIGUOUS => 'ambiguous_place',
+                    ResolutionOutcome::HIDDEN_MATCH => 'place_hidden',
+                    default => 'geocode_failed',
+                },
+                'candidates' => $outcome->candidates,
+            ];
+        }
+
+        // Nothing resolved → park the whole share for review (single-place picker
+        // shape preserved for the one-place case so the existing review UI works).
+        if ($resolvedCount === 0) {
+            $first = $pending[0] ?? ['reason' => 'geocode_failed', 'candidates' => []];
+            $meta = ['pending' => $pending];
+            if ($first['reason'] === 'ambiguous_place') {
+                $meta['candidates'] = $first['candidates']; // back-compat single-place picker
+            }
+            $this->toReview($share, $first['reason'], $meta);
+
+            return;
+        }
+
+        // At least one place resolved → continue the chain to PublishShare. Record
+        // any unresolved places so the review UI can surface them WITHOUT blocking
+        // the ones that published (partial publish).
+        $share->review_meta_json = $pending !== [] ? ['pending' => $pending] : null;
+        $share->review_reason = null;
+        $share->save();
     }
 
     /**
