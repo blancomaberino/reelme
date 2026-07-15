@@ -9,6 +9,7 @@ import { useShares } from '@/api/hooks/useShares';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
 import { isTerminal, type ShareDetail, type ShareStatus } from '@/api/shares';
 import { Button } from '@/components/button';
+import { PendingVenues } from '@/components/share/pending-venues';
 import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
 import { fonts, type Palette, useColors } from '@/theme/colors';
@@ -242,11 +243,9 @@ function ShareProgress({
             </View>
           </>
         )}
-        {pending > 0 && (
-          <Text style={styles.resultBody}>
-            {pending} {t('share.published.pendingLabel')}
-          </Text>
-        )}
+        {pending > 0 && share ? (
+          <PendingVenues shareId={share.id} venues={share.pending_places ?? []} />
+        ) : null}
         <Pressable accessibilityRole="button" onPress={onReset} hitSlop={8}>
           <Text style={styles.link}>{t('share.another')}</Text>
         </Pressable>

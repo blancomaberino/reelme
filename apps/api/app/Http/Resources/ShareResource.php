@@ -51,7 +51,37 @@ class ShareResource extends JsonResource
             'places' => $this->placesPayload(),
             // How many extracted venues are still parked for review (partial publish).
             'pending_place_count' => $this->pendingPlaceCount(),
+            // The pending venues themselves (name + resolvable candidates) so the
+            // owner can resolve/dismiss each one (T-071). Owner-only surface.
+            'pending_places' => $this->pendingPlacesPayload(),
         ];
+    }
+
+    /**
+     * The still-unresolved venues on a (partially-)published multi-place share
+     * (T-071), each with the candidate places the owner can attach it to.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function pendingPlacesPayload(): array
+    {
+        $pending = is_array($this->review_meta_json) ? ($this->review_meta_json['pending'] ?? null) : null;
+        if (! is_array($pending)) {
+            return [];
+        }
+
+        return array_values(array_map(fn (array $entry): array => [
+            'index' => (int) ($entry['index'] ?? 0),
+            'name' => $entry['name'] ?? null,
+            'reason' => $entry['reason'] ?? null,
+            'candidates' => array_values(array_map(fn ($c): array => [
+                'place_id' => (string) ($c['place_id'] ?? ''),
+                'name' => $c['name'] ?? null,
+                'address' => $c['address'] ?? null,
+                'distance_m' => isset($c['distance_m']) ? (float) $c['distance_m'] : null,
+                'similarity' => isset($c['similarity']) ? (float) $c['similarity'] : null,
+            ], is_array($entry['candidates'] ?? null) ? array_filter($entry['candidates'], 'is_array') : [])),
+        ], array_filter($pending, 'is_array')));
     }
 
     /**

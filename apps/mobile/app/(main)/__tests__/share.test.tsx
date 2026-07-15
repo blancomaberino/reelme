@@ -30,6 +30,7 @@ function shareDetail(over: Partial<ShareDetail>): ShareDetail {
     place: null,
     places: [],
     pending_place_count: 0,
+    pending_places: [],
     ...over,
   };
 }

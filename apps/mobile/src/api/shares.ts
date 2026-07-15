@@ -60,6 +60,25 @@ export type ShareDetail = {
   places: SharePlace[];
   /** Extracted venues still parked for review (partial publish). */
   pending_place_count: number;
+  /** The pending venues themselves — resolve (pick a candidate) or dismiss each (T-071). */
+  pending_places: PendingVenue[];
+};
+
+/** A candidate place a pending venue can be attached to. */
+export type PendingCandidate = {
+  place_id: string;
+  name: string | null;
+  address: string | null;
+  distance_m: number | null;
+  similarity: number | null;
+};
+
+/** An extracted venue that couldn't be auto-placed (T-071). */
+export type PendingVenue = {
+  index: number;
+  name: string | null;
+  reason: string | null;
+  candidates: PendingCandidate[];
 };
 
 /** What the composer collects — a pasted link and/or a free-text caption. */
