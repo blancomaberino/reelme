@@ -7,7 +7,6 @@ export const es: Record<MessageKey, string> = {
   'common.cancel': 'Cancelar',
 
   'tabs.map': 'Mapa',
-  'tabs.feed': 'Feed',
   'tabs.myPlaces': 'Mis lugares',
   'tabs.share': 'Compartir',
   'tabs.profile': 'Perfil',
@@ -29,16 +28,8 @@ export const es: Record<MessageKey, string> = {
   'myPlaces.guest.cta': 'Iniciar sesión',
   'myPlaces.error.title': 'No pudimos cargar tus lugares',
 
-  'feed.title': 'Feed',
+  // Compartidas por FeedCard (sigue usándose en perfiles) + los buscadores.
   'feed.search': 'Buscar',
-  'feed.empty.title': 'Todavía no hay nada',
-  'feed.empty.body': 'Compartí tu primer reel para verlo en el feed.',
-  'feed.error.title': 'No se pudo cargar el feed',
-  'feed.hide': 'Ocultar de mi feed',
-  'feed.hideConfirm.title': '¿Ocultar de tu feed?',
-  'feed.hideConfirm.message': '«{{name}}» no aparecerá en tu feed. Podés deshacerlo enseguida.',
-  'feed.hidden': 'Ocultado de tu feed',
-  'feed.undo': 'Deshacer',
   'feed.sharerFallback': 'un usuario de Reelmap',
 
   'place.back': 'Volver',
@@ -86,9 +77,6 @@ export const es: Record<MessageKey, string> = {
 
   'source.openOriginal': 'Abrir publicación original de {{platform}}',
   'source.firstShared': 'Compartido primero',
-
-  'filter.following': 'Siguiendo',
-  'filter.mine': 'Míos',
 
   'search.placeholder': 'Buscar lugares, etiquetas…',
   'search.cancel': 'Cancelar',

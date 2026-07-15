@@ -6,8 +6,14 @@ use App\Enums\ShareStatus;
 use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceListingRequest;
+use App\Models\FeedDismissal;
 use App\Models\Place;
+use App\Models\PlaceListItem;
+use App\Models\Share;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The personal "my places" list (T-071, ADR-071) — `GET /me/places`. The
@@ -28,10 +34,9 @@ class MePlacesController extends Controller
             Place::query()->publiclyVisible()->mine($user),
             $request,
             // Per-row provenance so the client knows how each place is "mine"
-            // and which remove action to offer (dismiss my share vs un-save).
+            // and whether to show a "saved" marker.
             [
-                // My live (published, not soft-hidden) share to this place, if any
-                // — the id the "remove from my map" action soft-hides.
+                // My live (published, not soft-hidden) share to this place, if any.
                 [
                     '(select ps.share_id from place_sources ps '
                     .'join shares s on s.id = ps.share_id '
@@ -49,5 +54,36 @@ class MePlacesController extends Controller
                 ],
             ],
         );
+    }
+
+    /**
+     * Remove a place from my personal collection (T-071) — the write side of the
+     * "remove from my map" action. Idempotent and transactional: it soft-hides
+     * EVERY published share of mine that resolves to the place (so a place I
+     * shared more than once fully drops, not just the latest), and un-saves it
+     * from all my lists. A place I have no connection to is a no-op (204).
+     */
+    public function destroy(Request $request, Place $place): Response
+    {
+        $user = $request->user();
+
+        DB::transaction(function () use ($user, $place): void {
+            $shareIds = Share::query()
+                ->where('user_id', $user->id)
+                ->where('status', ShareStatus::Published)
+                ->whereHas('placeSources', fn ($q) => $q->where('place_id', $place->id))
+                ->pluck('id');
+
+            foreach ($shareIds as $shareId) {
+                FeedDismissal::firstOrCreate(['user_id' => $user->id, 'share_id' => $shareId]);
+            }
+
+            PlaceListItem::query()
+                ->where('place_id', $place->id)
+                ->whereHas('list', fn ($q) => $q->where('user_id', $user->id))
+                ->delete();
+        });
+
+        return response()->noContent();
     }
 }

@@ -2,8 +2,10 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { MapData } from '@/api/hooks/useMapPlaces';
+import type { MapFilters } from '@/api/keys';
 import type { MapPin } from '@/api/places';
 import { useMapStore } from '@/stores/map';
+import { useSessionStore } from '@/stores/session';
 
 import MapScreen from '../map';
 
@@ -11,19 +13,26 @@ import { mockRouter } from '../../../jest.setup';
 
 // --- Mocks: feed the screen fixture data, and count PlaceMarker renders. ---
 const mapData: { current: MapData } = { current: { pins: [], clusters: [], truncated: false } };
+// Captures the (derived) filters the screen hands the fetch — for the T-071
+// personal-scope derivation tests. `mock`-prefixed so jest allows it in the
+// hoisted factory.
+const mockFiltersSeen: { current: MapFilters | undefined } = { current: undefined };
 // Return fresh array references each render, as react-query does with
 // keepPreviousData — so tests exercise the marker-memoization invariant under
 // real reference churn (the handlers must stay stable across "refetches").
 jest.mock('@/api/hooks/useMapPlaces', () => ({
-  useMapPlaces: () => ({
-    data: {
-      pins: [...mapData.current.pins],
-      clusters: [...mapData.current.clusters],
-      truncated: mapData.current.truncated,
-    },
-    isFetching: false,
-    isSuccess: true,
-  }),
+  useMapPlaces: (_region: unknown, filters: MapFilters) => {
+    mockFiltersSeen.current = filters;
+    return {
+      data: {
+        pins: [...mapData.current.pins],
+        clusters: [...mapData.current.clusters],
+        truncated: mapData.current.truncated,
+      },
+      isFetching: false,
+      isSuccess: true,
+    };
+  },
 }));
 jest.mock('@/api/hooks/useTags', () => ({ usePopularTags: () => ({ data: [] }) }));
 // The quick-share popup drives its own react-query hooks (create + poll) that
@@ -86,10 +95,34 @@ function pin(id: string, over: Partial<MapPin> = {}): MapPin {
 
 beforeEach(() => {
   markerRenders.length = 0;
+  mockFiltersSeen.current = undefined;
   mapData.current = { pins: [pin('1'), pin('2'), pin('3')], clusters: [], truncated: false };
-  useMapStore.setState({ selected: null, filters: { cuisine: null, price_range: null, tags: [] } });
+  useMapStore.setState({ selected: null, filters: { cuisine: null, price_range: null, tags: [], list: null, filter: null } });
+  useSessionStore.setState({ user: null, status: 'guest' });
   mockRouter.push.mockClear();
   mockRouter.params = {};
+});
+
+// T-071: the home map is the viewer's OWN places — authed → filter=mine, guests
+// browse the public map, and an active saved list overrides the personal scope.
+it('scopes the map to filter=mine for an authed viewer', () => {
+  useSessionStore.setState({ user: null, status: 'authed' });
+  render(<MapScreen />);
+  expect(mockFiltersSeen.current?.filter).toBe('mine');
+});
+
+it('sends no scope for a guest (the public map, no 401)', () => {
+  useSessionStore.setState({ user: null, status: 'guest' });
+  render(<MapScreen />);
+  expect(mockFiltersSeen.current?.filter).toBeNull();
+});
+
+it('drops the personal scope while a saved list is the active view', () => {
+  useSessionStore.setState({ user: null, status: 'authed' });
+  useMapStore.getState().setList({ id: '7', name: 'Trip' });
+  render(<MapScreen />);
+  expect(mockFiltersSeen.current?.filter).toBeNull();
+  expect(mockFiltersSeen.current?.list?.id).toBe('7');
 });
 
 it('renders a marker per pin', () => {

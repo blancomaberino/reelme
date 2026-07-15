@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
@@ -58,7 +59,7 @@ export function MyPlacesFilters({ places, filters, onChange }: Props) {
       <Chip
         label={sort === 'popular' ? t('myPlaces.sort.popular') : t('myPlaces.sort.recent')}
         active
-        leading="swap-vertical"
+        icon="swap-vertical"
         styles={styles}
         onPress={() => onChange({ sort: sort === 'popular' ? 'recent' : 'popular' })}
       />
@@ -105,16 +106,17 @@ export function MyPlacesFilters({ places, filters, onChange }: Props) {
 function Chip({
   label,
   active,
-  leading,
+  icon,
   onPress,
   styles,
 }: {
   label: string;
   active: boolean;
-  leading?: 'swap-vertical';
+  icon?: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
   styles: Styles;
 }) {
+  const c = useColors();
   return (
     <Pressable
       accessibilityRole="button"
@@ -123,7 +125,8 @@ function Chip({
       onPress={onPress}
       style={[styles.chip, active && styles.chipActive]}
     >
-      <Text style={[styles.label, active && styles.labelActive]}>{leading === 'swap-vertical' ? '↕ ' : ''}{label}</Text>
+      {icon ? <Ionicons name={icon} size={13} color={active ? c.onPrimary : c.text} /> : null}
+      <Text style={[styles.label, active && styles.labelActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -134,6 +137,9 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     row: { gap: 8, paddingHorizontal: 16, paddingBottom: 10, alignItems: 'center' },
     chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 999,

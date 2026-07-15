@@ -1,10 +1,10 @@
 import { type InfiniteData, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '../client';
+import { queryKeys } from '../keys';
 import type { Paginated, PlaceSummary } from '../places';
 
-type Page = Paginated<PlaceSummary>;
-type Data = InfiniteData<Page>;
+type Data = InfiniteData<Paginated<PlaceSummary>>;
 
 /** Drop a place from every cached my-places page (optimistic remove). */
 function removePlace(data: Data | undefined, placeId: string): Data | undefined {
@@ -14,29 +14,17 @@ function removePlace(data: Data | undefined, placeId: string): Data | undefined 
 
 /**
  * "Remove from my map" (T-071): take a place out of my personal collection.
- * A place can be mine two ways, so removal undoes both — it soft-hides my live
- * share (`mine.share_id`, reusing the map-aware feed_dismissals) AND un-saves it
- * from every one of my lists (`mine.saved`). Optimistically strips it from the
- * my-places cache and invalidates the map so its pin drops; rolls back on error.
+ * The server (DELETE /me/places/{id}) does the work transactionally — soft-hide
+ * all my shares to the place AND un-save it from every list — so a place that's
+ * mine two ways drops in one call. Optimistically strips it from the my-places
+ * cache and invalidates the map so its pin drops; rolls back on error.
  */
 export function useRemoveFromMap() {
   const qc = useQueryClient();
-  const key = ['me', 'places'] as const;
+  const key = queryKeys.myPlacesAll();
 
   return useMutation({
-    mutationFn: async (place: PlaceSummary) => {
-      const mine = place.mine;
-      if (mine?.share_id) {
-        await api.post('/feed/hidden', { share_id: Number(mine.share_id) });
-      }
-      if (mine?.saved) {
-        const { data } = await api.get<{ data: { id: string; contains?: boolean }[] }>('/me/lists', {
-          params: { contains: Number(place.id) },
-        });
-        const containing = data.data.filter((l) => l.contains);
-        await Promise.all(containing.map((l) => api.delete(`/me/lists/${l.id}/places/${place.id}`)));
-      }
-    },
+    mutationFn: (place: PlaceSummary) => api.delete(`/me/places/${encodeURIComponent(place.id)}`),
     onMutate: async (place) => {
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueriesData<Data>({ queryKey: key });
@@ -48,7 +36,7 @@ export function useRemoveFromMap() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: key });
-      qc.invalidateQueries({ queryKey: ['places', 'map'] });
+      qc.invalidateQueries({ queryKey: queryKeys.mapAll() });
     },
   });
 }

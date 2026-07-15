@@ -7,7 +7,6 @@ export type MyPlacesFilters = {
   /** cuisine_primary ("type"), or null for all. */
   type?: string | null;
   tags?: string[];
-  q?: string;
   sort?: 'recent' | 'popular';
 };
 
@@ -32,6 +31,10 @@ export const queryKeys = {
   feed: (scope: string) => ['feed', scope] as const,
   /** The personal "my places" list (T-071), keyed by its active facet filters. */
   myPlaces: (filters: MyPlacesFilters) => ['me', 'places', filters] as const,
+  /** Prefix covering every my-places facet variant — for invalidation. */
+  myPlacesAll: () => ['me', 'places'] as const,
+  /** Prefix covering every map viewport/filter entry — for invalidation. */
+  mapAll: () => ['places', 'map'] as const,
   search: (q: string, types: string) => ['search', q, types] as const,
   tagsPopular: () => ['tags', 'popular'] as const,
   placesByTag: (slug: string) => ['places', 'tag', slug] as const,
