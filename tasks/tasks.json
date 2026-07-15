@@ -1758,6 +1758,39 @@
       ],
       "agent": "executor",
       "notes": "Requested 2026-07-14. Reuses T-066 Mailpit + notifications queue."
+    },
+    {
+      "id": "T-070",
+      "title": "Identifiable map markers: photo bubbles + zoom-aware dots",
+      "phase": "M2",
+      "status": "done",
+      "depends_on": [
+        "T-029",
+        "T-032",
+        "T-013"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Services/Map/MapViewport.php",
+        "apps/mobile/src/components/map/pin-glyph.tsx",
+        "apps/mobile/src/components/map/place-marker.tsx",
+        "apps/mobile/app/(main)/map.tsx",
+        "apps/mobile/src/api/places.ts",
+        "apps/api/public/demo.html"
+      ],
+      "spec_refs": [
+        "03-api-design.md#map",
+        "05-mobile-app.md"
+      ],
+      "acceptance": [
+        "API: map pin exposes thumbnail_url (primary reel poster via ResolvesThumbnail; null when no imagery); eager-loads primarySource.sourcePost.mediaAssets",
+        "Mobile: Google-style photo bubble + place name when zoomed in; price-teardrop fallback with no poster; dot when zoomed out (below DETAIL_BAND)",
+        "Marker holds its real position across zoom (explicit per-state anchor + remount); tracksViewChanges until the poster settles (no blank-frame freeze)",
+        "Web demo (Leaflet) pins at parity",
+        "Tests: MapPlacesTest thumbnail_url exposure + null; place-marker.test.tsx photo/dot/teardrop states, tracking, anchors, transitions"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-14; shipped 2026-07-15 (PR #81). M2 discovery-surface polish; reuses the ResolvesThumbnail trait and existing clustering."
     }
   ]
 }

@@ -72,6 +72,9 @@ criteria above — sequence them after the core social work as capacity allows.
 - **T-065 Place-detail enrichments** (M2 surface) — opening-hours display (+ port to web
   demo) and a "View on Google Maps" link when `google_place_id` exists. The
   "last-updated menu prices" line is already shipped (PRs #53/#54); this task just keeps it.
+- **T-070 Identifiable map markers** (M2 surface, requested 2026-07-14) — Google-style photo
+  bubbles (primary reel poster via `thumbnail_url`) + place name on the pin, collapsing to a
+  dot when zoomed out; price-teardrop fallback when a place has no imagery. Web demo at parity.
 
 ## M4 — Monetization
 
