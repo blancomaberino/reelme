@@ -21,6 +21,15 @@
     "city": { "type": ["string", "null"] },
     "country_code": { "type": "string" },
     "thumbnail_url": { "type": ["string", "null"] },
+    "mine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["share_id", "saved"],
+      "properties": {
+        "share_id": { "type": ["string", "null"] },
+        "saved": { "type": "boolean" }
+      }
+    },
     "source_count": { "type": "integer", "minimum": 0 },
     "rating": {
       "type": "object",

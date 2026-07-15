@@ -79,6 +79,49 @@ it('filters by country, type, and tag facets', function () {
     expect($byTag)->toContain('Lisbon spot')->not->toContain('Madrid spot');
 });
 
+it('carries per-row `mine` provenance (share_id when shared, saved flag)', function () {
+    $me = User::factory()->create();
+    $sharedOnly = myPlace('SharedOnly');
+    $savedOnly = myPlace('SavedOnly');
+
+    $share = publishedShare($sharedOnly, sharer: $me);
+
+    $list = PlaceList::factory()->for($me)->create();
+    $list->items()->create(['place_id' => $savedOnly->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $rows = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->keyBy('name');
+
+    expect($rows['SharedOnly']['mine'])->toBe(['share_id' => (string) $share->id, 'saved' => false]);
+    expect($rows['SavedOnly']['mine'])->toBe(['share_id' => null, 'saved' => true]);
+});
+
+it('reports a place shared-and-saved with both a share_id and saved=true', function () {
+    $me = User::factory()->create();
+    $both = myPlace('Both');
+    $share = publishedShare($both, sharer: $me);
+    $list = PlaceList::factory()->for($me)->create();
+    $list->items()->create(['place_id' => $both->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $row = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->firstWhere('name', 'Both');
+    expect($row['mine'])->toBe(['share_id' => (string) $share->id, 'saved' => true]);
+});
+
+it('omits share_id in `mine` once my share is soft-hidden but I still saved it', function () {
+    $me = User::factory()->create();
+    $p = myPlace('Kept');
+    $share = publishedShare($p, sharer: $me);
+    FeedDismissal::create(['user_id' => $me->id, 'share_id' => $share->id]);
+    $list = PlaceList::factory()->for($me)->create();
+    $list->items()->create(['place_id' => $p->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $row = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->firstWhere('name', 'Kept');
+    // Present via the save; the dismissed share is no longer offered for removal.
+    expect($row['mine'])->toBe(['share_id' => null, 'saved' => true]);
+});
+
 it('rows validate against the place-summary contract and carry a thumbnail_url key', function () {
     $me = User::factory()->create();
     $p = myPlace('Card');

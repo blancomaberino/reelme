@@ -28,7 +28,7 @@ export type SharerSummary = {
 
 export type SocialPlatform = 'instagram' | 'x' | 'tiktok' | 'youtube';
 
-/** One row of GET /places, /search places, and feed `place` (PlaceSummaryResource). */
+/** One row of GET /places, /search places, /me/places, and feed `place` (PlaceSummaryResource). */
 export type PlaceSummary = {
   id: string;
   name: string;
@@ -40,6 +40,14 @@ export type PlaceSummary = {
   price_range: number | null;
   city: string | null;
   country_code: string;
+  /** Primary reel poster — present on the my-places / per-user lists (T-071). */
+  thumbnail_url?: string | null;
+  /**
+   * Viewer-relative provenance, present only on GET /me/places (T-071): how the
+   * place is "mine". `share_id` is my live share to soft-hide; `saved` whether
+   * it sits in one of my lists. Drives the "remove from my map" action.
+   */
+  mine?: { share_id: string | null; saved: boolean };
   source_count: number;
   rating: { google: RatingBlock };
   distance_m: number | null;
