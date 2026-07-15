@@ -22,8 +22,11 @@ trait PaginatesPlaces
 {
     /**
      * @param  Builder<Place>  $base  the ownership-scoped, publicly-visible query
+     * @param  list<array{0: string, 1: list<mixed>}>  $rawSelects  extra `[expr, bindings]`
+     *                                                              columns a caller adds (e.g. /me/places' per-row `mine` provenance);
+     *                                                              select bindings sort before the WHERE, so order is irrelevant
      */
-    protected function placeListResponse(Builder $base, PlaceListingRequest $request): JsonResponse
+    protected function placeListResponse(Builder $base, PlaceListingRequest $request, array $rawSelects = []): JsonResponse
     {
         $sort = $request->sort();
         $limit = $request->limit();
@@ -36,6 +39,10 @@ trait PaginatesPlaces
             // so constrain the load — a post can carry dozens of keyframe assets
             // (T-013 carousels) that would otherwise be hydrated for nothing.
             ->with(['primarySource.sourcePost.mediaAssets' => fn ($q) => $q->where('kind', MediaKind::Thumbnail)]);
+
+        foreach ($rawSelects as [$expr, $bindings]) {
+            $query->selectRaw($expr, $bindings);
+        }
 
         if (($country = $request->validated('country')) !== null) {
             $query->where('places.country_code', $country);

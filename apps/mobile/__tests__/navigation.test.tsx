@@ -41,7 +41,7 @@ describe('navigation wiring', () => {
   it('mounts the four tabs in order with map as the initial route', () => {
     render(<MainTabsLayout />);
 
-    expect(mockRouter.tabNames).toEqual(['map', 'feed', 'share', 'profile']);
+    expect(mockRouter.tabNames).toEqual(['map', 'places', 'share', 'profile']);
     expect(mockRouter.initialRouteName).toBe('map');
   });
 });

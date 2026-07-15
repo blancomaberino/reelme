@@ -1,5 +1,16 @@
 // Central query-key factory — never inline string keys (05-mobile-app §1.3).
 
+/** "My places" list facet filters that participate in the cache key (T-071). */
+export type MyPlacesFilters = {
+  /** ISO 3166-1 alpha-2 country code, or null for all. */
+  country?: string | null;
+  /** cuisine_primary ("type"), or null for all. */
+  type?: string | null;
+  tags?: string[];
+  q?: string;
+  sort?: 'recent' | 'popular';
+};
+
 /** Map filters that participate in the cache key (T-032). */
 export type MapFilters = {
   cuisine?: string | null;
@@ -19,6 +30,8 @@ export const queryKeys = {
   mapPlaces: (quantizedBbox: string, zoomBand: number, filters: MapFilters) =>
     ['places', 'map', quantizedBbox, zoomBand, filters] as const,
   feed: (scope: string) => ['feed', scope] as const,
+  /** The personal "my places" list (T-071), keyed by its active facet filters. */
+  myPlaces: (filters: MyPlacesFilters) => ['me', 'places', filters] as const,
   search: (q: string, types: string) => ['search', q, types] as const,
   tagsPopular: () => ['tags', 'popular'] as const,
   placesByTag: (slug: string) => ['places', 'tag', slug] as const,

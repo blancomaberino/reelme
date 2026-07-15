@@ -18,6 +18,7 @@ import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/clu
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
 import { useT } from '@/i18n';
 import { useMapStore } from '@/stores/map';
+import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
 
 // Default viewport (Montevideo — where the seed/demo data lives) until the user
@@ -81,12 +82,22 @@ export default function MapScreen() {
   const filters = useMapStore((s) => s.filters);
   const selected = useMapStore((s) => s.selected);
   const select = useMapStore((s) => s.select);
+  const authed = useSessionStore((s) => s.status === 'authed');
+
+  // The home map is the viewer's OWN places (T-071 personal model): authed →
+  // `filter=mine` (shared ∪ saved), unless a saved list is the active scope
+  // (its places are already mine). Guests have no personal collection, so they
+  // browse the public map. Derived here (not stored) so it always tracks auth.
+  const effectiveFilters = useMemo(
+    () => ({ ...filters, filter: filters.list ? null : authed ? ('mine' as const) : null }),
+    [filters, authed],
+  );
 
   // Quick "add from a link" popup — paste a link/caption, and on publish fly the
   // map to the new pin without leaving the screen.
   const [quickOpen, setQuickOpen] = useState(false);
 
-  const { data, isFetching } = useMapPlaces(queryRegion, filters);
+  const { data, isFetching } = useMapPlaces(queryRegion, effectiveFilters);
 
   const onRegionChangeComplete = useCallback((region: Region) => {
     regionRef.current = region;

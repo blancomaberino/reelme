@@ -42,6 +42,18 @@ class PlaceSummaryResource extends JsonResource
                 'primarySource',
                 fn () => $this->resolveThumbnail($this->primarySource?->sourcePost),
             ),
+            // Viewer-relative provenance — how this place is "mine" (T-071),
+            // present only on /me/places (which selects the aliases). Drives the
+            // remove action: soft-hide `share_id`, or un-save when only `saved`.
+            'mine' => $this->when(
+                $this->getAttribute('mine_saved') !== null,
+                fn () => [
+                    'share_id' => $this->getAttribute('mine_share_id') !== null
+                        ? (string) $this->getAttribute('mine_share_id')
+                        : null,
+                    'saved' => (bool) $this->getAttribute('mine_saved'),
+                ],
+            ),
             'source_count' => (int) $this->shares_count,
             'rating' => [
                 'google' => [
