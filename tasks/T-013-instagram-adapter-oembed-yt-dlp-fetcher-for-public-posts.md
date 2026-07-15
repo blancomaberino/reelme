@@ -62,3 +62,11 @@ Expected: test suite green with `Http::fake`/`Process::fake` assertions; tinker 
 - yt-dlp runs in a queue worker with a 120 s process timeout (04 §2 notes) — set both `Process::timeout(120)` and remember the enclosing job timeout (T-016's `FetchSourcePost` = 120 s).
 - Instagram URL variants: `instagram.com/reels/` (plural) redirects, `?igsh=` tracking params — canonicalization is IngestShare's job, but `supports()` should tolerate `reels` and trailing params.
 - ToS posture (07 R-01): keep yt-dlp default-off, no login-walled scraping, and the whole chain must degrade to manual without erroring the share.
+
+## Log
+
+- **2026-07-15 — photo/carousel IMAGE ingestion + multi-place shipped (PRs #78, #82, #83; T-013 core still open on video-frame download).**
+  - PR #78 (`035b49f`): photo/carousel posts with no video now ingest images as `keyframe` media_assets via a config-driven `PostImageResolver` chain (zero-auth oEmbed hero thumbnail).
+  - PR #82 (`387b7b6`): `InstagramApiResolver` reads EVERY carousel slide via Instagram's web media API (`/api/v1/media/{pk}/info/`, `x-ig-app-id` + session cookie in a Netscape `cookies.txt` at `INGESTION_IG_COOKIES_PATH`). **Supersedes the yt-dlp image approach — yt-dlp's IG extractor only handles video and errors on image posts. Close the yt-dlp PR #80.**
+  - PR #83 (`0f635ed`): multi-place extraction — extraction schema `place`→`places[]` (prompt v6), pipeline resolves each venue independently with partial publish; one reel → N pins. Proven: a Bariloche reel → 4 distinct published pins.
+  - **REMAINING for T-013**: video-frame extraction for photo-LESS video posts (download the reel video → ffmpeg real frames + audio for transcription). Today reels analyze from caption + cover frame only. Also: a partially-published multi-place share's pending venues aren't yet actionable (folded into T-071).

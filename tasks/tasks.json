@@ -1791,6 +1791,64 @@
       ],
       "agent": "executor",
       "notes": "Requested 2026-07-14; shipped 2026-07-15 (PR #81). M2 discovery-surface polish; reuses the ResolvesThumbnail trait and existing clustering."
+    },
+    {
+      "id": "T-071",
+      "title": "Personal collection model: my-map + filterable my-places list; profiles show a user's map/list/lists",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-013",
+        "T-037",
+        "T-062"
+      ],
+      "estimate": "XL",
+      "paths": [
+        "apps/api/app/Http/Controllers/Api/V1/MapController.php",
+        "apps/api/app/Services/Feed/PublishedShareFeed.php",
+        "apps/mobile/app/(main)/map.tsx",
+        "apps/mobile/app/(main)/feed.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#map",
+        "05-mobile-app.md"
+      ],
+      "acceptance": [
+        "Home map = ONLY the current user's places (shared and/or saved) — not a global pin cloud",
+        "Replace the chronological feed with 'my places' = a filterable list (country, type, tags) over the same data as my map",
+        "Visiting another user shows THEIR map + THEIR places list + THEIR public Lists; never mixed into mine",
+        "Hiding/removing one of my shares removes its pin from my map (resolves the feed/map inconsistency)",
+        "Decide + implement what makes a place 'mine' (shared vs explicitly saved)",
+        "Canonical place stays global/deduped under the hood; 'my map' is the subset I'm connected to",
+        "Surfaces partially-published multi-place shares' pending venues for action (from T-013 multi-place)"
+      ],
+      "agent": "executor-high",
+      "notes": "Requested 2026-07-15: Instagram-style ownership model. Absorbs the deferred multi-place feed fan-out + the 'removed from feed but still on map' fix. Big epic — plan before building."
+    },
+    {
+      "id": "T-072",
+      "title": "Admin moderation batch: force-reprocess flag, bulk delete/remove-from-feed, admin access",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-008"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Filament/Resources/Shares/Tables/SharesTable.php",
+        "apps/api/app/Filament/Resources/Shares/ShareResource.php"
+      ],
+      "spec_refs": [
+        "03-api-design.md#shares"
+      ],
+      "acceptance": [
+        "Admin 'Reprocess (force)' row + bulk action: re-dispatches the pipeline bypassing the idempotency guards (PlaceSource-exists / keyframe-exists / succeeded-run) to re-extract & re-resolve from scratch",
+        "Admin bulk delete + bulk remove-from-feed (unpublish) on the Shares resource",
+        "Document admin access: Filament at /admin, gated on users.is_admin; provide a way to grant admin",
+        "Tests for force-reprocess re-dispatch and the bulk actions"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-15 (reprocess-on-demand + mass delete/remove-from-feed + admin access). Shares Filament resource is currently view-only."
     }
   ]
 }
