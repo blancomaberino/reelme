@@ -629,13 +629,36 @@ async function loadPlaces() {
   } catch (e) { /* map stays as-is on transient errors */ }
 }
 
-// Custom MERCADO pins: terracotta teardrop with the price glyph.
+// Custom MERCADO pins: a Google-style photo bubble (the primary reel's poster
+// ringed in terracotta) when the place has imagery, else the terracotta price
+// teardrop — with the place name labelled underneath either way so pins don't
+// get lost against the map.
 function pinIcon(p) {
+  // Zoomed out: a lone place is just a dot (density is handled by clusters).
+  if (map.getZoom() < 15) {
+    const html = `<div style="width:13px;height:13px;border-radius:50%;background:var(--primary);
+        border:2px solid #fff;box-shadow:var(--sh-2)"></div>`;
+    return L.divIcon({ className:"rm-pin", html, iconSize:[13,13], iconAnchor:[6.5,6.5] });
+  }
+  const name = `<div style="margin-top:3px;max-width:120px;font-size:10.5px;font-weight:700;letter-spacing:-.2px;color:#2B2320;
+      text-align:center;background:rgba(255,255,255,.94);padding:2px 6px;border-radius:6px;box-shadow:var(--sh-1);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div>`;
+  if (p.thumbnail_url) {
+    const html = `<div style="display:flex;flex-direction:column;align-items:center">
+      <div style="width:44px;height:44px;border-radius:50%;border:3px solid var(--primary);box-shadow:var(--sh-2);
+          background:#fff center/cover no-repeat;background-image:url('${encodeURI(p.thumbnail_url)}')"></div>
+      <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+          border-top:9px solid var(--primary);margin-top:-2px"></div>
+      ${name}</div>`;
+    return L.divIcon({ className:"rm-pin", html, iconSize:[120,84], iconAnchor:[60,53] });
+  }
   const glyph = price(p.price_range) || "•";
-  const html = `<div style="width:40px;height:40px;border-radius:50% 50% 50% 4px;transform:rotate(45deg);
-      background:var(--primary);box-shadow:var(--sh-2);border:2.5px solid #fff;display:grid;place-items:center">
-      <span style="transform:rotate(-45deg);color:#fff;font-weight:800;font-size:11px;letter-spacing:-.5px">${esc(glyph)}</span></div>`;
-  return L.divIcon({ className:"rm-pin", html, iconSize:[40,40], iconAnchor:[20,40] });
+  const html = `<div style="display:flex;flex-direction:column;align-items:center">
+      <div style="width:40px;height:40px;border-radius:50% 50% 50% 4px;transform:rotate(45deg);
+          background:var(--primary);box-shadow:var(--sh-2);border:2.5px solid #fff;display:grid;place-items:center">
+        <span style="transform:rotate(-45deg);color:#fff;font-weight:800;font-size:11px;letter-spacing:-.5px">${esc(glyph)}</span></div>
+      ${name}</div>`;
+  return L.divIcon({ className:"rm-pin", html, iconSize:[120,70], iconAnchor:[60,40] });
 }
 function clusterIcon(count) {
   const html = `<div style="position:relative;width:52px;height:52px">

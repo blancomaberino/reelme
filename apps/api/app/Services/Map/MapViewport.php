@@ -3,6 +3,7 @@
 namespace App\Services\Map;
 
 use App\Http\Requests\MapPlacesRequest;
+use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Place;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,6 +22,8 @@ use Illuminate\Support\Facades\DB;
  */
 class MapViewport
 {
+    use ResolvesThumbnail;
+
     private const CLUSTER_ZOOM_CUTOFF = 15;
 
     private const PIN_CAP = 300;
@@ -96,7 +99,7 @@ class MapViewport
         $places = $this->baseQuery($request, $bbox, $constrain)
             ->select('*')
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-            ->with(['primarySource.sourcePost.influencer', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
+            ->with(['primarySource.sourcePost.influencer', 'primarySource.sourcePost.mediaAssets', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
             ->orderByDesc('shares_count')
             ->limit(self::PIN_CAP + 1)
             ->get();
@@ -184,7 +187,7 @@ class MapViewport
                 ->whereIn('id', $singletonIds)
                 ->select('*')
                 ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-                ->with(['primarySource.sourcePost.influencer', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
+                ->with(['primarySource.sourcePost.influencer', 'primarySource.sourcePost.mediaAssets', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
                 ->get()
                 ->map(fn (Place $p) => $this->pin($p))
                 ->all();
@@ -206,7 +209,8 @@ class MapViewport
      */
     private function pin(Place $place): array
     {
-        $influencer = $place->primarySource?->sourcePost?->influencer;
+        $sourcePost = $place->primarySource?->sourcePost;
+        $influencer = $sourcePost?->influencer;
 
         return [
             'type' => 'place',
@@ -221,6 +225,9 @@ class MapViewport
             'tags' => $place->tags->pluck('slug')->take(8)->values()->all(),
             'source_count' => $place->shares_count,
             'has_active_offer' => false, // M4
+            // The primary reel's poster — lets the map draw a Google-style photo
+            // marker instead of a blank pin. Null when the source has no imagery.
+            'thumbnail_url' => $this->resolveThumbnail($sourcePost),
             'top_influencer' => $influencer === null ? null : [
                 'handle' => $influencer->handle,
                 'display_name' => $influencer->display_name,

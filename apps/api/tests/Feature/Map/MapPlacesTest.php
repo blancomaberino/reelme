@@ -114,6 +114,26 @@ it('surfaces the primary source influencer as top_influencer', function () {
     expect($pin['top_influencer'])->toMatchArray(['handle' => 'noodle.hunter', 'display_name' => 'Noodle Hunter']);
 });
 
+it('exposes the primary source poster as thumbnail_url, and null when there is none', function () {
+    // A place whose primary source post carries an oEmbed poster.
+    $withPhoto = activePlace(51.5117, -0.1300, ['name' => 'WithPhoto']);
+    $share = Share::factory()->create();
+    $share->sourcePost->update(['oembed_json' => ['thumbnail_url' => 'https://cdn.example/reel.jpg']]);
+    PlaceSource::factory()->primary()->create([
+        'place_id' => $withPhoto->id,
+        'share_id' => $share->id,
+        'source_post_id' => $share->source_post_id,
+    ]);
+
+    // A place with no source at all → no imagery.
+    activePlace(51.5000, -0.1000, ['name' => 'NoPhoto']);
+
+    $pins = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16')->json('data.pins'));
+
+    expect($pins->firstWhere('name', 'WithPhoto')['thumbnail_url'])->toBe('https://cdn.example/reel.jpg')
+        ->and($pins->firstWhere('name', 'NoPhoto')['thumbnail_url'])->toBeNull();
+});
+
 it('filters to the caller’s own places with filter=mine', function () {
     $user = User::factory()->create();
     $mine = activePlace(51.5117, -0.1300, ['name' => 'Mine']);

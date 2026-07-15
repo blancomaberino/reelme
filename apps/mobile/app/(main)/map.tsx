@@ -32,6 +32,13 @@ const DEFAULT_REGION: Region = {
 // Client-side supercluster kicks in once the server stops clustering (§4.1).
 const CLIENT_CLUSTER_BAND = 15;
 
+// Below this zoom band a lone place renders as a small dot (Google-style);
+// at/above it the full photo bubble + name is shown. Set at neighborhood zoom
+// so a lone place reveals its photo well before street level; wider views stay
+// dots. Density itself is handled by clustering, so dots only stand in for
+// singletons.
+const DETAIL_BAND = 13;
+
 export default function MapScreen() {
   const c = useColors();
   const t = useT();
@@ -102,6 +109,8 @@ export default function MapScreen() {
   // Band + bbox for the *rendered* frame (from queryRegion, so it tracks fetches).
   const band = zoomBand(zoomFromRegion(queryRegion));
   const clientClustered = band >= CLIENT_CLUSTER_BAND;
+  // Show full photo markers only when zoomed in close; otherwise dots.
+  const detailed = band >= DETAIL_BAND;
 
   // Client supercluster only at high zoom; the index rebuilds only when the
   // pin set changes (O(n log n), never per frame).
@@ -228,12 +237,19 @@ export default function MapScreen() {
                   key={item.pin.id}
                   pin={item.pin}
                   selected={selected?.id === item.pin.id}
+                  detailed={detailed}
                   onPress={onPinPress}
                 />
               ),
             )
           : pins.map((pin) => (
-              <PlaceMarker key={pin.id} pin={pin} selected={selected?.id === pin.id} onPress={onPinPress} />
+              <PlaceMarker
+                key={pin.id}
+                pin={pin}
+                selected={selected?.id === pin.id}
+                detailed={detailed}
+                onPress={onPinPress}
+              />
             ))}
       </MapView>
 

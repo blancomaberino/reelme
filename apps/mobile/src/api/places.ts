@@ -166,6 +166,8 @@ export type MapPin = {
   tags: string[];
   source_count: number;
   has_active_offer: boolean;
+  /** The primary reel's poster — drawn inside the map marker; null when the source has no imagery. */
+  thumbnail_url: string | null;
   top_influencer: { handle: string; display_name: string | null } | null;
 };
 
