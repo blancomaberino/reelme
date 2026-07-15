@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Adapters\AdapterRegistry;
 use App\Adapters\ManualUploadAdapter;
+use App\Services\Media\Images\InstagramApiResolver;
 use App\Services\Media\Images\PostImageIngestor;
 use App\Services\Media\Images\PostImageResolver;
 use App\Services\Media\RemoteFileFetcher;
@@ -15,6 +16,21 @@ class IngestionServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // InstagramApiResolver takes primitive config (cookies/timeout/enabled),
+        // so the container can't autowire it — bind it explicitly from config.
+        $this->app->bind(InstagramApiResolver::class, function (Container $app) {
+            /** @var array<string, mixed> $cfg */
+            $cfg = (array) ($app['config']->get('ingestion.instagram_api') ?? []);
+
+            return new InstagramApiResolver(
+                cookiesPath: is_string($cfg['cookies_path'] ?? null) && $cfg['cookies_path'] !== ''
+                    ? $cfg['cookies_path']
+                    : null,
+                timeout: (int) ($cfg['timeout'] ?? 15),
+                enabled: (bool) ($cfg['enabled'] ?? true),
+            );
+        });
+
         $this->app->singleton(AdapterRegistry::class, function (Container $app) {
             /** @var array<string, mixed> $config */
             $config = (array) ($app['config']->get('ingestion') ?? []);
