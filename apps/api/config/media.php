@@ -52,6 +52,10 @@ return [
     'max_image_download_bytes' => (int) env('MEDIA_MAX_IMAGE_BYTES', 25 * 1024 * 1024),
     'verify_image_host' => (bool) env('MEDIA_VERIFY_IMAGE_HOST', true),
 
+    // Sent when downloading resolved post images — a browser UA so image CDNs
+    // (Instagram's especially) serve us instead of returning 403.
+    'image_user_agent' => env('MEDIA_IMAGE_USER_AGENT', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'),
+
     // Keyframe extraction (PrepareMedia): scene-change threshold, hard frame cap,
     // the <min_scene_frames fallback to uniform sampling, and output sizing.
     'scene_threshold' => (float) env('MEDIA_SCENE_THRESHOLD', 0.3),

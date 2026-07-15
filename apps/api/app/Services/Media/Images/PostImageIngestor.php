@@ -38,7 +38,18 @@ class PostImageIngestor
     {
         $urls = [];
         foreach ($this->resolvers as $resolver) {
-            $urls = $resolver->resolve($post);
+            try {
+                $urls = $resolver->resolve($post);
+            } catch (\Throwable $e) {
+                // A resolver must not throw (PrepareMedia treats an ingest throw
+                // as a stage failure); isolate a misbehaving one and try the next.
+                Log::warning('post_image.resolver_threw', [
+                    'resolver' => $resolver::class,
+                    'source_post_id' => $post->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $urls = [];
+            }
             if ($urls !== []) {
                 break; // first resolver that produces images wins
             }

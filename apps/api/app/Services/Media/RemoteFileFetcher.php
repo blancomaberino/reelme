@@ -26,8 +26,10 @@ class RemoteFileFetcher
 
         try {
             // No redirects: the SSRF guard only vetted THIS host, so a 30x to an
-            // internal address (e.g. cloud metadata) must not be followed.
+            // internal address (e.g. cloud metadata) must not be followed. A
+            // browser UA keeps image CDNs (e.g. Instagram's) from 403-ing us.
             $body = Http::timeout(60)
+                ->withHeaders(['User-Agent' => (string) config('media.image_user_agent')])
                 ->withOptions(['stream' => true, 'allow_redirects' => false])
                 ->get($url)->throw()->toPsrResponse()->getBody();
             $written = 0;

@@ -17,6 +17,10 @@ interface PostImageResolver
      * Public https image URLs for the post, in display order. Empty when this
      * resolver can't produce any (the chain then tries the next resolver).
      *
+     * Must NOT throw — a failure is an empty return, not an exception (the
+     * ingest stage treats a throw as a hard failure). The ingestor guards the
+     * call defensively regardless.
+     *
      * @return list<string>
      */
     public function resolve(SourcePost $post): array;
