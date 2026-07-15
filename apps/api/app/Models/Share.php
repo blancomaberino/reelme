@@ -80,13 +80,36 @@ class Share extends Model
     }
 
     /**
-     * The place_source this share published (set by PublishShare).
+     * The place_source this share published (set by PublishShare). With
+     * multi-place shares this is the PRIMARY published source; the full set is
+     * publishedPlaceSources(). Kept for the map "jump to pin" affordance.
      *
      * @return BelongsTo<PlaceSource, $this>
      */
     public function publishedPlaceSource(): BelongsTo
     {
         return $this->belongsTo(PlaceSource::class, 'published_place_source_id');
+    }
+
+    /**
+     * Every place this share resolved to (a multi-place post fans out to N).
+     *
+     * @return HasMany<PlaceSource, $this>
+     */
+    public function placeSources(): HasMany
+    {
+        return $this->hasMany(PlaceSource::class);
+    }
+
+    /**
+     * The resolved places that are live in the feed (some may still be pending
+     * review for a partially-published multi-place share).
+     *
+     * @return HasMany<PlaceSource, $this>
+     */
+    public function publishedPlaceSources(): HasMany
+    {
+        return $this->hasMany(PlaceSource::class)->whereNotNull('published_at');
     }
 
     /** @return HasMany<ShareStageMetric, $this> */

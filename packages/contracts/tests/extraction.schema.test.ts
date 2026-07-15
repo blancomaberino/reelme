@@ -64,7 +64,7 @@ describe('extraction.schema.json (draft-07)', () => {
   it('typechecks the valid fixture against the generated ReelmapExtraction type', () => {
     // Compile-time guarantee: the fixture is assignable to the generated type.
     const typed = validExample as ReelmapExtraction;
-    expect(typed.place.name).toBe('Lanzhou Beef Noodle House');
+    expect(typed.places[0].name).toBe('Lanzhou Beef Noodle House');
     expect(typed.confidence.overall).toBeCloseTo(0.91);
   });
 

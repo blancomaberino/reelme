@@ -138,7 +138,7 @@ it('clamps an out-of-range extracted price_range instead of hitting the CHECK', 
     // Overwrite the run's payload with an invalid price band (LLM could emit 0/5/9).
     $run = $share->analysisRun;
     $result = $run->result_json;
-    $result['place']['price_range'] = 9;
+    $result['places'][0]['price_range'] = 9;
     $run->result_json = $result;
     $run->save();
 

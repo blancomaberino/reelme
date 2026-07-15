@@ -54,7 +54,12 @@ export type ShareDetail = {
     extraction: Record<string, unknown> | null;
   } | null;
   failure: ShareFailure | null;
+  /** The primary published pin (back-compat; first of `places`). */
   place: SharePlace | null;
+  /** Every published pin — a multi-place post (e.g. a "best cafés" reel) resolves to several. */
+  places: SharePlace[];
+  /** Extracted venues still parked for review (partial publish). */
+  pending_place_count: number;
 };
 
 /** What the composer collects — a pasted link and/or a free-text caption. */

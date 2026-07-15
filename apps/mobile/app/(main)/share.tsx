@@ -201,18 +201,52 @@ function ShareProgress({
     );
   }
 
-  if (status === 'published' && share?.place) {
+  // A multi-place post (e.g. a "best cafés" reel) publishes several pins; fall
+  // back to the single `place` for older payloads.
+  const publishedPlaces = share?.places?.length ? share.places : share?.place ? [share.place] : [];
+  if (status === 'published' && publishedPlaces.length > 0) {
+    const pending = share?.pending_place_count ?? 0;
     return (
       <View style={styles.result}>
         <View style={[styles.badge, styles.badgeOk]}>
           <Ionicons name="checkmark" size={26} color={c.green} />
         </View>
         <Text style={styles.resultTitle}>{t('share.published.title')}</Text>
-        <Text style={styles.placeName}>{share.place.name}</Text>
-        <Button
-          title={t('place.view')}
-          onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: share.place!.id } })}
-        />
+        {publishedPlaces.length === 1 ? (
+          <>
+            <Text style={styles.placeName}>{publishedPlaces[0].name}</Text>
+            <Button
+              title={t('place.view')}
+              onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: publishedPlaces[0].id } })}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.resultBody}>
+              {publishedPlaces.length} {t('share.published.countLabel')}
+            </Text>
+            <View style={styles.placeList}>
+              {publishedPlaces.map((p) => (
+                <Pressable
+                  key={p.id}
+                  accessibilityRole="button"
+                  onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: p.id } })}
+                  style={styles.placeRow}
+                >
+                  <Text style={styles.placeRowName} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={c.muted} />
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
+        {pending > 0 && (
+          <Text style={styles.resultBody}>
+            {pending} {t('share.published.pendingLabel')}
+          </Text>
+        )}
         <Pressable accessibilityRole="button" onPress={onReset} hitSlop={8}>
           <Text style={styles.link}>{t('share.another')}</Text>
         </Pressable>
@@ -249,6 +283,20 @@ const makeStyles = (c: Palette) =>
     resultTitle: { fontFamily: fonts.display, fontSize: 20, fontWeight: '700', color: c.text },
     resultBody: { fontSize: 15, color: c.muted, textAlign: 'center' },
     placeName: { fontSize: 17, fontWeight: '600', color: c.primary, textAlign: 'center', marginBottom: 4 },
+    placeList: { alignSelf: 'stretch', gap: 8, marginTop: 4 },
+    placeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    placeRowName: { flex: 1, fontSize: 16, fontWeight: '600', color: c.text },
     badge: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
     badgeOk: { backgroundColor: c.greenSoft },
     badgeWarn: { backgroundColor: c.goldSoft },

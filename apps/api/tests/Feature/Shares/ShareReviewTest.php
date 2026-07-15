@@ -88,7 +88,7 @@ it('applies review corrections, publishes, and freezes the corrected snapshot', 
     ));
 
     $this->patchJson("/api/v1/shares/{$share->id}", [
-        'extraction' => ['place' => ['name' => 'Lanzhou Halal Kitchen']],
+        'extraction' => ['places' => [['name' => 'Lanzhou Halal Kitchen']]],
         'action' => 'publish',
     ])->assertOk();
 
@@ -98,9 +98,9 @@ it('applies review corrections, publishes, and freezes the corrected snapshot', 
     // Corrections captured as ground truth; the original run payload is untouched.
     $this->assertDatabaseHas('share_corrections', [
         'share_id' => $share->id,
-        'field_path' => 'place.name',
+        'field_path' => 'places.0.name',
     ]);
-    expect($share->analysisRun->result_json['place']['name'])->toBe('Lanzhou Beef Noodle House');
+    expect($share->analysisRun->result_json['places'][0]['name'])->toBe('Lanzhou Beef Noodle House');
 
     // The publish-time snapshot equals the corrected place payload.
     $source = PlaceSource::where('share_id', $share->id)->sole();
@@ -115,7 +115,7 @@ it('rejects a correction that breaks the schema with 422 + field details', funct
     Sanctum::actingAs($share->user);
 
     $this->patchJson("/api/v1/shares/{$share->id}", [
-        'extraction' => ['place' => ['price_range' => 9]], // schema max is 4
+        'extraction' => ['places' => [['price_range' => 9]]], // schema max is 4
     ])
         ->assertStatus(422)
         ->assertJsonPath('error.code', 'validation_failed')

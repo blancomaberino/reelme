@@ -38,8 +38,8 @@ it('activates a place once it has a second independent source', function () {
     $share = analyzingShare();
     (new ResolvePlace($share->id))->handle();
     $place = Place::sole();
-    // A prior independent share already contributed a source to this place.
-    PlaceSource::factory()->create(['place_id' => $place->id]);
+    // A prior independent share already contributed a PUBLISHED source to this place.
+    PlaceSource::factory()->create(['place_id' => $place->id, 'published_at' => now()]);
 
     (new PublishShare($share->id))->handle();
 

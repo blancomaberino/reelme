@@ -7,6 +7,7 @@ use App\Enums\ShareStatus;
 use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Services\Places\TagMaterializer;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -47,31 +48,77 @@ class PublishShare extends PipelineStubJob
             return;
         }
 
-        $source = PlaceSource::query()->where('share_id', $share->id)->first();
-        if ($source === null) {
+        /** @var Collection<int, PlaceSource> $sources */
+        $sources = PlaceSource::query()->where('share_id', $share->id)->get();
+        if ($sources->isEmpty()) {
             return; // resolve parked the share to review — nothing to publish yet
         }
 
-        // Freeze the as-published snapshot: the corrected place payload when the
-        // user amended the extraction in review, else the resolver's original.
-        if (is_array($share->corrected_extraction_json)) {
-            $place = $share->corrected_extraction_json['place'] ?? null;
-            if (is_array($place)) {
-                $source->extraction_snapshot_json = $place;
-                $source->save();
+        // Freeze the as-published snapshot for a single-place share the user
+        // amended in review; a multi-place share keeps each source's resolver
+        // snapshot (per-place review corrections are applied at resolve time).
+        if ($sources->count() === 1 && is_array($share->corrected_extraction_json)) {
+            $corrected = $this->correctedPlace($share->corrected_extraction_json);
+            if ($corrected !== null) {
+                $sources->first()->extraction_snapshot_json = $corrected;
+                $sources->first()->save();
             }
         }
 
-        // Only the worker that actually wins the transition performs the one-time
-        // counter/activation writes — a redelivered job no-ops here.
-        if (! $share->transitionTo(ShareStatus::Published)) {
-            return;
+        $now = now();
+        // The primary source (or first) drives the map "jump to pin" affordance.
+        $primary = $sources->firstWhere('is_primary', true) ?? $sources->first();
+
+        // Atomically flip the share to published AND mark every source live AND set
+        // the primary pin — a throw rolls it all back so the analyzing→published
+        // guard is re-armed and the retry redoes it, never a half-published share
+        // (some sources live, primary null). Only the worker that wins the
+        // optimistic transition commits these one-time writes.
+        $won = DB::transaction(function () use ($share, $sources, $now, $primary): bool {
+            if (! $share->transitionTo(ShareStatus::Published)) {
+                return false;
+            }
+            foreach ($sources as $source) {
+                $source->published_at = $now;
+                $source->save();
+            }
+            $share->published_place_source_id = $primary->id;
+            $share->save();
+
+            return true;
+        });
+
+        if (! $won) {
+            return; // a redelivered/concurrent job already published this share
         }
 
-        $share->published_place_source_id = $source->id;
-        $share->save();
+        // Counters/activation + tag materialization are idempotent recomputes with
+        // external side effects (Scout), so they run AFTER the publish commit and
+        // are best-effort per source — a failure on one place never strands the
+        // share or blocks its siblings (recoverable via the tags/counters backfill).
+        foreach ($sources as $source) {
+            try {
+                $this->activateAndCount($source, $share);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
+    }
 
-        $this->activateAndCount($source, $share);
+    /**
+     * The corrected place payload for a single-place share (places[] first entry,
+     * or the pre-v6 singular place).
+     *
+     * @param  array<string, mixed>  $corrected
+     * @return array<string, mixed>|null
+     */
+    private function correctedPlace(array $corrected): ?array
+    {
+        if (is_array($corrected['places'][0] ?? null)) {
+            return $corrected['places'][0];
+        }
+
+        return is_array($corrected['place'] ?? null) ? $corrected['place'] : null;
     }
 
     /**
@@ -87,7 +134,9 @@ class PublishShare extends PipelineStubJob
             return;
         }
 
-        $sourceCount = $place->sources()->count();
+        // Only PUBLISHED sources count — a sibling attached-but-not-yet-published
+        // in another share's resolve window must not prematurely activate a place.
+        $sourceCount = $place->sources()->whereNotNull('published_at')->count();
 
         if ($place->status === PlaceStatus::Pending && ($sourceCount >= 2 || $share->user_confirmed)) {
             $place->status = PlaceStatus::Active;

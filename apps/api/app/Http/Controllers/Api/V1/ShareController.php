@@ -25,7 +25,7 @@ use Illuminate\Validation\ValidationException;
 
 class ShareController extends Controller
 {
-    private const RELATIONS = ['sourcePost.influencer', 'analysisRuns', 'stageMetrics', 'publishedPlaceSource.place'];
+    private const RELATIONS = ['sourcePost.influencer', 'analysisRuns', 'stageMetrics', 'publishedPlaceSource.place', 'publishedPlaceSources.place'];
 
     public function __construct(private readonly UrlCanonicalizer $canonicalizer) {}
 
@@ -190,9 +190,12 @@ class ShareController extends Controller
     private function applyCandidate(Share $share, array $merged, array $candidate): array
     {
         if (isset($candidate['lat'], $candidate['lng'])) {
-            $place = is_array($merged['place'] ?? null) ? $merged['place'] : [];
-            $place['geo'] = ['lat' => (float) $candidate['lat'], 'lng' => (float) $candidate['lng']];
-            $merged['place'] = $place;
+            // A manual pin corrects the first (review is single-place today).
+            $places = is_array($merged['places'] ?? null) ? $merged['places'] : [];
+            $first = is_array($places[0] ?? null) ? $places[0] : [];
+            $first['geo'] = ['lat' => (float) $candidate['lat'], 'lng' => (float) $candidate['lng']];
+            $places[0] = $first;
+            $merged['places'] = $places;
         }
 
         if (isset($candidate['place_id'])) {
@@ -227,13 +230,42 @@ class ShareController extends Controller
     private function deepMerge(array $base, array $override): array
     {
         foreach ($override as $key => $value) {
-            // A non-list array is a non-empty associative map → merge recursively;
-            // scalars, lists (dishes, tags), and empty arrays replace wholesale.
-            if (is_array($value) && ! array_is_list($value)
+            // `places` is a list of objects — merge element-by-element so a
+            // partial correction to one venue keeps its (and its siblings') other
+            // fields, instead of the wholesale-list replace below.
+            if ($key === 'places' && is_array($value) && array_is_list($value)
                 && isset($base[$key]) && is_array($base[$key])) {
+                $base[$key] = $this->mergePlaces($base[$key], $value);
+            } elseif (is_array($value) && ! array_is_list($value)
+                && isset($base[$key]) && is_array($base[$key])) {
+                // A non-list array is a non-empty associative map → merge recursively;
+                // scalars, lists (dishes, tags), and empty arrays replace wholesale.
                 $base[$key] = $this->deepMerge($base[$key], $value);
             } else {
                 $base[$key] = $value;
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * Merge a corrected places[] onto the original element-by-element (each entry
+     * is an object, merged recursively), preserving any places the reviewer left
+     * untouched.
+     *
+     * @param  list<mixed>  $base
+     * @param  list<mixed>  $override
+     * @return list<mixed>
+     */
+    private function mergePlaces(array $base, array $override): array
+    {
+        foreach ($override as $index => $place) {
+            if (is_array($place) && ! array_is_list($place)
+                && isset($base[$index]) && is_array($base[$index])) {
+                $base[$index] = $this->deepMerge($base[$index], $place);
+            } else {
+                $base[$index] = $place;
             }
         }
 
@@ -285,8 +317,18 @@ class ShareController extends Controller
         $out = [];
         foreach ($data as $key => $value) {
             $path = $prefix === '' ? (string) $key : "{$prefix}.{$key}";
-            // Recurse into associative maps only; lists and scalars stay leaves.
-            if (is_array($value) && ! array_is_list($value)) {
+            // `places` is a list of objects — recurse into each indexed entry so a
+            // correction diffs at `places.0.name`, not the whole array.
+            if ($key === 'places' && is_array($value) && array_is_list($value)) {
+                foreach ($value as $index => $entry) {
+                    if (is_array($entry) && ! array_is_list($entry)) {
+                        $out += $this->flattenLeaves($entry, "{$path}.{$index}");
+                    } else {
+                        $out["{$path}.{$index}"] = $entry;
+                    }
+                }
+            } elseif (is_array($value) && ! array_is_list($value)) {
+                // Recurse into associative maps only; other lists and scalars stay leaves.
                 $out += $this->flattenLeaves($value, $path);
             } else {
                 $out[$path] = $value;
