@@ -7,9 +7,9 @@ use App\Models\SourcePost;
 /**
  * Resolves the image URLs of a photo/carousel post so the model can see them
  * (T-013). Implementations form a priority chain (config `ingestion.image_resolvers`);
- * the first that returns any URLs wins — e.g. a future yt-dlp resolver (all
- * carousel slides) ahead of the oEmbed thumbnail fallback (the hero image only).
- * Swapping in a paid-API resolver later is a one-line config change.
+ * the first that returns any URLs wins — e.g. InstagramApiResolver (every carousel
+ * slide, needs a session cookie) ahead of the oEmbed thumbnail fallback (the hero
+ * image only). Swapping in a paid-API resolver later is a one-line config change.
  */
 interface PostImageResolver
 {
