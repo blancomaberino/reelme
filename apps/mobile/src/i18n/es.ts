@@ -28,7 +28,7 @@ export const es: Record<MessageKey, string> = {
   'myPlaces.guest.cta': 'Iniciar sesión',
   'myPlaces.error.title': 'No pudimos cargar tus lugares',
 
-  // Compartidas por FeedCard (sigue usándose en perfiles) + los buscadores.
+  // Compartidas por la tarjeta de origen (atribución) + los buscadores.
   'feed.search': 'Buscar',
   'feed.sharerFallback': 'un usuario de Reelmap',
 
