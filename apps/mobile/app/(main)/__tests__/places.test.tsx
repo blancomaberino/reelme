@@ -77,11 +77,16 @@ it('taps a card through to the place detail', async () => {
   expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: 'place-1' } });
 });
 
-it('prompts a guest to sign in instead of fetching', () => {
+it('prompts a guest to sign in without ever fetching /me/places', async () => {
   useSessionStore.setState({ user: null, status: 'guest' });
+  mock.onGet('/me/places').reply(200, page([place('1')]));
+
   render(<MyPlacesScreen />, { wrapper: Providers });
 
   expect(screen.getByText('Your collection lives here')).toBeOnTheScreen();
+  // enabled:false must actually suppress the (auth-only) request — a real fetch
+  // would 401 and bounce the guest to login. Flush microtasks, then assert none.
+  await waitFor(() => expect(screen.getByText('Sign in')).toBeOnTheScreen());
   expect(mock.history.get.filter((r) => r.url === '/me/places')).toHaveLength(0);
 });
 
@@ -115,17 +120,16 @@ function confirmAlert() {
   });
 }
 
-it('confirms, then removes a shared place — soft-hides my share and it drops out', async () => {
+it('confirms, then removes a place via DELETE /me/places and it drops out', async () => {
   const alertSpy = confirmAlert();
-  let posted: number | null = null;
-  // The backend drops a dismissed share from my collection, so the settle
-  // refetch returns the list without it — mirror that in the mock.
+  let deleted: string | null = null;
+  // The server removes it (soft-hide + un-save), so the settle refetch omits it.
   mock.onGet('/me/places').reply(() =>
-    posted === null ? [200, page([place('1', { mine: { share_id: '1', saved: false } }), place('2')])] : [200, page([place('2')])],
+    deleted === null ? [200, page([place('1'), place('2')])] : [200, page([place('2')])],
   );
-  mock.onPost('/feed/hidden').reply((cfg) => {
-    posted = JSON.parse(cfg.data).share_id;
-    return [201];
+  mock.onDelete('/me/places/1').reply(() => {
+    deleted = '1';
+    return [204];
   });
 
   render(<MyPlacesScreen />, { wrapper: Providers });
@@ -134,23 +138,43 @@ it('confirms, then removes a shared place — soft-hides my share and it drops o
   fireEvent.press(screen.getAllByLabelText('Remove')[0]);
   expect(alertSpy).toHaveBeenCalled();
 
-  await waitFor(() => expect(posted).toBe(1));
+  await waitFor(() => expect(deleted).toBe('1'));
   await waitFor(() => expect(screen.queryByText('Place 1')).toBeNull());
   expect(screen.getByText('Place 2')).toBeOnTheScreen();
+  alertSpy.mockRestore();
+});
+
+it('removes a saved-only place through the same DELETE (server handles un-save)', async () => {
+  const alertSpy = confirmAlert();
+  let deleted = false;
+  mock.onGet('/me/places').reply(() =>
+    !deleted ? [200, page([place('9', { mine: { share_id: null, saved: true } })])] : [200, page([])],
+  );
+  mock.onDelete('/me/places/9').reply(() => {
+    deleted = true;
+    return [204];
+  });
+
+  render(<MyPlacesScreen />, { wrapper: Providers });
+  await screen.findByText('Place 9');
+  fireEvent.press(screen.getAllByLabelText('Remove')[0]);
+
+  await waitFor(() => expect(deleted).toBe(true));
+  await waitFor(() => expect(screen.queryByText('Place 9')).toBeNull());
   alertSpy.mockRestore();
 });
 
 it('does not remove when the confirmation is cancelled', async () => {
   const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mock.onGet('/me/places').reply(200, page([place('1')]));
-  mock.onPost('/feed/hidden').reply(201);
+  mock.onDelete('/me/places/1').reply(204);
 
   render(<MyPlacesScreen />, { wrapper: Providers });
   await screen.findByText('Place 1');
   fireEvent.press(screen.getAllByLabelText('Remove')[0]);
 
   expect(alertSpy).toHaveBeenCalled();
-  expect(mock.history.post).toHaveLength(0);
+  expect(mock.history.delete).toHaveLength(0);
   expect(screen.getByText('Place 1')).toBeOnTheScreen();
   alertSpy.mockRestore();
 });

@@ -32,7 +32,7 @@ export default function MyPlacesScreen() {
   const onChange = useCallback((patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch })), []);
 
   const { data, isLoading, isError, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useMyPlaces(filters);
+    useMyPlaces(filters, { enabled: authed });
   const remove = useRemoveFromMap();
 
   const items = useMemo(() => data?.pages.flatMap((p) => p.data) ?? [], [data]);
@@ -108,7 +108,7 @@ export default function MyPlacesScreen() {
 }
 
 function hasActiveFacets(f: Filters): boolean {
-  return !!f.country || !!f.type || (f.tags?.length ?? 0) > 0 || !!f.q;
+  return !!f.country || !!f.type || (f.tags?.length ?? 0) > 0;
 }
 
 function Separator() {

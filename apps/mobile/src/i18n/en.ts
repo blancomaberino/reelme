@@ -7,7 +7,6 @@ export const en = {
   'common.cancel': 'Cancel',
 
   'tabs.map': 'Map',
-  'tabs.feed': 'Feed',
   'tabs.myPlaces': 'My places',
   'tabs.share': 'Share',
   'tabs.profile': 'Profile',
@@ -29,16 +28,8 @@ export const en = {
   'myPlaces.guest.cta': 'Sign in',
   'myPlaces.error.title': 'Couldn’t load your places',
 
-  'feed.title': 'Feed',
+  // Shared by FeedCard (still used on user profiles) + the search headers.
   'feed.search': 'Search',
-  'feed.empty.title': 'Nothing here yet',
-  'feed.empty.body': 'Share your first reel to see it on the feed.',
-  'feed.error.title': 'Couldn’t load the feed',
-  'feed.hide': 'Hide from my feed',
-  'feed.hideConfirm.title': 'Hide from your feed?',
-  'feed.hideConfirm.message': '“{{name}}” won’t show in your feed. You can undo right after.',
-  'feed.hidden': 'Hidden from your feed',
-  'feed.undo': 'Undo',
   'feed.sharerFallback': 'a Reelmap user',
 
   'place.back': 'Go back',
@@ -86,9 +77,6 @@ export const en = {
 
   'source.openOriginal': 'Open original {{platform}} post',
   'source.firstShared': 'First shared',
-
-  'filter.following': 'Following',
-  'filter.mine': 'Mine',
 
   'search.placeholder': 'Search places, tags…',
   'search.cancel': 'Cancel',
