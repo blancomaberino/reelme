@@ -12,6 +12,7 @@ use App\Models\Share;
 use App\Models\SourcePost;
 use App\Services\Media\Data\ProcessedMedia;
 use App\Services\Media\FfmpegRunner;
+use App\Services\Media\Images\PostImageIngestor;
 use App\Services\Media\MediaPaths;
 use App\Services\Media\MediaProcessor;
 use Illuminate\Bus\Batchable;
@@ -54,7 +55,7 @@ class PrepareMedia implements ShouldQueue
         return ["share:{$this->shareId}", 'stage:prepare_media'];
     }
 
-    public function handle(MediaProcessor $processor, FfmpegRunner $ffmpeg): void
+    public function handle(MediaProcessor $processor, FfmpegRunner $ffmpeg, PostImageIngestor $images): void
     {
         $share = Share::with('sourcePost')->find($this->shareId);
 
@@ -74,7 +75,14 @@ class PrepareMedia implements ShouldQueue
             ->first();
 
         if ($original === null) {
-            return; // nothing to prepare (DownloadMedia found no media)
+            // No video — a photo/carousel post. Pull its images (resolver chain)
+            // and store them as keyframes so the model still sees the visuals.
+            // ingest() never throws, so a post that resolves to zero images just
+            // proceeds image-less (the pipeline advances on the caption alone).
+            $this->recordStage($share->id, 'prepare_media');
+            $images->ingest($share, $post);
+
+            return;
         }
 
         $this->recordStage($share->id, 'prepare_media');

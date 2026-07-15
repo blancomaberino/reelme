@@ -46,6 +46,12 @@ return [
     'max_download_bytes' => (int) env('MEDIA_MAX_DOWNLOAD_BYTES', 500 * 1024 * 1024),
     'max_duration_ms' => (int) env('MEDIA_MAX_DURATION_MS', 15 * 60 * 1000),
 
+    // Per-image cap for post-image ingestion (T-013). `verify_image_host` runs a
+    // DNS-based SSRF guard on resolved image URLs; disabled under the no-network
+    // test env.
+    'max_image_download_bytes' => (int) env('MEDIA_MAX_IMAGE_BYTES', 25 * 1024 * 1024),
+    'verify_image_host' => (bool) env('MEDIA_VERIFY_IMAGE_HOST', true),
+
     // Keyframe extraction (PrepareMedia): scene-change threshold, hard frame cap,
     // the <min_scene_frames fallback to uniform sampling, and output sizing.
     'scene_threshold' => (float) env('MEDIA_SCENE_THRESHOLD', 0.3),
