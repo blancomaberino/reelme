@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\PlaceStatus;
+use App\Models\AnalysisRun;
 use App\Models\Place;
 use App\Models\PlaceSource;
 use App\Models\Share;
@@ -126,6 +127,74 @@ it('forbids resolving another user’s share (403)', function () {
     Sanctum::actingAs($intruder);
     $this->postJson("/api/v1/shares/{$share->id}/pending/1/resolve", ['place_id' => $candidate->id])
         ->assertStatus(403);
+});
+
+it('recomputes avg_extraction_confidence on resolve, not just shares_count', function () {
+    $user = User::factory()->create();
+    $run = AnalysisRun::factory()->create(['overall_confidence' => 0.8]);
+    $candidate = Place::factory()->active()->atPoint(51.51, -0.14)->create(['name' => 'Chiado', 'avg_extraction_confidence' => null]);
+    $share = partiallyPublishedShare($user, $candidate);
+    $share->analysis_run_id = $run->id;
+    $share->save();
+
+    Sanctum::actingAs($user);
+    $this->postJson("/api/v1/shares/{$share->id}/pending/1/resolve", ['place_id' => $candidate->id])->assertOk();
+
+    // The new published source carries the run's confidence → the place's rolling
+    // average is recomputed (previously left null — the copy-paste drift bug).
+    expect((float) $candidate->fresh()->avg_extraction_confidence)->toBe(0.8);
+});
+
+it('resolves one venue and leaves the other pending, preserving its index', function () {
+    $user = User::factory()->create();
+    $a = Place::factory()->active()->atPoint(51.51, -0.14)->create(['name' => 'Chiado']);
+    $b = Place::factory()->active()->atPoint(51.52, -0.15)->create(['name' => 'Maleza']);
+    $share = partiallyPublishedShare($user, $a, pendingIndex: 2);
+    // Add a second pending venue at index 3.
+    $meta = $share->review_meta_json;
+    $meta['pending'][] = ['index' => 3, 'name' => 'Maleza', 'reason' => 'ambiguous_place',
+        'candidates' => [['place_id' => $b->id, 'name' => 'Maleza', 'distance_m' => 10.0, 'similarity' => 0.8]]];
+    $share->review_meta_json = $meta;
+    $share->save();
+
+    Sanctum::actingAs($user);
+    $res = $this->postJson("/api/v1/shares/{$share->id}/pending/2/resolve", ['place_id' => $a->id])
+        ->assertOk()
+        ->assertJsonPath('data.pending_place_count', 1);
+
+    // Index 3 survives unshifted; index 2 is gone.
+    expect($res->json('data.pending_places.0.index'))->toBe(3)
+        ->and($res->json('data.pending_places.0.name'))->toBe('Maleza');
+});
+
+it('cannot resolve a candidate-less (geocode-failed) venue but can dismiss it', function () {
+    $user = User::factory()->create();
+    $share = Share::factory()->for($user)->published()->create();
+    $primary = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    $source = PlaceSource::factory()->create(['share_id' => $share->id, 'place_id' => $primary->id, 'source_post_id' => $share->source_post_id, 'is_primary' => true, 'published_at' => now()]);
+    $share->published_place_source_id = $source->id;
+    $share->review_meta_json = ['pending' => [['index' => 5, 'name' => 'Nowhere', 'reason' => 'geocode_failed', 'candidates' => []]]];
+    $share->save();
+
+    Sanctum::actingAs($user);
+    // No candidate to pick → any place_id is off-list → 422.
+    $this->postJson("/api/v1/shares/{$share->id}/pending/5/resolve", ['place_id' => $primary->id])->assertStatus(422);
+    // But it can be dismissed.
+    $this->deleteJson("/api/v1/shares/{$share->id}/pending/5")->assertOk()
+        ->assertJsonPath('data.pending_place_count', 0);
+});
+
+it('404s a repeat resolve once the venue is gone (no double-publish)', function () {
+    $user = User::factory()->create();
+    $candidate = Place::factory()->active()->atPoint(51.51, -0.14)->create(['name' => 'Chiado']);
+    $share = partiallyPublishedShare($user, $candidate);
+
+    Sanctum::actingAs($user);
+    $this->postJson("/api/v1/shares/{$share->id}/pending/1/resolve", ['place_id' => $candidate->id])->assertOk();
+    // The entry is gone → a repeat 404s (rather than attaching a duplicate source).
+    $this->postJson("/api/v1/shares/{$share->id}/pending/1/resolve", ['place_id' => $candidate->id])->assertStatus(404);
+
+    expect(PlaceSource::where('share_id', $share->id)->where('place_id', $candidate->id)->count())->toBe(1);
 });
 
 it('activates a still-pending candidate once it gains a second published source', function () {

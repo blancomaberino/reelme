@@ -8,7 +8,6 @@ use App\Models\PlaceSource;
 use App\Models\Share;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Throwable;
 
 /**
  * Resolve or dismiss a single PENDING venue on an already-(partially-)published
@@ -20,12 +19,17 @@ use Throwable;
  */
 class ResolvePendingPlace
 {
-    public function __construct(private readonly PlaceResolver $resolver) {}
+    public function __construct(
+        private readonly PlaceResolver $resolver,
+        private readonly PlacePublisher $publisher,
+    ) {}
 
     /**
      * Attach + publish `$placeId` (a candidate the pending entry offered) as the
-     * pending venue at `$index`, then drop the entry. Idempotent; owner-scoped by
-     * the caller. Throws ValidationException on an unknown index / off-list place.
+     * pending venue at `$index`, then drop the entry. Owner-scoped by the caller.
+     * Throws ValidationException on an unknown index / off-list place. A repeat
+     * call 404s once the entry is gone; a concurrent call for the same index is a
+     * no-op (the row is locked and re-checked inside the transaction).
      */
     public function resolve(Share $share, int $index, int $placeId): void
     {
@@ -57,18 +61,26 @@ class ResolvePendingPlace
         $snapshot = $this->resolver->extractedPlaceAt($share, $index) ?? ['name' => $entry['name'] ?? null];
 
         DB::transaction(function () use ($share, $place, $snapshot, $index): void {
+            // Lock + re-read: two concurrent resolves/dismisses each did a
+            // read-modify-write on review_meta_json from their own stale in-memory
+            // copy, so one could resurrect the other's dropped entry. Operate on
+            // the locked row, and bail if this index was already handled.
+            $locked = Share::query()->whereKey($share->id)->lockForUpdate()->first();
+            if ($locked === null || ! $this->hasPending($locked, $index)) {
+                return;
+            }
+
             $isPrimary = ! $place->sources()->where('is_primary', true)->exists()
-                && $share->published_place_source_id === null;
+                && $locked->published_place_source_id === null;
 
             // A pending venue was never attached (that's why it's pending), so this
-            // always creates. firstOrCreate keeps it idempotent under a retry, and
-            // dropPending() removes the entry so a repeat call 404s before reaching
-            // here. Sources are born published here (published_at = now).
+            // always creates; firstOrCreate keeps it idempotent under a retry.
+            // Sources are born published here (published_at = now).
             $source = PlaceSource::query()->firstOrCreate(
-                ['place_id' => $place->id, 'share_id' => $share->id],
+                ['place_id' => $place->id, 'share_id' => $locked->id],
                 [
-                    'source_post_id' => $share->source_post_id,
-                    'analysis_run_id' => $share->analysis_run_id,
+                    'source_post_id' => $locked->source_post_id,
+                    'analysis_run_id' => $locked->analysis_run_id,
                     'extraction_snapshot_json' => $snapshot,
                     'is_primary' => $isPrimary,
                     'published_at' => now(),
@@ -76,13 +88,12 @@ class ResolvePendingPlace
             );
             // $isPrimary already implies the share had no primary yet.
             if ($isPrimary) {
-                $share->published_place_source_id = $source->id;
-                $share->save();
+                $locked->published_place_source_id = $source->id;
             }
 
-            $this->recountPlace($place, $share, $source);
-            $this->dropPending($share, $index);
-            $share->save();
+            $this->publisher->recompute($place, $locked, $source);
+            $this->dropPending($locked, $index);
+            $locked->save();
         });
     }
 
@@ -90,8 +101,15 @@ class ResolvePendingPlace
     public function dismiss(Share $share, int $index): void
     {
         $this->pendingEntry($share, $index); // 404 if the index isn't pending
-        $this->dropPending($share, $index);
-        $share->save();
+
+        DB::transaction(function () use ($share, $index): void {
+            $locked = Share::query()->whereKey($share->id)->lockForUpdate()->first();
+            if ($locked === null || ! $this->hasPending($locked, $index)) {
+                return;
+            }
+            $this->dropPending($locked, $index);
+            $locked->save();
+        });
     }
 
     /**
@@ -109,6 +127,19 @@ class ResolvePendingPlace
         abort(404, 'No pending venue at that index.');
     }
 
+    /** Whether the (freshly-read) share still lists a pending venue at `$index`. */
+    private function hasPending(Share $share, int $index): bool
+    {
+        $pending = is_array($share->review_meta_json) ? ($share->review_meta_json['pending'] ?? []) : [];
+        foreach (is_array($pending) ? $pending : [] as $entry) {
+            if (is_array($entry) && (int) ($entry['index'] ?? -1) === $index) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function dropPending(Share $share, int $index): void
     {
         $meta = is_array($share->review_meta_json) ? $share->review_meta_json : [];
@@ -123,32 +154,5 @@ class ResolvePendingPlace
             $meta['pending'] = $pending;
             $share->review_meta_json = $meta;
         }
-    }
-
-    /**
-     * Recompute the place's activation + counters from its PUBLISHED sources, and
-     * materialize discovery tags. Mirrors PublishShare::activateAndCount for the
-     * one-source case; tag materialization is best-effort (never fails the resolve).
-     */
-    private function recountPlace(Place $place, Share $share, PlaceSource $source): void
-    {
-        $sourceCount = $place->sources()->whereNotNull('published_at')->count();
-
-        if ($place->status === PlaceStatus::Pending && ($sourceCount >= 2 || $share->user_confirmed)) {
-            $place->status = PlaceStatus::Active;
-        }
-
-        try {
-            app(TagMaterializer::class)->materialize(
-                $place,
-                $source->extraction_snapshot_json,
-                $source->analysisRun?->overall_confidence !== null ? (float) $source->analysisRun->overall_confidence : null,
-            );
-        } catch (Throwable $e) {
-            report($e);
-        }
-
-        $place->shares_count = $sourceCount;
-        $place->save();
     }
 }
