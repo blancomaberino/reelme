@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Concerns;
 
+use App\Enums\MediaKind;
 use App\Http\Requests\PlaceListingRequest;
 use App\Http\Resources\PlaceSummaryResource;
 use App\Models\Place;
@@ -30,9 +31,11 @@ trait PaginatesPlaces
         $query = $base
             ->select('places.*')
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-            // Poster for the list card (T-070 thumbnail); mediaAssets feed the
-            // ResolvesThumbnail fallback chain.
-            ->with(['primarySource.sourcePost.mediaAssets']);
+            // Poster for the list card (T-070 thumbnail). Only the thumbnail-kind
+            // asset is read (ResolvesThumbnail falls back to the oembed column),
+            // so constrain the load — a post can carry dozens of keyframe assets
+            // (T-013 carousels) that would otherwise be hydrated for nothing.
+            ->with(['primarySource.sourcePost.mediaAssets' => fn ($q) => $q->where('kind', MediaKind::Thumbnail)]);
 
         if (($country = $request->validated('country')) !== null) {
             $query->where('places.country_code', $country);
@@ -56,7 +59,10 @@ trait PaginatesPlaces
             }
         }
 
-        $cursor = KeysetCursor::decode($request->validated('cursor'), 'my-places', 2);
+        // Namespace the cursor by sort so switching sort mid-pagination is a
+        // clean 422 (KeysetCursor's mismatch guard), matching PlaceController.
+        $namespace = 'my-places-'.$sort;
+        $cursor = KeysetCursor::decode($request->validated('cursor'), $namespace, 2);
         $this->applyPlaceSort($query, $sort, $cursor);
 
         $rows = $query->limit($limit + 1)->get();
@@ -65,10 +71,7 @@ trait PaginatesPlaces
 
         $nextCursor = null;
         if ($hasMore && ($last = $page->last()) !== null) {
-            $keys = $sort === 'popular'
-                ? [(int) $last->shares_count, $last->id]
-                : [$last->created_at->format('Y-m-d H:i:s.u'), $last->id];
-            $nextCursor = KeysetCursor::encode('my-places', $keys);
+            $nextCursor = KeysetCursor::encode($namespace, $this->placeCursorKeys($last, $sort));
         }
 
         return response()->json([
@@ -107,12 +110,22 @@ trait PaginatesPlaces
         // recent (default)
         $query->orderByDesc('created_at')->orderByDesc('id');
         if ($cursor !== null) {
-            $ts = (string) $cursor[0];
-            $dt = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s.u', $ts);
-            if ($dt === false || $dt->format('Y-m-d H:i:s.u') !== $ts || str_starts_with($ts, '0000-')) {
-                abort(422, 'The cursor is malformed.');
-            }
+            $ts = KeysetCursor::timestampKey($cursor[0]);
             $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, KeysetCursor::intKey($cursor[1])]);
         }
+    }
+
+    /**
+     * The keyset values for a page's last row, in sort order — the encode-side
+     * companion to {@see applyPlaceSort()} so a sort's ORDER BY and its cursor
+     * shape stay defined together.
+     *
+     * @return list<int|float|string>
+     */
+    private function placeCursorKeys(Place $last, string $sort): array
+    {
+        return $sort === 'popular'
+            ? [(int) $last->shares_count, $last->id]
+            : [$last->created_at->format('Y-m-d H:i:s.u'), $last->id];
     }
 }

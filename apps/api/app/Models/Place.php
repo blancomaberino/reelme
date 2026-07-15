@@ -150,6 +150,22 @@ class Place extends Model
     }
 
     /**
+     * Places evidenced by a user's PUBLISHED shares (T-036/T-071) — the public
+     * subset behind their profile map and places list. Sibling to
+     * {@see scopeMine()}; shared by ProfileController::map() and places() so the
+     * two views can never disagree on what "their published places" means.
+     *
+     * @param  Builder<Place>  $query
+     */
+    protected function scopePublishedBy(Builder $query, User $user): void
+    {
+        $query->whereHas(
+            'sources.share',
+            fn ($s) => $s->where('user_id', $user->id)->where('status', ShareStatus::Published),
+        );
+    }
+
+    /**
      * The caller's personal collection (T-071, ADR-071): a place is "mine" when
      * I published a share resolving to it that I have NOT soft-hidden, OR I
      * saved it to one of my lists. This is a query scope over the canonical

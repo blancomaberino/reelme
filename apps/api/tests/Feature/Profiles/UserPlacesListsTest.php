@@ -37,6 +37,31 @@ it('404s a private profile’s places for strangers but serves the owner', funct
         ->assertJsonPath('data.0.name', 'Secret');
 });
 
+it('does not leak private-account existence via an invalid facet (404, not 422)', function () {
+    User::factory()->create(['is_public' => false, 'username' => 'hermit']);
+
+    // An invalid query param on a private-but-EXISTING profile must 404 (the
+    // privacy gate runs before validation) — never 422, which would be an
+    // existence oracle vs the 404 an unknown username returns.
+    $this->getJson('/api/v1/users/hermit/places?country=TOOLONG')->assertStatus(404);
+    $this->getJson('/api/v1/users/hermit/places?sort=nope')->assertStatus(404);
+    $this->getJson('/api/v1/users/ghost/places?country=TOOLONG')->assertStatus(404);
+});
+
+it('filters a user’s places by the country/type/tag facets', function () {
+    $owner = User::factory()->create(['is_public' => true, 'username' => 'facets']);
+    $pt = Place::factory()->active()->atPoint(51.51, -0.13)->create(['name' => 'Porto', 'country_code' => 'PT', 'cuisine_primary' => 'seafood']);
+    $es = Place::factory()->active()->atPoint(51.50, -0.10)->create(['name' => 'Sevilla', 'country_code' => 'ES', 'cuisine_primary' => 'tapas']);
+    publishedShare($pt, sharer: $owner);
+    publishedShare($es, sharer: $owner);
+
+    $byCountry = collect($this->getJson('/api/v1/users/facets/places?country=pt')->assertOk()->json('data'))->pluck('name');
+    expect($byCountry)->toContain('Porto')->not->toContain('Sevilla');
+
+    $byType = collect($this->getJson('/api/v1/users/facets/places?type=tapas')->assertOk()->json('data'))->pluck('name');
+    expect($byType)->toContain('Sevilla')->not->toContain('Porto');
+});
+
 it('lists only a user’s PUBLIC lists', function () {
     $owner = User::factory()->create(['is_public' => true, 'username' => 'curator']);
     PlaceList::factory()->for($owner)->create(['name' => 'Public picks', 'is_public' => true]);
@@ -55,7 +80,8 @@ it('exposes public-list item counts and owner attribution', function () {
     $this->getJson('/api/v1/users/lister/lists')->assertOk()
         ->assertJsonPath('data.0.name', 'Faves')
         ->assertJsonPath('data.0.items_count', 1)
-        ->assertJsonPath('data.0.is_public', true);
+        ->assertJsonPath('data.0.is_public', true)
+        ->assertJsonPath('data.0.owner.username', 'lister');
 });
 
 it('404s a private profile’s lists for strangers', function () {

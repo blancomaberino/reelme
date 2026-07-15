@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\ShareStatus;
 use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\PlaceListingRequest;
 use App\Http\Requests\ProfileMapRequest;
+use App\Http\Requests\ProfilePlacesRequest;
 use App\Http\Requests\ProfileShowRequest;
 use App\Http\Resources\FeedItemResource;
 use App\Http\Resources\InfluencerSummaryResource;
@@ -90,11 +90,7 @@ class ProfileController extends Controller
     {
         $this->assertViewable($request, $user);
 
-        return $viewport->respond($request, fn ($q) => $q->whereHas(
-            'sources.share',
-            fn ($s) => $s->where('user_id', $user->id)
-                ->where('status', ShareStatus::Published),
-        ));
+        return $viewport->respond($request, fn ($q) => $q->publishedBy($user));
     }
 
     /**
@@ -102,14 +98,11 @@ class ProfileController extends Controller
      * their map. Same subject constraint as {@see map()} (places evidenced by
      * their PUBLISHED shares), with the shared country/type/tags facets.
      */
-    public function places(PlaceListingRequest $request, User $user): JsonResponse
+    public function places(ProfilePlacesRequest $request, User $user): JsonResponse
     {
-        $this->assertViewable($request, $user);
-
-        $base = Place::query()->publiclyVisible()->whereHas(
-            'sources.share',
-            fn ($s) => $s->where('user_id', $user->id)->where('status', ShareStatus::Published),
-        );
+        // Privacy gate runs in ProfilePlacesRequest::authorize() (before param
+        // validation) so an invalid facet can't become a 404-vs-422 oracle.
+        $base = Place::query()->publiclyVisible()->publishedBy($user);
 
         return $this->placeListResponse($base, $request);
     }
@@ -122,10 +115,14 @@ class ProfileController extends Controller
     {
         $this->assertViewable($request, $user);
 
+        // Bounded (a user with >100 public lists is truncated — acceptable; the
+        // owner-lists CRUD is the paginated surface). `user` loaded so the
+        // resource can attribute the (public) owner.
         $lists = PlaceList::query()
             ->where('user_id', $user->id)
             ->where('is_public', true)
             ->withCount('items')
+            ->with('user')
             ->orderByDesc('updated_at')
             ->limit(100)
             ->get();

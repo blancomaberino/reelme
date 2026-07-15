@@ -110,3 +110,29 @@ it('paginates by keyset cursor without gaps or repeats', function () {
     expect($second)->toHaveCount(1)
         ->and($firstNames->intersect($second))->toBeEmpty();
 });
+
+it('sorts by popular (shares_count) and paginates that sort', function () {
+    $me = User::factory()->create();
+    publishedShare(myPlace('Cold', ['shares_count' => 1]), sharer: $me);
+    publishedShare(myPlace('Hot', ['shares_count' => 9]), sharer: $me);
+    publishedShare(myPlace('Warm', ['shares_count' => 5]), sharer: $me);
+
+    Sanctum::actingAs($me);
+    $res = $this->getJson('/api/v1/me/places?sort=popular&limit=2')->assertOk();
+    expect(collect($res->json('data'))->pluck('name')->all())->toBe(['Hot', 'Warm']);
+
+    $next = $this->getJson('/api/v1/me/places?sort=popular&limit=2&cursor='.urlencode($res->json('meta.pagination.next_cursor')))->assertOk();
+    expect(collect($next->json('data'))->pluck('name')->all())->toBe(['Cold']);
+});
+
+it('rejects a malformed cursor with the validation envelope, not a 500', function () {
+    $me = User::factory()->create();
+    Sanctum::actingAs($me);
+
+    // A well-formed base64url cursor for this sort, but an unparseable timestamp.
+    $bad = rtrim(strtr(base64_encode((string) json_encode(['s' => 'my-places-recent', 'k' => ['2026-13-40 00:00:00.000000', 1]])), '+/', '-_'), '=');
+
+    $this->getJson('/api/v1/me/places?cursor='.urlencode($bad))
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.cursor.0', 'The cursor is malformed.');
+});
