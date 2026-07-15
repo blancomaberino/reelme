@@ -327,6 +327,9 @@ const markers = L.layerGroup();
 // ── helpers (security-critical — do not inline user strings into JS) ────────
 const esc = s => String(s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const safeUrl = u => /^https?:\/\//i.test(u||"") ? u : "#";
+// Safe for embedding in a CSS url('...') string: scheme-gated + percent-encoded,
+// and the single quote neutralized so a crafted URL can't break out of the string.
+const cssUrl = u => encodeURI(safeUrl(u)).replace(/'/g, "%27");
 const price = n => n ? "€".repeat(Math.max(1,Math.min(4,n))) : "";
 const starStr = v => { if (v == null) return ""; const n = Math.max(0, Math.min(5, Math.round(v))); return "★".repeat(n) + "☆".repeat(5 - n); };
 const heroGrad = seed => { const g = ["linear-gradient(160deg,#E8A15C,#C24B2E)","linear-gradient(160deg,#7FA968,#39694A)","linear-gradient(160deg,#E7C25A,#B5772C)","linear-gradient(160deg,#D98A8A,#8E3B54)","linear-gradient(160deg,#8FB0C6,#356E86)"]; let h=0; for (const ch of String(seed||"")) h=(h*31+ch.charCodeAt(0))>>>0; return g[h%g.length]; };
@@ -568,7 +571,7 @@ async function loadMyPlaces() {
       const saved = place.mine && place.mine.saved && !place.mine.share_id
         ? `<span class="rating-chip" style="background:var(--primary-soft);color:var(--primary)">✦ Guardado</span>` : "";
       const img = place.thumbnail_url
-        ? `background-image:url('${encodeURI(safeUrl(place.thumbnail_url))}');background-size:cover;background-position:center`
+        ? `background-image:url('${cssUrl(place.thumbnail_url)}');background-size:cover;background-position:center`
         : `background:${heroGrad(place.name)}`;
       return `<div class="feed-card" onclick="goToPlace(${Number(place.id)}, ${Number(place.lat)}, ${Number(place.lng)})">
         <div class="thumb" style="${img}"></div>
@@ -692,7 +695,7 @@ function pinIcon(p) {
   if (p.thumbnail_url) {
     const html = `<div style="display:flex;flex-direction:column;align-items:center">
       <div style="width:44px;height:44px;border-radius:50%;border:3px solid var(--primary);box-shadow:var(--sh-2);
-          background:#fff center/cover no-repeat;background-image:url('${encodeURI(p.thumbnail_url)}')"></div>
+          background:#fff center/cover no-repeat;background-image:url('${cssUrl(p.thumbnail_url)}')"></div>
       <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
           border-top:9px solid var(--primary);margin-top:-2px"></div>
       ${name}</div>`;
