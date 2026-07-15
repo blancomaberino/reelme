@@ -150,6 +150,36 @@ class Place extends Model
     }
 
     /**
+     * The caller's personal collection (T-071, ADR-071): a place is "mine" when
+     * I published a share resolving to it that I have NOT soft-hidden, OR I
+     * saved it to one of my lists. This is a query scope over the canonical
+     * (global, deduped) places — never a data copy; saving another user's place
+     * makes it mine. The dismissal probe (feed_dismissals) makes removal
+     * map-aware, resolving the "hidden from feed but still on the map"
+     * inconsistency: a place that is mine only via a dismissed share drops off.
+     *
+     * @param  Builder<Place>  $query
+     */
+    protected function scopeMine(Builder $query, User $user): void
+    {
+        $query->where(fn (Builder $w) => $w
+            // Shared by me through a published share I have not soft-hidden.
+            ->whereExists(fn ($sub) => $sub->from('place_sources')
+                ->join('shares', 'shares.id', '=', 'place_sources.share_id')
+                ->whereColumn('place_sources.place_id', 'places.id')
+                ->where('shares.user_id', $user->id)
+                ->where('shares.status', ShareStatus::Published->value)
+                ->whereNotExists(fn ($d) => $d->from('feed_dismissals')
+                    ->whereColumn('feed_dismissals.share_id', 'shares.id')
+                    ->where('feed_dismissals.user_id', $user->id)))
+            // OR saved to one of my lists.
+            ->orWhereExists(fn ($sub) => $sub->from('place_list_items')
+                ->join('place_lists', 'place_lists.id', '=', 'place_list_items.place_list_id')
+                ->whereColumn('place_list_items.place_id', 'places.id')
+                ->where('place_lists.user_id', $user->id)));
+    }
+
+    /**
      * Public routes bind by slug (canonical, T-030) but numeric ids keep
      * working — map pins and existing clients address places by id.
      */

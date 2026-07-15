@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\FeedDismissal;
 use App\Models\Follow;
 use App\Models\Influencer;
 use App\Models\Place;
@@ -134,19 +135,56 @@ it('exposes the primary source poster as thumbnail_url, and null when there is n
         ->and($pins->firstWhere('name', 'NoPhoto')['thumbnail_url'])->toBeNull();
 });
 
-it('filters to the caller’s own places with filter=mine', function () {
+it('filters to the caller’s own places with filter=mine — shared ∪ saved (T-071)', function () {
     $user = User::factory()->create();
     $mine = activePlace(51.5117, -0.1300, ['name' => 'Mine']);
+    $saved = activePlace(51.5050, -0.1200, ['name' => 'Saved']);
     activePlace(51.5000, -0.1000, ['name' => 'Someone else']);
 
-    $share = Share::factory()->for($user)->create();
+    // Shared: a PUBLISHED share of mine resolving to the place.
+    $share = Share::factory()->for($user)->published()->create();
     PlaceSource::factory()->create(['place_id' => $mine->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id]);
+
+    // Saved: the place sits in one of my lists (no share of mine).
+    $list = PlaceList::factory()->for($user)->create();
+    $list->items()->create(['place_id' => $saved->id, 'position' => 1]);
 
     Sanctum::actingAs($user);
     $names = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=mine')->assertOk()->json('data.pins'))
         ->pluck('name');
 
-    expect($names)->toContain('Mine')->not->toContain('Someone else');
+    expect($names)->toContain('Mine')->toContain('Saved')->not->toContain('Someone else');
+});
+
+it('excludes a place shared only via a soft-hidden share from filter=mine (T-071)', function () {
+    $user = User::factory()->create();
+    $hidden = activePlace(51.5117, -0.1300, ['name' => 'Hidden']);
+
+    $share = Share::factory()->for($user)->published()->create();
+    PlaceSource::factory()->create(['place_id' => $hidden->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id]);
+    // Soft-hide it (the "remove from my collection" action, T-071).
+    FeedDismissal::create(['user_id' => $user->id, 'share_id' => $share->id]);
+
+    Sanctum::actingAs($user);
+    $names = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=mine')->assertOk()->json('data.pins'))
+        ->pluck('name');
+
+    expect($names)->not->toContain('Hidden');
+});
+
+it('does not count a non-published share toward filter=mine (T-071)', function () {
+    $user = User::factory()->create();
+    $pending = activePlace(51.5117, -0.1300, ['name' => 'PendingShare']);
+
+    // A share still in review — no published contribution yet.
+    $share = Share::factory()->for($user)->review()->create();
+    PlaceSource::factory()->create(['place_id' => $pending->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id]);
+
+    Sanctum::actingAs($user);
+    $names = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=mine')->assertOk()->json('data.pins'))
+        ->pluck('name');
+
+    expect($names)->not->toContain('PendingShare');
 });
 
 it('requires auth for filter=mine and filter=following', function () {

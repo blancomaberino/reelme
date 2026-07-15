@@ -2,19 +2,25 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Place;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Index-row shape for `GET /places` (T-030, 03 §2.6) — the browse/list card.
+ * Index-row shape for `GET /places` (T-030, 03 §2.6) — the browse/list card,
+ * shared by the personal "my places" and per-user places lists (T-071).
  * Expects `lat`/`lng` (and `distance` when a near-point was given) selected as
  * SQL aliases by the index query; it never issues per-row coordinate queries.
+ * `thumbnail_url` is present only when the query eager-loaded `primarySource`
+ * (the my-places / per-user lists do; the plain browse index does not).
  *
  * @mixin Place
  */
 class PlaceSummaryResource extends JsonResource
 {
+    use ResolvesThumbnail;
+
     /**
      * @return array<string, mixed>
      */
@@ -31,6 +37,11 @@ class PlaceSummaryResource extends JsonResource
             'price_range' => $this->price_range,
             'city' => $this->city,
             'country_code' => $this->country_code,
+            // The primary reel poster (T-070/T-034), when the query loaded it.
+            'thumbnail_url' => $this->whenLoaded(
+                'primarySource',
+                fn () => $this->resolveThumbnail($this->primarySource?->sourcePost),
+            ),
             'source_count' => (int) $this->shares_count,
             'rating' => [
                 'google' => [

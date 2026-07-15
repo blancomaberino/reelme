@@ -48,9 +48,9 @@ class MapController extends Controller
             // Places traceable to followed users/influencers (T-037). $user is
             // non-null here — guarded by the 401 above.
             'following' => fn ($q) => $q->followedBy($user),
-            'mine' => fn ($q) => $q->whereHas(
-                'sources.share', fn ($s) => $s->where('user_id', $userId),
-            ),
+            // The personal collection (T-071): shared ∪ saved, minus soft-hidden.
+            // $user is non-null here — guarded by the 401 above.
+            'mine' => fn ($q) => $q->mine($user),
             default => null,
         };
 

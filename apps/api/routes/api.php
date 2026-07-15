@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\InfluencerController;
 use App\Http\Controllers\Api\V1\InviteController;
 use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
+use App\Http\Controllers\Api\V1\MePlacesController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\PlaceController;
 use App\Http\Controllers\Api\V1\PlaceListController;
@@ -70,6 +71,10 @@ Route::prefix('v1')->group(function () {
     Route::middleware('throttle:map')->group(function () {
         Route::get('/users/{user:username}', [ProfileController::class, 'show']);
         Route::get('/users/{user:username}/map', [ProfileController::class, 'map']);
+        // Their places list + public Lists (T-071): the list view of their map,
+        // and their public collections. Same private-profile 404 gate.
+        Route::get('/users/{user:username}/places', [ProfileController::class, 'places']);
+        Route::get('/users/{user:username}/lists', [ProfileController::class, 'lists']);
         // Followers / following lists (T-039). Same private-profile 404 gate.
         Route::get('/users/{user:username}/followers', [ProfileController::class, 'followers']);
         Route::get('/users/{user:username}/following', [ProfileController::class, 'following']);
@@ -103,6 +108,11 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::patch('/me', [MeController::class, 'update']);
+
+        // The personal "my places" list (T-071): the filterable list view of my
+        // map — places I shared (not soft-hidden) ∪ places I saved. Replaces the
+        // removed global feed as the app's primary browse surface.
+        Route::get('/me/places', [MePlacesController::class, 'index'])->middleware('throttle:map');
 
         // Analysis model catalog + per-user model preference (T-020).
         Route::get('/analysis/models', [ModelController::class, 'index']);
