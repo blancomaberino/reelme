@@ -51,6 +51,20 @@ ensure_yt_dlp() {
     || echo "  (heads up: yt-dlp install failed — photo posts fall back to the oEmbed hero image)"
 }
 
+# Postgres accepts connections a few seconds after its container starts, but the
+# API container comes up first (it needs no DB) — so migrating immediately races
+# the DB on a cold `up` ("connection refused"). Wait for pg_isready first.
+wait_for_db() {
+  log "Waiting for Postgres…"
+  local cid
+  cid="$(cd "$API_DIR" && docker compose ps -q pgsql 2>/dev/null)"
+  for _ in $(seq 1 30); do
+    if [ -n "$cid" ] && docker exec "$cid" pg_isready -q 2>/dev/null; then return; fi
+    sleep 2
+  done
+  echo "  (Postgres didn't report ready in ~60s — trying migrations anyway)"
+}
+
 boot_backend() {
   docker info >/dev/null 2>&1 || die "Docker isn't running — start Docker Desktop first."
 
@@ -63,6 +77,8 @@ boot_backend() {
     sleep 2
   done
   docker exec "$CONTAINER" php artisan --version >/dev/null 2>&1 || die "API container never came up."
+
+  wait_for_db
 
   log "Running database migrations…"
   docker exec "$CONTAINER" php artisan migrate --force
