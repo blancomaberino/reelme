@@ -65,23 +65,44 @@ class PublishShare extends PipelineStubJob
             }
         }
 
-        // Only the worker that actually wins the transition performs the one-time
-        // counter/activation writes — a redelivered job no-ops here.
-        if (! $share->transitionTo(ShareStatus::Published)) {
-            return;
-        }
-
         $now = now();
-        foreach ($sources as $source) {
-            $source->published_at = $now;
-            $source->save();
-            $this->activateAndCount($source, $share);
-        }
-
         // The primary source (or first) drives the map "jump to pin" affordance.
         $primary = $sources->firstWhere('is_primary', true) ?? $sources->first();
-        $share->published_place_source_id = $primary->id;
-        $share->save();
+
+        // Atomically flip the share to published AND mark every source live AND set
+        // the primary pin — a throw rolls it all back so the analyzing→published
+        // guard is re-armed and the retry redoes it, never a half-published share
+        // (some sources live, primary null). Only the worker that wins the
+        // optimistic transition commits these one-time writes.
+        $won = DB::transaction(function () use ($share, $sources, $now, $primary): bool {
+            if (! $share->transitionTo(ShareStatus::Published)) {
+                return false;
+            }
+            foreach ($sources as $source) {
+                $source->published_at = $now;
+                $source->save();
+            }
+            $share->published_place_source_id = $primary->id;
+            $share->save();
+
+            return true;
+        });
+
+        if (! $won) {
+            return; // a redelivered/concurrent job already published this share
+        }
+
+        // Counters/activation + tag materialization are idempotent recomputes with
+        // external side effects (Scout), so they run AFTER the publish commit and
+        // are best-effort per source — a failure on one place never strands the
+        // share or blocks its siblings (recoverable via the tags/counters backfill).
+        foreach ($sources as $source) {
+            try {
+                $this->activateAndCount($source, $share);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
     }
 
     /**
@@ -113,7 +134,9 @@ class PublishShare extends PipelineStubJob
             return;
         }
 
-        $sourceCount = $place->sources()->count();
+        // Only PUBLISHED sources count — a sibling attached-but-not-yet-published
+        // in another share's resolve window must not prematurely activate a place.
+        $sourceCount = $place->sources()->whereNotNull('published_at')->count();
 
         if ($place->status === PlaceStatus::Pending && ($sourceCount >= 2 || $share->user_confirmed)) {
             $place->status = PlaceStatus::Active;

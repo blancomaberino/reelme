@@ -8,7 +8,6 @@ use App\Models\AnalysisRun;
 use App\Models\Place;
 use App\Models\PlaceSource;
 use App\Models\Share;
-use App\Services\Geo\Exceptions\GeocodeFailed;
 use App\Services\Geo\Geocoder;
 use App\Services\Geo\GeocodeResult;
 use App\Services\Geo\GeoHints;
@@ -67,16 +66,17 @@ class PlaceResolver
 
             try {
                 $outcome = $this->resolveOne($share, $run, $place, $name, $pickedId);
-            } catch (GeocodeFailed $e) {
-                // A transient provider error. If nothing has attached yet, let it
-                // propagate so the job retries (preserves single-place retry
-                // semantics). Once a sibling has attached, a retry would re-resolve
-                // it — so contain the error as a per-place miss (parked for review)
-                // rather than dropping the already-resolved places.
+            } catch (\Throwable $e) {
+                // Per-place error (transient geocode, DB, timeout). If NOTHING has
+                // attached yet, let it propagate so the job retries the whole batch
+                // cleanly. But once a sibling has attached, a retry would hit the
+                // "share already has a source" guard and skip re-resolution — which
+                // would strand this place (not resolved, not recorded). So contain
+                // it here as a per-place miss parked for review (partial publish).
                 if (! $attachedAny) {
                     throw $e;
                 }
-                Log::warning('resolve.geocode_error', ['share_id' => $share->id, 'name' => $name, 'error' => $e->getMessage()]);
+                Log::warning('resolve.place_error', ['share_id' => $share->id, 'name' => $name, 'error' => $e->getMessage()]);
                 $outcome = ResolutionOutcome::geocodeFailed();
             }
 
