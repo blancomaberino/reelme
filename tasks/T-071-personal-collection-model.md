@@ -52,17 +52,39 @@ is mine to curate.
 
 ## Acceptance criteria
 
-- [ ] Home map = ONLY the current user's places (shared and/or saved), not global
-- [ ] Feed replaced by "my places" = a filterable list (country, type, tags) over the same data as my map
-- [ ] Visiting another user shows THEIR map + THEIR places list + THEIR public Lists; never mixed into mine
-- [ ] Removing one of my shares removes its pin from my map (soft, reversible)
-- [ ] "Mine" implemented as shared ∪ saved (ADR-071)
-- [ ] Canonical place stays global/deduped; "my map" is the connected subset
-- [ ] Partially-published multi-place shares surface their pending venues for action
-- [ ] Gates green per slice (API Pint/PHPStan/Pest + contract drift; mobile eslint/tsc/jest); web verified
+- [x] Home map = ONLY the current user's places (shared and/or saved), not global — PR-1 (`filter=mine`→`scopeMine`) + PR-2 (mobile default) + PR-5 (web)
+- [x] Feed replaced by "my places" = a filterable list (country, type, tags) over the same data as my map — PR-1 (`GET /me/places`) + PR-2 (Mis Lugares tab) + PR-5 (web rail)
+- [x] Visiting another user shows THEIR map + THEIR places list + THEIR public Lists; never mixed into mine — PR-1 (`/users/{u}/places`+`/lists`) + PR-3 (mobile) + PR-5 (web drawer)
+- [x] Removing one of my shares removes its pin from my map (soft, reversible) — PR-1 (dismissal-aware `scopeMine`) + PR-2 (`DELETE /me/places/{place}` + remove UI)
+- [x] "Mine" implemented as shared ∪ saved (ADR-071) — PR-1 `Place::scopeMine`
+- [x] Canonical place stays global/deduped; "my map" is the connected subset — scope, not a data copy; no place migration
+- [x] Partially-published multi-place shares surface their pending venues for action — PR-4 (`ResolvePendingPlace` + resolve/dismiss endpoints + mobile `PendingVenues`)
+- [x] Gates green per slice (API Pint/PHPStan/Pest + contract drift; mobile eslint/tsc/jest); web verified
 
 ## Progress
 
 - **2026-07-15** — Planned. Decisions locked via ADR-071 (mine = shared∪saved;
   purely personal map; soft reversible removal). Backend + frontend current-state
   mapped. Building PR-1 (backend foundation) first.
+- **2026-07-15** — **All 5 slices built, reviewed (`/coderabbit` each: adversarial +
+  simplify + security), and opened as stacked PRs — every acceptance criterion
+  implemented + tested.** Awaiting user merge (agent can't self-merge) + on-device
+  verification of the mobile slices.
+  - **PR #84** `feat/t071-personal-collection-backend` — foundation: `Place::scopeMine`
+    (shared∪saved, dismissal-aware) + `scopePublishedBy`; `GET /me/places` (filterable
+    keyset list) + `/users/{u}/places` + `/lists`; `thumbnail_url` + `mine` provenance
+    on `PlaceSummaryResource`; `DELETE /me/places/{place}`. API 542 green.
+  - **PR #85** `feat/t071-mobile-personal-map` — home map defaults to mine (chips
+    dropped); Feed tab → filterable "Mis lugares"; soft-hide remove. Mobile 197 jest.
+  - **PR #86** `feat/t071-mobile-profiles` — per-user profile: their map + places list
+    + public Lists; deleted the orphaned FeedCard.
+  - **PR #87** `feat/t071-pending-venues` — resolve/dismiss pending venues
+    (`ResolvePendingPlace` + shared `PlacePublisher`, row-locked); mobile `PendingVenues`.
+  - **PR #88** `feat/t071-web-demo` — demo parity: personal map, "Mis lugares" rail,
+    public Lists on the profile drawer. Verified in-browser (zero console errors).
+  - Notable review catches fixed: a 422-vs-404 existence oracle (#84), a guest
+    401-redirect (#85), a lost-update race + `avg_extraction_confidence` drift (#87),
+    a CSS `url()` quote-breakout (#88).
+  - Deferred follow-ups (noted in PRs): shared SwipeToRemoveRow/Chip + FitBoundsMap
+    (mobile); store the extraction snapshot in the pending entry; a `Share::pendingVenues()`
+    accessor; server facets endpoint vs derive-from-loaded-rows.
