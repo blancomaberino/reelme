@@ -88,6 +88,16 @@ Format: Context → Decision → Consequences. All accepted as of 2026-07-09.
 - **Decision:** Meilisearch via Laravel Scout for `places` and `influencers` indexes; Postgres remains source of truth.
 - **Consequences:** One more service to run (small footprint); index rebuild job required; geo-filtering available natively in Meilisearch if needed.
 
+### ADR-071: Personal collection model (Instagram-style ownership) — T-071
+- **Context:** The original model was a global pin cloud + chronological feed. Requested 2026-07-15 reframe: each user owns their map + list; nothing global. A place a user shared kept showing on the map even after being hidden from the feed — content ownership was ambiguous.
+- **Decision:**
+  1. **"Mine" = shared ∪ saved.** A place is mine if I published a share resolving to it (not soft-hidden) OR I saved it to any of my lists. Implemented as `Place::scopeMine(User)` — a query scope, not a data copy. Reuses `place_lists` (T-062); no new "saved" table.
+  2. **Purely personal map.** The home map is always the current user's places; the mine/following/all scope chips are removed. Followed users' places are reachable only by visiting their profile → their map (never mixed into mine).
+  3. **Soft, reversible removal.** Removing one of my shared places soft-hides it — reuses `feed_dismissals` (now map + list aware via `scopeMine`), keeps the share + canonical place, is undo-able. Hard `DELETE /shares/{id}` stays a separate explicit action.
+  4. **Canonical place stays global/deduped.** "My map" is the connected subset (a scope); dedup and place data are unchanged.
+  5. The feed is replaced (in-app) by a filterable **"my places"** list (`GET /me/places`: country, type/cuisine, tags) over the same dataset as my map. The `GET /feed` endpoint stays (deprecated, unused by the app) to avoid churn.
+- **Consequences:** Ownership becomes a first-class read scope rather than an implicit global-minus-filters. The "removed but still on map" inconsistency is resolved. Per-user profiles gain a map + places list + public Lists (new `GET /users/{username}/places` and `/lists`). Discovery of *new* places narrows to search + visiting users; a broader explore surface can return later as an explicit, opt-in mode.
+
 ## 3. Open Questions (deferred, not blockers)
 
 | # | Question | Owner | Resolve by |
