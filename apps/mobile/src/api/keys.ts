@@ -47,4 +47,7 @@ export const queryKeys = {
   profile: (username: string) => ['profile', username] as const,
   followers: (username: string) => ['profile', username, 'followers'] as const,
   following: (username: string) => ['profile', username, 'following'] as const,
+  /** A user's public places list + public Lists shown on their profile (T-071). */
+  userPlaces: (username: string) => ['profile', username, 'places'] as const,
+  userLists: (username: string) => ['profile', username, 'lists'] as const,
 };
