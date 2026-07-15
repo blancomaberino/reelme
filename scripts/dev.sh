@@ -83,6 +83,11 @@ boot_backend() {
   log "Running database migrations…"
   docker exec "$CONTAINER" php artisan migrate --force
 
+  # Idempotent local accounts (admin + user1..3@example.com / "password"). A cold
+  # `up` starts Postgres on an empty volume, so re-seed every boot to restore them.
+  log "Seeding local accounts…"
+  docker exec "$CONTAINER" php artisan db:seed --force
+
   ensure_yt_dlp
 
   # The queue worker drives the share/analysis pipeline AND sends the queued
