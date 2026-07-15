@@ -78,6 +78,7 @@ function pin(id: string, over: Partial<MapPin> = {}): MapPin {
     tags: [],
     source_count: 1,
     has_active_offer: false,
+    thumbnail_url: null,
     top_influencer: null,
     ...over,
   };
