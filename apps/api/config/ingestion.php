@@ -2,6 +2,7 @@
 
 use App\Adapters\ManualUploadAdapter;
 use App\Adapters\OEmbedAdapter;
+use App\Services\Media\Images\OEmbedThumbnailResolver;
 
 return [
     /*
@@ -24,6 +25,21 @@ return [
     ],
 
     'fallback' => ManualUploadAdapter::class,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Post image resolvers (T-013)
+    |--------------------------------------------------------------------------
+    | Priority-ordered PostImageResolver classes. When a post has no video,
+    | PrepareMedia runs this chain and the FIRST resolver that returns image URLs
+    | wins; each URL is downloaded and stored as a keyframe the model sees. Today
+    | only the zero-auth oEmbed thumbnail (hero image). Prepend an authenticated
+    | resolver (yt-dlp for full carousels, or a paid IG media API) to upgrade —
+    | a one-line change, no pipeline rewrite.
+    */
+    'image_resolvers' => [
+        OEmbedThumbnailResolver::class,
+    ],
 
     'oembed' => [
         'timeout' => (int) env('OEMBED_TIMEOUT', 10),

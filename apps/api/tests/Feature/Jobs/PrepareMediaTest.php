@@ -6,9 +6,11 @@ use App\Jobs\PrepareMedia;
 use App\Models\MediaAsset;
 use App\Models\Share;
 use App\Services\Media\FfmpegRunner;
+use App\Services\Media\Images\PostImageIngestor;
 use App\Services\Media\MediaProcessingException;
 use App\Services\Media\MediaProcessor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 
@@ -56,7 +58,11 @@ function shareWithOriginal(string $fixture = 'sample.mp4'): Share
 
 function runPrepare(int $shareId): void
 {
-    (new PrepareMedia($shareId))->handle(app(MediaProcessor::class), app(FfmpegRunner::class));
+    (new PrepareMedia($shareId))->handle(
+        app(MediaProcessor::class),
+        app(FfmpegRunner::class),
+        app(PostImageIngestor::class),
+    );
 }
 
 /** ffprobe a stored derivative (sample_rate + channels). */
@@ -115,6 +121,36 @@ it('is idempotent — a re-run adds no duplicate rows', function () {
     runPrepare($share->id);
 
     expect($share->sourcePost->mediaAssets()->count())->toBe($before);
+});
+
+it('ingests a photo post with no video as keyframes from the oembed thumbnail', function () {
+    // A 1x1 PNG so getimagesize() validates the download as a real image.
+    $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC');
+    Http::fake([
+        'https://cdn.example.com/*' => Http::response($png, 200, ['Content-Type' => 'image/png']),
+    ]);
+
+    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
+    $share->sourcePost->update(['oembed_json' => ['thumbnail_url' => 'https://cdn.example.com/hero.jpg']]);
+
+    // No original video asset — the photo-post branch runs the resolver chain.
+    runPrepare($share->id);
+
+    $frames = $share->sourcePost->mediaAssets()->where('kind', MediaKind::Keyframe->value)->get();
+    expect($frames)->toHaveCount(1);
+    expect($frames->first()->mime)->toBe('image/png')
+        ->and($frames->first()->width)->toBe(1)
+        ->and($frames->first()->height)->toBe(1)
+        ->and(Storage::disk(DERIVED)->exists($frames->first()->storage_path))->toBeTrue();
+});
+
+it('stores nothing when a no-video post has no resolvable image', function () {
+    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
+    $share->sourcePost->update(['oembed_json' => ['author_name' => 'someone']]); // no thumbnail_url
+
+    runPrepare($share->id);
+
+    expect($share->sourcePost->mediaAssets()->count())->toBe(0);
 });
 
 it('throws MediaProcessingException on corrupt input (mapped to ffmpeg_error)', function () {
