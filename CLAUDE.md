@@ -9,6 +9,18 @@ Guidance for any agent (or human) working in this repository. These rules are **
 3. **Any UI/frontend work uses the `/frontend-design` skill** — mobile screens, Filament customizations, any web UI.
 4. **Every change ships with meaningful tests + coverage + E2E.** No trivial or placeholder tests.
 
+## Agent orchestration (teams vs subagents)
+
+Agent Teams is enabled on this machine (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), but it is **not** the default way to work — a team's token cost scales with its size, so it must earn its keep.
+
+- **Default to the subagent architecture** — the `Task`/`Agent` tool, Workflows, or just doing the work inline. Use it for the everyday case: single-task changes, focused searches, sequential edits, one-off reviews, and most `T-###` tasks.
+- **Reserve a team of teammates for genuinely team-worthy work** — large, parallelizable efforts where independent agents *coordinating with each other* adds real value that outweighs the cost:
+  - a multi-workstream epic that splits cleanly across layers (e.g. backend + mobile + web in parallel),
+  - a broad migration / audit / sweep across many files,
+  - design or architecture explored via competing approaches in parallel (proposer + skeptic).
+- **Bar for forming a team:** the work decomposes into **≥3 substantial, independent workstreams** that run in parallel with low coordination overhead. If one agent — or a couple of sequential subagents — can do it, do **not** form a team.
+- When unsure, prefer subagents. **Propose** a team (one-line rationale + rough scope) and let the user opt in, rather than forming one silently.
+
 ## Branching & PR workflow
 
 - Always branch from `main`: `feat/…`, `fix/…`, `chore/…`. Prefer one task (`T-###`) per branch; put the task id in the branch name and PR title.
