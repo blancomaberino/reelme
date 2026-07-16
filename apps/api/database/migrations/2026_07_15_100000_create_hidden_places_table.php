@@ -28,15 +28,19 @@ return new class extends Migration
             $table->index('place_id');
         });
 
-        // Carry existing per-share hides forward as per-place hides: for each
-        // dismissed share, hide the places it published. (Single-place shares —
-        // the overwhelming common case — convert exactly; multi-place ones match
-        // the prior behaviour, which callers can now refine per pin.)
+        // Carry existing collection-removes forward as per-place hides. CRITICAL:
+        // `feed_dismissals` also stores feed-card hides of OTHER users' shares
+        // (POST /feed/hidden) — which the old scopeMine ignored (it only consulted
+        // dismissals nested inside `shares.user_id = me`, and never gated saves).
+        // So restrict to a user's OWN published shares' published places, exactly
+        // what the old collection-remove could hide; converting the rest would
+        // wrongly strip places a user merely saved or feed-dismissed elsewhere.
         DB::statement(<<<'SQL'
             INSERT INTO hidden_places (user_id, place_id, created_at, updated_at)
             SELECT DISTINCT fd.user_id, ps.place_id, now(), now()
             FROM feed_dismissals fd
-            JOIN place_sources ps ON ps.share_id = fd.share_id
+            JOIN shares s ON s.id = fd.share_id AND s.user_id = fd.user_id AND s.status = 'published'
+            JOIN place_sources ps ON ps.share_id = fd.share_id AND ps.published_at IS NOT NULL
             JOIN places p ON p.id = ps.place_id AND p.merged_into_place_id IS NULL
             ON CONFLICT (user_id, place_id) DO NOTHING
         SQL);

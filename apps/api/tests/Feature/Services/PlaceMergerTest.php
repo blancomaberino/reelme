@@ -39,6 +39,27 @@ it('rehomes saved-list items + hides onto the survivor so a saved place follows 
     expect(Place::query()->publiclyVisible()->mine($saver)->pluck('name'))->toContain('Winner');
 });
 
+it('moves a saved place across a merge even when the survivor is saved in a DIFFERENT list', function () {
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    $loser = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    PlaceSource::factory()->primary()->create(['place_id' => $winner->id]);
+    PlaceSource::factory()->primary()->create(['place_id' => $loser->id]);
+
+    $user = User::factory()->create();
+    $listX = PlaceList::factory()->for($user)->create();
+    $listY = PlaceList::factory()->for($user)->create();
+    $listX->items()->create(['place_id' => $loser->id, 'position' => 1]);   // loser in X
+    $listY->items()->create(['place_id' => $winner->id, 'position' => 1]);  // winner in Y
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    // The loser's X-membership follows to the winner (X had no winner); Y keeps
+    // its own. The survivor ends up saved in BOTH lists — no false unique clash.
+    $this->assertDatabaseHas('place_list_items', ['place_list_id' => $listX->id, 'place_id' => $winner->id]);
+    $this->assertDatabaseHas('place_list_items', ['place_list_id' => $listY->id, 'place_id' => $winner->id]);
+    $this->assertDatabaseMissing('place_list_items', ['place_id' => $loser->id]);
+});
+
 it('dedupes saved-list items + hides when a user already had the survivor (no unique violation)', function () {
     $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create();
     $loser = Place::factory()->active()->atPoint(51.5, -0.13)->create();

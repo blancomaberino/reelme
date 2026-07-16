@@ -95,6 +95,10 @@ class PlaceMerger
             // follows the merge to the survivor instead of dangling on the
             // tombstone (T-071). Move where the survivor isn't already saved/hidden
             // by that owner (the unique constraint), then drop the redundant rest.
+            // NOTE: unmerge() does NOT restore these onto the resurrected loser
+            // (unlike place_sources) — a saved place stays on the survivor after an
+            // unmerge. Acceptable for now (admin-only, rare); a full snapshot/restore
+            // into the PlaceMerge record is a follow-up.
             foreach ([['place_list_items', 'place_list_id'], ['hidden_places', 'user_id']] as [$table, $ownerCol]) {
                 DB::table($table)->where('place_id', $loser->id)
                     ->whereNotIn($ownerCol, fn ($q) => $q->select($ownerCol)->from($table)->where('place_id', $winner->id))
