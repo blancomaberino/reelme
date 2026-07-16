@@ -1796,7 +1796,7 @@
       "id": "T-071",
       "title": "Personal collection model: my-map + filterable my-places list; profiles show a user's map/list/lists",
       "phase": "M2",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-013",
         "T-037",
