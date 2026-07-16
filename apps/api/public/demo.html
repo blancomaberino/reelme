@@ -261,8 +261,8 @@ button{font-family:inherit;cursor:pointer;}
 <!-- feed rail / bottom sheet -->
 <div id="feedRail" class="floating">
   <div class="rail-head">
-    <span class="serif" style="font-weight:700;font-size:var(--fs-lg)" data-i18n="rail.recent">Recent shares</span>
-    <label class="switch"><input type="checkbox" id="feedFollowing"><span class="track"></span><span data-i18n="chip.following">Following</span></label>
+    <span class="serif" id="railTitle" style="font-weight:700;font-size:var(--fs-lg)" data-i18n="rail.recent">Recent shares</span>
+    <label class="switch" id="feedFollowingLabel"><input type="checkbox" id="feedFollowing"><span class="track"></span><span data-i18n="chip.following">Following</span></label>
   </div>
   <div class="rail-body" id="feed"></div>
 </div>
@@ -327,6 +327,9 @@ const markers = L.layerGroup();
 // ── helpers (security-critical — do not inline user strings into JS) ────────
 const esc = s => String(s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const safeUrl = u => /^https?:\/\//i.test(u||"") ? u : "#";
+// Safe for embedding in a CSS url('...') string: scheme-gated + percent-encoded,
+// and the single quote neutralized so a crafted URL can't break out of the string.
+const cssUrl = u => encodeURI(safeUrl(u)).replace(/'/g, "%27");
 const price = n => n ? "€".repeat(Math.max(1,Math.min(4,n))) : "";
 const starStr = v => { if (v == null) return ""; const n = Math.max(0, Math.min(5, Math.round(v))); return "★".repeat(n) + "☆".repeat(5 - n); };
 const heroGrad = seed => { const g = ["linear-gradient(160deg,#E8A15C,#C24B2E)","linear-gradient(160deg,#7FA968,#39694A)","linear-gradient(160deg,#E7C25A,#B5772C)","linear-gradient(160deg,#D98A8A,#8E3B54)","linear-gradient(160deg,#8FB0C6,#356E86)"]; let h=0; for (const ch of String(seed||"")) h=(h*31+ch.charCodeAt(0))>>>0; return g[h%g.length]; };
@@ -552,7 +555,50 @@ function skeletonRows(n) {
       <div class="skel" style="height:13px;width:70%"></div><div class="skel" style="height:11px;width:50%"></div><div class="skel" style="height:11px;width:40%"></div></div></div>`;
   return s;
 }
+// T-071: signed-in users see THEIR places (the list twin of the personal map),
+// not a global feed. Guests keep the public discovery feed below.
+async function loadMyPlaces() {
+  const el = document.getElementById("feed");
+  el.innerHTML = skeletonRows(3);
+  try {
+    const { data } = await api(`/me/places?limit=12`);
+    if (!data.length) {
+      el.innerHTML = `<div class="empty"><div class="glyph">📍</div><div class="serif" style="font-weight:700;color:var(--ink)">Aún no tienes lugares</div><div style="font-size:var(--fs-sm)">Comparte un link o guarda un lugar para empezar tu colección.</div></div>`;
+      return;
+    }
+    el.innerHTML = data.map(place => {
+      const g = place.rating && place.rating.google;
+      const saved = place.mine && place.mine.saved && !place.mine.share_id
+        ? `<span class="rating-chip" style="background:var(--primary-soft);color:var(--primary)">✦ Guardado</span>` : "";
+      const img = place.thumbnail_url
+        ? `background-image:url('${cssUrl(place.thumbnail_url)}');background-size:cover;background-position:center`
+        : `background:${heroGrad(place.name)}`;
+      return `<div class="feed-card" onclick="goToPlace(${Number(place.id)}, ${Number(place.lat)}, ${Number(place.lng)})">
+        <div class="thumb" style="${img}"></div>
+        <div style="min-width:0">
+          <div class="feed-name">${esc(place.name || "a place")}</div>
+          <div class="feed-foot">
+            ${g && g.value!=null ? `<span class="rating-chip">★ ${Number(g.value)}</span>` : ""}
+            ${saved}
+            <span>${esc([place.category, place.city, price(place.price_range)].filter(Boolean).join(" · "))}</span>
+          </div></div></div>`;
+    }).join("");
+  } catch (err) {
+    el.innerHTML = `<div class="empty"><div style="color:var(--danger)">${esc(err.message)}</div></div>`;
+  }
+}
+
 async function loadFeed() {
+  // Signed-in → the personal "my places" list; the Following controls (feed-only)
+  // are hidden then, since the map + list are always the viewer's own (T-071).
+  const chip = document.getElementById("chipFollowing");
+  if (chip) chip.style.display = token ? "none" : "";
+  const followLabel = document.getElementById("feedFollowingLabel");
+  if (followLabel) followLabel.style.display = token ? "none" : "";
+  const railTitle = document.getElementById("railTitle");
+  if (railTitle) railTitle.textContent = token ? (lang === "en" ? "My places" : "Mis lugares") : t("rail.recent");
+  if (token) return loadMyPlaces();
+
   const el = document.getElementById("feed");
   const following = document.getElementById("feedFollowing").checked;
   el.innerHTML = skeletonRows(3);
@@ -614,7 +660,10 @@ async function loadPlaces() {
   const b = map.getBounds();
   const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map(n => n.toFixed(6)).join(",");
   try {
-    const { data } = await api(`/map/places?bbox=${bbox}&zoom=${Math.round(map.getZoom())}`);
+    // T-071: the home map is the viewer's OWN places when signed in (shared ∪
+    // saved); guests browse the public map.
+    const scope = token ? "&filter=mine" : "";
+    const { data } = await api(`/map/places?bbox=${bbox}&zoom=${Math.round(map.getZoom())}${scope}`);
     markers.clearLayers();
     for (const p of (data.pins || [])) {
       L.marker([p.lat, p.lng], { icon: pinIcon(p) }).addTo(markers)
@@ -646,7 +695,7 @@ function pinIcon(p) {
   if (p.thumbnail_url) {
     const html = `<div style="display:flex;flex-direction:column;align-items:center">
       <div style="width:44px;height:44px;border-radius:50%;border:3px solid var(--primary);box-shadow:var(--sh-2);
-          background:#fff center/cover no-repeat;background-image:url('${encodeURI(p.thumbnail_url)}')"></div>
+          background:#fff center/cover no-repeat;background-image:url('${cssUrl(p.thumbnail_url)}')"></div>
       <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
           border-top:9px solid var(--primary);margin-top:-2px"></div>
       ${name}</div>`;
@@ -793,6 +842,17 @@ async function showProfile(username) {
     const res = await api(`/users/${encodeURIComponent(username)}`);
     const data = res.data, meta = res.meta, p = data.profile;
     followTarget = { followable_type: "user", followable_id: Number(p2id(data)) };
+    // T-071: a profile also surfaces the user's PUBLIC lists (best-effort).
+    let lists = [];
+    try { lists = (await api(`/users/${encodeURIComponent(username)}/lists`)).data || []; } catch {}
+    const listsHtml = lists.map(l => {
+      // The shared-list web page lives at the origin root (routes/web.php).
+      const href = l.public_slug ? `/l/${encodeURIComponent(l.public_slug)}` : "#";
+      return `<a class="feed-card" href="${esc(href)}" target="_blank" rel="noopener" style="text-decoration:none">
+        <div class="thumb" style="width:44px;height:44px;border-radius:10px;background:var(--primary-soft);display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:18px">◆</div>
+        <div style="min-width:0"><div class="feed-name" style="font-size:var(--fs-sm)">${esc(l.name)}</div>
+          <div class="feed-meta">${Number(l.items_count)} ${Number(l.items_count) === 1 ? "lugar" : "lugares"}</div></div></a>`;
+    }).join("");
     const shares = (data.shares || []).map(s => {
       const place = s.place;
       return place ? `<div class="feed-card" onclick="goToPlace(${Number(place.id)}, ${Number(place.lat)}, ${Number(place.lng)})">
@@ -818,6 +878,8 @@ async function showProfile(username) {
         </div>
         <div><div class="sec-h" style="margin-bottom:10px">PUBLISHED PLACES</div>
           <div style="display:flex;flex-direction:column;gap:8px">${shares || '<div style="font-size:var(--fs-sm);color:var(--ink-2)">Nothing published yet.</div>'}</div></div>
+        ${listsHtml ? `<div><div class="sec-h" style="margin-bottom:10px">PUBLIC LISTS</div>
+          <div style="display:flex;flex-direction:column;gap:8px">${listsHtml}</div></div>` : ""}
       </div>`;
     renderFollowButton(username, meta && meta.viewer);
   } catch (e) {
