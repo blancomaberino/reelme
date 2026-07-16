@@ -121,6 +121,21 @@ class PlaceResolver
     }
 
     /**
+     * The extracted place object at a given index of the share's payload — the
+     * snapshot to attach when a reviewer later resolves a pending venue (T-071).
+     * Uses the same payload + places[] view as resolveAll, so the index lines up
+     * with the `index` recorded in `review_meta_json.pending[]`.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function extractedPlaceAt(Share $share, int $index): ?array
+    {
+        $places = $this->extractedPlaces($this->payload($share, $this->winningRun($share)));
+
+        return $places[$index] ?? null;
+    }
+
+    /**
      * The extracted place objects to resolve. Reads places[] (v6+); falls back to
      * a single place object for any pre-v6 payload still in flight.
      *

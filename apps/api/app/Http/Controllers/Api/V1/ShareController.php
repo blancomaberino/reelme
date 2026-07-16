@@ -14,6 +14,7 @@ use App\Jobs\Pipeline;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Services\Ingestion\UrlCanonicalizer;
+use App\Services\Places\ResolvePendingPlace;
 use App\Support\Contracts\ExtractionSchema;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
@@ -336,6 +337,31 @@ class ShareController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Resolve a still-pending venue on a (partially-)published multi-place share
+     * (T-071): attach + publish the picked candidate place, then drop the pending
+     * entry. Owner-only; the resolver validates the index + candidate.
+     */
+    public function resolvePending(Request $request, Share $share, int $index, ResolvePendingPlace $resolver): JsonResponse
+    {
+        $this->authorize('update', $share);
+
+        $validated = $request->validate(['place_id' => ['required', 'integer', 'min:1']]);
+        $resolver->resolve($share, $index, (int) $validated['place_id']);
+
+        return $this->respondWithShare($share->fresh() ?? $share);
+    }
+
+    /** Dismiss a pending venue without publishing it (T-071). Owner-only. */
+    public function dismissPending(Request $request, Share $share, int $index, ResolvePendingPlace $resolver): JsonResponse
+    {
+        $this->authorize('update', $share);
+
+        $resolver->dismiss($share, $index);
+
+        return $this->respondWithShare($share->fresh() ?? $share);
     }
 
     private function respondWithShare(Share $share): JsonResponse

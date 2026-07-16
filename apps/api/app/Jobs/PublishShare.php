@@ -2,11 +2,10 @@
 
 namespace App\Jobs;
 
-use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
 use App\Models\PlaceSource;
 use App\Models\Share;
-use App\Services\Places\TagMaterializer;
+use App\Services\Places\PlacePublisher;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -122,10 +121,9 @@ class PublishShare extends PipelineStubJob
     }
 
     /**
-     * A single unverified source keeps the place `pending`; a second independent
-     * source or an explicit user confirmation promotes it to `active` (04 §6.4).
-     * Never downgrades. Counters are recomputed from the source set, not summed,
-     * so a re-run would be self-correcting anyway.
+     * A published source rolls the place's activation + counters + tags. The
+     * bookkeeping lives in {@see PlacePublisher} so the pending-venue resolve path
+     * (T-071) recomputes identically and the two can't drift.
      */
     private function activateAndCount(PlaceSource $source, Share $share): void
     {
@@ -134,47 +132,7 @@ class PublishShare extends PipelineStubJob
             return;
         }
 
-        // Only PUBLISHED sources count — a sibling attached-but-not-yet-published
-        // in another share's resolve window must not prematurely activate a place.
-        $sourceCount = $place->sources()->whereNotNull('published_at')->count();
-
-        if ($place->status === PlaceStatus::Pending && ($sourceCount >= 2 || $share->user_confirmed)) {
-            $place->status = PlaceStatus::Active;
-        }
-
-        // Materialize discovery tags from the as-published snapshot (T-031) —
-        // before save() so cuisine_primary backfill and the Scout re-index (the
-        // searchable document embeds tag slugs) ride the same write. NON-FATAL:
-        // the share is already Published (one-shot transition), so a throw here
-        // would permanently skip the counter/activation writes below on retry.
-        // Tags are recoverable via reelmap:tags:backfill; counters are not.
-        try {
-            app(TagMaterializer::class)->materialize(
-                $place,
-                $source->extraction_snapshot_json,
-                $source->analysisRun?->overall_confidence !== null
-                    ? (float) $source->analysisRun->overall_confidence
-                    : null,
-            );
-        } catch (Throwable $e) {
-            report($e);
-        }
-
-        $place->shares_count = $sourceCount;
-        $place->avg_extraction_confidence = $this->avgConfidence($place->id);
-        $place->save();
-    }
-
-    /** Rolling average of the non-null model confidences across the place's sources. */
-    private function avgConfidence(int $placeId): ?float
-    {
-        $avg = DB::table('place_sources')
-            ->join('analysis_runs', 'analysis_runs.id', '=', 'place_sources.analysis_run_id')
-            ->where('place_sources.place_id', $placeId)
-            ->whereNotNull('analysis_runs.overall_confidence')
-            ->avg('analysis_runs.overall_confidence');
-
-        return $avg !== null ? (float) $avg : null;
+        app(PlacePublisher::class)->recompute($place, $share, $source);
     }
 
     public function failed(Throwable $e): void
