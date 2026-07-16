@@ -1912,6 +1912,88 @@
       ],
       "agent": "executor",
       "notes": "Opened 2026-07-16. Verified live: IG web_profile_info (same cookie'd API as InstagramApiResolver #82) for @lagranburgerok returns empty business_address_json but a bio '📍Barros Blancos' + full_name. Multi-signal fallback (business address coords > bio locality > external_url), hooked at PlaceResolver::resolveOne's geocodeFailed() branch, gated on the extracted @handle. Pairs with #93 (poster!=venue) and T-074 (video/audio)."
+    },
+    {
+      "id": "T-076",
+      "title": "Open the place right after adding it",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-013",
+        "T-071"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/(main)/map.tsx",
+        "apps/mobile/src/components/map/quick-share.tsx",
+        "apps/mobile/app/(main)/share.tsx"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md"
+      ],
+      "acceptance": [
+        "After a single-place add (share flow AND map quick-add), the app opens that place's detail (/place/[slug])",
+        "A multi-place add routes to the primary place (or a tap-through result) with no venue lost",
+        "Works from both entry points; a failed publish stays on the form with the existing error UX",
+        "Test: a mocked publish drives navigation to the place route with the right slug; mobile eslint/tsc/jest green"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-16. UI task -> /frontend-design. Interacts with T-077 (add entry point moves to the map quick-add)."
+    },
+    {
+      "id": "T-077",
+      "title": "Replace the 'Compartir' tab with a Search tab (find people & places)",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-071",
+        "T-039"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/(main)/_layout.tsx",
+        "apps/mobile/app/search.tsx",
+        "apps/mobile/src/api/hooks/useSearch.ts",
+        "apps/mobile/src/i18n/en.ts",
+        "apps/mobile/src/i18n/es.ts"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md",
+        "03-api-design.md"
+      ],
+      "acceptance": [
+        "Bottom tab bar shows Buscar (search icon) where Compartir was; adding a place stays reachable via the map quick-add +",
+        "The Search tab finds people (-> profile) AND places (+ tags); no 'Profiles coming soon' stub left",
+        "Backend people-search is private-profile-safe (no existence oracle); extend the search endpoint if absent",
+        "No dead route / orphaned i18n from the removed tab",
+        "Tests: tab renders Search not Share; search returns people+places; API people-search test; gates green"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-16. The Compartir tab (share.tsx, center +) duplicates the map's quick-add + and confuses. Search screen already exists (app/search.tsx, useSearch) with a 'Profiles coming soon' stub -> finish people search. UI task -> /frontend-design. Related: T-076."
+    },
+    {
+      "id": "T-078",
+      "title": "Map 'reset view' button (reset zoom / recenter)",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-032"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/(main)/map.tsx"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md"
+      ],
+      "acceptance": [
+        "A reset button sits with the zoom controls and, on press, animates the map back to the default zoom + center (or fit-to-my-places)",
+        "Settles the region like any pan so the debounced pin/cluster refetch runs normally",
+        "Accessible label; matches the MERCADO map-control style",
+        "Test: pressing reset calls animateToRegion with the reset region; mobile eslint/tsc/jest green"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-16. Map has zoom +/- (zoomBy) but no reset. Reset target per design: DEFAULT_REGION / user location / fit-to-mine (lib/map-region.fitRegion). UI task -> /frontend-design."
     }
   ]
 }
