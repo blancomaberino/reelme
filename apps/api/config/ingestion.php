@@ -2,6 +2,7 @@
 
 use App\Adapters\ManualUploadAdapter;
 use App\Adapters\OEmbedAdapter;
+use App\Adapters\YtDlpAdapter;
 use App\Services\Media\Images\InstagramApiResolver;
 use App\Services\Media\Images\OEmbedThumbnailResolver;
 
@@ -15,14 +16,20 @@ return [
     | it advances. AdapterRegistry ALWAYS appends `fallback` last, so every chain
     | terminates in manual upload (ADR-011). Real platform adapters land in
     | T-013 (Instagram), T-014 (X/TikTok/YouTube), T-015 (authed Instagram).
+    |
+    | OEmbedAdapter leads each chain so it supplies the caption/author (first
+    | successful fetchMetadata wins); YtDlpAdapter (T-074) follows to download the
+    | real video (OEmbed exposes none, so DownloadMedia advances to yt-dlp), giving
+    | the pipeline actual scene keyframes + audio. yt-dlp missing/auth-walled → the
+    | caption-only oEmbed path remains the graceful fallback.
     */
     'chains' => [
         // Keyless public oEmbed → real link title/author for the text path.
         // Instagram's endpoint is keyless but best-effort (undocumented, IP-limited).
-        'instagram' => [OEmbedAdapter::class],
+        'instagram' => [OEmbedAdapter::class, YtDlpAdapter::class],
         'x' => [],
-        'tiktok' => [OEmbedAdapter::class],
-        'youtube' => [OEmbedAdapter::class],
+        'tiktok' => [OEmbedAdapter::class, YtDlpAdapter::class],
+        'youtube' => [OEmbedAdapter::class, YtDlpAdapter::class],
     ],
 
     'fallback' => ManualUploadAdapter::class,
@@ -58,5 +65,20 @@ return [
     'oembed' => [
         'timeout' => (int) env('OEMBED_TIMEOUT', 10),
         'user_agent' => env('OEMBED_USER_AGENT', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'),
+    ],
+
+    /*
+    | YtDlpAdapter knobs (T-074). Downloads a post's real video so the pipeline
+    | gets scene keyframes + audio instead of caption-only. `bin` is the yt-dlp
+    | binary (dev.sh drops it into the container; prod bakes it into the worker
+    | image/host). `cookies_path` reuses the same Netscape cookies.txt as the IG
+    | image resolver — needed only for private/rate-limited posts. Disable to
+    | force the caption-only path.
+    */
+    'ytdlp' => [
+        'enabled' => (bool) env('INGESTION_YTDLP_ENABLED', true),
+        'bin' => env('INGESTION_YTDLP_BIN', 'yt-dlp'),
+        'timeout' => (int) env('INGESTION_YTDLP_TIMEOUT', 120),
+        'cookies_path' => env('INGESTION_YTDLP_COOKIES_PATH', env('INGESTION_IG_COOKIES_PATH')),
     ],
 ];
