@@ -8,15 +8,23 @@ use App\Adapters\Data\MediaFetchResult;
 use App\Adapters\Data\SourcePostData;
 use App\Adapters\Exceptions\PostUnavailable;
 use App\Enums\MediaKind;
+use App\Enums\Platform;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
 /**
- * Downloads a post's actual video with yt-dlp (T-074) so the pipeline sees REAL
- * scene keyframes and audio, not just the caption. It is a media-only adapter:
- * `OEmbedAdapter` earlier in the chain still supplies the caption/author, and
- * yt-dlp's Instagram extractor only ever yields video — image/carousel posts are
- * covered by `InstagramApiResolver`, not here (that mis-scoping closed PR #80).
+ * Fetches a video post's caption + author AND downloads its real video with
+ * yt-dlp (T-074), so the pipeline sees actual scene keyframes, audio, and the
+ * full caption — not the caption-only fallback. yt-dlp's Instagram extractor only
+ * ever yields video, so image/carousel posts are covered by `InstagramApiResolver`,
+ * not here (that mis-scoping closed PR #80).
+ *
+ * `fetchMetadata()` runs `yt-dlp -J … -- <url>` (dump JSON, no download) → the
+ * caption (`description`), author, and posted date; it is the rescue when the
+ * keyless oEmbed is blocked/rate-limited (common for Instagram from a datacenter
+ * IP), so a reel no longer dead-ends at the manual fallback. It throws the usual
+ * typed adapter exceptions (advance the chain) on any yt-dlp failure.
  *
  * `fetchMedia()` runs `yt-dlp … -o <temp> -- <url>` and returns the downloaded
  * file as a `FetchedMedia(localPath:…, kind: Video)`; `DownloadMedia` stores it
@@ -28,8 +36,13 @@ use Illuminate\Support\Facades\Process;
  */
 class YtDlpAdapter implements SourceAdapter
 {
-    /** Host suffixes yt-dlp reliably downloads video from (04 §2). */
-    private const SUPPORTED_HOSTS = ['instagram.com', 'tiktok.com', 'youtube.com', 'youtu.be'];
+    /** Host suffix => platform yt-dlp reliably handles (04 §2). */
+    private const SUPPORTED_HOSTS = [
+        'instagram.com' => Platform::Instagram,
+        'tiktok.com' => Platform::Tiktok,
+        'youtube.com' => Platform::Youtube,
+        'youtu.be' => Platform::Youtube,
+    ];
 
     public function __construct(
         private readonly string $bin = 'yt-dlp',
@@ -40,19 +53,25 @@ class YtDlpAdapter implements SourceAdapter
 
     public function supports(string $canonicalUrl): bool
     {
+        return $this->platformFor($canonicalUrl) !== null;
+    }
+
+    /** The platform for a supported http(s) URL, else null. */
+    private function platformFor(string $canonicalUrl): ?Platform
+    {
         if (preg_match('#^https?://#i', $canonicalUrl) !== 1) {
-            return false;
+            return null;
         }
 
         $host = strtolower((string) parse_url($canonicalUrl, PHP_URL_HOST));
 
-        foreach (self::SUPPORTED_HOSTS as $domain) {
+        foreach (self::SUPPORTED_HOSTS as $domain => $platform) {
             if ($host === $domain || str_ends_with($host, '.'.$domain)) {
-                return true;
+                return $platform;
             }
         }
 
-        return false;
+        return null;
     }
 
     public function requiresAuth(): bool
@@ -61,13 +80,59 @@ class YtDlpAdapter implements SourceAdapter
     }
 
     /**
-     * yt-dlp is a media-only adapter — the caption/author come from
-     * `OEmbedAdapter` earlier in the chain. Declining here advances the chain
-     * (to the manual fallback) exactly like an unavailable post would.
+     * The post's caption + author from `yt-dlp -J` (dump JSON, no download) — the
+     * rescue when the keyless oEmbed is blocked/rate-limited. Throws PostUnavailable
+     * (advance the chain to the manual fallback) when yt-dlp is disabled, the URL
+     * is unsupported, the binary is missing, the fetch fails/times out, or the
+     * payload is unusable — mirroring how OEmbedAdapter signals the chain.
      */
     public function fetchMetadata(string $canonicalUrl, ?LinkedAccount $account): SourcePostData
     {
-        throw new PostUnavailable('yt-dlp resolves media only; metadata comes from oEmbed.');
+        $platform = $this->platformFor($canonicalUrl);
+        if (! $this->enabled || $platform === null) {
+            throw new PostUnavailable('yt-dlp disabled or unsupported URL.');
+        }
+
+        try {
+            $result = Process::timeout($this->timeout)->run($this->metadataCommand($canonicalUrl));
+        } catch (\Throwable $e) {
+            // A hang past the timeout throws; treat as unavailable so the chain
+            // advances rather than the fetch job failing.
+            Log::debug('ytdlp.metadata_threw', ['error' => $e->getMessage()]);
+
+            throw new PostUnavailable('yt-dlp metadata fetch failed.');
+        }
+
+        if (! $result->successful()) {
+            // Missing binary, an auth wall, or an unsupported post — advance the
+            // chain. A 4xx/auth error is the signal to refresh the cookie file.
+            Log::debug('ytdlp.metadata_failed', [
+                'exit' => $result->exitCode(),
+                'stderr' => mb_substr($result->errorOutput(), 0, 500),
+            ]);
+
+            throw new PostUnavailable('yt-dlp could not fetch metadata.');
+        }
+
+        $json = json_decode(trim($result->output()), true);
+        $id = is_array($json) ? ($json['id'] ?? null) : null;
+        if (! is_array($json) || ! is_string($id) || $id === '') {
+            throw new PostUnavailable('yt-dlp returned no usable metadata.');
+        }
+
+        return new SourcePostData(
+            platform: $platform,
+            externalId: $id,
+            url: $canonicalUrl,
+            // The caption is the real content; the generic "Video by <poster>"
+            // title is only a last resort. The poster (author) is the reviewer,
+            // NOT the venue — the extractor (POSTED BY, v8) knows to exclude it.
+            caption: $this->str($json['description'] ?? null) ?? $this->str($json['title'] ?? null),
+            authorHandle: $this->str($json['channel'] ?? null) ?? $this->str($json['uploader'] ?? null),
+            authorDisplayName: $this->str($json['uploader'] ?? null) ?? $this->str($json['channel'] ?? null),
+            postedAt: $this->postedAt($json),
+            raw: ['source' => 'ytdlp'],
+        );
     }
 
     public function fetchMedia(SourcePostData $post, ?LinkedAccount $account): MediaFetchResult
@@ -159,17 +224,68 @@ class YtDlpAdapter implements SourceAdapter
             '--no-simulate',
         ];
 
-        if ($this->cookiesPath !== null && is_file($this->cookiesPath)) {
-            $cmd[] = '--cookies';
-            $cmd[] = $this->cookiesPath;
-        }
-
         // `--` ends option parsing so the URL can never be read as a flag, even
         // if a future caller bypasses the scheme guard in fetchMedia().
-        $cmd[] = '--';
-        $cmd[] = $url;
+        return [...$cmd, ...$this->cookieArgs(), '--', $url];
+    }
 
-        return $cmd;
+    /**
+     * The metadata invocation: `-J` dumps a single JSON blob for the post (no
+     * download). `--` guards the URL against being read as a flag.
+     *
+     * @return array<int, string>
+     */
+    private function metadataCommand(string $url): array
+    {
+        return [$this->bin, '-J', '--no-warnings', '--no-progress', ...$this->cookieArgs(), '--', $url];
+    }
+
+    /**
+     * `--cookies <path>` when a readable cookie file is configured, else nothing —
+     * shared by the metadata and download invocations.
+     *
+     * @return array<int, string>
+     */
+    private function cookieArgs(): array
+    {
+        return $this->cookiesPath !== null && is_file($this->cookiesPath)
+            ? ['--cookies', $this->cookiesPath]
+            : [];
+    }
+
+    /** A trimmed, non-empty string from a possibly-missing/non-string value, else null. */
+    private function str(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    /**
+     * The post's timestamp from yt-dlp's `timestamp` (unix seconds) or
+     * `upload_date` (YYYYMMDD), else null. Never throws — a malformed date just
+     * leaves posted_at unset.
+     *
+     * @param  array<string, mixed>  $json
+     */
+    private function postedAt(array $json): ?CarbonImmutable
+    {
+        try {
+            if (is_int($json['timestamp'] ?? null) && $json['timestamp'] > 0) {
+                return CarbonImmutable::createFromTimestamp($json['timestamp']);
+            }
+            $date = $this->str($json['upload_date'] ?? null);
+            if ($date !== null && preg_match('/^\d{8}$/', $date) === 1) {
+                return CarbonImmutable::createFromFormat('!Ymd', $date) ?: null;
+            }
+        } catch (\Throwable) {
+            // fall through to null
+        }
+
+        return null;
     }
 
     /**
