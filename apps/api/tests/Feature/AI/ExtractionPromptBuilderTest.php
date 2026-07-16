@@ -71,6 +71,13 @@ it('omits a redundant display name equal to the handle', function () {
         ->not->toContain('(el_encantador_de_burgas)');
 });
 
+it('falls back to the bare handle when the influencer has no display name', function () {
+    $reviewer = Influencer::factory()->create(['handle' => 'burgerscout', 'display_name' => null]);
+    $req = promptFor('caption', $reviewer);
+
+    expect(promptText($req))->toContain("POSTED BY:\n@burgerscout\n");
+});
+
 it('marks the poster unknown for a post with no attributed influencer', function () {
     $req = promptFor('a manual caption share', null);
 
