@@ -9,6 +9,7 @@ import { useShares } from '@/api/hooks/useShares';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
 import { isTerminal, type ShareDetail, type ShareStatus } from '@/api/shares';
 import { Button } from '@/components/button';
+import { SaveToListSheet } from '@/components/place/save-to-list';
 import { PendingVenues } from '@/components/share/pending-venues';
 import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
@@ -188,8 +189,11 @@ function ShareProgress({
   onReset: () => void;
   c: Palette;
   styles: Styles;
-  t: (key: MessageKey) => string;
+  t: (key: MessageKey, params?: Record<string, string | number>) => string;
 }) {
+  // Add-to-list at share time (T-073): which published place the save sheet targets.
+  const [saveFor, setSaveFor] = useState<string | null>(null);
+
   // No status yet, or still moving through the pipeline → spinner + stage label.
   if (!status || !isTerminal(status)) {
     const stageKey = (status && STAGE_KEY[status]) || 'share.stage.pending';
@@ -220,6 +224,14 @@ function ShareProgress({
               title={t('place.view')}
               onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: publishedPlaces[0].id } })}
             />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('share.saveToList')}
+              onPress={() => setSaveFor(publishedPlaces[0].id)}
+              hitSlop={8}
+            >
+              <Text style={styles.link}>{t('share.saveToList')}</Text>
+            </Pressable>
           </>
         ) : (
           <>
@@ -228,17 +240,25 @@ function ShareProgress({
             </Text>
             <View style={styles.placeList}>
               {publishedPlaces.map((p) => (
-                <Pressable
-                  key={p.id}
-                  accessibilityRole="button"
-                  onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: p.id } })}
-                  style={styles.placeRow}
-                >
-                  <Text style={styles.placeRowName} numberOfLines={1}>
-                    {p.name}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={18} color={c.muted} />
-                </Pressable>
+                <View key={p.id} style={styles.placeRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: p.id } })}
+                    style={styles.placeRowMain}
+                  >
+                    <Text style={styles.placeRowName} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t('share.saveToListNamed', { name: p.name })}
+                    onPress={() => setSaveFor(p.id)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="bookmark-outline" size={18} color={c.primary} />
+                  </Pressable>
+                </View>
               ))}
             </View>
           </>
@@ -249,6 +269,7 @@ function ShareProgress({
         <Pressable accessibilityRole="button" onPress={onReset} hitSlop={8}>
           <Text style={styles.link}>{t('share.another')}</Text>
         </Pressable>
+        {saveFor ? <SaveToListSheet placeId={saveFor} visible onClose={() => setSaveFor(null)} /> : null}
       </View>
     );
   }
@@ -295,6 +316,7 @@ const makeStyles = (c: Palette) =>
       borderWidth: 1,
       borderColor: c.border,
     },
+    placeRowMain: { flex: 1 },
     placeRowName: { flex: 1, fontSize: 16, fontWeight: '600', color: c.text },
     badge: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
     badgeOk: { backgroundColor: c.greenSoft },

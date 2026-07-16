@@ -10,6 +10,8 @@ import { fonts, type Palette, useColors } from '@/theme/colors';
 type Props = {
   pin: MapPin;
   onViewPlace: (slug: string) => void;
+  /** When set (authed viewers), shows a "save to a list" action (T-073). */
+  onSave?: (pinId: string) => void;
 };
 
 /**
@@ -17,7 +19,7 @@ type Props = {
  * slug, so "View place" routes by id — the place route binding accepts both
  * (T-030). Tapping another pin swaps this content in place (no dismiss/reopen).
  */
-export function PlaceSheet({ pin, onViewPlace }: Props) {
+export function PlaceSheet({ pin, onViewPlace, onSave }: Props) {
   const c = useColors();
   const t = useT();
   const fmt = useFormat();
@@ -47,15 +49,27 @@ export function PlaceSheet({ pin, onViewPlace }: Props) {
         </Text>
       ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t('place.view')}
-        onPress={() => onViewPlace(pin.id)}
-        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-      >
-        <Text style={styles.buttonLabel}>{t('place.view')}</Text>
-        <Ionicons name="arrow-forward" size={18} color={c.onPrimary} />
-      </Pressable>
+      <View style={styles.actions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('place.view')}
+          onPress={() => onViewPlace(pin.id)}
+          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+        >
+          <Text style={styles.buttonLabel}>{t('place.view')}</Text>
+          <Ionicons name="arrow-forward" size={18} color={c.onPrimary} />
+        </Pressable>
+        {onSave ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('save.title')}
+            onPress={() => onSave(pin.id)}
+            style={({ pressed }) => [styles.saveButton, pressed && styles.buttonPressed]}
+          >
+            <Ionicons name="bookmark-outline" size={20} color={c.primary} />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -70,8 +84,9 @@ const makeStyles = (c: Palette) =>
     attr: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     attrText: { fontSize: 14, color: c.text, fontWeight: '600' },
     tags: { fontSize: 13, color: c.muted },
+    actions: { marginTop: 8, flexDirection: 'row', gap: 10, alignItems: 'stretch' },
     button: {
-      marginTop: 8,
+      flex: 1,
       flexDirection: 'row',
       gap: 8,
       alignItems: 'center',
@@ -79,6 +94,13 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.primary,
       borderRadius: 14,
       paddingVertical: 14,
+    },
+    saveButton: {
+      width: 52,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.primarySoft,
+      borderRadius: 14,
     },
     buttonPressed: { backgroundColor: c.primaryPressed },
     buttonLabel: { color: c.onPrimary, fontSize: 16, fontWeight: '600' },

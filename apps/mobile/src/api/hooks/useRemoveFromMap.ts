@@ -12,33 +12,36 @@ function removePlace(data: Data | undefined, placeId: string): Data | undefined 
   return { ...data, pages: data.pages.map((p) => ({ ...p, data: p.data.filter((row) => row.id !== placeId) })) };
 }
 
+/** How to remove a place from the aggregate collection (T-073). */
+export type RemoveMode = 'hide' | 'full';
+
 /**
- * "Remove from my map" (T-071): take a place out of my personal collection.
- * The server (DELETE /me/places/{id}) does the work transactionally — soft-hide
- * all my shares to the place AND un-save it from every list — so a place that's
- * mine two ways drops in one call. Optimistically strips it from the my-places
- * cache and invalidates the map so its pin drops; rolls back on error.
+ * Remove a place from my collection (T-071/T-073). `hide` (default) soft-hides
+ * the pin — it stays in any lists; `full` permanently deletes my share(s) to it
+ * and un-saves it everywhere. Optimistically strips it from the my-places cache
+ * and invalidates the map (+ lists, since `full` un-saves) so its pin drops;
+ * rolls back on error.
  */
 export function useRemoveFromMap() {
   const qc = useQueryClient();
   const key = queryKeys.myPlacesAll();
 
   return useMutation({
-    mutationFn: (place: PlaceSummary) => api.delete(`/me/places/${encodeURIComponent(place.id)}`),
-    onMutate: async (place) => {
+    mutationFn: ({ place, mode = 'hide' }: { place: PlaceSummary; mode?: RemoveMode }) =>
+      api.delete(`/me/places/${encodeURIComponent(place.id)}`, { params: { mode } }),
+    onMutate: async ({ place }) => {
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueriesData<Data>({ queryKey: key });
       qc.setQueriesData<Data>({ queryKey: key }, (data) => removePlace(data, place.id));
       return { prev };
     },
-    onError: (_err, _place, ctx) => {
+    onError: (_err, _vars, ctx) => {
       ctx?.prev?.forEach(([k, data]) => qc.setQueryData(k, data));
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: queryKeys.mapAll() });
-      // Removal also un-saves the place from my lists (server-side), so refresh
-      // the list detail + index so they don't show stale membership/counts.
+      // `full` un-saves from lists, so refresh list detail + index too.
       qc.invalidateQueries({ queryKey: queryKeys.lists() });
     },
   });

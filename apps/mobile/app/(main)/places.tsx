@@ -52,9 +52,12 @@ export default function MyPlacesScreen() {
 
   const onRemove = useCallback(
     (place: PlaceSummary) => {
+      // On the aggregate "my places", removing offers a choice (T-073): hide the
+      // pin (stays in your lists) or fully remove it (deletes your share).
       Alert.alert(t('myPlaces.removeConfirm.title'), t('myPlaces.removeConfirm.message', { name: place.name }), [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('myPlaces.remove'), style: 'destructive', onPress: () => remove.mutate(place) },
+        { text: t('myPlaces.remove.hide'), onPress: () => remove.mutate({ place, mode: 'hide' }) },
+        { text: t('myPlaces.remove.full'), style: 'destructive', onPress: () => remove.mutate({ place, mode: 'full' }) },
       ]);
     },
     [remove, t],

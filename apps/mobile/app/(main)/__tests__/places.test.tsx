@@ -132,22 +132,22 @@ it('keeps all country facet chips after filtering, so you can switch directly (B
   expect(screen.getByText('AR')).toBeOnTheScreen();
 });
 
-/** Auto-tap the destructive button in the confirmation Alert. */
-function confirmAlert() {
+/** Auto-tap a labelled button in the remove Alert (default: the destructive one). */
+function tapAlert(match: (b: AlertButton) => boolean = (b) => b.style === 'destructive') {
   return jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-    (buttons as AlertButton[] | undefined)?.find((b) => b.style === 'destructive')?.onPress?.();
+    (buttons as AlertButton[] | undefined)?.find(match)?.onPress?.();
   });
 }
 
-it('confirms, then removes a place via DELETE /me/places and it drops out', async () => {
-  const alertSpy = confirmAlert();
-  let deleted: string | null = null;
-  // The server removes it (soft-hide + un-save), so the settle refetch omits it.
+it('fully removes a place (destructive choice) via DELETE ?mode=full and it drops out', async () => {
+  const alertSpy = tapAlert();
+  let deletedMode: string | null = null;
+  // The server removes it, so the settle refetch omits it.
   mock.onGet('/me/places').reply(() =>
-    deleted === null ? [200, page([place('1'), place('2')])] : [200, page([place('2')])],
+    deletedMode === null ? [200, page([place('1'), place('2')])] : [200, page([place('2')])],
   );
-  mock.onDelete('/me/places/1').reply(() => {
-    deleted = '1';
+  mock.onDelete('/me/places/1').reply((cfg) => {
+    deletedMode = cfg.params?.mode;
     return [204];
   });
 
@@ -157,14 +157,33 @@ it('confirms, then removes a place via DELETE /me/places and it drops out', asyn
   fireEvent.press(screen.getAllByLabelText('Remove')[0]);
   expect(alertSpy).toHaveBeenCalled();
 
-  await waitFor(() => expect(deleted).toBe('1'));
+  await waitFor(() => expect(deletedMode).toBe('full'));
   await waitFor(() => expect(screen.queryByText('Place 1')).toBeNull());
   expect(screen.getByText('Place 2')).toBeOnTheScreen();
   alertSpy.mockRestore();
 });
 
+it('hides a place (non-destructive choice) via DELETE ?mode=hide', async () => {
+  const alertSpy = tapAlert((b) => b.text === 'Hide from map');
+  let deletedMode: string | null = null;
+  mock.onGet('/me/places').reply(() =>
+    deletedMode === null ? [200, page([place('1'), place('2')])] : [200, page([place('2')])],
+  );
+  mock.onDelete('/me/places/1').reply((cfg) => {
+    deletedMode = cfg.params?.mode;
+    return [204];
+  });
+
+  render(<MyPlacesScreen />, { wrapper: Providers });
+  await screen.findByText('Place 1');
+  fireEvent.press(screen.getAllByLabelText('Remove')[0]);
+
+  await waitFor(() => expect(deletedMode).toBe('hide'));
+  alertSpy.mockRestore();
+});
+
 it('removes a saved-only place through the same DELETE (server handles un-save)', async () => {
-  const alertSpy = confirmAlert();
+  const alertSpy = tapAlert();
   let deleted = false;
   mock.onGet('/me/places').reply(() =>
     !deleted ? [200, page([place('9', { mine: { share_id: null, saved: true } })])] : [200, page([])],
