@@ -96,9 +96,11 @@ it('returns null when the request throws (transport error), never propagating', 
     expect(webClient()->profile('x'))->toBeNull();
 });
 
-it('does not follow an expired-cookie redirect to the login page', function () {
-    // allow_redirects=false → a 302 stays a 302 (unsuccessful) rather than
-    // resolving to a 200 login HTML page that would parse as garbage.
+it('treats an expired-cookie login redirect (302) as a failure, not a result', function () {
+    // A 302→/login is unsuccessful → null, rather than being followed to a 200
+    // login HTML page that would parse as garbage. (allow_redirects=false is what
+    // keeps that true against a real server; under Http::fake the 302 is returned
+    // as-is regardless, so this pins the null-on-302 outcome.)
     Http::fake(['*' => Http::response('', 302, ['Location' => 'https://www.instagram.com/accounts/login/'])]);
 
     expect(webClient()->profile('x'))->toBeNull();

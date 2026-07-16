@@ -25,6 +25,10 @@ class InstagramWebClient
      */
     private const APP_ID = '936619743392459';
 
+    private ?string $cookieHeader = null;
+
+    private bool $cookieResolved = false;
+
     public function __construct(
         private readonly ?string $cookiesPath = null,
         private readonly int $timeout = 15,
@@ -59,7 +63,8 @@ class InstagramWebClient
     public function profile(string $handle): ?array
     {
         $handle = ltrim(trim($handle), '@');
-        if (preg_match('/^[A-Za-z0-9._]{1,30}$/', $handle) !== 1) {
+        // \z (not $) anchors the true end so a trailing newline can't slip past.
+        if (preg_match('/\A[A-Za-z0-9._]{1,30}\z/', $handle) !== 1) {
             return null;
         }
 
@@ -122,17 +127,24 @@ class InstagramWebClient
      * Build a `Cookie:` header from the configured Netscape cookies.txt. Returns
      * null when no readable file is set. Handles the `#HttpOnly_` line prefix a
      * browser export uses for HttpOnly cookies (e.g. `sessionid`) — dropping those
-     * would strip the very cookie that authenticates.
+     * would strip the very cookie that authenticates. Memoized: config is
+     * readonly and the instance is short-lived, so ready() + each get parse the
+     * file once, not per call.
      */
     private function cookieHeader(): ?string
     {
+        if ($this->cookieResolved) {
+            return $this->cookieHeader;
+        }
+        $this->cookieResolved = true;
+
         if ($this->cookiesPath === null || ! is_file($this->cookiesPath) || ! is_readable($this->cookiesPath)) {
-            return null;
+            return $this->cookieHeader = null;
         }
 
         $lines = file($this->cookiesPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
         if ($lines === false) {
-            return null;
+            return $this->cookieHeader = null;
         }
 
         $pairs = [];
@@ -155,6 +167,6 @@ class InstagramWebClient
             }
         }
 
-        return $pairs === [] ? null : implode('; ', $pairs);
+        return $this->cookieHeader = ($pairs === [] ? null : implode('; ', $pairs));
     }
 }

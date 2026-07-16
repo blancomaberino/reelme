@@ -42,7 +42,7 @@ class InstagramProfileLocator
             return null;
         }
 
-        $name = $this->trimOrNull(is_string($user['full_name'] ?? null) ? $user['full_name'] : null);
+        $name = $this->trimOrNull($user['full_name'] ?? null);
         $business = $this->businessAddress($user);
         $bioLocality = $this->bioLocality(is_string($user['biography'] ?? null) ? $user['biography'] : '');
 
@@ -81,10 +81,10 @@ class InstagramProfileLocator
         $addr = is_array($addr) ? $addr : [];
 
         return [
-            'street' => $this->trimOrNull(is_string($addr['street_address'] ?? null) ? $addr['street_address'] : null),
-            'city' => $this->trimOrNull(is_string($addr['city_name'] ?? null) ? $addr['city_name'] : null),
-            'region' => $this->trimOrNull(is_string($addr['region_name'] ?? null) ? $addr['region_name'] : null),
-            'zip' => $this->trimOrNull(is_string($addr['zip_code'] ?? null) ? $addr['zip_code'] : null),
+            'street' => $this->trimOrNull($addr['street_address'] ?? null),
+            'city' => $this->trimOrNull($addr['city_name'] ?? null),
+            'region' => $this->trimOrNull($addr['region_name'] ?? null),
+            'zip' => $this->trimOrNull($addr['zip_code'] ?? null),
             'lat' => $this->coord($addr['latitude'] ?? null),
             'lng' => $this->coord($addr['longitude'] ?? null),
         ];
@@ -119,9 +119,9 @@ class InstagramProfileLocator
         return $float === 0.0 ? null : $float;
     }
 
-    private function trimOrNull(?string $value): ?string
+    private function trimOrNull(mixed $value): ?string
     {
-        if ($value === null) {
+        if (! is_string($value)) {
             return null;
         }
         $trimmed = trim($value);

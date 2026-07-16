@@ -73,7 +73,7 @@ it('re-geocodes from the profile full_name + bio locality and resolves with a go
     fakeIgProfile([
         'full_name' => 'La Gran Burger',
         'business_address_json' => '',
-        'biography' => "🥩 Burger de asado 📍Barros Blancos 🛵 Delivery",
+        'biography' => '🥩 Burger de asado 📍Barros Blancos 🛵 Delivery',
     ]);
     $share = handleShare('bar sin nombre', 'lagranburgerok');
 
@@ -112,6 +112,53 @@ it('falls back to the profile business-address coordinates (pending, no google_p
         ->and($place->coordinates())->toBe(['lat' => -34.62, 'lng' => -56.02])
         ->and($place->status)->toBe(PlaceStatus::Pending)
         ->and($share->fresh()->status)->toBe(ShareStatus::Analyzing);
+});
+
+it('does not fetch the profile at all when the first geocode already succeeds', function () {
+    bindGeocoder((new FakeGeocoder)->seed('bar sin nombre', geoResult('ChIJhit', 40.4, -3.7, name: 'Bar Sin Nombre')));
+    Http::fake();
+    $share = handleShare('bar sin nombre', 'lagranburgerok');
+
+    (new ResolvePlace($share->id))->handle();
+
+    expect(Place::sole()->google_place_id)->toBe('ChIJhit')
+        ->and($share->fresh()->status)->toBe(ShareStatus::Analyzing);
+    Http::assertNothingSent(); // geocode hit → the @handle profile is never looked up
+});
+
+it('the profile-coordinates fallback attaches to an existing nearby pin instead of duplicating', function () {
+    bindGeocoder(new FakeGeocoder); // every geocode misses → drops to the coords fallback
+    fakeIgProfile([
+        'full_name' => 'La Gran Burger',
+        'business_address_json' => json_encode(['city_name' => 'Barros Blancos', 'latitude' => -34.62, 'longitude' => -56.02]),
+    ]);
+    // An existing pending pin at the same point + name, no google_place_id.
+    $existing = Place::factory()->atPoint(-34.62, -56.02)->create(['name' => 'La Gran Burger', 'google_place_id' => null]);
+    $share = handleShare('bar sin nombre', 'lagranburgerok');
+
+    (new ResolvePlace($share->id))->handle();
+
+    expect(Place::count())->toBe(1) // attached, not duplicated
+        ->and(PlaceSource::where('share_id', $share->id)->where('place_id', $existing->id)->exists())->toBeTrue()
+        ->and($share->fresh()->status)->toBe(ShareStatus::Analyzing);
+});
+
+it('the profile-coordinates fallback routes to review when several nearby pins match', function () {
+    bindGeocoder(new FakeGeocoder);
+    fakeIgProfile([
+        'full_name' => 'La Gran Burger',
+        'business_address_json' => json_encode(['latitude' => -34.62, 'longitude' => -56.02]),
+    ]);
+    Place::factory()->atPoint(-34.62, -56.02)->create(['name' => 'La Gran Burger']);
+    Place::factory()->atPoint(-34.62, -56.02)->create(['name' => 'La Gran Burger']);
+    $share = handleShare('bar sin nombre', 'lagranburgerok');
+
+    (new ResolvePlace($share->id))->handle();
+
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Review)
+        ->and($share->review_reason)->toBe('ambiguous_place')
+        ->and(PlaceSource::where('share_id', $share->id)->exists())->toBeFalse();
 });
 
 it('parks the share (no profile fetch) when the venue has no handle', function () {
