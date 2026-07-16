@@ -27,6 +27,7 @@ class PlaceInfolist
                                 PlaceStatus::Pending => 'warning',
                                 PlaceStatus::Active => 'success',
                                 PlaceStatus::Merged => 'gray',
+                                PlaceStatus::Removed => 'gray',
                                 PlaceStatus::Hidden => 'danger',
                             }),
                         TextEntry::make('mergedInto.name')

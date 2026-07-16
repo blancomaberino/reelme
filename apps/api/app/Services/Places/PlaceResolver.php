@@ -253,7 +253,10 @@ class PlaceResolver
     {
         $radius = (float) config('places.dedup.radius_meters', 75);
 
-        // Status literals mirror PlaceStatus::matchable() (pending, active).
+        // Status literals mirror PlaceStatus::matchable() (pending, active) — so a
+        // `removed` tombstone is deliberately excluded from the fuzzy scan: reviving
+        // an orphaned place is exact-google_place_id-only (resolveLocked, step 1), so
+        // an unrelated near-name/near-point post can never resurrect the wrong pin.
         $rows = DB::select(
             'SELECT id, name, normalized_name, address_line1, city, region, country_code,
                     status, shares_count,

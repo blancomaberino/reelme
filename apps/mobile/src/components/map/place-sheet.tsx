@@ -12,6 +12,11 @@ type Props = {
   onViewPlace: (slug: string) => void;
   /** When set (authed viewers), shows a "save to a list" action (T-073). */
   onSave?: (pinId: string) => void;
+  /**
+   * When set (a list is the active map scope, owner viewing their own list),
+   * replaces the save action with "remove from this list" (T-073 follow-up).
+   */
+  onRemoveFromList?: (pinId: string) => void;
 };
 
 /**
@@ -19,7 +24,7 @@ type Props = {
  * slug, so "View place" routes by id — the place route binding accepts both
  * (T-030). Tapping another pin swaps this content in place (no dismiss/reopen).
  */
-export function PlaceSheet({ pin, onViewPlace, onSave }: Props) {
+export function PlaceSheet({ pin, onViewPlace, onSave, onRemoveFromList }: Props) {
   const c = useColors();
   const t = useT();
   const fmt = useFormat();
@@ -59,7 +64,18 @@ export function PlaceSheet({ pin, onViewPlace, onSave }: Props) {
           <Text style={styles.buttonLabel}>{t('place.view')}</Text>
           <Ionicons name="arrow-forward" size={18} color={c.onPrimary} />
         </Pressable>
-        {onSave ? (
+        {onRemoveFromList ? (
+          // A list is the active scope: the pin is already in it, so the filled
+          // bookmark reads "saved here — tap to remove from this list".
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('map.removeFromList')}
+            onPress={() => onRemoveFromList(pin.id)}
+            style={({ pressed }) => [styles.saveButton, pressed && styles.buttonPressed]}
+          >
+            <Ionicons name="bookmark" size={20} color={c.primary} />
+          </Pressable>
+        ) : onSave ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('save.title')}

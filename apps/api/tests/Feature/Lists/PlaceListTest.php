@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\PlaceStatus;
 use App\Models\Place;
 use App\Models\PlaceList;
 use App\Models\User;
@@ -51,6 +52,35 @@ it('removes a place from a list', function () {
     $this->deleteJson("/api/v1/me/lists/{$list->id}/places/{$place->id}")
         ->assertOk()
         ->assertJsonPath('data.items_count', 0);
+});
+
+it('tombstones a sourceless place when its last list drops it (T-073)', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+    // A place kept alive only by the save (no published source of its own).
+    $place = Place::factory()->active()->atPoint(0, 0)->create();
+    $list = PlaceList::factory()->for($user)->create();
+    $this->postJson("/api/v1/me/lists/{$list->id}/places/{$place->id}")->assertCreated();
+
+    $this->deleteJson("/api/v1/me/lists/{$list->id}/places/{$place->id}")->assertOk();
+
+    // No source and no list holds it now → orphaned ghost pin → tombstoned.
+    expect($place->fresh()->status)->toBe(PlaceStatus::Removed);
+});
+
+it('keeps a sourceless place saved in another list alive (no tombstone)', function () {
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+    $place = Place::factory()->active()->atPoint(0, 0)->create();
+    $a = PlaceList::factory()->for($user)->create();
+    $b = PlaceList::factory()->for($user)->create();
+    $this->postJson("/api/v1/me/lists/{$a->id}/places/{$place->id}")->assertCreated();
+    $this->postJson("/api/v1/me/lists/{$b->id}/places/{$place->id}")->assertCreated();
+
+    $this->deleteJson("/api/v1/me/lists/{$a->id}/places/{$place->id}")->assertOk();
+
+    // Still saved in B → not orphaned.
+    expect($place->fresh()->status)->toBe(PlaceStatus::Active);
 });
 
 it('updates and deletes a list', function () {

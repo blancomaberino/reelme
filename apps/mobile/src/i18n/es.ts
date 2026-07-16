@@ -98,6 +98,10 @@ export const es: Record<MessageKey, string> = {
   'map.zoomOutLabel': 'Alejar',
   'map.clearList': 'Quitar filtro de lista',
   'map.quickAdd': 'Agregar desde un enlace',
+  'map.removeFromList': 'Quitar de la lista',
+  'map.removeFromList.confirm.title': '¿Quitar de «{{name}}»?',
+  'map.removeFromList.confirm.message': 'Solo se quita de esta lista; sigue guardado donde sea que lo hayas guardado.',
+  'map.removeFromList.confirm.cta': 'Quitar',
 
   'quickShare.title': 'Agregar desde un enlace',
   'quickShare.placeholder': 'Pegá un enlace o describí el lugar',

@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useListMembership } from '@/api/hooks/useLists';
 import { useMapPlaces } from '@/api/hooks/useMapPlaces';
 import type { MapPin } from '@/api/places';
 import type { SharePlace } from '@/api/shares';
@@ -101,6 +102,32 @@ export default function MapScreen() {
   const [saveFor, setSaveFor] = useState<string | null>(null);
 
   const { data, isFetching } = useMapPlaces(queryRegion, effectiveFilters);
+
+  // With a saved list as the active scope, a tapped pin is already in that list,
+  // so the sheet's action removes it from THAT list only (T-073 follow-up) —
+  // the map reaches here only for the viewer's own lists, so this is owner-safe.
+  const { remove: removeFromList } = useListMembership();
+  const onRemoveFromList = useCallback(
+    (pinId: string) => {
+      if (!activeList) return;
+      Alert.alert(
+        t('map.removeFromList.confirm.title', { name: activeList.name }),
+        t('map.removeFromList.confirm.message'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('map.removeFromList.confirm.cta'),
+            style: 'destructive',
+            onPress: () => {
+              removeFromList.mutate({ listId: activeList.id, placeId: pinId });
+              select(null); // close the sheet; the pin drops when the map refetches
+            },
+          },
+        ],
+      );
+    },
+    [activeList, removeFromList, select, t],
+  );
 
   const onRegionChangeComplete = useCallback((region: Region) => {
     regionRef.current = region;
@@ -345,7 +372,10 @@ export default function MapScreen() {
           select(null);
           router.push({ pathname: '/place/[slug]', params: { slug: id } });
         }}
-        onSave={authed ? (id) => setSaveFor(id) : undefined}
+        // In a list scope, the pin action removes from that list; otherwise it
+        // saves to a list. Both are authed-only.
+        onSave={authed && !activeList ? (id) => setSaveFor(id) : undefined}
+        onRemoveFromList={authed && activeList ? onRemoveFromList : undefined}
       />
 
       {/* Mounted only while open so each session starts fresh (no stale share). */}
@@ -365,18 +395,24 @@ function PreviewSheet({
   onClose,
   onViewPlace,
   onSave,
+  onRemoveFromList,
 }: {
   pin: MapPin | null;
   onClose: () => void;
   onViewPlace: (id: string) => void;
   onSave?: (id: string) => void;
+  onRemoveFromList?: (id: string) => void;
 }) {
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['32%'], []);
 
   return (
     <BottomSheet ref={sheetRef} index={pin ? 0 : -1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose}>
-      <BottomSheetView>{pin ? <PlaceSheet pin={pin} onViewPlace={onViewPlace} onSave={onSave} /> : null}</BottomSheetView>
+      <BottomSheetView>
+        {pin ? (
+          <PlaceSheet pin={pin} onViewPlace={onViewPlace} onSave={onSave} onRemoveFromList={onRemoveFromList} />
+        ) : null}
+      </BottomSheetView>
     </BottomSheet>
   );
 }

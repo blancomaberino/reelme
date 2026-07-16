@@ -31,6 +31,7 @@ class PlacesTable
                         PlaceStatus::Pending => 'warning',
                         PlaceStatus::Active => 'success',
                         PlaceStatus::Merged => 'gray',
+                        PlaceStatus::Removed => 'gray',
                         PlaceStatus::Hidden => 'danger',
                     }),
                 TextColumn::make('shares_count')
