@@ -60,7 +60,7 @@ class ExtractPlaceData extends PipelineStubJob
 
     protected function run(Share $share): void
     {
-        $share->loadMissing('sourcePost');
+        $share->loadMissing('sourcePost.influencer');
 
         if (($existing = $this->existingSuccess($share)) !== null) {
             $this->gate($share, $existing);
