@@ -10,6 +10,7 @@ use App\Models\MediaAsset;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Services\Transcription\Data\TranscriptionResult;
+use App\Services\Transcription\Exceptions\TranscriptionFailed;
 use App\Services\Transcription\TranscriptionManager;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
@@ -17,6 +18,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -24,8 +26,12 @@ use Illuminate\Support\Facades\Storage;
  * feeds the T-021 extraction prompt. Local-first via the TranscriptionManager
  * with a hosted fallback. The transcript lives on the source_post — shared across
  * every share of the same reel — so it is written once and reused (idempotent).
- * Silent videos (no audio asset) store an empty marker and proceed; silence is
- * not a failure.
+ *
+ * Transcription ENHANCES extraction but is not required: the caption + keyframes
+ * already carry the venue. So neither a silent video (no audio asset) NOR a
+ * transcriber failure (both engines unavailable/errored) is fatal — both store an
+ * empty transcript and let the pipeline continue, rather than dropping the whole
+ * share.
  */
 class TranscribeAudio implements ShouldQueue
 {
@@ -80,10 +86,18 @@ class TranscribeAudio implements ShouldQueue
         $tmp = $this->pullAudio($audio);
 
         try {
-            $this->persist($post, $manager->transcribe($tmp, $share->id));
+            $result = $manager->transcribe($tmp, $share->id);
+        } catch (TranscriptionFailed $e) {
+            // Both the local + hosted engines are unavailable/errored. Transcription
+            // is best-effort — degrade to an empty transcript and let extraction run
+            // on the caption + keyframes instead of failing the whole share.
+            Log::warning('transcribe.degraded', ['share_id' => $share->id, 'error' => $e->getMessage()]);
+            $result = TranscriptionResult::empty('failed');
         } finally {
             @unlink($tmp);
         }
+
+        $this->persist($post, $result);
     }
 
     /** Concurrency-safe write: only the first share of a post wins the transcript. */

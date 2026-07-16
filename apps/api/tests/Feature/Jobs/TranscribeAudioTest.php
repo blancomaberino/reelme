@@ -6,7 +6,6 @@ use App\Jobs\TranscribeAudio;
 use App\Models\MediaAsset;
 use App\Models\Share;
 use App\Services\Transcription\Data\TranscriptionResult;
-use App\Services\Transcription\Exceptions\TranscriptionFailed;
 use App\Services\Transcription\HostedTranscriber;
 use App\Services\Transcription\TranscriptionManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,16 +101,19 @@ it('skips when the share is not in the fetching state', function () {
         ->and($fake->transcribed)->toBeFalse();
 });
 
-it('maps a total transcription failure to transcribe_error', function () {
+it('degrades to an empty transcript (does NOT fail the share) when both engines fail', function () {
+    // Transcription is best-effort — a missing/unavailable transcriber must not
+    // drop the whole share, since the caption + keyframes still drive extraction.
     $share = shareWithAudio();
     config()->set('transcription.hosted.enabled', false);
-    bindManager(new FakeTranscriber(available: true, throws: true));
+    bindManager(new FakeTranscriber(available: true, throws: true)); // manager throws TranscriptionFailed
 
-    expect(fn () => (new TranscribeAudio($share->id))->handle(app(TranscriptionManager::class)))
-        ->toThrow(TranscriptionFailed::class);
+    (new TranscribeAudio($share->id))->handle(app(TranscriptionManager::class));
 
-    // The failed() hook maps the exhausted job to the taxonomy code.
-    (new TranscribeAudio($share->id))->failed(new TranscriptionFailed('x'));
-    expect($share->fresh()->status)->toBe(ShareStatus::Failed)
-        ->and($share->fresh()->failure_reason)->toBe('transcribe_error');
+    $t = $share->sourcePost->fresh()->transcript_json;
+    expect($t['empty'])->toBeTrue()
+        ->and($t['text'])->toBe('')
+        ->and($t['segments'])->toBe([])
+        ->and($t['driver'])->toBe('failed')            // marks the degraded outcome
+        ->and($share->fresh()->status)->toBe(ShareStatus::Fetching); // chain proceeds, share not dropped
 });
