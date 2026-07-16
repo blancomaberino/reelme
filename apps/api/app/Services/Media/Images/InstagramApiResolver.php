@@ -4,8 +4,7 @@ namespace App\Services\Media\Images;
 
 use App\Enums\Platform;
 use App\Models\SourcePost;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use App\Services\Media\Instagram\InstagramWebClient;
 
 /**
  * Resolves EVERY image of an Instagram photo/carousel post (T-013) — the real
@@ -19,38 +18,31 @@ use Illuminate\Support\Facades\Log;
  *
  * Auth is required: without a session cookie the endpoint 302s to login, so when
  * no readable cookie file is configured resolve() returns [] and the chain falls
- * through to OEmbedThumbnailResolver (the hero image only). The cookie is a
- * Netscape cookies.txt exported from a logged-in browser (see `cookies_path`).
+ * through to OEmbedThumbnailResolver (the hero image only). The cookie/header/
+ * redirect plumbing lives in the shared InstagramWebClient (T-075); this resolver
+ * keeps only the shortcode→pk math and the carousel image parsing.
  */
 class InstagramApiResolver implements PostImageResolver
 {
-    /**
-     * The public web app id the Instagram web client sends. The media info
-     * endpoint requires it — without the header it redirects to the login page
-     * instead of returning JSON.
-     */
-    private const APP_ID = '936619743392459';
-
     /** Alphabet Instagram uses to base64-encode a media pk into a shortcode. */
     private const SHORTCODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
+    private readonly InstagramWebClient $client;
+
     public function __construct(
-        private readonly ?string $cookiesPath = null,
-        private readonly int $timeout = 15,
-        private readonly bool $enabled = true,
-    ) {}
+        ?string $cookiesPath = null,
+        int $timeout = 15,
+        bool $enabled = true,
+    ) {
+        $this->client = new InstagramWebClient($cookiesPath, $timeout, $enabled);
+    }
 
     public function resolve(SourcePost $post): array
     {
-        if (! $this->enabled || $post->platform !== Platform::Instagram) {
-            return [];
-        }
-
-        // No session → this resolver can't authenticate; let the chain fall
-        // through to the zero-auth oEmbed thumbnail rather than 302 to login.
-        // Checked before the pk math so the no-cookie no-op does zero work.
-        $cookie = $this->cookieHeader();
-        if ($cookie === null) {
+        // Not IG, disabled, or no session cookie → let the chain fall through to
+        // the zero-auth oEmbed thumbnail rather than 302 to login. ready() is
+        // checked before the pk math so the no-op does zero work.
+        if ($post->platform !== Platform::Instagram || ! $this->client->ready()) {
             return [];
         }
 
@@ -60,38 +52,9 @@ class InstagramApiResolver implements PostImageResolver
             return [];
         }
 
-        try {
-            $response = Http::timeout($this->timeout)
-                ->withOptions(['allow_redirects' => false]) // an expired-cookie 302 to /login must not be followed to a 200 HTML page
-                ->withHeaders([
-                    'x-ig-app-id' => self::APP_ID,
-                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-                    'Cookie' => $cookie,
-                ])
-                ->get("https://www.instagram.com/api/v1/media/{$pk}/info/");
-        } catch (\Throwable $e) {
-            // resolve() must never throw — the ingest chain treats a throw as
-            // fatal — so a transport error just falls through to the next resolver.
-            Log::debug('instagram_api.request_threw', [
-                'source_post_id' => $post->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            return [];
-        }
-
-        if (! $response->successful()) {
-            // Expired cookie, rate limit, or a removed post — not fatal, drop to
-            // the next resolver. A 4xx here is the signal the cookie needs refresh.
-            Log::debug('instagram_api.request_failed', [
-                'source_post_id' => $post->id,
-                'status' => $response->status(),
-            ]);
-
-            return [];
-        }
-
-        $json = $response->json();
+        // never throws → null on any transport error / non-2xx, so we fall
+        // through to the next resolver.
+        $json = $this->client->mediaInfo($pk);
 
         return is_array($json) ? $this->imageUrls($json) : [];
     }
@@ -215,45 +178,5 @@ class InstagramApiResolver implements PostImageResolver
         }
 
         return $best;
-    }
-
-    /**
-     * Build a `Cookie:` header from the configured Netscape cookies.txt. Returns
-     * null when no readable file is set, so resolve() can cleanly skip. Handles
-     * the `#HttpOnly_` line prefix a browser export uses for HttpOnly cookies
-     * (e.g. `sessionid`) — dropping those would strip the very cookie that authenticates.
-     */
-    private function cookieHeader(): ?string
-    {
-        if ($this->cookiesPath === null || ! is_file($this->cookiesPath) || ! is_readable($this->cookiesPath)) {
-            return null;
-        }
-
-        $lines = file($this->cookiesPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($lines === false) {
-            return null;
-        }
-
-        $pairs = [];
-        foreach ($lines as $line) {
-            // FILE_IGNORE_NEW_LINES strips \n but not \r — a CRLF export (common
-            // on Windows/browser extensions) would otherwise leave a trailing \r
-            // on the cookie value and silently corrupt the Cookie header.
-            $line = rtrim($line, "\r");
-
-            // Keep `#HttpOnly_` rows (real cookies); skip genuine comment lines.
-            if (str_starts_with($line, '#HttpOnly_')) {
-                $line = substr($line, strlen('#HttpOnly_'));
-            } elseif ($line === '' || $line[0] === '#') {
-                continue;
-            }
-
-            $cols = explode("\t", $line);
-            if (count($cols) >= 7 && $cols[5] !== '' && $cols[6] !== '') {
-                $pairs[] = $cols[5].'='.$cols[6];
-            }
-        }
-
-        return $pairs === [] ? null : implode('; ', $pairs);
     }
 }

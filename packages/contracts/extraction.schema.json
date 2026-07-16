@@ -14,10 +14,11 @@
       "items": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "category", "cuisines", "address", "geo", "price_range",
+      "required": ["name", "handle", "category", "cuisines", "address", "geo", "price_range",
                    "phone", "website", "opening_hours_text", "dishes", "vibe_tags", "dietary_tags", "confidence"],
       "properties": {
         "name": { "type": ["string", "null"], "description": "Restaurant/venue name exactly as stated in the source. null if not identifiable." },
+        "handle": { "type": ["string", "null"], "description": "The venue's OWN Instagram handle WITHOUT the leading @ (e.g. \"lagranburgerok\"), taken from an @mention in the caption/transcript that attributes THIS venue. NEVER the posting account (POSTED BY / reviewer). null when the venue is not given by an @handle." },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1, "description": "Confidence 0-1 that THIS venue is correctly identified from the source. Drives per-place auto-publish vs. review." },
         "category": {
           "type": ["string", "null"],
