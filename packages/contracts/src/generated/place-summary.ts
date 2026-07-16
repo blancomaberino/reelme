@@ -17,6 +17,10 @@ export interface PlaceSummary {
   city: string | null;
   country_code: string;
   thumbnail_url?: string | null;
+  mine?: {
+    share_id: string | null;
+    saved: boolean;
+  };
   source_count: number;
   rating: {
     google: RatingBlock;

@@ -16,8 +16,8 @@ describe('i18n dictionaries', () => {
 
 describe('translate()', () => {
   it('returns Spanish for the es locale and English for en', () => {
-    expect(translate('es', 'feed.empty.title')).toBe('Todavía no hay nada');
-    expect(translate('en', 'feed.empty.title')).toBe('Nothing here yet');
+    expect(translate('es', 'myPlaces.empty.title')).toBe('Aún no tienes lugares');
+    expect(translate('en', 'myPlaces.empty.title')).toBe('No places yet');
   });
 
   it('interpolates named params', () => {
@@ -34,6 +34,6 @@ describe('translate()', () => {
 
   it('falls back to the Spanish dictionary for an unknown locale (never throws)', () => {
     // @ts-expect-error — exercising the runtime guard for a bad locale value.
-    expect(translate('fr', 'feed.empty.title')).toBe('Todavía no hay nada');
+    expect(translate('fr', 'myPlaces.empty.title')).toBe('Aún no tienes lugares');
   });
 });

@@ -27,8 +27,8 @@ export default function MainTabsLayout() {
         options={{ title: t('tabs.map'), tabBarIcon: ({ color, size }) => <Ionicons name="map" color={color} size={size} /> }}
       />
       <Tabs.Screen
-        name="feed"
-        options={{ title: t('tabs.feed'), tabBarIcon: ({ color, size }) => <Ionicons name="albums" color={color} size={size} /> }}
+        name="places"
+        options={{ title: t('tabs.myPlaces'), tabBarIcon: ({ color, size }) => <Ionicons name="bookmark" color={color} size={size} /> }}
       />
       <Tabs.Screen
         name="share"

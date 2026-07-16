@@ -7,20 +7,29 @@ export const es: Record<MessageKey, string> = {
   'common.cancel': 'Cancelar',
 
   'tabs.map': 'Mapa',
-  'tabs.feed': 'Feed',
+  'tabs.myPlaces': 'Mis lugares',
   'tabs.share': 'Compartir',
   'tabs.profile': 'Perfil',
 
-  'feed.title': 'Feed',
+  'myPlaces.title': 'Mis lugares',
+  'myPlaces.search': 'Buscar',
+  'myPlaces.saved': 'Guardado',
+  'myPlaces.remove': 'Quitar',
+  'myPlaces.removeConfirm.title': '¿Quitar de tu mapa?',
+  'myPlaces.removeConfirm.message': '“{{name}}” saldrá de tu mapa y tu lista.',
+  'myPlaces.sort.recent': 'Recientes',
+  'myPlaces.sort.popular': 'Populares',
+  'myPlaces.empty.title': 'Aún no tienes lugares',
+  'myPlaces.empty.body': 'Comparte un link o guarda un lugar para empezar tu colección.',
+  'myPlaces.empty.filteredTitle': 'Sin resultados',
+  'myPlaces.empty.filteredBody': 'Ningún lugar coincide con estos filtros.',
+  'myPlaces.guest.title': 'Tu colección vive aquí',
+  'myPlaces.guest.body': 'Inicia sesión para armar tu mapa y tu lista personal.',
+  'myPlaces.guest.cta': 'Iniciar sesión',
+  'myPlaces.error.title': 'No pudimos cargar tus lugares',
+
+  // Compartidas por FeedCard (sigue usándose en perfiles) + los buscadores.
   'feed.search': 'Buscar',
-  'feed.empty.title': 'Todavía no hay nada',
-  'feed.empty.body': 'Compartí tu primer reel para verlo en el feed.',
-  'feed.error.title': 'No se pudo cargar el feed',
-  'feed.hide': 'Ocultar de mi feed',
-  'feed.hideConfirm.title': '¿Ocultar de tu feed?',
-  'feed.hideConfirm.message': '«{{name}}» no aparecerá en tu feed. Podés deshacerlo enseguida.',
-  'feed.hidden': 'Ocultado de tu feed',
-  'feed.undo': 'Deshacer',
   'feed.sharerFallback': 'un usuario de Reelmap',
 
   'place.back': 'Volver',
@@ -68,9 +77,6 @@ export const es: Record<MessageKey, string> = {
 
   'source.openOriginal': 'Abrir publicación original de {{platform}}',
   'source.firstShared': 'Compartido primero',
-
-  'filter.following': 'Siguiendo',
-  'filter.mine': 'Míos',
 
   'search.placeholder': 'Buscar lugares, etiquetas…',
   'search.cancel': 'Cancelar',

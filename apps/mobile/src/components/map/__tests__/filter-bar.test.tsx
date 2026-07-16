@@ -27,22 +27,17 @@ afterEach(() => {
   useSessionStore.setState({ user: null, status: 'guest' });
 });
 
-it('shows Following/Mine scope chips to an authed viewer and toggles the scope', async () => {
-  useSessionStore.setState({ user: null, status: 'authed' });
-
+it('toggles a price-tier filter into the map store', async () => {
   render(<FilterBar />, { wrapper: Providers });
 
-  const following = await screen.findByText('Following');
-  fireEvent.press(following);
-  await waitFor(() => expect(useMapStore.getState().filters.filter).toBe('following'));
-
-  fireEvent.press(screen.getByText('Mine'));
-  await waitFor(() => expect(useMapStore.getState().filters.filter).toBe('mine'));
+  // Price tier 2 renders as "$$" via the format helper.
+  fireEvent.press(await screen.findByText('$$'));
+  await waitFor(() => expect(useMapStore.getState().filters.price_range).toBe(2));
 });
 
-it('hides the scope chips from a guest', () => {
-  useSessionStore.setState({ user: null, status: 'guest' });
-
+it('no longer renders mine/following scope chips (the map is always personal, T-071)', () => {
+  // Even an authed viewer sees no scope chips — the home map is implicitly mine.
+  useSessionStore.setState({ user: null, status: 'authed' });
   render(<FilterBar />, { wrapper: Providers });
 
   expect(screen.queryByText('Following')).toBeNull();

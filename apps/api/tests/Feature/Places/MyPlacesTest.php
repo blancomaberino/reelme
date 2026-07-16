@@ -79,6 +79,101 @@ it('filters by country, type, and tag facets', function () {
     expect($byTag)->toContain('Lisbon spot')->not->toContain('Madrid spot');
 });
 
+it('carries per-row `mine` provenance (share_id when shared, saved flag)', function () {
+    $me = User::factory()->create();
+    $sharedOnly = myPlace('SharedOnly');
+    $savedOnly = myPlace('SavedOnly');
+
+    $share = publishedShare($sharedOnly, sharer: $me);
+
+    $list = PlaceList::factory()->for($me)->create();
+    $list->items()->create(['place_id' => $savedOnly->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $rows = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->keyBy('name');
+
+    expect($rows['SharedOnly']['mine'])->toBe(['share_id' => (string) $share->id, 'saved' => false]);
+    expect($rows['SavedOnly']['mine'])->toBe(['share_id' => null, 'saved' => true]);
+});
+
+it('reports a place shared-and-saved with both a share_id and saved=true', function () {
+    $me = User::factory()->create();
+    $both = myPlace('Both');
+    $share = publishedShare($both, sharer: $me);
+    $list = PlaceList::factory()->for($me)->create();
+    $list->items()->create(['place_id' => $both->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $row = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->firstWhere('name', 'Both');
+    expect($row['mine'])->toBe(['share_id' => (string) $share->id, 'saved' => true]);
+});
+
+it('omits share_id in `mine` once my share is soft-hidden but I still saved it', function () {
+    $me = User::factory()->create();
+    $p = myPlace('Kept');
+    $share = publishedShare($p, sharer: $me);
+    FeedDismissal::create(['user_id' => $me->id, 'share_id' => $share->id]);
+    $list = PlaceList::factory()->for($me)->create();
+    $list->items()->create(['place_id' => $p->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $row = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->firstWhere('name', 'Kept');
+    // Present via the save; the dismissed share is no longer offered for removal.
+    expect($row['mine'])->toBe(['share_id' => null, 'saved' => true]);
+});
+
+it('DELETE /me/places removes a place I shared — soft-hides every share of mine, all at once', function () {
+    $me = User::factory()->create();
+    $place = myPlace('Gone');
+    // Two published shares of mine to the same place (self-shared twice).
+    $s1 = publishedShare($place, sharer: $me);
+    $s2 = publishedShare($place, sharer: $me);
+
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$place->id}")->assertNoContent();
+
+    // BOTH shares dismissed → scopeMine no longer matches, so it's off my list.
+    expect(FeedDismissal::where('user_id', $me->id)->whereIn('share_id', [$s1->id, $s2->id])->count())->toBe(2);
+    $names = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->pluck('name');
+    expect($names)->not->toContain('Gone');
+});
+
+it('DELETE /me/places un-saves a saved place from all my lists', function () {
+    $me = User::factory()->create();
+    $place = myPlace('Unsave');
+    $a = PlaceList::factory()->for($me)->create();
+    $b = PlaceList::factory()->for($me)->create();
+    $a->items()->create(['place_id' => $place->id, 'position' => 1]);
+    $b->items()->create(['place_id' => $place->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$place->id}")->assertNoContent();
+
+    $this->assertDatabaseMissing('place_list_items', ['place_id' => $place->id]);
+});
+
+it('DELETE /me/places is idempotent and never touches another user’s collection', function () {
+    $me = User::factory()->create();
+    $other = User::factory()->create();
+    $place = myPlace('Shared');
+    publishedShare($place, sharer: $other); // someone else's share to the same place
+    $mineList = PlaceList::factory()->for($other)->create();
+    $mineList->items()->create(['place_id' => $place->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$place->id}")->assertNoContent();
+    $this->deleteJson("/api/v1/me/places/{$place->id}")->assertNoContent(); // idempotent
+
+    // The other user's share is not dismissed and their saved item survives.
+    expect(FeedDismissal::where('user_id', $me->id)->count())->toBe(0);
+    $this->assertDatabaseHas('place_list_items', ['place_id' => $place->id]);
+});
+
+it('DELETE /me/places requires authentication', function () {
+    $place = myPlace('Guarded');
+    $this->deleteJson("/api/v1/me/places/{$place->id}")->assertStatus(401);
+});
+
 it('rows validate against the place-summary contract and carry a thumbnail_url key', function () {
     $me = User::factory()->create();
     $p = myPlace('Card');

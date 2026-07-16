@@ -113,6 +113,8 @@ Route::prefix('v1')->group(function () {
         // map — places I shared (not soft-hidden) ∪ places I saved. Replaces the
         // removed global feed as the app's primary browse surface.
         Route::get('/me/places', [MePlacesController::class, 'index'])->middleware('throttle:map');
+        // Remove a place from my collection (soft-hide my shares + un-save).
+        Route::delete('/me/places/{place}', [MePlacesController::class, 'destroy']);
 
         // Analysis model catalog + per-user model preference (T-020).
         Route::get('/analysis/models', [ModelController::class, 'index']);

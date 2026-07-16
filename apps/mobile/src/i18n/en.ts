@@ -7,20 +7,29 @@ export const en = {
   'common.cancel': 'Cancel',
 
   'tabs.map': 'Map',
-  'tabs.feed': 'Feed',
+  'tabs.myPlaces': 'My places',
   'tabs.share': 'Share',
   'tabs.profile': 'Profile',
 
-  'feed.title': 'Feed',
+  'myPlaces.title': 'My places',
+  'myPlaces.search': 'Search',
+  'myPlaces.saved': 'Saved',
+  'myPlaces.remove': 'Remove',
+  'myPlaces.removeConfirm.title': 'Remove from your map?',
+  'myPlaces.removeConfirm.message': '“{{name}}” will leave your map and list.',
+  'myPlaces.sort.recent': 'Recent',
+  'myPlaces.sort.popular': 'Popular',
+  'myPlaces.empty.title': 'No places yet',
+  'myPlaces.empty.body': 'Share a link or save a place to start your collection.',
+  'myPlaces.empty.filteredTitle': 'No matches',
+  'myPlaces.empty.filteredBody': 'No places match these filters.',
+  'myPlaces.guest.title': 'Your collection lives here',
+  'myPlaces.guest.body': 'Sign in to build your personal map and list.',
+  'myPlaces.guest.cta': 'Sign in',
+  'myPlaces.error.title': 'Couldn’t load your places',
+
+  // Shared by FeedCard (still used on user profiles) + the search headers.
   'feed.search': 'Search',
-  'feed.empty.title': 'Nothing here yet',
-  'feed.empty.body': 'Share your first reel to see it on the feed.',
-  'feed.error.title': 'Couldn’t load the feed',
-  'feed.hide': 'Hide from my feed',
-  'feed.hideConfirm.title': 'Hide from your feed?',
-  'feed.hideConfirm.message': '“{{name}}” won’t show in your feed. You can undo right after.',
-  'feed.hidden': 'Hidden from your feed',
-  'feed.undo': 'Undo',
   'feed.sharerFallback': 'a Reelmap user',
 
   'place.back': 'Go back',
@@ -68,9 +77,6 @@ export const en = {
 
   'source.openOriginal': 'Open original {{platform}} post',
   'source.firstShared': 'First shared',
-
-  'filter.following': 'Following',
-  'filter.mine': 'Mine',
 
   'search.placeholder': 'Search places, tags…',
   'search.cancel': 'Cancel',
