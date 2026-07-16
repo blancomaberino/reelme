@@ -28,4 +28,15 @@ return [
     */
     'lock_seconds' => (int) env('PLACES_RESOLVE_LOCK_SECONDS', 30),
 
+    /*
+    | Instagram-profile fallback (T-075): when the geocoder misses but the place
+    | carries an @handle, fetch that venue's IG profile and re-resolve from its
+    | business address / bio locality / full_name. Uses the same IG session cookie
+    | as the carousel-image resolver (INGESTION_IG_* / ingestion.instagram_api).
+    | Disable to keep the honest geocode_failed → review behaviour.
+    */
+    'ig_profile' => [
+        'enabled' => (bool) env('PLACES_IG_PROFILE_ENABLED', true),
+    ],
+
 ];

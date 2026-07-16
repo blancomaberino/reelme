@@ -2,6 +2,7 @@
   "places": [
     {
       "name": "Lanzhou Beef Noodle House",
+      "handle": null,
       "confidence": 0.93,
       "category": "restaurant",
       "cuisines": ["chinese", "lanzhou hand-pulled noodles"],

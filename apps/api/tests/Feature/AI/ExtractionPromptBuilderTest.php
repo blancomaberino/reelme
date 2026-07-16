@@ -8,7 +8,7 @@ use App\Services\AI\Prompts\ExtractionPromptBuilder;
 
 /**
  * The extraction prompt must hand the model the POSTING ACCOUNT and instruct it
- * that the poster is the reviewer, not a venue (extraction.v7). Regression for
+ * that the poster is the reviewer, not a venue (extraction.v8). Regression for
  * the @el_encantador_de_burgas reel, where the reviewer's branded cover frame
  * got read as the venue name and the actually-reviewed @lagranburgerok (named in
  * the caption) was missed.
@@ -33,7 +33,7 @@ function promptText(GenerationRequest $req): string
         ->implode("\n");
 }
 
-it('injects the posting account and ships the v7 poster-exclusion rule', function () {
+it('injects the posting account and ships the v8 poster-exclusion rule', function () {
     $reviewer = Influencer::factory()->create([
         'handle' => 'el_encantador_de_burgas',
         'display_name' => 'El Encantador de Burgas',
@@ -43,7 +43,7 @@ it('injects the posting account and ships the v7 poster-exclusion rule', functio
     $text = promptText($req);
 
     // The prompt version bumped, so drift is recorded on the analysis run.
-    expect($req->promptVersion)->toBe('extraction.v7');
+    expect($req->promptVersion)->toBe('extraction.v8');
 
     // The account is surfaced to the model — handle AND the informative display name.
     expect($text)->toContain('POSTED BY:')

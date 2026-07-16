@@ -23,7 +23,10 @@ use Illuminate\Support\Facades\Log;
  */
 class PlaceResolver
 {
-    public function __construct(private readonly Geocoder $geocoder) {}
+    public function __construct(
+        private readonly Geocoder $geocoder,
+        private readonly InstagramProfileLocator $profileLocator,
+    ) {}
 
     /**
      * Resolve a single extracted place — the first of the post's places[].
@@ -109,15 +112,114 @@ class PlaceResolver
         // whether to propagate it (retry) or contain it (a later place in a batch).
         $geo = $this->geocoder->findPlace($name, $this->hints($place));
 
-        $minScore = (float) config('places.geocode.min_score', 0.5);
-        if ($geo === null || $geo->score < $minScore) {
-            return ResolutionOutcome::geocodeFailed();
+        if ($this->accepted($geo)) {
+            return $this->resolveWithGeo($share, $run, $place, $geo, $name);
         }
 
+        // T-075: the geocoder found nothing. If the caption named this venue by
+        // an @handle, mine its Instagram profile for a location before parking
+        // the share as geocode_failed.
+        return $this->resolveViaProfile($share, $run, $place, $name);
+    }
+
+    /** A geocode hit at or above the publish-confidence floor (else "not found"). */
+    private function accepted(?GeocodeResult $geo): bool
+    {
+        return $geo !== null && $geo->score >= (float) config('places.geocode.min_score', 0.5);
+    }
+
+    /**
+     * Run the dedup decision tree for an accepted geocode under a per-canonical
+     * lock so concurrent shares can't duplicate a place.
+     *
+     * @param  array<string, mixed>  $place
+     */
+    private function resolveWithGeo(Share $share, ?AnalysisRun $run, array $place, GeocodeResult $geo, string $name): ResolutionOutcome
+    {
         $lockKey = 'resolve:'.md5($geo->googlePlaceId !== '' ? $geo->googlePlaceId : $name.'|'.($place['address']['city'] ?? ''));
 
         return Cache::lock($lockKey, (int) config('places.lock_seconds', 30))
             ->block(5, fn () => $this->resolveLocked($share, $run, $place, $geo, $name));
+    }
+
+    /**
+     * Instagram-profile fallback (T-075): when the geocoder missed but the place
+     * carries an `@handle`, fetch that profile and try again. Priority: re-run the
+     * geocoder with the profile-enriched query (so a google_place_id / dedup key
+     * is still obtained and `full_name` upgrades a bare handle) → only when THAT
+     * also misses, fall back to the profile's raw business-address coordinates (a
+     * pending pin with no google_place_id). Any miss ends as geocode_failed.
+     *
+     * @param  array<string, mixed>  $place
+     */
+    private function resolveViaProfile(Share $share, ?AnalysisRun $run, array $place, string $name): ResolutionOutcome
+    {
+        if (! (bool) config('places.ig_profile.enabled', true)) {
+            return ResolutionOutcome::geocodeFailed();
+        }
+
+        $handle = trim((string) ($place['handle'] ?? ''));
+        if ($handle === '') {
+            return ResolutionOutcome::geocodeFailed();
+        }
+
+        // Never throws — a dead/private profile just yields null.
+        $location = $this->profileLocator->locate($handle);
+        if ($location === null) {
+            return ResolutionOutcome::geocodeFailed();
+        }
+
+        // full_name upgrades a bare @handle to the real venue name (for both the
+        // geocode query and the stored snapshot/pin).
+        $venueName = $location->name ?? $name;
+        $place['name'] = $venueName;
+
+        $geo = $this->geocoder->findPlace($venueName, $this->enrichHints($place, $location));
+        if ($this->accepted($geo)) {
+            return $this->resolveWithGeo($share, $run, $place, $geo, $venueName);
+        }
+
+        // Geocoder still missed. Use the profile's own coordinates when present,
+        // rather than dropping the venue entirely.
+        if ($location->hasCoordinates()) {
+            return $this->resolveFromCoords($share, $run, $place, $venueName, $location);
+        }
+
+        return ResolutionOutcome::geocodeFailed();
+    }
+
+    /**
+     * Attach/create from a profile's raw business-address coordinates (no
+     * google_place_id) when the geocoder can't resolve the enriched query. Still
+     * runs the geo+name fuzzy dedup at those coordinates so it never duplicates an
+     * existing pin, under the same per-canonical lock as the geocoded path.
+     *
+     * @param  array<string, mixed>  $place
+     */
+    private function resolveFromCoords(Share $share, ?AnalysisRun $run, array $place, string $name, ProfileLocation $location): ResolutionOutcome
+    {
+        $lockKey = 'resolve:'.md5('ig_profile|'.$name.'|'.($location->city ?? ''));
+
+        return Cache::lock($lockKey, (int) config('places.lock_seconds', 30))->block(5, function () use ($share, $run, $place, $name, $location) {
+            $lat = (float) $location->lat;
+            $lng = (float) $location->lng;
+            $matches = $this->fuzzyMatches($lat, $lng, $name);
+
+            if (count($matches) === 1) {
+                /** @var Place $existing */
+                $existing = Place::query()->findOrFail($matches[0]['place_id']);
+
+                return ResolutionOutcome::attached($existing, $this->attach($existing, $share, $run, $place));
+            }
+
+            if (count($matches) > 1) {
+                return ResolutionOutcome::ambiguous($matches);
+            }
+
+            $created = $this->createFromProfile($name, $place, $location);
+
+            return ResolutionOutcome::created($created, $this->attach($created, $share, $run, $place));
+        });
     }
 
     /**
@@ -180,13 +282,7 @@ class PlaceResolver
         }
 
         // 2. Geo + name fuzzy scan.
-        $candidates = $this->candidates($geo, $name);
-        $radius = (float) config('places.dedup.radius_meters', 75);
-        $threshold = (float) config('places.dedup.name_similarity_threshold', 0.85);
-        $matches = array_values(array_filter(
-            $candidates,
-            fn (array $c) => $c['distance_m'] < $radius && $c['similarity'] >= $threshold,
-        ));
+        $matches = $this->fuzzyMatches($geo->lat, $geo->lng, $name);
 
         if (count($matches) === 1) {
             /** @var Place $existing */
@@ -215,14 +311,22 @@ class PlaceResolver
     }
 
     /**
-     * PostGIS candidate scan: places within the radius (geography meters), scored
-     * by max(pg_trgm similarity, Jaro-Winkler) on accent-folded normalized names.
+     * Dedup matches at a point: the PostGIS candidate scan filtered to those
+     * within the dedup radius AND above the name-similarity threshold. Shared by
+     * the geocoded path and the IG-profile-coordinates fallback (T-075).
      *
      * @return list<array<string, mixed>>
      */
-    private function candidates(GeocodeResult $geo, string $name): array
+    private function fuzzyMatches(float $lat, float $lng, string $name): array
     {
-        return $this->scanCandidates($geo->lat, $geo->lng, Place::normalizeName($name));
+        $candidates = $this->scanCandidates($lat, $lng, Place::normalizeName($name));
+        $radius = (float) config('places.dedup.radius_meters', 75);
+        $threshold = (float) config('places.dedup.name_similarity_threshold', 0.85);
+
+        return array_values(array_filter(
+            $candidates,
+            fn (array $c) => $c['distance_m'] < $radius && $c['similarity'] >= $threshold,
+        ));
     }
 
     /**
@@ -332,6 +436,63 @@ class PlaceResolver
         $model->refresh();
 
         return $model;
+    }
+
+    /**
+     * Create a pending pin from an IG profile's raw business-address coordinates
+     * (T-075) — no google_place_id (the geocoder couldn't resolve it), so it lands
+     * for review/enrichment. Extraction fields are still clamped to the column
+     * limits (untrusted), with the profile's structured address preferred.
+     *
+     * @param  array<string, mixed>  $place
+     */
+    private function createFromProfile(string $name, array $place, ProfileLocation $location): Place
+    {
+        $address = is_array($place['address'] ?? null) ? $place['address'] : [];
+        $cuisines = is_array($place['cuisines'] ?? null) ? $place['cuisines'] : [];
+
+        $model = new Place([
+            'name' => $this->truncate($name, 255),
+            'address_line1' => $this->truncate($location->street ?? ($address['street'] ?? null), 255),
+            'city' => $this->truncate($location->city ?? ($address['city'] ?? null), 120),
+            'region' => $this->truncate($location->region ?? ($address['region'] ?? null), 120),
+            'postal_code' => $this->truncate($location->postalCode ?? ($address['postal_code'] ?? null), 24),
+            'country_code' => $this->countryFromAddress($address),
+            'google_place_id' => null,
+            'cuisine_primary' => $this->truncate($cuisines[0] ?? null, 64),
+            'price_range' => $this->priceRange($place['price_range'] ?? null),
+            'phone' => $this->truncate($place['phone'] ?? null, 32),
+            'website' => $this->truncate($place['website'] ?? null, 2048),
+            'status' => PlaceStatus::Pending,
+        ]);
+        $model->setPoint((float) $location->lat, (float) $location->lng);
+        $model->save();
+        $model->refresh();
+
+        return $model;
+    }
+
+    /**
+     * Merge an IG profile's location signal over the extraction's own hints —
+     * profile values win (they're the reason we're retrying), extraction fills
+     * the gaps. Feeds the second, enriched geocode attempt.
+     *
+     * @param  array<string, mixed>  $place
+     */
+    private function enrichHints(array $place, ProfileLocation $location): GeoHints
+    {
+        $base = $this->hints($place);
+
+        return new GeoHints(
+            street: $location->street ?? $base->street,
+            city: $location->city ?? $base->city,
+            region: $location->region ?? $base->region,
+            postalCode: $location->postalCode ?? $base->postalCode,
+            country: $base->country,
+            lat: $location->lat ?? $base->lat,
+            lng: $location->lng ?? $base->lng,
+            language: $base->language,
+        );
     }
 
     /**
@@ -507,6 +668,18 @@ class PlaceResolver
             }
         }
 
+        return $this->countryFromAddress($address);
+    }
+
+    /**
+     * A 2-letter country code from the extraction address alone (no geocoder
+     * components), else the 'XX' unknown sentinel. Used by the IG-profile-coords
+     * path, which has no GeocodeResult.
+     *
+     * @param  array<string, mixed>  $address
+     */
+    private function countryFromAddress(array $address): string
+    {
         $extraction = strtoupper(trim((string) ($address['country'] ?? '')));
 
         return strlen($extraction) === 2 ? $extraction : 'XX';
