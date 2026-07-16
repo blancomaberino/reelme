@@ -14,6 +14,7 @@ import { FilterBar } from '@/components/map/filter-bar';
 import { PlaceMarker } from '@/components/map/place-marker';
 import { PlaceSheet } from '@/components/map/place-sheet';
 import { QuickShareModal } from '@/components/map/quick-share';
+import { SaveToListSheet } from '@/components/place/save-to-list';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
 import { useT } from '@/i18n';
@@ -96,6 +97,8 @@ export default function MapScreen() {
   // Quick "add from a link" popup — paste a link/caption, and on publish fly the
   // map to the new pin without leaving the screen.
   const [quickOpen, setQuickOpen] = useState(false);
+  // The pin whose "save to a list" sheet is open (T-073); authed viewers only.
+  const [saveFor, setSaveFor] = useState<string | null>(null);
 
   const { data, isFetching } = useMapPlaces(queryRegion, effectiveFilters);
 
@@ -342,12 +345,16 @@ export default function MapScreen() {
           select(null);
           router.push({ pathname: '/place/[slug]', params: { slug: id } });
         }}
+        onSave={authed ? (id) => setSaveFor(id) : undefined}
       />
 
       {/* Mounted only while open so each session starts fresh (no stale share). */}
       {quickOpen ? (
         <QuickShareModal visible onClose={() => setQuickOpen(false)} onPublished={onQuickPublished} />
       ) : null}
+
+      {/* Save-to-list for a tapped pin (T-073). */}
+      {saveFor ? <SaveToListSheet placeId={saveFor} visible onClose={() => setSaveFor(null)} /> : null}
     </View>
   );
 }
@@ -357,17 +364,19 @@ function PreviewSheet({
   pin,
   onClose,
   onViewPlace,
+  onSave,
 }: {
   pin: MapPin | null;
   onClose: () => void;
   onViewPlace: (id: string) => void;
+  onSave?: (id: string) => void;
 }) {
   const sheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['32%'], []);
 
   return (
     <BottomSheet ref={sheetRef} index={pin ? 0 : -1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose}>
-      <BottomSheetView>{pin ? <PlaceSheet pin={pin} onViewPlace={onViewPlace} /> : null}</BottomSheetView>
+      <BottomSheetView>{pin ? <PlaceSheet pin={pin} onViewPlace={onViewPlace} onSave={onSave} /> : null}</BottomSheetView>
     </BottomSheet>
   );
 }

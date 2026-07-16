@@ -141,18 +141,59 @@ it('removing ONE place of a multi-place post leaves its siblings (per-place hide
     $this->assertDatabaseMissing('hidden_places', ['user_id' => $me->id, 'place_id' => $b->id]);
 });
 
-it('DELETE /me/places un-saves a saved place from all my lists', function () {
+it('DELETE /me/places (default hide) hides the pin but KEEPS it in my lists (T-073)', function () {
     $me = User::factory()->create();
-    $place = myPlace('Unsave');
-    $a = PlaceList::factory()->for($me)->create();
-    $b = PlaceList::factory()->for($me)->create();
-    $a->items()->create(['place_id' => $place->id, 'position' => 1]);
-    $b->items()->create(['place_id' => $place->id, 'position' => 1]);
+    $place = myPlace('Kept in list');
+    $list = PlaceList::factory()->for($me)->create();
+    $list->items()->create(['place_id' => $place->id, 'position' => 1]);
 
     Sanctum::actingAs($me);
     $this->deleteJson("/api/v1/me/places/{$place->id}")->assertNoContent();
 
+    // Hidden from the aggregate, but the save survives (a list view still shows it).
+    $this->assertDatabaseHas('hidden_places', ['user_id' => $me->id, 'place_id' => $place->id]);
+    $this->assertDatabaseHas('place_list_items', ['place_id' => $place->id]);
+    $names = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->pluck('name');
+    expect($names)->not->toContain('Kept in list');
+});
+
+it('DELETE /me/places?mode=full deletes my share + un-saves permanently (T-073)', function () {
+    $me = User::factory()->create();
+    $place = myPlace('GoneForGood');
+    $share = publishedShare($place, sharer: $me);
+    $list = PlaceList::factory()->for($me)->create();
+    $list->items()->create(['place_id' => $place->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$place->id}?mode=full")->assertNoContent();
+
+    // My source is gone, the (single-place) share is deleted, and it's un-saved.
+    $this->assertDatabaseMissing('place_sources', ['place_id' => $place->id, 'share_id' => $share->id]);
+    $this->assertDatabaseMissing('shares', ['id' => $share->id]);
     $this->assertDatabaseMissing('place_list_items', ['place_id' => $place->id]);
+});
+
+it('DELETE ?mode=full on a multi-place post removes only this venue, keeping the share + siblings (T-073)', function () {
+    $me = User::factory()->create();
+    $a = myPlace('Venue A');
+    $b = myPlace('Venue B');
+    $share = publishedShare($a, sharer: $me);
+    PlaceSource::factory()->create(['place_id' => $b->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id, 'published_at' => now()]);
+
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$a->id}?mode=full")->assertNoContent();
+
+    // A's source removed; the share survives (still has B); B intact.
+    $this->assertDatabaseMissing('place_sources', ['place_id' => $a->id, 'share_id' => $share->id]);
+    $this->assertDatabaseHas('place_sources', ['place_id' => $b->id, 'share_id' => $share->id]);
+    $this->assertDatabaseHas('shares', ['id' => $share->id]);
+});
+
+it('rejects an unknown remove mode with 422', function () {
+    $me = User::factory()->create();
+    $place = myPlace('X');
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$place->id}?mode=nuke")->assertStatus(422);
 });
 
 it('DELETE /me/places is idempotent and never touches another user’s collection', function () {
