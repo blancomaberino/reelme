@@ -3,6 +3,7 @@
 use App\Models\Influencer;
 use App\Models\Place;
 use App\Models\Tag;
+use App\Models\User;
 
 return [
 
@@ -53,6 +54,9 @@ return [
             Influencer::class => [
                 'searchableAttributes' => ['handle', 'display_name'],
                 'filterableAttributes' => ['platform'],
+            ],
+            User::class => [
+                'searchableAttributes' => ['username', 'name', 'bio'],
             ],
         ],
     ],

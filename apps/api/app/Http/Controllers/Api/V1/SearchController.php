@@ -7,13 +7,14 @@ use App\Http\Requests\SearchRequest;
 use App\Http\Resources\InfluencerSummaryResource;
 use App\Http\Resources\PlaceSummaryResource;
 use App\Http\Resources\TagResource;
+use App\Http\Resources\UserSummaryResource;
 use App\Services\Search\SearchService;
 use Illuminate\Http\JsonResponse;
 
 /**
  * Federated search (T-031, 03 §2.11): `GET /search?q=&types=` fans one
- * Meilisearch multi-search across places/tags/influencers and answers with
- * the summary resources. `users` is accepted-but-empty until M3 profiles.
+ * Meilisearch multi-search across places/tags/influencers/users and answers
+ * with the summary resources. `users` returns public profiles only (T-077).
  */
 class SearchController extends Controller
 {
@@ -30,6 +31,7 @@ class SearchController extends Controller
                 'places' => PlaceSummaryResource::collection($models),
                 'tags' => TagResource::collection($models),
                 'influencers' => InfluencerSummaryResource::collection($models),
+                'users' => UserSummaryResource::collection($models),
                 default => [],
             };
         }

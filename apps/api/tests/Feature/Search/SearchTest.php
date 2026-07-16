@@ -3,6 +3,7 @@
 use App\Models\Influencer;
 use App\Models\Place;
 use App\Models\Tag;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -31,6 +32,25 @@ it('federates places, tags and influencers with the {data, meta} envelope', func
     $place = collect($res->json('data.places'))->firstWhere('name', 'Lanzhou Beef Noodle House');
     expect($place['lat'])->toEqualWithDelta(51.5117, 0.001)
         ->and($place['slug'])->not->toBeNull();
+});
+
+it('finds public people by handle or name, never private profiles (T-077)', function () {
+    User::factory()->create(['username' => 'noodlelover', 'name' => 'Noodle Lover', 'is_public' => true]);
+    User::factory()->create(['username' => 'noodlehermit', 'name' => 'Noodle Hermit', 'is_public' => false]);
+
+    $res = $this->getJson('/api/v1/search?q=noodle&types=users')->assertOk();
+
+    $users = collect($res->json('data.users'));
+    // The public profile surfaces; the private one is never discoverable (mirrors
+    // the profile 404 gate) — enforced both by shouldBeSearchable() and the
+    // is_public hydration filter.
+    expect($users->pluck('username'))->toContain('noodlelover')
+        ->not->toContain('noodlehermit');
+
+    // People rows carry the compact summary shape only — no email / private data.
+    $row = $users->firstWhere('username', 'noodlelover');
+    expect($row)->toHaveKeys(['id', 'username', 'name', 'avatar_path'])
+        ->and($row)->not->toHaveKey('email');
 });
 
 it('honors ?types= and rejects unknown types', function () {

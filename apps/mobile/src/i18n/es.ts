@@ -8,7 +8,7 @@ export const es: Record<MessageKey, string> = {
 
   'tabs.map': 'Mapa',
   'tabs.myPlaces': 'Mis lugares',
-  'tabs.share': 'Compartir',
+  'tabs.search': 'Buscar',
   'tabs.profile': 'Perfil',
 
   'myPlaces.title': 'Mis lugares',
@@ -80,17 +80,14 @@ export const es: Record<MessageKey, string> = {
   'source.openOriginal': 'Abrir publicación original de {{platform}}',
   'source.firstShared': 'Compartido primero',
 
-  'search.placeholder': 'Buscar lugares, etiquetas…',
-  'search.cancel': 'Cancelar',
-  'search.close': 'Cerrar',
+  'search.placeholder': 'Buscar lugares, personas, etiquetas…',
   'search.clear': 'Borrar',
   'search.hint': 'Escribí al menos 2 caracteres para buscar.',
   'search.error': 'Algo salió mal. Reintentá.',
   'search.noResults': 'Sin resultados para «{{query}}».',
   'search.section.places': 'Lugares',
+  'search.section.people': 'Personas',
   'search.section.tags': 'Etiquetas',
-  'search.section.influencers': 'Influencers',
-  'search.profilesSoon': 'Perfiles próximamente',
 
   'map.search': 'Buscar',
   'map.zoomIn': 'Acercá para ver más lugares',

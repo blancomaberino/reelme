@@ -2,7 +2,9 @@
 
 use App\Models\Place;
 use App\Models\Tag;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Scout\EngineManager;
 use Meilisearch\Client;
@@ -45,7 +47,7 @@ afterEach(function () {
     // Config resets per test (fresh app); only the EXTERNAL index state must
     // be cleaned up.
     if (isset($this->meili, $this->prefix)) {
-        foreach (['places', 'tags', 'influencers'] as $table) {
+        foreach (['places', 'tags', 'influencers', 'users'] as $table) {
             try {
                 $this->meili->deleteIndex($this->prefix.$table);
             } catch (Throwable) {
@@ -61,7 +63,7 @@ afterEach(function () {
  */
 function waitForMeili(Client $client, string $prefix): void
 {
-    $indexUids = array_map(fn (string $t) => $prefix.$t, ['places', 'tags', 'influencers']);
+    $indexUids = array_map(fn (string $t) => $prefix.$t, ['places', 'tags', 'influencers', 'users']);
     foreach (range(1, 100) as $i) {
         $pending = $client->getTasks(
             (new TasksQuery)->setIndexUids($indexUids)->setStatuses(['enqueued', 'processing'])
@@ -115,6 +117,27 @@ it('indexes place documents with _geo and drops merged places on save', function
     $names = collect($this->getJson('/api/v1/search?q=geo+cafe&types=places')->assertOk()->json('data.places'))
         ->pluck('name');
     expect($names)->not->toContain('Geo Cafe');
+})->group('meilisearch');
+
+it('surfaces only public people through the real engine, and the is_public filter catches a stale index', function () {
+    User::factory()->create(['username' => 'noodlelover', 'name' => 'Noodle Lover', 'is_public' => true]);
+    // Private from the start → shouldBeSearchable() is false → never indexed.
+    User::factory()->create(['username' => 'noodlehermit', 'name' => 'Noodle Hermit', 'is_public' => false]);
+    // Indexed while public, then turned private via a RAW update that bypasses
+    // the model observer — the stale public doc lingers in Meili.
+    $stale = User::factory()->create(['username' => 'noodleghost', 'name' => 'Noodle Ghost', 'is_public' => true]);
+    waitForMeili($this->meili, $this->prefix);
+    DB::table('users')->where('id', $stale->id)->update(['is_public' => false]);
+
+    $usernames = collect($this->getJson('/api/v1/search?q=noodle&types=users')->assertOk()->json('data.users'))
+        ->pluck('username');
+
+    // Public surfaces; the never-indexed private user is absent (index path); the
+    // stale-in-index user is dropped by the hydrate `where('is_public', true)`
+    // belt — proving that filter independently, not just shouldBeSearchable().
+    expect($usernames)->toContain('noodlelover')
+        ->not->toContain('noodlehermit')
+        ->not->toContain('noodleghost');
 })->group('meilisearch');
 
 it('reindex command rebuilds indexes with settings idempotently', function () {

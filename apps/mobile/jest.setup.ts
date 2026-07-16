@@ -70,8 +70,10 @@ jest.mock('expo-router', () => {
         return React.createElement(React.Fragment, null, children);
       },
       {
-        Screen: ({ name }: { name: string }) => {
-          mockRouter.tabNames.push(name);
+        Screen: ({ name, options }: { name: string; options?: { href?: string | null } }) => {
+          // `href: null` hides a route from the tab bar (still routable) — don't
+          // count it as a visible tab.
+          if (options?.href !== null) mockRouter.tabNames.push(name);
           return null;
         },
       },

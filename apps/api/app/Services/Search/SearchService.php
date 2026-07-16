@@ -5,6 +5,7 @@ namespace App\Services\Search;
 use App\Models\Influencer;
 use App\Models\Place;
 use App\Models\Tag;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Meilisearch\Client;
@@ -12,8 +13,9 @@ use Meilisearch\Contracts\SearchQuery;
 use Meilisearch\Exceptions\ApiException;
 
 /**
- * Federated search (T-031, 03 §2.11). On the meilisearch driver all requested
- * types go out as ONE multi-search round trip; on other drivers (tests, dev
+ * Federated search (T-031, 03 §2.11; people added T-077). On the meilisearch
+ * driver all requested types (places/tags/influencers/users) go out as ONE
+ * multi-search round trip; on other drivers (tests, dev
  * without a search server) it falls back to per-model Scout queries. Either
  * way hits are re-hydrated from Postgres by id — the index is a lookup
  * structure, never the source of the response payload.
@@ -32,6 +34,7 @@ class SearchService
             'places' => Place::class,
             'tags' => Tag::class,
             'influencers' => Influencer::class,
+            'users' => User::class,
         ];
         $wanted = array_intersect_key($models, array_flip($types));
 
@@ -45,7 +48,10 @@ class SearchService
                 'places' => $this->hydratePlaces($idsByType['places'] ?? []),
                 'tags' => $this->hydrate(Tag::query(), $idsByType['tags'] ?? []),
                 'influencers' => $this->hydrate(Influencer::query(), $idsByType['influencers'] ?? []),
-                default => [], // `users` returns empty until M3 public profiles
+                // People (T-077): only public profiles — a belt-and-braces filter
+                // on top of shouldBeSearchable() excluding private users from the index.
+                'users' => $this->hydrate(User::query()->where('is_public', true), $idsByType['users'] ?? []),
+                default => [],
             };
         }
 

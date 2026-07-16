@@ -4,7 +4,7 @@ import { api } from '../client';
 import { queryKeys } from '../keys';
 import type { SearchResponse } from '../places';
 
-const TYPES = 'places,tags,influencers';
+const TYPES = 'places,users,tags';
 
 async function fetchSearch(q: string): Promise<SearchResponse['data']> {
   const { data } = await api.get<SearchResponse>('/search', { params: { q, types: TYPES } });

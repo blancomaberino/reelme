@@ -38,10 +38,11 @@ describe('navigation wiring', () => {
     expect(mockRouter.redirectHref).toBeNull();
   });
 
-  it('mounts the four tabs in order with map as the initial route', () => {
+  it('mounts the four visible tabs in order with map as the initial route (Search replaced Share — T-077)', () => {
     render(<MainTabsLayout />);
 
-    expect(mockRouter.tabNames).toEqual(['map', 'places', 'share', 'profile']);
+    // Share moved off the tab bar (href: null → hidden route); Search takes its slot.
+    expect(mockRouter.tabNames).toEqual(['map', 'places', 'search', 'profile']);
     expect(mockRouter.initialRouteName).toBe('map');
   });
 });
