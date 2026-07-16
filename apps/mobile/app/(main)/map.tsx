@@ -210,13 +210,16 @@ export default function MapScreen() {
     }
   }, []);
 
-  // A quick-share published → fly to its pin. Animating settles the region,
-  // which (debounced) refetches the viewport so the fresh pin renders.
+  // A quick-share published → center the map on the new pin (so it's framed when
+  // the user returns) AND open its detail: you land on the place you just added
+  // (T-076). For a multi-place post `place` is the primary. Animating settles the
+  // region, which (debounced) refetches the viewport so the fresh pin renders.
   const onQuickPublished = useCallback((place: SharePlace) => {
     mapRef.current?.animateToRegion(
       { latitude: place.lat, longitude: place.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
       350,
     );
+    router.push({ pathname: '/place/[slug]', params: { slug: place.id } });
   }, []);
 
   const onClientClusterPress = useCallback((clusterId: string) => {

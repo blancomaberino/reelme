@@ -54,10 +54,21 @@ jest.mock('@/api/hooks/useLists', () => ({
 // Here, a light stub that just reflects `visible`, so the "+" button is testable.
 jest.mock('@/components/map/quick-share', () => {
   const React = require('react');
-  const { Text } = require('react-native');
+  const { Pressable, Text } = require('react-native');
+  // Stub reflects `visible` and exposes a button that fires onPublished with a
+  // fixture place, so the screen's post-publish wiring (fly + open) is testable.
   return {
-    QuickShareModal: ({ visible }: { visible: boolean }) =>
-      visible ? React.createElement(Text, null, 'quick-share-open') : null,
+    QuickShareModal: ({ visible, onPublished }: { visible: boolean; onPublished: (p: unknown) => void }) =>
+      visible
+        ? React.createElement(
+            Pressable,
+            {
+              accessibilityLabel: 'stub-publish',
+              onPress: () => onPublished({ id: 'p9', name: 'New Place', lat: -34.9, lng: -56.1 }),
+            },
+            React.createElement(Text, null, 'quick-share-open'),
+          )
+        : null,
   };
 });
 
@@ -217,6 +228,14 @@ it('opens the quick-add popup from the header "+" button', () => {
   expect(screen.queryByText('quick-share-open')).toBeNull();
   fireEvent.press(screen.getByLabelText('Add from a link'));
   expect(screen.getByText('quick-share-open')).toBeOnTheScreen();
+});
+
+// T-076: publishing from the map quick-add opens the new place's detail.
+it('opens the new place detail after a quick-add publish', () => {
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('Add from a link'));
+  fireEvent.press(screen.getByLabelText('stub-publish'));
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: 'p9' } });
 });
 
 // T-073 follow-up: with a saved list as the active scope, a tapped pin is
