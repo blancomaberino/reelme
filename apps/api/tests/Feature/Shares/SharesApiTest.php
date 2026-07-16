@@ -4,6 +4,7 @@ use App\Enums\ShareStatus;
 use App\Jobs\ExtractPlaceData;
 use App\Jobs\FetchSourcePost;
 use App\Jobs\IngestShare;
+use App\Models\FeedDismissal;
 use App\Models\Share;
 use App\Models\ShareStageMetric;
 use App\Models\User;
@@ -38,6 +39,27 @@ it('returns the existing share on a duplicate URL (idempotent, no 2nd row)', fun
         ->assertJsonPath('meta.idempotent_replay', true);
 
     expect(Share::count())->toBe(1);
+});
+
+it('re-sharing a soft-hidden post clears the dismissal so it returns to my map (T-071 re-add)', function () {
+    Bus::fake();
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+    $url = 'https://www.instagram.com/p/DaY-y1fiTs7/';
+
+    $shareId = (int) $this->postJson('/api/v1/shares', ['url' => $url])->json('data.id');
+    // The owner soft-hid it (T-071 "remove from my map"), so scopeMine excludes it.
+    FeedDismissal::create(['user_id' => $user->id, 'share_id' => $shareId]);
+    expect(FeedDismissal::where('share_id', $shareId)->count())->toBe(1);
+
+    // Re-sharing the same post is the natural "re-add" — the dismissal is cleared.
+    $this->postJson('/api/v1/shares', ['url' => $url])
+        ->assertStatus(202)
+        ->assertJsonPath('data.id', (string) $shareId)
+        ->assertJsonPath('meta.idempotent_replay', true);
+
+    expect(FeedDismissal::where('share_id', $shareId)->count())->toBe(0)
+        ->and(Share::count())->toBe(1);
 });
 
 it('extracts a URL from shared_text', function () {
