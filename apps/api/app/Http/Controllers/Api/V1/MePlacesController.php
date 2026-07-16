@@ -6,10 +6,9 @@ use App\Enums\ShareStatus;
 use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceListingRequest;
-use App\Models\FeedDismissal;
+use App\Models\HiddenPlace;
 use App\Models\Place;
 use App\Models\PlaceListItem;
-use App\Models\Share;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -36,14 +35,15 @@ class MePlacesController extends Controller
             // Per-row provenance so the client knows how each place is "mine"
             // and whether to show a "saved" marker.
             [
-                // My live (published, not soft-hidden) share to this place, if any.
+                // My latest published share to this place, if any (a hidden pin
+                // is excluded from the result set entirely, so no per-share
+                // dismissal check is needed here).
                 [
                     '(select ps.share_id from place_sources ps '
                     .'join shares s on s.id = ps.share_id '
                     .'where ps.place_id = places.id and s.user_id = ? and s.status = ? '
-                    .'and not exists (select 1 from feed_dismissals fd where fd.share_id = s.id and fd.user_id = ?) '
                     .'order by s.id desc limit 1) as mine_share_id',
-                    [$uid, ShareStatus::Published->value, $uid],
+                    [$uid, ShareStatus::Published->value],
                 ],
                 // Whether it sits in any of my lists.
                 [
@@ -59,24 +59,16 @@ class MePlacesController extends Controller
     /**
      * Remove a place from my personal collection (T-071) — the write side of the
      * "remove from my map" action. Idempotent and transactional: it soft-hides
-     * EVERY published share of mine that resolves to the place (so a place I
-     * shared more than once fully drops, not just the latest), and un-saves it
-     * from all my lists. A place I have no connection to is a no-op (204).
+     * THIS pin (per-place, so a multi-place post's siblings stay), and un-saves
+     * it from all my lists. Re-sharing or re-saving the place un-hides it. A
+     * place I have no connection to is still hidden (harmless no-op on read).
      */
     public function destroy(Request $request, Place $place): Response
     {
         $user = $request->user();
 
         DB::transaction(function () use ($user, $place): void {
-            $shareIds = Share::query()
-                ->where('user_id', $user->id)
-                ->where('status', ShareStatus::Published)
-                ->whereHas('placeSources', fn ($q) => $q->where('place_id', $place->id))
-                ->pluck('id');
-
-            foreach ($shareIds as $shareId) {
-                FeedDismissal::firstOrCreate(['user_id' => $user->id, 'share_id' => $shareId]);
-            }
+            HiddenPlace::firstOrCreate(['user_id' => $user->id, 'place_id' => $place->id]);
 
             PlaceListItem::query()
                 ->where('place_id', $place->id)

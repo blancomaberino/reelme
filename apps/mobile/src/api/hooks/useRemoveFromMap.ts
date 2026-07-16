@@ -37,6 +37,9 @@ export function useRemoveFromMap() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: queryKeys.mapAll() });
+      // Removal also un-saves the place from my lists (server-side), so refresh
+      // the list detail + index so they don't show stale membership/counts.
+      qc.invalidateQueries({ queryKey: queryKeys.lists() });
     },
   });
 }

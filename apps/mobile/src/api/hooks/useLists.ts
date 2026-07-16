@@ -105,13 +105,17 @@ export function useDeleteList() {
 
 /**
  * Add / remove a place across lists. Invalidates the affected list detail + the
- * index (item counts) so pickers and the lists screen stay in sync.
+ * index (item counts), AND the home map + "my places" — because a saved place is
+ * part of my personal collection (scopeMine), so saving/un-saving must refresh
+ * those surfaces too (T-071), not just the list screens.
  */
 export function useListMembership() {
   const qc = useQueryClient();
   const invalidate = (listId: string) => {
     void qc.invalidateQueries({ queryKey: queryKeys.list(listId) });
     void qc.invalidateQueries({ queryKey: queryKeys.lists() });
+    void qc.invalidateQueries({ queryKey: queryKeys.myPlacesAll() });
+    void qc.invalidateQueries({ queryKey: queryKeys.mapAll() });
   };
 
   const add = useMutation({

@@ -11,7 +11,8 @@ use App\Http\Requests\UpdateShareRequest;
 use App\Http\Resources\ShareResource;
 use App\Jobs\IngestShare;
 use App\Jobs\Pipeline;
-use App\Models\FeedDismissal;
+use App\Models\HiddenPlace;
+use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Services\Ingestion\UrlCanonicalizer;
@@ -469,10 +470,13 @@ class ShareController extends Controller
         return preg_match('#https?://\S+#', $text, $m) === 1 ? $m[0] : null;
     }
 
-    /** Un-hide a share the owner had soft-hidden (T-071) — idempotent. */
+    /** Un-hide the places this re-shared post resolves to (T-071) — idempotent. */
     private function undismiss(Share $share): void
     {
-        FeedDismissal::where('user_id', $share->user_id)->where('share_id', $share->id)->delete();
+        $placeIds = PlaceSource::where('share_id', $share->id)->pluck('place_id');
+        if ($placeIds->isNotEmpty()) {
+            HiddenPlace::where('user_id', $share->user_id)->whereIn('place_id', $placeIds)->delete();
+        }
     }
 
     private function created(Share $share, ?string $url, ?Platform $platform, bool $idempotentReplay): JsonResponse

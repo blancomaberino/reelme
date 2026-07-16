@@ -1,8 +1,9 @@
 <?php
 
-use App\Models\FeedDismissal;
+use App\Models\HiddenPlace;
 use App\Models\Place;
 use App\Models\PlaceList;
+use App\Models\PlaceSource;
 use App\Models\Tag;
 use App\Models\User;
 use App\Support\Contracts\ApiSchema;
@@ -42,11 +43,11 @@ it('lists my shared ∪ saved places, never others’', function () {
     expect($names)->toContain('Shared')->toContain('Saved')->not->toContain('Stranger');
 });
 
-it('drops a place shared only via a soft-hidden share', function () {
+it('drops a place I soft-hid (per-place)', function () {
     $me = User::factory()->create();
     $hidden = myPlace('Hidden');
-    $share = publishedShare($hidden, sharer: $me);
-    FeedDismissal::create(['user_id' => $me->id, 'share_id' => $share->id]);
+    publishedShare($hidden, sharer: $me);
+    HiddenPlace::create(['user_id' => $me->id, 'place_id' => $hidden->id]);
 
     Sanctum::actingAs($me);
     $names = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->pluck('name');
@@ -108,34 +109,36 @@ it('reports a place shared-and-saved with both a share_id and saved=true', funct
     expect($row['mine'])->toBe(['share_id' => (string) $share->id, 'saved' => true]);
 });
 
-it('omits share_id in `mine` once my share is soft-hidden but I still saved it', function () {
+it('hiding a place removes it from my collection even if I still have it saved', function () {
     $me = User::factory()->create();
     $p = myPlace('Kept');
-    $share = publishedShare($p, sharer: $me);
-    FeedDismissal::create(['user_id' => $me->id, 'share_id' => $share->id]);
+    publishedShare($p, sharer: $me);
     $list = PlaceList::factory()->for($me)->create();
     $list->items()->create(['place_id' => $p->id, 'position' => 1]);
+    // "Remove from my map" is a per-place hide — it wins over the save too.
+    HiddenPlace::create(['user_id' => $me->id, 'place_id' => $p->id]);
 
     Sanctum::actingAs($me);
-    $row = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->firstWhere('name', 'Kept');
-    // Present via the save; the dismissed share is no longer offered for removal.
-    expect($row['mine'])->toBe(['share_id' => null, 'saved' => true]);
+    $names = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->pluck('name');
+    expect($names)->not->toContain('Kept');
 });
 
-it('DELETE /me/places removes a place I shared — soft-hides every share of mine, all at once', function () {
+it('removing ONE place of a multi-place post leaves its siblings (per-place hide, BUG A)', function () {
     $me = User::factory()->create();
-    $place = myPlace('Gone');
-    // Two published shares of mine to the same place (self-shared twice).
-    $s1 = publishedShare($place, sharer: $me);
-    $s2 = publishedShare($place, sharer: $me);
+    $a = myPlace('Venue A');
+    $b = myPlace('Venue B');
+    // One roundup post → one share → two published places.
+    $share = publishedShare($a, sharer: $me);
+    PlaceSource::factory()->create(['place_id' => $b->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id, 'published_at' => now()]);
 
     Sanctum::actingAs($me);
-    $this->deleteJson("/api/v1/me/places/{$place->id}")->assertNoContent();
+    $this->deleteJson("/api/v1/me/places/{$a->id}")->assertNoContent();
 
-    // BOTH shares dismissed → scopeMine no longer matches, so it's off my list.
-    expect(FeedDismissal::where('user_id', $me->id)->whereIn('share_id', [$s1->id, $s2->id])->count())->toBe(2);
+    // Only A is hidden; B (same share) survives.
     $names = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->pluck('name');
-    expect($names)->not->toContain('Gone');
+    expect($names)->not->toContain('Venue A')->toContain('Venue B');
+    $this->assertDatabaseHas('hidden_places', ['user_id' => $me->id, 'place_id' => $a->id]);
+    $this->assertDatabaseMissing('hidden_places', ['user_id' => $me->id, 'place_id' => $b->id]);
 });
 
 it('DELETE /me/places un-saves a saved place from all my lists', function () {
@@ -164,9 +167,23 @@ it('DELETE /me/places is idempotent and never touches another user’s collectio
     $this->deleteJson("/api/v1/me/places/{$place->id}")->assertNoContent();
     $this->deleteJson("/api/v1/me/places/{$place->id}")->assertNoContent(); // idempotent
 
-    // The other user's share is not dismissed and their saved item survives.
-    expect(FeedDismissal::where('user_id', $me->id)->count())->toBe(0);
+    // Exactly one hide for me (idempotent); the other user's saved item survives.
+    expect(HiddenPlace::where('user_id', $me->id)->where('place_id', $place->id)->count())->toBe(1);
     $this->assertDatabaseHas('place_list_items', ['place_id' => $place->id]);
+});
+
+it('saving a place un-hides it (re-add via bookmark, T-071)', function () {
+    $me = User::factory()->create();
+    $p = myPlace('Rehidden');
+    HiddenPlace::create(['user_id' => $me->id, 'place_id' => $p->id]);
+    $list = PlaceList::factory()->for($me)->create();
+
+    Sanctum::actingAs($me);
+    $this->postJson("/api/v1/me/lists/{$list->id}/places/{$p->id}")->assertSuccessful();
+
+    expect(HiddenPlace::where('user_id', $me->id)->where('place_id', $p->id)->count())->toBe(0);
+    $names = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->pluck('name');
+    expect($names)->toContain('Rehidden');
 });
 
 it('DELETE /me/places requires authentication', function () {

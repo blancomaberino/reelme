@@ -37,6 +37,15 @@ export default function MyPlacesScreen() {
 
   const items = useMemo(() => data?.pages.flatMap((p) => p.data) ?? [], [data]);
 
+  // Facet chips derive from the UNFILTERED collection (only sort applied), so
+  // picking a country/type can't collapse the chip list to that one value and
+  // strand you from switching directly to another (BUG G).
+  const facetSource = useMyPlaces({ sort: filters.sort }, { enabled: authed });
+  const facetItems = useMemo(
+    () => facetSource.data?.pages.flatMap((p) => p.data) ?? [],
+    [facetSource.data],
+  );
+
   const onPressCard = useCallback((slug: string) => {
     router.push({ pathname: '/place/[slug]', params: { slug } });
   }, []);
@@ -84,7 +93,7 @@ export default function MyPlacesScreen() {
         <ErrorState styles={styles} c={c} t={t} onRetry={() => void refetch()} />
       ) : (
         <>
-          <MyPlacesFilters places={items} filters={filters} onChange={onChange} />
+          <MyPlacesFilters places={facetItems.length ? facetItems : items} filters={filters} onChange={onChange} />
           <FlashList
             data={items}
             renderItem={renderItem}
