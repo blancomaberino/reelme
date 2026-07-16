@@ -28,7 +28,7 @@ export const es: Record<MessageKey, string> = {
   'myPlaces.guest.cta': 'Iniciar sesión',
   'myPlaces.error.title': 'No pudimos cargar tus lugares',
 
-  // Compartidas por FeedCard (sigue usándose en perfiles) + los buscadores.
+  // Compartidas por la tarjeta de origen (atribución) + los buscadores.
   'feed.search': 'Buscar',
   'feed.sharerFallback': 'un usuario de Reelmap',
 
@@ -247,7 +247,14 @@ export const es: Record<MessageKey, string> = {
   'profileUser.followers': 'Seguidores',
   'profileUser.following': 'Siguiendo',
   'profileUser.shares': 'Compartidos',
-  'profileUser.noShares': 'Todavía no compartió nada.',
+  'profileUser.viewMap': 'Ver en el mapa',
+  'profileUser.places': 'Lugares',
+  'profileUser.lists': 'Listas',
+  'profileUser.noPlaces': 'Todavía no tiene lugares.',
+  'profileUser.noLists': 'Todavía no tiene listas públicas.',
+  'profileUser.listCount': '{{count}} lugares',
+  'profileUser.listCount_one': '{{count}} lugar',
+  'profileUser.listCount_other': '{{count}} lugares',
   'profileUser.noFollowers': 'Todavía no tiene seguidores.',
   'profileUser.noFollowing': 'Todavía no sigue a nadie.',
   'profileUser.privateUser': 'Usuario privado',

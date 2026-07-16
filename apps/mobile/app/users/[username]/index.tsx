@@ -1,15 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useFollow, useProfile } from '@/api/hooks/useProfile';
+import { useFollow, useProfile, useUserLists, useUserPlaces } from '@/api/hooks/useProfile';
 import { Button } from '@/components/button';
-import { FeedCard } from '@/components/feed/feed-card';
+import { MyPlaceCard } from '@/components/place/my-place-card';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
+
+type Tab = 'places' | 'lists';
 
 export default function UserProfileScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
@@ -20,6 +22,11 @@ export default function UserProfileScreen() {
   const me = useSessionStore((s) => s.user);
   const authed = useSessionStore((s) => s.status === 'authed');
   const { follow, unfollow } = useFollow();
+  const [tab, setTab] = useState<Tab>('places');
+  const { data: places } = useUserPlaces(username ?? null);
+  const { data: lists } = useUserLists(username ?? null);
+
+  const openPlace = (slug: string) => router.push({ pathname: '/place/[slug]', params: { slug } });
 
   const profile = data?.profile;
   const viewer = data?.viewer;
@@ -108,22 +115,82 @@ export default function UserProfileScreen() {
             />
           ) : null}
 
-          <View style={styles.shares}>
-            {data.shares.length === 0 ? (
-              <Text style={styles.emptyText}>{t('profileUser.noShares')}</Text>
-            ) : (
-              data.shares.map((item) => (
-                <FeedCard
-                  key={item.id}
-                  item={item}
-                  onPress={(slug) => router.push({ pathname: '/place/[slug]', params: { slug } })}
-                />
-              ))
-            )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('profileUser.viewMap')}
+            onPress={() => router.push({ pathname: '/users/[username]/map', params: { username: profile.username } })}
+            style={styles.mapButton}
+          >
+            <Ionicons name="map-outline" size={18} color={c.primary} />
+            <Text style={styles.mapButtonText}>{t('profileUser.viewMap')}</Text>
+          </Pressable>
+
+          <View style={styles.segment}>
+            <SegmentTab label={t('profileUser.places')} active={tab === 'places'} onPress={() => setTab('places')} styles={styles} />
+            <SegmentTab label={t('profileUser.lists')} active={tab === 'lists'} onPress={() => setTab('lists')} styles={styles} />
           </View>
+
+          {tab === 'places' ? (
+            <View style={styles.content}>
+              {(places?.length ?? 0) === 0 ? (
+                <Text style={styles.emptyText}>{t('profileUser.noPlaces')}</Text>
+              ) : (
+                places?.map((place) => <MyPlaceCard key={place.id} place={place} onPress={openPlace} />)
+              )}
+            </View>
+          ) : (
+            <View style={styles.content}>
+              {(lists?.length ?? 0) === 0 ? (
+                <Text style={styles.emptyText}>{t('profileUser.noLists')}</Text>
+              ) : (
+                lists?.map((list) => (
+                  <Pressable
+                    key={list.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={list.name}
+                    onPress={() => list.public_slug && router.push({ pathname: '/list/[slug]', params: { slug: list.public_slug } })}
+                    style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]}
+                  >
+                    <Ionicons name="bookmark-outline" size={20} color={c.primary} />
+                    <View style={styles.listRowBody}>
+                      <Text style={styles.listRowName} numberOfLines={1}>
+                        {list.name}
+                      </Text>
+                      <Text style={styles.listRowCount}>{t('profileUser.listCount', { count: list.items_count })}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={c.muted} />
+                  </Pressable>
+                ))
+              )}
+            </View>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
+  );
+}
+
+function SegmentTab({
+  label,
+  active,
+  onPress,
+  styles,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={[styles.segmentTab, active && styles.segmentTabActive]}
+    >
+      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -162,5 +229,43 @@ const makeStyles = (c: Palette) =>
     counter: { alignItems: 'center', gap: 2 },
     counterValue: { fontSize: 18, fontWeight: '700', color: c.text },
     counterLabel: { fontSize: 12, color: c.muted },
-    shares: { gap: 4, marginTop: 8 },
+    mapButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 12,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: c.primary,
+    },
+    mapButtonText: { color: c.primary, fontSize: 15, fontWeight: '700' },
+    segment: {
+      flexDirection: 'row',
+      gap: 6,
+      backgroundColor: c.surface,
+      borderRadius: 999,
+      padding: 4,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
+    },
+    segmentTab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 999 },
+    segmentTabActive: { backgroundColor: c.primary },
+    segmentText: { fontSize: 14, fontWeight: '700', color: c.muted },
+    segmentTextActive: { color: c.onPrimary },
+    content: { gap: 12, marginTop: 4 },
+    listRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 14,
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
+    },
+    listRowPressed: { opacity: 0.7 },
+    listRowBody: { flex: 1, gap: 2 },
+    listRowName: { fontSize: 16, fontWeight: '700', color: c.text },
+    listRowCount: { fontSize: 13, color: c.muted },
   });

@@ -28,7 +28,7 @@ export const en = {
   'myPlaces.guest.cta': 'Sign in',
   'myPlaces.error.title': 'Couldn’t load your places',
 
-  // Shared by FeedCard (still used on user profiles) + the search headers.
+  // Shared by the source card (attribution) + the search headers.
   'feed.search': 'Search',
   'feed.sharerFallback': 'a Reelmap user',
 
@@ -247,7 +247,14 @@ export const en = {
   'profileUser.followers': 'Followers',
   'profileUser.following': 'Following',
   'profileUser.shares': 'Shares',
-  'profileUser.noShares': 'No shares yet.',
+  'profileUser.viewMap': 'View on map',
+  'profileUser.places': 'Places',
+  'profileUser.lists': 'Lists',
+  'profileUser.noPlaces': 'No places yet.',
+  'profileUser.noLists': 'No public lists yet.',
+  'profileUser.listCount': '{{count}} places',
+  'profileUser.listCount_one': '{{count}} place',
+  'profileUser.listCount_other': '{{count}} places',
   'profileUser.noFollowers': 'No followers yet.',
   'profileUser.noFollowing': 'Not following anyone yet.',
   'profileUser.privateUser': 'Private user',

@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '../client';
 import { queryKeys } from '../keys';
+import type { PlaceListSummary } from '../lists';
+import type { PlaceSummary } from '../places';
 import type { FollowerRow, FollowingRow, ProfileResponse } from '../profile';
 
 /** Cap on a single followers/following page fetch (pagination is a follow-up). */
@@ -38,6 +40,41 @@ export function useFollow() {
   });
 
   return { follow, unfollow };
+}
+
+/**
+ * A user's public places (T-071) — the list view of their map, shown on their
+ * profile. First page only (limit 50, like the follow lists); it also powers
+ * their per-user map screen. Never carries `mine` provenance (that's /me only).
+ */
+export function useUserPlaces(username: string | null) {
+  return useQuery({
+    queryKey: queryKeys.userPlaces(username ?? ''),
+    queryFn: async () => {
+      const { data } = await api.get<{ data: PlaceSummary[] }>(
+        `/users/${encodeURIComponent(username as string)}/places`,
+        { params: { limit: 50 } },
+      );
+      return data.data;
+    },
+    enabled: !!username,
+    staleTime: 30_000,
+  });
+}
+
+/** A user's PUBLIC lists (T-071/T-063) — shown on their profile. */
+export function useUserLists(username: string | null) {
+  return useQuery({
+    queryKey: queryKeys.userLists(username ?? ''),
+    queryFn: async () => {
+      const { data } = await api.get<{ data: PlaceListSummary[] }>(
+        `/users/${encodeURIComponent(username as string)}/lists`,
+      );
+      return data.data;
+    },
+    enabled: !!username,
+    staleTime: 30_000,
+  });
 }
 
 export function useFollowers(username: string | null) {

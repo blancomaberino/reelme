@@ -39,9 +39,20 @@ function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
+function placeRow(id: string, name: string, over: Record<string, unknown> = {}) {
+  return {
+    id, name, slug: `p-${id}`, status: 'active', lat: -34.9, lng: -56.16, category: 'ramen',
+    price_range: 2, city: 'Montevideo', country_code: 'UY', thumbnail_url: null,
+    source_count: 1, rating: { google: { value: null, count: 0 } }, distance_m: null, created_at: null, ...over,
+  };
+}
+
 beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   mock = new AxiosMockAdapter(api);
+  // Default empty places/lists; individual tests override as needed.
+  mock.onGet('/users/alice/places').reply(200, { data: [] });
+  mock.onGet('/users/alice/lists').reply(200, { data: [] });
   mockRouter.params = { username: 'alice' };
   mockRouter.push.mockClear();
   useSessionStore.setState({ user: me('bob'), status: 'authed' }); // authed, not self
@@ -96,4 +107,41 @@ it('hides the follow button on your own profile', async () => {
   render(<UserProfileScreen />, { wrapper: Providers });
   await screen.findByText('Alice');
   expect(screen.queryByLabelText('Follow')).toBeNull();
+});
+
+it('shows their places list (their map’s list view) — never mixed into mine', async () => {
+  mock.onGet('/users/alice').reply(200, profileResponse({ following: false, follow_id: null }));
+  mock.onGet('/users/alice/places').reply(200, { data: [placeRow('1', 'Clara Café'), placeRow('2', 'Manteigaria')] });
+
+  render(<UserProfileScreen />, { wrapper: Providers });
+  expect(await screen.findByText('Clara Café')).toBeOnTheScreen();
+  expect(screen.getByText('Manteigaria')).toBeOnTheScreen();
+
+  fireEvent.press(screen.getByLabelText('Clara Café'));
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: 'p-1' } });
+});
+
+it('switches to their public Lists and opens one', async () => {
+  mock.onGet('/users/alice').reply(200, profileResponse({ following: false, follow_id: null }));
+  mock.onGet('/users/alice/lists').reply(200, {
+    data: [{ id: '4', name: 'Faves', slug: 'faves', public_slug: 'faves-abc123', is_public: true, items_count: 5, created_at: null, updated_at: null }],
+  });
+
+  render(<UserProfileScreen />, { wrapper: Providers });
+  await screen.findByText('Alice');
+
+  fireEvent.press(screen.getByLabelText('Lists'));
+  expect(await screen.findByText('Faves')).toBeOnTheScreen();
+
+  fireEvent.press(screen.getByLabelText('Faves'));
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/list/[slug]', params: { slug: 'faves-abc123' } });
+});
+
+it('opens their map from the "View on map" button', async () => {
+  mock.onGet('/users/alice').reply(200, profileResponse({ following: false, follow_id: null }));
+
+  render(<UserProfileScreen />, { wrapper: Providers });
+  fireEvent.press(await screen.findByLabelText('View on map'));
+
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/users/[username]/map', params: { username: 'alice' } });
 });
