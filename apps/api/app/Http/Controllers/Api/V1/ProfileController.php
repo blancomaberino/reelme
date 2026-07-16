@@ -3,16 +3,20 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\ShareStatus;
+use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProfileMapRequest;
+use App\Http\Requests\ProfilePlacesRequest;
 use App\Http\Requests\ProfileShowRequest;
 use App\Http\Resources\FeedItemResource;
 use App\Http\Resources\InfluencerSummaryResource;
+use App\Http\Resources\PlaceListResource;
 use App\Http\Resources\PublicUserResource;
 use App\Http\Resources\UserSummaryResource;
 use App\Models\Follow;
 use App\Models\Influencer;
 use App\Models\Place;
+use App\Models\PlaceList;
 use App\Models\User;
 use App\Services\Feed\PublishedShareFeed;
 use App\Services\Map\MapViewport;
@@ -30,6 +34,8 @@ use Illuminate\Support\Collection;
  */
 class ProfileController extends Controller
 {
+    use PaginatesPlaces;
+
     public function show(ProfileShowRequest $request, User $user, PublishedShareFeed $feed): JsonResponse
     {
         $this->assertViewable($request, $user);
@@ -84,11 +90,46 @@ class ProfileController extends Controller
     {
         $this->assertViewable($request, $user);
 
-        return $viewport->respond($request, fn ($q) => $q->whereHas(
-            'sources.share',
-            fn ($s) => $s->where('user_id', $user->id)
-                ->where('status', ShareStatus::Published),
-        ));
+        return $viewport->respond($request, fn ($q) => $q->publishedBy($user));
+    }
+
+    /**
+     * The user's public places as a filterable list (T-071) — the list view of
+     * their map. Same subject constraint as {@see map()} (places evidenced by
+     * their PUBLISHED shares), with the shared country/type/tags facets.
+     */
+    public function places(ProfilePlacesRequest $request, User $user): JsonResponse
+    {
+        // Privacy gate runs in ProfilePlacesRequest::authorize() (before param
+        // validation) so an invalid facet can't become a 404-vs-422 oracle.
+        $base = Place::query()->publiclyVisible()->publishedBy($user);
+
+        return $this->placeListResponse($base, $request);
+    }
+
+    /**
+     * The user's PUBLIC lists (T-071) — visiting a profile surfaces their public
+     * Lists (T-062/T-063) alongside their map + places. Private lists never leak.
+     */
+    public function lists(Request $request, User $user): JsonResponse
+    {
+        $this->assertViewable($request, $user);
+
+        // Bounded (a user with >100 public lists is truncated — acceptable; the
+        // owner-lists CRUD is the paginated surface). `user` loaded so the
+        // resource can attribute the (public) owner.
+        $lists = PlaceList::query()
+            ->where('user_id', $user->id)
+            ->where('is_public', true)
+            ->withCount('items')
+            ->with('user')
+            ->orderByDesc('updated_at')
+            ->limit(100)
+            ->get();
+
+        return response()->json([
+            'data' => PlaceListResource::collection($lists),
+        ]);
     }
 
     /**

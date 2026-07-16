@@ -16,6 +16,7 @@ export interface PlaceSummary {
   price_range: number | null;
   city: string | null;
   country_code: string;
+  thumbnail_url?: string | null;
   source_count: number;
   rating: {
     google: RatingBlock;

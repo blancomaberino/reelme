@@ -20,6 +20,7 @@
     "price_range": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
     "city": { "type": ["string", "null"] },
     "country_code": { "type": "string" },
+    "thumbnail_url": { "type": ["string", "null"] },
     "source_count": { "type": "integer", "minimum": 0 },
     "rating": {
       "type": "object",

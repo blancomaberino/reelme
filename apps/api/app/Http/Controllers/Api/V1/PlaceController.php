@@ -15,7 +15,6 @@ use App\Support\KeysetCursor;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Public places surface (T-030, 03 §2.6): browse index with filters, place
@@ -239,15 +238,10 @@ class PlaceController extends Controller
             default: // recent
                 $query->orderByDesc('created_at')->orderByDesc('id');
                 if ($cursor !== null) {
-                    // The key binds into a ?::timestamp cast — anything Postgres
-                    // can't parse would be a 500, so require a strict round-trip
-                    // (rejects shape-valid-but-out-of-range values like month 13,
-                    // which PHP would silently normalize) and PG's no-year-zero.
-                    $ts = (string) $cursor[0];
-                    $dt = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s.u', $ts);
-                    if ($dt === false || $dt->format('Y-m-d H:i:s.u') !== $ts || str_starts_with($ts, '0000-')) {
-                        throw ValidationException::withMessages(['cursor' => ['The cursor is malformed.']]);
-                    }
+                    // The key binds into a ?::timestamp cast; timestampKey() does
+                    // the strict round-trip (rejecting month-13 / year-0) so an
+                    // unparseable value 422s instead of 500-ing.
+                    $ts = KeysetCursor::timestampKey($cursor[0]);
                     $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, KeysetCursor::intKey($cursor[1])]);
                 }
         }

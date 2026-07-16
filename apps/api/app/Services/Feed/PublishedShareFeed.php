@@ -9,7 +9,6 @@ use App\Support\KeysetCursor;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Reverse-chronological published-share pagination (T-034/T-036): the global
@@ -51,11 +50,7 @@ class PublishedShareFeed
         }
 
         if ($keys !== null) {
-            $ts = (string) $keys[0];
-            $dt = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s.u', $ts);
-            if ($dt === false || $dt->format('Y-m-d H:i:s.u') !== $ts || str_starts_with($ts, '0000-')) {
-                throw ValidationException::withMessages(['cursor' => ['The cursor is malformed.']]);
-            }
+            $ts = KeysetCursor::timestampKey($keys[0]);
             $query->whereRaw('(published_at, id) < (?::timestamptz, ?)', [$ts, KeysetCursor::intKey($keys[1])]);
         }
 

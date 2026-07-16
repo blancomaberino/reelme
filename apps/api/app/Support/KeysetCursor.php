@@ -84,6 +84,26 @@ final class KeysetCursor
         self::reject('The cursor is malformed.');
     }
 
+    /**
+     * Coerce a decoded key that must be a `Y-m-d H:i:s.u` timestamp (the
+     * `recent` sort). The value binds into a `?::timestamp` cast, so anything
+     * Postgres can't parse would be a 500 — require a strict round-trip
+     * (rejecting shape-valid-but-out-of-range values like month 13 that PHP
+     * would silently normalize) plus PG's no-year-zero, 422-ing a crafted
+     * cursor like every other malformed key. Shared by every `recent`-sorted
+     * keyset endpoint so the check can never drift between them.
+     */
+    public static function timestampKey(mixed $key): string
+    {
+        $ts = (string) $key;
+        $dt = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s.u', $ts);
+        if ($dt === false || $dt->format('Y-m-d H:i:s.u') !== $ts || str_starts_with($ts, '0000-')) {
+            self::reject('The cursor is malformed.');
+        }
+
+        return $ts;
+    }
+
     private static function reject(string $message): never
     {
         throw ValidationException::withMessages(['cursor' => [$message]]);
