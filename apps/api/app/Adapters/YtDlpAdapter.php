@@ -96,7 +96,10 @@ class YtDlpAdapter implements SourceAdapter
                 'error' => $e->getMessage(),
             ]);
 
-            return new MediaFetchResult;
+            // A SIGKILL'd yt-dlp can leave a partial `<stem>.<ext>` (--no-part
+            // writes straight to the final name); discard() sweeps it so a failed
+            // download never leaks disk on a long-running worker.
+            return $this->discard($stem);
         }
 
         if (! $result->successful()) {
@@ -110,12 +113,16 @@ class YtDlpAdapter implements SourceAdapter
                 'stderr' => mb_substr($result->errorOutput(), 0, 500),
             ]);
 
-            return new MediaFetchResult;
+            // A mid-download non-zero exit may have written partial bytes.
+            return $this->discard($stem);
         }
 
         $path = $this->downloadedPath($result->output());
         if ($path === null) {
-            return new MediaFetchResult;
+            // yt-dlp succeeded but printed no path — the finished file (if any)
+            // would otherwise be orphaned, since only the success return hands
+            // it to DownloadMedia to clean.
+            return $this->discard($stem);
         }
 
         return new MediaFetchResult([
@@ -140,6 +147,10 @@ class YtDlpAdapter implements SourceAdapter
         $cmd = [
             $this->bin,
             '--no-playlist',
+            // --quiet (does NOT suppress --print) keeps stdout to just the
+            // printed path, so downloadedPath() stays deterministic even if a
+            // post-processor is added later. Errors still go to stderr.
+            '--quiet',
             '--no-warnings',
             '--no-progress',
             '--no-part',
@@ -168,15 +179,35 @@ class YtDlpAdapter implements SourceAdapter
      */
     private function downloadedPath(string $output): ?string
     {
-        $lines = preg_split('/\r?\n/', trim($output)) ?: [];
-        for ($i = count($lines) - 1; $i >= 0; $i--) {
-            $line = trim($lines[$i]);
-            if ($line !== '') {
-                return $line;
-            }
-        }
+        $lines = array_values(array_filter(
+            array_map('trim', preg_split('/\r?\n/', $output) ?: []),
+            fn (string $line): bool => $line !== '',
+        ));
 
-        return null;
+        return $lines === [] ? null : end($lines);
+    }
+
+    /**
+     * A failure return: sweep any leftover file for this stem, then hand back an
+     * empty result. Only the success path returns media (and hands its file to
+     * DownloadMedia to clean) — never sweep there.
+     */
+    private function discard(string $stem): MediaFetchResult
+    {
+        $this->sweep($stem);
+
+        return new MediaFetchResult;
+    }
+
+    /**
+     * Remove any file yt-dlp wrote for a reserved stem (`<stem>.<ext>`, plus any
+     * sidecar) on a failure path.
+     */
+    private function sweep(string $stem): void
+    {
+        foreach (glob($stem.'.*') ?: [] as $leftover) {
+            @unlink($leftover);
+        }
     }
 
     private function mimeFor(string $path): string

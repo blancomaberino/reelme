@@ -40,7 +40,9 @@ class IngestionServiceProvider extends ServiceProvider
 
             return new YtDlpAdapter(
                 bin: is_string($cfg['bin'] ?? null) && $cfg['bin'] !== '' ? $cfg['bin'] : 'yt-dlp',
-                timeout: (int) ($cfg['timeout'] ?? 120),
+                // Clamp ≥1: Process::timeout(0) disables the timeout entirely, so
+                // a misconfigured 0 would let a hung yt-dlp run unbounded.
+                timeout: max(1, (int) ($cfg['timeout'] ?? 120)),
                 cookiesPath: is_string($cfg['cookies_path'] ?? null) && $cfg['cookies_path'] !== ''
                     ? $cfg['cookies_path']
                     : null,

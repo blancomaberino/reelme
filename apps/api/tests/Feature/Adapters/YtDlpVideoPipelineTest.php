@@ -82,6 +82,8 @@ it('an image post (no video formats) leaves no video original — falls through 
 
     (new DownloadMedia($share->id))->handle(app(AdapterRegistry::class), app(FfmpegRunner::class));
 
+    // yt-dlp really was attempted (faked) for the reel before falling through.
+    Process::assertRan(fn ($p) => end($p->command) === 'https://www.instagram.com/reel/ABC123/');
     // No video stored; the share stays fetching for the image-resolver path.
     expect($share->sourcePost->mediaAssets()->where('kind', MediaKind::Video->value)->count())->toBe(0)
         ->and($share->fresh()->status)->toBe(ShareStatus::Fetching);

@@ -48,6 +48,7 @@ it('builds a safe array command: download best video, print path, no-simulate, -
             ->and(end($cmd))->toBe('https://www.instagram.com/reel/ZZZ/')
             ->and($cmd[count($cmd) - 2])->toBe('--')
             ->and($cmd)->toContain('--no-playlist')
+            ->and($cmd)->toContain('--quiet') // stdout carries only the printed path
             ->and($cmd)->toContain('--no-simulate') // download despite --print
             ->and($cmd)->toContain('after_move:filepath')
             ->and($cmd)->not->toContain('--cookies'); // no cookie file configured
@@ -89,6 +90,35 @@ it('falls through (empty) on any non-zero exit (missing binary, auth wall)', fun
     Process::fake(['*' => Process::result(output: '', errorOutput: 'HTTP Error 403', exitCode: 1)]);
 
     expect((new YtDlpAdapter)->fetchMedia(ytPost(), null)->media)->toBe([]);
+});
+
+it('sweeps a partial download left behind on a failure exit (no temp leak)', function () {
+    // --no-part writes straight to the final name, so a mid-download failure can
+    // leave `<stem>.<ext>` behind. Simulate that by writing the file from the
+    // fake, then assert fetchMedia cleaned it up on the failure path.
+    $leftover = null;
+    Process::fake(['*' => function ($process) use (&$leftover) {
+        $i = array_search('-o', $process->command, true);
+        $stem = str_replace('.%(ext)s', '', $process->command[$i + 1]);
+        $leftover = $stem.'.mp4';
+        file_put_contents($leftover, 'partial-bytes');
+
+        return Process::result(output: '', errorOutput: 'ERROR: interrupted', exitCode: 1);
+    }]);
+
+    $result = (new YtDlpAdapter)->fetchMedia(ytPost(), null);
+
+    expect($result->media)->toBe([])
+        ->and($leftover)->not->toBeNull()
+        ->and(file_exists($leftover))->toBeFalse();
+});
+
+it('does not pass --cookies when the configured cookie file is missing', function () {
+    Process::fake(['*' => Process::result(output: "/tmp/x.mp4\n")]);
+
+    (new YtDlpAdapter(cookiesPath: '/no/such/cookies.txt'))->fetchMedia(ytPost(), null);
+
+    Process::assertRan(fn ($process) => ! in_array('--cookies', $process->command, true));
 });
 
 it('never throws — a process failure (e.g. timeout) falls through to empty', function () {
