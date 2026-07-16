@@ -26,6 +26,14 @@ export type SharerSummary = {
   avatar_path: string | null;
 } | null;
 
+/** A person row from `/search` (UserSummaryResource) — taps through to /users/[username]. */
+export type UserSummary = {
+  id: string;
+  username: string;
+  name: string | null;
+  avatar_path: string | null;
+};
+
 export type SocialPlatform = 'instagram' | 'x' | 'tiktok' | 'youtube';
 
 /** One row of GET /places, /search places, /me/places, and feed `place` (PlaceSummaryResource). */
@@ -230,11 +238,16 @@ export type TagSummary = {
   places_count?: number;
 };
 
+/**
+ * Federated search payload. The People search (T-077) requests places/users/tags
+ * — influencer results were an inert placeholder (no profile route yet) and are
+ * no longer requested; `InfluencerSummary` lives on for feed/place attribution.
+ */
 export type SearchResponse = {
   data: {
     places: PlaceSummary[];
+    users: UserSummary[];
     tags: TagSummary[];
-    influencers: InfluencerSummary[];
   };
   meta: { query: string; took_ms: number };
 };

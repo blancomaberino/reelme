@@ -6,7 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useSearch } from '@/api/hooks/useSearch';
-import type { InfluencerSummary, PlaceSummary, TagSummary } from '@/api/places';
+import type { PlaceSummary, TagSummary, UserSummary } from '@/api/places';
 import { type MessageKey, useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { useDebounced } from '@/lib/use-debounced';
@@ -15,8 +15,8 @@ import { fonts, type Palette, useColors } from '@/theme/colors';
 type Row =
   | { type: 'header'; key: string; titleKey: MessageKey }
   | { type: 'place'; key: string; place: PlaceSummary }
-  | { type: 'tag'; key: string; tag: TagSummary }
-  | { type: 'influencer'; key: string; inf: InfluencerSummary };
+  | { type: 'user'; key: string; user: UserSummary }
+  | { type: 'tag'; key: string; tag: TagSummary };
 
 export default function SearchScreen() {
   const c = useColors();
@@ -36,13 +36,13 @@ export default function SearchScreen() {
       out.push({ type: 'header', key: 'h-places', titleKey: 'search.section.places' });
       data.places.forEach((place) => out.push({ type: 'place', key: `p-${place.id}`, place }));
     }
+    if (data.users.length > 0) {
+      out.push({ type: 'header', key: 'h-people', titleKey: 'search.section.people' });
+      data.users.forEach((user) => out.push({ type: 'user', key: `u-${user.id}`, user }));
+    }
     if (data.tags.length > 0) {
       out.push({ type: 'header', key: 'h-tags', titleKey: 'search.section.tags' });
       data.tags.forEach((tag) => out.push({ type: 'tag', key: `t-${tag.id}`, tag }));
-    }
-    if (data.influencers.length > 0) {
-      out.push({ type: 'header', key: 'h-inf', titleKey: 'search.section.influencers' });
-      data.influencers.forEach((inf) => out.push({ type: 'influencer', key: `i-${inf.id}`, inf }));
     }
     return out;
   }, [data]);
@@ -74,9 +74,6 @@ export default function SearchScreen() {
             </Pressable>
           ) : null}
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('search.close')} onPress={() => router.back()} hitSlop={8}>
-          <Text style={styles.cancel}>{t('search.cancel')}</Text>
-        </Pressable>
       </View>
 
       {typed.length < 2 ? (
@@ -149,17 +146,25 @@ function RowView({ row, styles, c }: { row: Row; styles: Styles; c: Palette }) {
       </Pressable>
     );
   }
-  // Influencers are inert until M3 profiles (T-036/T-039).
+  // A person (public profile) → tap through to their profile (T-077).
+  const u = row.user;
   return (
-    <View style={styles.row}>
-      <Ionicons name="star-outline" size={20} color={c.muted} />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={u.name ?? `@${u.username}`}
+      onPress={() => router.push({ pathname: '/users/[username]', params: { username: u.username } })}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+    >
+      <Ionicons name="person-circle-outline" size={22} color={c.muted} />
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle} numberOfLines={1}>
-          @{row.inf.handle}
+          {u.name ?? `@${u.username}`}
         </Text>
-        <Text style={styles.rowSub}>{t('search.profilesSoon')}</Text>
+        <Text style={styles.handle} numberOfLines={1}>
+          @{u.username}
+        </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -182,7 +187,6 @@ const makeStyles = (c: Palette) =>
       height: 44,
     },
     input: { flex: 1, fontSize: 16, color: c.text },
-    cancel: { color: c.primary, fontSize: 16, fontWeight: '600' },
     hint: { flex: 1, alignItems: 'center', paddingTop: 60 },
     hintText: { color: c.muted, fontSize: 15 },
     loading: { paddingVertical: 16 },
@@ -193,4 +197,5 @@ const makeStyles = (c: Palette) =>
     rowBody: { flex: 1 },
     rowTitle: { fontFamily: fonts.display, fontSize: 16, color: c.text, fontWeight: '700' },
     rowSub: { fontSize: 13, color: c.muted, textTransform: 'capitalize' },
+    handle: { fontSize: 13, color: c.muted },
   });

@@ -8,7 +8,7 @@ export const en = {
 
   'tabs.map': 'Map',
   'tabs.myPlaces': 'My places',
-  'tabs.share': 'Share',
+  'tabs.search': 'Search',
   'tabs.profile': 'Profile',
 
   'myPlaces.title': 'My places',
@@ -80,17 +80,14 @@ export const en = {
   'source.openOriginal': 'Open original {{platform}} post',
   'source.firstShared': 'First shared',
 
-  'search.placeholder': 'Search places, tags…',
-  'search.cancel': 'Cancel',
-  'search.close': 'Close',
+  'search.placeholder': 'Search places, people, tags…',
   'search.clear': 'Clear',
   'search.hint': 'Type at least 2 characters to search.',
   'search.error': 'Something went wrong. Try again.',
   'search.noResults': 'No results for “{{query}}”.',
   'search.section.places': 'Places',
+  'search.section.people': 'People',
   'search.section.tags': 'Tags',
-  'search.section.influencers': 'Influencers',
-  'search.profilesSoon': 'Profiles coming soon',
 
   'map.search': 'Search',
   'map.zoomIn': 'Zoom in for more places',

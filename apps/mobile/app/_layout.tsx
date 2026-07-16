@@ -40,7 +40,6 @@ export default function RootLayout() {
                 <Stack.Screen name="(main)" />
                 <Stack.Screen name="place/[slug]" />
                 <Stack.Screen name="tag/[slug]" />
-                <Stack.Screen name="search" options={{ presentation: 'modal' }} />
                 <Stack.Screen name="settings" />
                 <Stack.Screen name="profile/edit" />
                 <Stack.Screen name="lists/index" />

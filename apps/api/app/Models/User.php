@@ -17,6 +17,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
+use Laravel\Scout\Searchable;
 
 /**
  * Role flags (is_influencer/is_restaurant_owner/is_admin) and stripe columns are
@@ -40,7 +41,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable implements FilamentUser, MustVerifyEmailContract
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, Notifiable, Searchable, SoftDeletes;
 
     // MustVerifyEmail: gives hasVerifiedEmail()/markEmailAsVerified() (T-066).
     // We send our own 6-digit code (EmailVerificationService), NOT Laravel's
@@ -54,6 +55,35 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     public function canAccessPanel(Panel $panel): bool
     {
         return (bool) $this->is_admin;
+    }
+
+    /**
+     * People search (T-077): only PUBLIC profiles are indexed — a private
+     * (`is_public = false`) user is never discoverable via search, mirroring the
+     * profile 404 gate. Flipping `is_public` re-syncs the index on save.
+     */
+    public function shouldBeSearchable(): bool
+    {
+        // Cast, not raw: right after register the attribute is unset in memory
+        // (the DB default hasn't been read back), which would be null — a private
+        // user, a just-registered one, and an unloaded one all resolve to false
+        // and get (re)indexed on their next profile-bearing save / reindex.
+        return (bool) $this->is_public;
+    }
+
+    /**
+     * The searchable document (T-077): match on handle + display name + bio.
+     *
+     * @return array<string, mixed>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'username' => $this->username,
+            'name' => $this->name,
+            'bio' => $this->bio,
+        ];
     }
 
     /** @return HasMany<Share, $this> */

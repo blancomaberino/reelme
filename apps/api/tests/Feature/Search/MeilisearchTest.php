@@ -45,7 +45,7 @@ afterEach(function () {
     // Config resets per test (fresh app); only the EXTERNAL index state must
     // be cleaned up.
     if (isset($this->meili, $this->prefix)) {
-        foreach (['places', 'tags', 'influencers'] as $table) {
+        foreach (['places', 'tags', 'influencers', 'users'] as $table) {
             try {
                 $this->meili->deleteIndex($this->prefix.$table);
             } catch (Throwable) {
@@ -61,7 +61,7 @@ afterEach(function () {
  */
 function waitForMeili(Client $client, string $prefix): void
 {
-    $indexUids = array_map(fn (string $t) => $prefix.$t, ['places', 'tags', 'influencers']);
+    $indexUids = array_map(fn (string $t) => $prefix.$t, ['places', 'tags', 'influencers', 'users']);
     foreach (range(1, 100) as $i) {
         $pending = $client->getTasks(
             (new TasksQuery)->setIndexUids($indexUids)->setStatuses(['enqueued', 'processing'])

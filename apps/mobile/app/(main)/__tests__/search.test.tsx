@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import SearchScreen from '../search';
 import { api } from '@/api/client';
 
-import { mockRouter } from '../../jest.setup';
+import { mockRouter } from '../../../jest.setup';
 
 let mock: AxiosMockAdapter;
 let qc: QueryClient;
@@ -31,8 +31,8 @@ const RESULTS = {
         created_at: null,
       },
     ],
+    users: [{ id: '3', username: 'noodlelover', name: 'Noodle Lover', avatar_path: null }],
     tags: [{ id: '1', kind: 'dish', name: 'Noodles', slug: 'noodles' }],
-    influencers: [],
   },
   meta: { query: 'nood', took_ms: 1 },
 };
@@ -74,7 +74,7 @@ it('debounces rapid typing into a single request', async () => {
   expect(mock.history.get[0].params.q).toBe('nood');
 });
 
-it('renders Places and Tags sections and navigates on tap', async () => {
+it('renders Places, People and Tags sections and navigates on tap', async () => {
   render(<SearchScreen />, { wrapper: Providers });
   fireEvent.changeText(screen.getByLabelText('Search'), 'nood');
   await act(async () => {
@@ -82,12 +82,20 @@ it('renders Places and Tags sections and navigates on tap', async () => {
   });
 
   expect(await screen.findByText('Places')).toBeOnTheScreen();
+  expect(screen.getByText('People')).toBeOnTheScreen();
   expect(screen.getByText('Tags')).toBeOnTheScreen();
 
   fireEvent.press(screen.getByLabelText('Lanzhou Noodle House'));
   expect(mockRouter.push).toHaveBeenCalledWith({
     pathname: '/place/[slug]',
     params: { slug: 'lanzhou-noodle-house-6stwbu' },
+  });
+
+  // T-077: a person taps through to their profile (by username).
+  fireEvent.press(screen.getByLabelText('Noodle Lover'));
+  expect(mockRouter.push).toHaveBeenCalledWith({
+    pathname: '/users/[username]',
+    params: { username: 'noodlelover' },
   });
 
   fireEvent.press(screen.getByText('Noodles'));
@@ -120,7 +128,7 @@ it('reverts to the hint immediately when the box is cleared (no stale results)',
 });
 
 it('shows an empty state when nothing matches', async () => {
-  mock.onGet('/search').reply(200, { data: { places: [], tags: [], influencers: [] }, meta: { query: 'zzz', took_ms: 1 } });
+  mock.onGet('/search').reply(200, { data: { places: [], users: [], tags: [] }, meta: { query: 'zzz', took_ms: 1 } });
 
   render(<SearchScreen />, { wrapper: Providers });
   fireEvent.changeText(screen.getByLabelText('Search'), 'zzz');

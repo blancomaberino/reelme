@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Influencer;
 use App\Models\Place;
 use App\Models\Tag;
+use App\Models\User;
 use Illuminate\Console\Command;
 
 /**
@@ -17,7 +18,7 @@ class ReindexSearch extends Command
 {
     protected $signature = 'reelmap:search:reindex';
 
-    protected $description = 'Push Meilisearch index settings, then flush + reimport places, tags, influencers';
+    protected $description = 'Push Meilisearch index settings, then flush + reimport places, tags, influencers, users';
 
     public function handle(): int
     {
@@ -27,7 +28,7 @@ class ReindexSearch extends Command
             $this->components->warn('scout.driver is not meilisearch — skipping index-settings sync.');
         }
 
-        foreach ([Place::class, Tag::class, Influencer::class] as $model) {
+        foreach ([Place::class, Tag::class, Influencer::class, User::class] as $model) {
             $this->call('scout:flush', ['model' => $model]);
             $this->call('scout:import', ['model' => $model]);
         }
