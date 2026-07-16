@@ -91,6 +91,21 @@ class PlaceMerger
             );
             DB::table('place_tag')->where('place_id', $loser->id)->delete();
 
+            // Rehome personal-collection references so a user's saved/hidden place
+            // follows the merge to the survivor instead of dangling on the
+            // tombstone (T-071). Move where the survivor isn't already saved/hidden
+            // by that owner (the unique constraint), then drop the redundant rest.
+            // NOTE: unmerge() does NOT restore these onto the resurrected loser
+            // (unlike place_sources) — a saved place stays on the survivor after an
+            // unmerge. Acceptable for now (admin-only, rare); a full snapshot/restore
+            // into the PlaceMerge record is a follow-up.
+            foreach ([['place_list_items', 'place_list_id'], ['hidden_places', 'user_id']] as [$table, $ownerCol]) {
+                DB::table($table)->where('place_id', $loser->id)
+                    ->whereNotIn($ownerCol, fn ($q) => $q->select($ownerCol)->from($table)->where('place_id', $winner->id))
+                    ->update(['place_id' => $winner->id]);
+                DB::table($table)->where('place_id', $loser->id)->delete();
+            }
+
             // Capture the loser's data, then tombstone it — releasing its unique
             // google_place_id before the survivor can claim it in the backfill.
             $donor = $loser->getAttributes();

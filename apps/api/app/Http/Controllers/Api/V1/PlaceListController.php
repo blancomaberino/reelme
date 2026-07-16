@@ -7,6 +7,7 @@ use App\Http\Requests\PlaceListRequest;
 use App\Http\Requests\PublicListShowRequest;
 use App\Http\Resources\PlaceListDetailResource;
 use App\Http\Resources\PlaceListResource;
+use App\Models\HiddenPlace;
 use App\Models\Place;
 use App\Models\PlaceList;
 use Illuminate\Database\Eloquent\Builder;
@@ -94,6 +95,10 @@ class PlaceListController extends Controller
             ['note' => $note !== '' ? $note : null, 'position' => (int) $list->items()->max('position') + 1],
         );
         $list->touch();
+
+        // Saving a place is a "re-add" — un-hide it from my map (T-071) if I'd
+        // previously removed it.
+        HiddenPlace::where('user_id', $request->user()->id)->where('place_id', $place->id)->delete();
 
         return response()->json([
             'data' => new PlaceListDetailResource($this->loadWithPlaces($list)),

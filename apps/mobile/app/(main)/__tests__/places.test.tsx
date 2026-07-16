@@ -113,6 +113,25 @@ it('re-fetches with country filter when a facet chip is toggled', async () => {
   );
 });
 
+it('keeps all country facet chips after filtering, so you can switch directly (BUG G)', async () => {
+  // Unfiltered (facet source) has PT + AR; filtering to PT narrows the LIST only.
+  mock.onGet('/me/places', { params: { limit: 20, sort: 'recent' } })
+    .reply(200, page([place('1', { country_code: 'PT' }), place('2', { country_code: 'AR' })]));
+  mock.onGet('/me/places', { params: { limit: 20, sort: 'recent', country: 'PT' } })
+    .reply(200, page([place('1', { country_code: 'PT' })]));
+
+  render(<MyPlacesScreen />, { wrapper: Providers });
+  await screen.findByText('Place 1');
+  expect(screen.getByText('PT')).toBeOnTheScreen();
+  expect(screen.getByText('AR')).toBeOnTheScreen();
+
+  fireEvent.press(screen.getByText('PT'));
+  // After filtering to PT, the AR chip must NOT vanish (facets come from the
+  // unfiltered set) — you can switch straight to AR.
+  await waitFor(() => expect(screen.queryByText('Place 2')).toBeNull());
+  expect(screen.getByText('AR')).toBeOnTheScreen();
+});
+
 /** Auto-tap the destructive button in the confirmation Alert. */
 function confirmAlert() {
   return jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {

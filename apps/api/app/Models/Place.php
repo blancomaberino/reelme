@@ -167,32 +167,34 @@ class Place extends Model
 
     /**
      * The caller's personal collection (T-071, ADR-071): a place is "mine" when
-     * I published a share resolving to it that I have NOT soft-hidden, OR I
-     * saved it to one of my lists. This is a query scope over the canonical
-     * (global, deduped) places — never a data copy; saving another user's place
-     * makes it mine. The dismissal probe (feed_dismissals) makes removal
-     * map-aware, resolving the "hidden from feed but still on the map"
-     * inconsistency: a place that is mine only via a dismissed share drops off.
+     * I published a share resolving to it, OR I saved it to one of my lists —
+     * AND I have not soft-hidden that specific pin. A query scope over the
+     * canonical (global, deduped) places; saving another user's place makes it
+     * mine. The hide is per-PLACE ({@see HiddenPlace}), so removing one pin of a
+     * multi-place post leaves its siblings — the earlier per-share dismissal hid
+     * every place the share resolved to.
      *
      * @param  Builder<Place>  $query
      */
     protected function scopeMine(Builder $query, User $user): void
     {
-        $query->where(fn (Builder $w) => $w
-            // Shared by me through a published share I have not soft-hidden.
-            ->whereExists(fn ($sub) => $sub->from('place_sources')
-                ->join('shares', 'shares.id', '=', 'place_sources.share_id')
-                ->whereColumn('place_sources.place_id', 'places.id')
-                ->where('shares.user_id', $user->id)
-                ->where('shares.status', ShareStatus::Published->value)
-                ->whereNotExists(fn ($d) => $d->from('feed_dismissals')
-                    ->whereColumn('feed_dismissals.share_id', 'shares.id')
-                    ->where('feed_dismissals.user_id', $user->id)))
-            // OR saved to one of my lists.
-            ->orWhereExists(fn ($sub) => $sub->from('place_list_items')
-                ->join('place_lists', 'place_lists.id', '=', 'place_list_items.place_list_id')
-                ->whereColumn('place_list_items.place_id', 'places.id')
-                ->where('place_lists.user_id', $user->id)));
+        $query
+            // Not a pin I've removed from my map (per-place soft-hide).
+            ->whereNotExists(fn ($h) => $h->from('hidden_places')
+                ->whereColumn('hidden_places.place_id', 'places.id')
+                ->where('hidden_places.user_id', $user->id))
+            ->where(fn (Builder $w) => $w
+                // Shared by me through a published share.
+                ->whereExists(fn ($sub) => $sub->from('place_sources')
+                    ->join('shares', 'shares.id', '=', 'place_sources.share_id')
+                    ->whereColumn('place_sources.place_id', 'places.id')
+                    ->where('shares.user_id', $user->id)
+                    ->where('shares.status', ShareStatus::Published->value))
+                // OR saved to one of my lists.
+                ->orWhereExists(fn ($sub) => $sub->from('place_list_items')
+                    ->join('place_lists', 'place_lists.id', '=', 'place_list_items.place_list_id')
+                    ->whereColumn('place_list_items.place_id', 'places.id')
+                    ->where('place_lists.user_id', $user->id)));
     }
 
     /**

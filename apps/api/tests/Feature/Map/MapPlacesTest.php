@@ -1,7 +1,7 @@
 <?php
 
-use App\Models\FeedDismissal;
 use App\Models\Follow;
+use App\Models\HiddenPlace;
 use App\Models\Influencer;
 use App\Models\Place;
 use App\Models\PlaceList;
@@ -156,14 +156,14 @@ it('filters to the caller’s own places with filter=mine — shared ∪ saved (
     expect($names)->toContain('Mine')->toContain('Saved')->not->toContain('Someone else');
 });
 
-it('excludes a place shared only via a soft-hidden share from filter=mine (T-071)', function () {
+it('excludes a place I soft-hid from filter=mine (per-place hide, T-071)', function () {
     $user = User::factory()->create();
     $hidden = activePlace(51.5117, -0.1300, ['name' => 'Hidden']);
 
     $share = Share::factory()->for($user)->published()->create();
     PlaceSource::factory()->create(['place_id' => $hidden->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id]);
-    // Soft-hide it (the "remove from my collection" action, T-071).
-    FeedDismissal::create(['user_id' => $user->id, 'share_id' => $share->id]);
+    // "Remove from my collection" (T-071) is a per-place hide.
+    HiddenPlace::create(['user_id' => $user->id, 'place_id' => $hidden->id]);
 
     Sanctum::actingAs($user);
     $names = collect($this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&filter=mine')->assertOk()->json('data.pins'))

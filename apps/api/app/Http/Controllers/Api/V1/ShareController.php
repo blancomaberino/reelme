@@ -11,6 +11,8 @@ use App\Http\Requests\UpdateShareRequest;
 use App\Http\Resources\ShareResource;
 use App\Jobs\IngestShare;
 use App\Jobs\Pipeline;
+use App\Models\HiddenPlace;
+use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Services\Ingestion\UrlCanonicalizer;
@@ -46,6 +48,11 @@ class ShareController extends Controller
         // instead of a 500.
         $existing = Share::where('user_id', $user->id)->where('source_post_id', $post->id)->first();
         if ($existing !== null) {
+            // Re-sharing a post you'd soft-hidden is the natural "re-add" gesture
+            // (there is no separate un-hide) — clear the dismissal so its pin
+            // returns to your map + "my places" (T-071).
+            $this->undismiss($existing);
+
             return $this->created($existing, $url, $platform, idempotentReplay: true);
         }
 
@@ -64,6 +71,7 @@ class ShareController extends Controller
             ]));
         } catch (UniqueConstraintViolationException) {
             $winner = Share::where('user_id', $user->id)->where('source_post_id', $post->id)->firstOrFail();
+            $this->undismiss($winner);
 
             return $this->created($winner, $url, $platform, idempotentReplay: true);
         }
@@ -460,6 +468,15 @@ class ShareController extends Controller
         $text = $request->string('shared_text')->value();
 
         return preg_match('#https?://\S+#', $text, $m) === 1 ? $m[0] : null;
+    }
+
+    /** Un-hide the places this re-shared post resolves to (T-071) — idempotent. */
+    private function undismiss(Share $share): void
+    {
+        $placeIds = PlaceSource::where('share_id', $share->id)->pluck('place_id');
+        if ($placeIds->isNotEmpty()) {
+            HiddenPlace::where('user_id', $share->user_id)->whereIn('place_id', $placeIds)->delete();
+        }
     }
 
     private function created(Share $share, ?string $url, ?Platform $platform, bool $idempotentReplay): JsonResponse

@@ -2,7 +2,9 @@
 
 use App\Enums\PlaceStatus;
 use App\Models\AnalysisRun;
+use App\Models\HiddenPlace;
 use App\Models\Place;
+use App\Models\PlaceList;
 use App\Models\PlaceMerge;
 use App\Models\PlaceSource;
 use App\Models\Tag;
@@ -12,6 +14,72 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
+
+it('rehomes saved-list items + hides onto the survivor so a saved place follows a merge (BUG B)', function () {
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Winner']);
+    $loser = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Loser']);
+    PlaceSource::factory()->primary()->create(['place_id' => $winner->id]);
+    PlaceSource::factory()->primary()->create(['place_id' => $loser->id]);
+
+    $saver = User::factory()->create();
+    $list = PlaceList::factory()->for($saver)->create();
+    $list->items()->create(['place_id' => $loser->id, 'position' => 1]);
+    $hider = User::factory()->create();
+    HiddenPlace::create(['user_id' => $hider->id, 'place_id' => $loser->id]);
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    // Save + hide follow the merge to the survivor; nothing dangles on the tombstone.
+    $this->assertDatabaseHas('place_list_items', ['place_list_id' => $list->id, 'place_id' => $winner->id]);
+    $this->assertDatabaseMissing('place_list_items', ['place_id' => $loser->id]);
+    $this->assertDatabaseHas('hidden_places', ['user_id' => $hider->id, 'place_id' => $winner->id]);
+    $this->assertDatabaseMissing('hidden_places', ['place_id' => $loser->id]);
+
+    // The saver's collection now shows the survivor (previously the save vanished).
+    expect(Place::query()->publiclyVisible()->mine($saver)->pluck('name'))->toContain('Winner');
+});
+
+it('moves a saved place across a merge even when the survivor is saved in a DIFFERENT list', function () {
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    $loser = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    PlaceSource::factory()->primary()->create(['place_id' => $winner->id]);
+    PlaceSource::factory()->primary()->create(['place_id' => $loser->id]);
+
+    $user = User::factory()->create();
+    $listX = PlaceList::factory()->for($user)->create();
+    $listY = PlaceList::factory()->for($user)->create();
+    $listX->items()->create(['place_id' => $loser->id, 'position' => 1]);   // loser in X
+    $listY->items()->create(['place_id' => $winner->id, 'position' => 1]);  // winner in Y
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    // The loser's X-membership follows to the winner (X had no winner); Y keeps
+    // its own. The survivor ends up saved in BOTH lists — no false unique clash.
+    $this->assertDatabaseHas('place_list_items', ['place_list_id' => $listX->id, 'place_id' => $winner->id]);
+    $this->assertDatabaseHas('place_list_items', ['place_list_id' => $listY->id, 'place_id' => $winner->id]);
+    $this->assertDatabaseMissing('place_list_items', ['place_id' => $loser->id]);
+});
+
+it('dedupes saved-list items + hides when a user already had the survivor (no unique violation)', function () {
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    $loser = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+    PlaceSource::factory()->primary()->create(['place_id' => $winner->id]);
+    PlaceSource::factory()->primary()->create(['place_id' => $loser->id]);
+
+    $user = User::factory()->create();
+    $list = PlaceList::factory()->for($user)->create();
+    $list->items()->create(['place_id' => $winner->id, 'position' => 1]);
+    $list->items()->create(['place_id' => $loser->id, 'position' => 2]); // both in one list
+    HiddenPlace::create(['user_id' => $user->id, 'place_id' => $winner->id]);
+    HiddenPlace::create(['user_id' => $user->id, 'place_id' => $loser->id]);
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    // Collapses to one row each on the survivor — the loser's redundant rows dropped.
+    expect(PlaceList::find($list->id)->items()->where('place_id', $winner->id)->count())->toBe(1)
+        ->and(HiddenPlace::where('user_id', $user->id)->where('place_id', $winner->id)->count())->toBe(1);
+    $this->assertDatabaseMissing('place_list_items', ['place_id' => $loser->id]);
+});
 
 it('rehomes sources, tombstones the loser, and recounts the winner', function () {
     $winner = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Winner', 'city' => 'London']);
