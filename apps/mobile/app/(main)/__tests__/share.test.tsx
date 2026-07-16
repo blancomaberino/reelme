@@ -71,7 +71,7 @@ it('submits a link, shows the published pin, and navigates to the place', async 
   expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
   expect(screen.getByText('Clara Café')).toBeOnTheScreen();
 
-  fireEvent.press(screen.getByRole('button', { name: 'View place' }));
+  // T-076: a single clean publish auto-opens the place detail (no manual tap).
   expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '9' } });
 });
 
@@ -154,4 +154,56 @@ it('surfaces a review outcome with the failure message', async () => {
 
   expect(await screen.findByText('Needs a quick review')).toBeOnTheScreen();
   expect(screen.getByText("We couldn't pin this place.")).toBeOnTheScreen();
+});
+
+it('does NOT auto-open a detail for a multi-place publish — it lists them to tap through (T-076)', async () => {
+  mock.onPost('/shares').reply(201, { data: shareDetail({ id: '1', status: 'pending' }) });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({
+      id: '1',
+      status: 'published',
+      places: [
+        { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 },
+        { id: '10', name: 'Bar Tabaré', lat: -34.9, lng: -56.2 },
+      ],
+    }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+
+  // Both venues are listed and none is auto-opened (no venue lost).
+  expect(await screen.findByText('Clara Café')).toBeOnTheScreen();
+  expect(screen.getByText('Bar Tabaré')).toBeOnTheScreen();
+  expect(mockRouter.push).not.toHaveBeenCalled();
+
+  // Tapping one still routes through to its detail.
+  fireEvent.press(screen.getByText('Bar Tabaré'));
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '10' } });
+});
+
+it('does NOT auto-open when a single publish still has venues in review (T-076)', async () => {
+  mock.onPost('/shares').reply(201, { data: shareDetail({ id: '1', status: 'pending' }) });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({
+      id: '1',
+      status: 'published',
+      place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 },
+      pending_place_count: 1,
+      pending_places: [{ index: 1, name: 'Mystery Spot', reason: 'geocode_failed', candidates: [] }],
+    }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+
+  // The card stays so the pending venue can be resolved — no abrupt jump.
+  expect(await screen.findByText('Clara Café')).toBeOnTheScreen();
+  expect(mockRouter.push).not.toHaveBeenCalled();
+
+  // The explicit "View place" button is still available to open it.
+  fireEvent.press(screen.getByRole('button', { name: 'View place' }));
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '9' } });
 });

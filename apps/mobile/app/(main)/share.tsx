@@ -194,6 +194,26 @@ function ShareProgress({
   // Add-to-list at share time (T-073): which published place the save sheet targets.
   const [saveFor, setSaveFor] = useState<string | null>(null);
 
+  // A multi-place post (e.g. a "best cafés" reel) publishes several pins; fall
+  // back to the single `place` for older payloads.
+  const publishedPlaces = share?.places?.length ? share.places : share?.place ? [share.place] : [];
+  const pendingCount = share?.pending_place_count ?? 0;
+
+  // A single clean publish (one place, nothing left in review) opens its detail
+  // automatically — you land on the place you just added (T-076). Multi-place or
+  // partial (pending) publishes keep the result card so no venue is lost. The ref
+  // latches it to one fire and lets you return (Back) without being re-pushed.
+  // Derived inside the effect (from `share`) so no fresh array lands in the deps.
+  const navigatedRef = useRef(false);
+  useEffect(() => {
+    if (navigatedRef.current || status !== 'published') return;
+    const places = share?.places?.length ? share.places : share?.place ? [share.place] : [];
+    if (places.length === 1 && (share?.pending_place_count ?? 0) === 0) {
+      navigatedRef.current = true;
+      router.push({ pathname: '/place/[slug]', params: { slug: places[0].id } });
+    }
+  }, [status, share]);
+
   // No status yet, or still moving through the pipeline → spinner + stage label.
   if (!status || !isTerminal(status)) {
     const stageKey = (status && STAGE_KEY[status]) || 'share.stage.pending';
@@ -206,11 +226,7 @@ function ShareProgress({
     );
   }
 
-  // A multi-place post (e.g. a "best cafés" reel) publishes several pins; fall
-  // back to the single `place` for older payloads.
-  const publishedPlaces = share?.places?.length ? share.places : share?.place ? [share.place] : [];
   if (status === 'published' && publishedPlaces.length > 0) {
-    const pending = share?.pending_place_count ?? 0;
     return (
       <View style={styles.result}>
         <View style={[styles.badge, styles.badgeOk]}>
@@ -263,7 +279,7 @@ function ShareProgress({
             </View>
           </>
         )}
-        {pending > 0 && share ? (
+        {pendingCount > 0 && share ? (
           <PendingVenues shareId={share.id} venues={share.pending_places ?? []} />
         ) : null}
         <Pressable accessibilityRole="button" onPress={onReset} hitSlop={8}>
