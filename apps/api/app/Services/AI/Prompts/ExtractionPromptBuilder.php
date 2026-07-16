@@ -14,9 +14,10 @@ use Illuminate\Support\Facades\Storage;
 /**
  * Assembles the multimodal extraction prompt from a share's fetched inputs
  * (04 §5). User parts are built in a fixed order — each keyframe preceded by a
- * `frame {i} @ {mm:ss}` label, then CAPTION, then TRANSCRIPT, then the inline
- * schema and final instruction. Keyframe order defines the `frame_refs` indexes
- * (0..N-1), so it must match the ordered keyframe assets exactly.
+ * `frame {i} @ {mm:ss}` label, then POSTED BY (the reviewer account, which the
+ * prompt must NOT mistake for a venue), then CAPTION, then TRANSCRIPT, then the
+ * inline schema and final instruction. Keyframe order defines the `frame_refs`
+ * indexes (0..N-1), so it must match the ordered keyframe assets exactly.
  *
  * Keyframe bytes are read lazily and base64-encoded only here; the resulting
  * request holds several MB and is never logged or persisted (T-019 gotchas).
@@ -39,6 +40,7 @@ class ExtractionPromptBuilder
             );
         }
 
+        $parts[] = GenerationPart::text("POSTED BY:\n".$this->postedBy($share));
         $parts[] = GenerationPart::text("CAPTION:\n".$this->caption($share));
         $parts[] = GenerationPart::text("TRANSCRIPT:\n".$this->transcript($share));
         $parts[] = GenerationPart::text($this->schemaJson());
@@ -75,6 +77,30 @@ class ExtractionPromptBuilder
         $caption = trim((string) $share->sourcePost->caption);
 
         return $caption !== '' ? $caption : '(none)';
+    }
+
+    /**
+     * Identify the account that PUBLISHED the reel — the reviewer/creator, never
+     * a venue. Surfacing it lets the prompt exclude the poster's own handle,
+     * display name, and cover-frame channel watermark from the venue name (a
+     * food reviewer's branded cover otherwise gets read as the place). `@handle`
+     * plus the display name when it adds information; `(unknown)` when the post
+     * carries no attributed influencer (e.g. a manual caption share).
+     */
+    private function postedBy(Share $share): string
+    {
+        $influencer = $share->sourcePost->influencer;
+        if ($influencer === null) {
+            return '(unknown)';
+        }
+
+        $line = '@'.$influencer->handle;
+        $display = trim((string) $influencer->display_name);
+        if ($display !== '' && $display !== $influencer->handle) {
+            $line .= ' ('.$display.')';
+        }
+
+        return $line;
     }
 
     /**

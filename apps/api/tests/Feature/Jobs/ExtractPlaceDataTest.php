@@ -110,7 +110,7 @@ it('routes a clean high-confidence local extraction onward to ResolvePlace', fun
     $run = $share->analysisRun;
     expect($run->engine)->toBe(AnalysisEngineEnum::Local)
         ->and($run->status)->toBe(AnalysisStatus::Succeeded)
-        ->and($run->prompt_version)->toBe('extraction.v6')
+        ->and($run->prompt_version)->toBe('extraction.v7')
         ->and((float) $run->overall_confidence)->toBe(0.91)
         ->and($run->result_json['places'][0]['name'])->toBe('Lanzhou Beef Noodle House');
 });
@@ -165,7 +165,7 @@ it('falls back to OpenRouter after the local engine fails all repair attempts', 
         ->and($rows[0]->engine)->toBe(AnalysisEngineEnum::Local)
         ->and($rows[0]->status)->toBe(AnalysisStatus::Failed)
         ->and($rows[0]->error)->toStartWith('fallback:invalid_json')
-        ->and($rows[0]->prompt_version)->toBe('extraction.v6')
+        ->and($rows[0]->prompt_version)->toBe('extraction.v7')
         ->and($rows[1]->engine)->toBe(AnalysisEngineEnum::OpenRouter)
         ->and($rows[1]->status)->toBe(AnalysisStatus::Succeeded);
     expect($share->fresh()->status)->toBe(ShareStatus::Analyzing);
