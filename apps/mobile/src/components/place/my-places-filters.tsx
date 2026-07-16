@@ -53,6 +53,7 @@ export function MyPlacesFilters({ places, filters, onChange }: Props) {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={styles.scroll}
       contentContainerStyle={styles.row}
       keyboardShouldPersistTaps="handled"
     >
@@ -135,6 +136,10 @@ type Styles = ReturnType<typeof makeStyles>;
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    // A horizontal ScrollView in a flex-column parent otherwise stretches to fill
+    // the vertical space (and centers its chips in that band); flexGrow:0 makes it
+    // hug the chip row so the list sits directly beneath it.
+    scroll: { flexGrow: 0 },
     row: { gap: 8, paddingHorizontal: 16, paddingBottom: 10, alignItems: 'center' },
     chip: {
       flexDirection: 'row',

@@ -101,6 +101,7 @@ export default function MyPlacesScreen() {
             data={items}
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
+            style={styles.flashList}
             contentContainerStyle={styles.list}
             ItemSeparatorComponent={Separator}
             onEndReached={onEndReached}
@@ -176,6 +177,7 @@ const makeStyles = (c: Palette) =>
       paddingVertical: 12,
     },
     title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5, color: c.text },
+    flashList: { flex: 1 },
     list: { paddingHorizontal: 16, paddingBottom: 24 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
     footer: { paddingVertical: 20 },
