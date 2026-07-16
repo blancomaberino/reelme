@@ -52,5 +52,9 @@
         <env name="SCOUT_DRIVER" value="collection"/>
         <env name="SCOUT_PREFIX" value="reelmap_testing_"/>
         <env name="SCOUT_QUEUE" value="false"/>
+        <!-- Ingestion: yt-dlp is off by default so no test spawns the binary or
+             hits the network via the real adapter chain; the video-pipeline
+             suite opts in explicitly with a faked Process. -->
+        <env name="INGESTION_YTDLP_ENABLED" value="false"/>
     </php>
 </phpunit>

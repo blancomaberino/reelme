@@ -35,6 +35,23 @@ stop_backend() {
   ( cd "$API_DIR" && docker compose down )
 }
 
+# yt-dlp powers the video SourceAdapter (T-074): it downloads a reel's real
+# video so the pipeline extracts scene keyframes + audio, not just the caption.
+# The Sail image ships python3 but not yt-dlp, so drop in the standalone binary
+# once per container (idempotent). Not fatal if it fails — the pipeline then
+# falls back to the caption-only oEmbed path. Prod bakes yt-dlp into the image.
+ensure_yt_dlp() {
+  if docker exec "$CONTAINER" sh -lc 'command -v yt-dlp >/dev/null 2>&1'; then
+    return
+  fi
+  log "Installing yt-dlp in the API container (video ingestion)…"
+  # -f: fail on an HTTP error instead of writing the error body into the binary
+  # (which would pass the command -v check next run and silently stay broken).
+  docker exec "$CONTAINER" sh -lc \
+    'curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp' \
+    || echo "  (heads up: yt-dlp install failed — video posts fall back to the caption-only path)"
+}
+
 boot_backend() {
   docker info >/dev/null 2>&1 || die "Docker isn't running — start Docker Desktop first."
 
@@ -50,6 +67,8 @@ boot_backend() {
 
   log "Running database migrations…"
   docker exec "$CONTAINER" php artisan migrate --force
+
+  ensure_yt_dlp
 
   # The queue worker drives the share/analysis pipeline AND sends the queued
   # emails (verification, invites). Start one if none is already running.

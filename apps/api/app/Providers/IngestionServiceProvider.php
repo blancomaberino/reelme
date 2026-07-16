@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Adapters\AdapterRegistry;
 use App\Adapters\ManualUploadAdapter;
+use App\Adapters\YtDlpAdapter;
 use App\Services\Media\Images\InstagramApiResolver;
 use App\Services\Media\Images\PostImageIngestor;
 use App\Services\Media\Images\PostImageResolver;
@@ -27,6 +28,22 @@ class IngestionServiceProvider extends ServiceProvider
                     ? $cfg['cookies_path']
                     : null,
                 timeout: (int) ($cfg['timeout'] ?? 15),
+                enabled: (bool) ($cfg['enabled'] ?? true),
+            );
+        });
+
+        // YtDlpAdapter takes primitive config (bin/timeout/cookies/enabled), so
+        // the container can't autowire it — bind it explicitly from config.
+        $this->app->bind(YtDlpAdapter::class, function (Container $app) {
+            /** @var array<string, mixed> $cfg */
+            $cfg = (array) ($app['config']->get('ingestion.ytdlp') ?? []);
+
+            return new YtDlpAdapter(
+                bin: is_string($cfg['bin'] ?? null) && $cfg['bin'] !== '' ? $cfg['bin'] : 'yt-dlp',
+                timeout: (int) ($cfg['timeout'] ?? 120),
+                cookiesPath: is_string($cfg['cookies_path'] ?? null) && $cfg['cookies_path'] !== ''
+                    ? $cfg['cookies_path']
+                    : null,
                 enabled: (bool) ($cfg['enabled'] ?? true),
             );
         });

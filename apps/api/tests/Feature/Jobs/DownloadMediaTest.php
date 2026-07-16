@@ -23,6 +23,19 @@ function fixturePath(string $file): string
     return base_path("tests/Fixtures/media/{$file}");
 }
 
+/**
+ * A throwaway temp copy of a media fixture — DownloadMedia treats a yt-dlp
+ * localPath as a consumable temp file and unlinks it after ingest, so tests
+ * must never hand it the committed fixture itself.
+ */
+function tempVideo(string $fixture = 'sample.mp4'): string
+{
+    $tmp = (string) tempnam(sys_get_temp_dir(), 'dlvid_').'.mp4';
+    copy(fixturePath($fixture), $tmp);
+
+    return $tmp;
+}
+
 function registryReturning(FetchedMedia ...$media): AdapterRegistry
 {
     $registry = Mockery::mock(AdapterRegistry::class);
@@ -38,7 +51,8 @@ function fetchingShare(): Share
 
 it('downloads a local-path video into a video media_asset with ffprobe metadata', function () {
     $share = fetchingShare();
-    $media = new FetchedMedia(kind: MediaKind::Video, localPath: fixturePath('sample.mp4'), mime: 'video/mp4');
+    $local = tempVideo();
+    $media = new FetchedMedia(kind: MediaKind::Video, localPath: $local, mime: 'video/mp4');
 
     (new DownloadMedia($share->id))->handle(registryReturning($media), app(FfmpegRunner::class));
 
@@ -52,14 +66,20 @@ it('downloads a local-path video into a video media_asset with ffprobe metadata'
         ->and($asset->disk)->toBe('local_media_originals');
 
     Storage::disk('local_media_originals')->assertExists($asset->storage_path);
+    // The consumed yt-dlp temp file is cleaned (no per-share worker disk leak).
+    expect(file_exists($local))->toBeFalse();
 });
 
 it('is idempotent — a re-run creates no duplicate asset', function () {
     $share = fetchingShare();
-    $media = new FetchedMedia(kind: MediaKind::Video, localPath: fixturePath('sample.mp4'), mime: 'video/mp4');
 
-    (new DownloadMedia($share->id))->handle(registryReturning($media), app(FfmpegRunner::class));
-    (new DownloadMedia($share->id))->handle(registryReturning($media), app(FfmpegRunner::class));
+    (new DownloadMedia($share->id))->handle(registryReturning(
+        new FetchedMedia(kind: MediaKind::Video, localPath: tempVideo(), mime: 'video/mp4'),
+    ), app(FfmpegRunner::class));
+    // A fresh temp copy for the re-run; the status/asset guard short-circuits it.
+    (new DownloadMedia($share->id))->handle(registryReturning(
+        new FetchedMedia(kind: MediaKind::Video, localPath: tempVideo(), mime: 'video/mp4'),
+    ), app(FfmpegRunner::class));
 
     expect($share->sourcePost->mediaAssets()->where('kind', MediaKind::Video->value)->count())->toBe(1);
 });
@@ -91,7 +111,7 @@ it('does nothing when the chain resolves no downloadable media', function () {
 
 it('skips when the share is not in the fetching state', function () {
     $share = Share::factory()->published()->create();
-    $media = new FetchedMedia(kind: MediaKind::Video, localPath: fixturePath('sample.mp4'), mime: 'video/mp4');
+    $media = new FetchedMedia(kind: MediaKind::Video, localPath: tempVideo(), mime: 'video/mp4');
 
     (new DownloadMedia($share->id))->handle(registryReturning($media), app(FfmpegRunner::class));
 

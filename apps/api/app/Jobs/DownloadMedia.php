@@ -111,7 +111,6 @@ class DownloadMedia implements ShouldQueue
     private function ingest(Share $share, SourcePost $post, FetchedMedia $media, FfmpegRunner $ffmpeg): void
     {
         $tmp = $this->toTempFile($media);
-        $isLocal = $media->localPath !== null;
 
         try {
             $bytes = filesize($tmp) ?: 0;
@@ -149,10 +148,11 @@ class DownloadMedia implements ShouldQueue
                 'sha256' => $sha256,
             ]);
         } finally {
-            // yt-dlp's local file is owned by the adapter; only clean our temp.
-            if (! $isLocal) {
-                @unlink($tmp);
-            }
+            // Always clean the temp original — both a streamed remote body and a
+            // yt-dlp-downloaded local file (T-074). The bytes are already on the
+            // originals disk (or the ingest aborted), so nothing else reads it; a
+            // long-running worker would otherwise leak one file per video share.
+            @unlink($tmp);
         }
     }
 
