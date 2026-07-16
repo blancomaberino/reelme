@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\PlaceStatus;
 use App\Models\HiddenPlace;
 use App\Models\Place;
 use App\Models\PlaceList;
@@ -194,6 +195,56 @@ it('DELETE ?mode=full on a multi-place post removes only this venue, re-pointing
     // …and it still shows in the published feed (invariant held).
     $feedIds = collect($this->getJson('/api/v1/feed')->assertOk()->json('data'))->pluck('id');
     expect($feedIds)->toContain((string) $share->id);
+});
+
+it('mode=full tombstones an orphaned place — off the public map + search (T-073)', function () {
+    $me = User::factory()->create();
+    $place = myPlace('Ghost');
+    publishedShare($place, sharer: $me); // my only source
+
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$place->id}?mode=full")->assertNoContent();
+
+    // Sourceless and saved by no one → tombstoned, so it leaves every public
+    // and matchable surface (map, browse, search) instead of lingering as a
+    // provenance-less ghost pin.
+    $place->refresh();
+    expect($place->status)->toBe(PlaceStatus::Removed)
+        ->and(Place::query()->publiclyVisible()->whereKey($place->id)->exists())->toBeFalse()
+        ->and($place->shouldBeSearchable())->toBeFalse();
+});
+
+it('mode=full does NOT tombstone a place another user still has saved (T-073)', function () {
+    $me = User::factory()->create();
+    $other = User::factory()->create();
+    $place = myPlace('Kept by other');
+    publishedShare($place, sharer: $me); // my only source
+
+    $otherList = PlaceList::factory()->for($other)->create();
+    $otherList->items()->create(['place_id' => $place->id, 'position' => 1]);
+
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$place->id}?mode=full")->assertNoContent();
+
+    // Now sourceless, but a saver still wants it → stays a real, visible place.
+    $place->refresh();
+    expect($place->status)->not->toBe(PlaceStatus::Removed)
+        ->and(Place::query()->publiclyVisible()->whereKey($place->id)->exists())->toBeTrue();
+});
+
+it('mode=full leaves a place with a surviving source untouched (T-073)', function () {
+    $me = User::factory()->create();
+    $place = myPlace('Still sourced');
+    publishedShare($place, sharer: $me);
+    publishedShare($place); // an independent source from someone else
+
+    Sanctum::actingAs($me);
+    $this->deleteJson("/api/v1/me/places/{$place->id}?mode=full")->assertNoContent();
+
+    // A published source remains → never orphaned; counter recomputed to 1.
+    $place->refresh();
+    expect($place->status)->not->toBe(PlaceStatus::Removed)
+        ->and($place->shares_count)->toBe(1);
 });
 
 it('rejects an unknown remove mode with 422', function () {

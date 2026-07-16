@@ -32,6 +32,13 @@ class PlacePublisher
         // in another share's resolve window must not prematurely activate a place.
         $sourceCount = $place->sources()->whereNotNull('published_at')->count();
 
+        // A published source on an orphaned tombstone revives it (T-073): the
+        // place is evidenced again, so bring it back to the unverified baseline;
+        // the activation rule below can lift it further on the same pass.
+        if ($place->status === PlaceStatus::Removed && $sourceCount >= 1) {
+            $place->status = PlaceStatus::Pending;
+        }
+
         if ($place->status === PlaceStatus::Pending && ($sourceCount >= 2 || $share->user_confirmed)) {
             $place->status = PlaceStatus::Active;
         }

@@ -133,14 +133,14 @@ class MePlacesController extends Controller
 
         // Recompute the canonical place's counters from its remaining published
         // sources (other users may keep it) — shares_count AND the rolling avg
-        // confidence, so a deleted source no longer skews it.
-        // NOTE: if I was the last source the place is now sourceless but still
-        // publiclyVisible (a rare ghost pin, source_count 0); tombstoning
-        // sourceless places wants its own cleanup pass — deferred follow-up.
+        // confidence, so a deleted source no longer skews it. If I was the last
+        // source and no one saved it, the place is now an orphaned ghost pin →
+        // tombstone it so it leaves the public map/search (T-073).
         if (($fresh = $place->fresh()) !== null) {
             $fresh->shares_count = $fresh->sources()->whereNotNull('published_at')->count();
             $fresh->avg_extraction_confidence = $this->avgConfidence($fresh->id);
             $fresh->save();
+            $fresh->tombstoneIfOrphaned();
         }
     }
 

@@ -198,6 +198,40 @@ class Place extends Model
     }
 
     /**
+     * Tombstone this place if a removal has left it orphaned — no published
+     * source AND saved to no list (T-073). Such a place is a provenance-less
+     * "ghost pin": it would otherwise linger on the public map/search with
+     * `source_count` 0 after its last contributor fully removed it, or after the
+     * last list holding a sourceless saved place dropped it. Marking it
+     * {@see PlaceStatus::Removed} pulls it off every public/matchable surface
+     * (via {@see PlaceStatus::matchable()}) while keeping the row and any
+     * personal data; a later re-share revives it ({@see PlacePublisher}).
+     *
+     * No-op unless the place is currently matchable — never overrides a Merged
+     * tombstone or an admin Hidden. A place still saved to any list is left as
+     * is: a saver still wants it, and it shows only where they saved it.
+     *
+     * @return bool whether the place was tombstoned
+     */
+    public function tombstoneIfOrphaned(): bool
+    {
+        if (! in_array($this->status, [PlaceStatus::Pending, PlaceStatus::Active], true)) {
+            return false;
+        }
+
+        $hasPublishedSource = $this->sources()->whereNotNull('published_at')->exists();
+        $isSaved = PlaceListItem::query()->where('place_id', $this->id)->exists();
+        if ($hasPublishedSource || $isSaved) {
+            return false;
+        }
+
+        $this->status = PlaceStatus::Removed;
+        $this->save();
+
+        return true;
+    }
+
+    /**
      * Public routes bind by slug (canonical, T-030) but numeric ids keep
      * working — map pins and existing clients address places by id.
      */

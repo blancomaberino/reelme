@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import type { MapData } from '@/api/hooks/useMapPlaces';
 import type { MapFilters } from '@/api/keys';
 import type { MapPin } from '@/api/places';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
+import { useSettingsStore } from '@/stores/settings';
 
 import MapScreen from '../map';
 
@@ -35,6 +37,12 @@ jest.mock('@/api/hooks/useMapPlaces', () => ({
   },
 }));
 jest.mock('@/api/hooks/useTags', () => ({ usePopularTags: () => ({ data: [] }) }));
+// The map screen removes a list-scoped pin via useListMembership().remove; the
+// map test has no QueryClientProvider, so stub the hook and capture the mutate.
+const mockRemoveMutate = jest.fn();
+jest.mock('@/api/hooks/useLists', () => ({
+  useListMembership: () => ({ remove: { mutate: mockRemoveMutate }, add: { mutate: jest.fn() } }),
+}));
 // The quick-share popup drives its own react-query hooks (create + poll) that
 // need a QueryClientProvider the map test doesn't set up — it has its own test.
 // Here, a light stub that just reflects `visible`, so the "+" button is testable.
@@ -96,9 +104,11 @@ function pin(id: string, over: Partial<MapPin> = {}): MapPin {
 beforeEach(() => {
   markerRenders.length = 0;
   mockFiltersSeen.current = undefined;
+  mockRemoveMutate.mockClear();
   mapData.current = { pins: [pin('1'), pin('2'), pin('3')], clusters: [], truncated: false };
   useMapStore.setState({ selected: null, filters: { cuisine: null, price_range: null, tags: [], list: null, filter: null } });
   useSessionStore.setState({ user: null, status: 'guest' });
+  useSettingsStore.setState({ locale: 'en' }); // match jest.setup's default
   mockRouter.push.mockClear();
   mockRouter.params = {};
 });
@@ -186,4 +196,36 @@ it('opens the quick-add popup from the header "+" button', () => {
   expect(screen.queryByText('quick-share-open')).toBeNull();
   fireEvent.press(screen.getByLabelText('Add from a link'));
   expect(screen.getByText('quick-share-open')).toBeOnTheScreen();
+});
+
+// T-073 follow-up: with a saved list as the active scope, a tapped pin is
+// already in that list, so the sheet's action removes it from THAT list.
+it('removes a list-scoped pin from that list via the membership mutation', () => {
+  useSessionStore.setState({ user: null, status: 'authed' });
+  useMapStore.getState().setList({ id: '7', name: 'Trip' });
+  const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('marker-1'));
+
+  // The sheet offers remove-from-list (not save) while a list is active.
+  expect(screen.queryByLabelText('Save to a list')).toBeNull();
+  fireEvent.press(screen.getByLabelText('Remove from list'));
+
+  // A confirm dialog guards the removal — invoke its destructive action.
+  const buttons = alertSpy.mock.calls[0]?.[2] as { style?: string; onPress?: () => void }[];
+  const confirm = buttons.find((b) => b.style === 'destructive');
+  act(() => confirm?.onPress?.());
+
+  expect(mockRemoveMutate).toHaveBeenCalledWith({ listId: '7', placeId: '1' });
+  alertSpy.mockRestore();
+});
+
+it('offers save (not remove-from-list) on the personal map with no active list', () => {
+  useSessionStore.setState({ user: null, status: 'authed' });
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('marker-1'));
+
+  expect(screen.getByLabelText('Save to a list')).toBeOnTheScreen();
+  expect(screen.queryByLabelText('Remove from list')).toBeNull();
 });

@@ -98,6 +98,10 @@ export const en = {
   'map.zoomOutLabel': 'Zoom out',
   'map.clearList': 'Clear list filter',
   'map.quickAdd': 'Add from a link',
+  'map.removeFromList': 'Remove from list',
+  'map.removeFromList.confirm.title': 'Remove from “{{name}}”?',
+  'map.removeFromList.confirm.message': 'This removes it from this list only — it stays anywhere else you saved it.',
+  'map.removeFromList.confirm.cta': 'Remove',
 
   'quickShare.title': 'Add from a link',
   'quickShare.placeholder': 'Paste a link or describe the place',

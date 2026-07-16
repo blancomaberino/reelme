@@ -113,6 +113,10 @@ class PlaceListController extends Controller
         $list->items()->where('place_id', $place->id)->delete();
         $list->touch();
 
+        // If this was the last list holding a sourceless saved place, it is now
+        // an orphaned ghost pin — tombstone it so it leaves the map (T-073).
+        $place->tombstoneIfOrphaned();
+
         return response()->json([
             'data' => new PlaceListDetailResource($this->loadWithPlaces($list)),
             'meta' => (object) [],
