@@ -13,6 +13,12 @@ import MapScreen from '../map';
 
 import { mockRouter } from '../../../jest.setup';
 
+// The react-native-maps mock (jest.setup) exposes a persistent animateToRegion
+// spy so imperative map moves (reset view, fly-to) are assertable.
+const { __animateToRegion: animateToRegion } = jest.requireMock('react-native-maps') as {
+  __animateToRegion: jest.Mock;
+};
+
 // --- Mocks: feed the screen fixture data, and count PlaceMarker renders. ---
 const mapData: { current: MapData } = { current: { pins: [], clusters: [], truncated: false } };
 // Captures the (derived) filters the screen hands the fetch — for the T-071
@@ -111,6 +117,7 @@ beforeEach(() => {
   useSettingsStore.setState({ locale: 'en' }); // match jest.setup's default
   mockRouter.push.mockClear();
   mockRouter.params = {};
+  animateToRegion.mockClear();
 });
 
 // T-071: the home map is the viewer's OWN places — authed → filter=mine, guests
@@ -189,6 +196,20 @@ it('routes to search from the header search button', () => {
   render(<MapScreen />);
   fireEvent.press(screen.getByLabelText('Search'));
   expect(mockRouter.push).toHaveBeenCalledWith('/search');
+});
+
+// T-078: the reset control snaps the viewport back to the default city view.
+it('resets the viewport to the default region on reset button press', () => {
+  render(<MapScreen />);
+  animateToRegion.mockClear(); // ignore any mount-time moves
+
+  fireEvent.press(screen.getByLabelText('Reset map view'));
+
+  expect(animateToRegion).toHaveBeenCalledTimes(1);
+  expect(animateToRegion).toHaveBeenCalledWith(
+    { latitude: -34.9, longitude: -56.16, latitudeDelta: 0.15, longitudeDelta: 0.15 },
+    expect.any(Number),
+  );
 });
 
 it('opens the quick-add popup from the header "+" button', () => {
