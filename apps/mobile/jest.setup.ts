@@ -114,9 +114,12 @@ jest.mock('react-native-maps', () => {
         React.createElement(View, { ...props, testID: props.testID ?? name }, children),
       { displayName: name },
     );
+  // Persistent spy (shared across renders) so tests can assert imperative map
+  // moves — cluster tap, quick-share fly-to, reset view. Clear it per test.
+  const animateToRegion = jest.fn();
   const MapView = Object.assign(
     React.forwardRef(({ children, ...props }: { children?: React.ReactNode }, ref: unknown) => {
-      React.useImperativeHandle(ref, () => ({ animateToRegion: jest.fn() }));
+      React.useImperativeHandle(ref, () => ({ animateToRegion }));
       return React.createElement(View, { ...props, testID: 'MapView' }, children);
     }),
     { displayName: 'MapView' },
@@ -129,6 +132,7 @@ jest.mock('react-native-maps', () => {
     Callout: passthrough('Callout'),
     PROVIDER_DEFAULT: undefined,
     PROVIDER_GOOGLE: 'google',
+    __animateToRegion: animateToRegion,
   };
 });
 

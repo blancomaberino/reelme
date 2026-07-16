@@ -147,6 +147,14 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion(next, 220);
   }, []);
 
+  // Reset control: after panning/zooming off, jump back to the default city view.
+  // Like any pan, animating settles the region → the debounced refetch runs, so
+  // the pin/cluster set repopulates for the reset viewport (no special-casing).
+  const resetView = useCallback(() => {
+    regionRef.current = DEFAULT_REGION;
+    mapRef.current?.animateToRegion(DEFAULT_REGION, 350);
+  }, []);
+
   // Band + bbox for the *rendered* frame (from queryRegion, so it tracks fetches).
   const band = zoomBand(zoomFromRegion(queryRegion));
   const clientClustered = band >= CLIENT_CLUSTER_BAND;
@@ -347,9 +355,18 @@ export default function MapScreen() {
         <View style={styles.zoomStack}>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={t('map.resetViewLabel')}
+            onPress={resetView}
+            style={({ pressed }) => [styles.zoomBtn, styles.zoomBtnTop, pressed && styles.zoomBtnPressed]}
+          >
+            <Ionicons name="scan-outline" size={20} color={c.text} />
+          </Pressable>
+          <View style={styles.zoomDivider} />
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel={t('map.zoomInLabel')}
             onPress={() => zoomBy(0.5)}
-            style={({ pressed }) => [styles.zoomBtn, styles.zoomBtnTop, pressed && styles.zoomBtnPressed]}
+            style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
           >
             <Ionicons name="add" size={24} color={c.text} />
           </Pressable>

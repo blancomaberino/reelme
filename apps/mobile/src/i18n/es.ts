@@ -96,6 +96,7 @@ export const es: Record<MessageKey, string> = {
   'map.zoomIn': 'Acercá para ver más lugares',
   'map.zoomInLabel': 'Acercar',
   'map.zoomOutLabel': 'Alejar',
+  'map.resetViewLabel': 'Restablecer vista',
   'map.clearList': 'Quitar filtro de lista',
   'map.quickAdd': 'Agregar desde un enlace',
   'map.removeFromList': 'Quitar de la lista',

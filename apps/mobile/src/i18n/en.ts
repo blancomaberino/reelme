@@ -96,6 +96,7 @@ export const en = {
   'map.zoomIn': 'Zoom in for more places',
   'map.zoomInLabel': 'Zoom in',
   'map.zoomOutLabel': 'Zoom out',
+  'map.resetViewLabel': 'Reset map view',
   'map.clearList': 'Clear list filter',
   'map.quickAdd': 'Add from a link',
   'map.removeFromList': 'Remove from list',
