@@ -139,8 +139,12 @@ class MePlacesController extends Controller
         if (($fresh = $place->fresh()) !== null) {
             $fresh->shares_count = $fresh->sources()->whereNotNull('published_at')->count();
             $fresh->avg_extraction_confidence = $this->avgConfidence($fresh->id);
-            $fresh->save();
-            $fresh->tombstoneIfOrphaned();
+            // Persist the counters; when the place is now orphaned this tombstones
+            // it in the SAME write (its save carries the dirty counters), so the
+            // orphan path is one UPDATE + one search sync, not two.
+            if (! $fresh->tombstoneIfOrphaned()) {
+                $fresh->save();
+            }
         }
     }
 

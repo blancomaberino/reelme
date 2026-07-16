@@ -1,8 +1,11 @@
 <?php
 
 use App\Enums\PlaceStatus;
+use App\Jobs\PublishShare;
+use App\Jobs\ResolvePlace;
 use App\Models\Place;
 use App\Models\PlaceList;
+use App\Services\Geo\FakeGeocoder;
 use App\Services\Places\PlacePublisher;
 
 /**
@@ -58,5 +61,25 @@ it('revives a Removed tombstone back onto the map when re-shared', function () {
     $place->refresh();
     expect($place->status)->toBe(PlaceStatus::Pending)
         ->and($place->shares_count)->toBe(1)
+        ->and(Place::query()->publiclyVisible()->whereKey($place->id)->exists())->toBeTrue();
+});
+
+it('revives a tombstone end-to-end through the resolve → publish pipeline', function () {
+    // A place tombstoned after a full-remove, still carrying its google_place_id.
+    $place = Place::factory()->atPoint(51.5, -0.13)->withGooglePlaceId('ChIJrevive')
+        ->create(['status' => PlaceStatus::Removed, 'shares_count' => 0]);
+    expect(Place::query()->publiclyVisible()->whereKey($place->id)->exists())->toBeFalse();
+
+    // Re-shared: the geocoder returns the SAME google_place_id, so the resolver's
+    // exact-id match attaches to the tombstone (never creates a duplicate) and
+    // publishing revives it — the whole path, not just recompute() in isolation.
+    bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult('ChIJrevive', 51.5, -0.13)));
+    $share = analyzingShare();
+    (new ResolvePlace($share->id))->handle();
+    (new PublishShare($share->id))->handle();
+
+    expect(Place::count())->toBe(1) // reused the tombstone, no duplicate
+        ->and($place->fresh()->status)->toBe(PlaceStatus::Pending)
+        ->and($place->fresh()->shares_count)->toBe(1)
         ->and(Place::query()->publiclyVisible()->whereKey($place->id)->exists())->toBeTrue();
 });

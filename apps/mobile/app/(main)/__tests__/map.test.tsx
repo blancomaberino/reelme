@@ -212,11 +212,17 @@ it('removes a list-scoped pin from that list via the membership mutation', () =>
   expect(screen.queryByLabelText('Save to a list')).toBeNull();
   fireEvent.press(screen.getByLabelText('Remove from list'));
 
-  // A confirm dialog guards the removal — invoke its destructive action.
+  // The confirm dialog names the list (interpolated title) and guards removal.
+  expect(alertSpy.mock.calls[0]?.[0]).toContain('Trip');
   const buttons = alertSpy.mock.calls[0]?.[2] as { style?: string; onPress?: () => void }[];
-  const confirm = buttons.find((b) => b.style === 'destructive');
-  act(() => confirm?.onPress?.());
 
+  // Cancelling does NOT mutate…
+  act(() => buttons.find((b) => b.style === 'cancel')?.onPress?.());
+  expect(mockRemoveMutate).not.toHaveBeenCalled();
+
+  // …only the destructive action removes from the list.
+  act(() => buttons.find((b) => b.style === 'destructive')?.onPress?.());
+  expect(mockRemoveMutate).toHaveBeenCalledTimes(1);
   expect(mockRemoveMutate).toHaveBeenCalledWith({ listId: '7', placeId: '1' });
   alertSpy.mockRestore();
 });
