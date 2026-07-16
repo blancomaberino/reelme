@@ -107,16 +107,52 @@ class MePlacesController extends Controller
             Share::query()->whereIn('id', $shareIds)->where('user_id', $user->id)
                 ->whereDoesntHave('placeSources')->delete();
 
+            // A surviving multi-place share whose PRIMARY was the removed pin now
+            // has a null primary (nullOnDelete) — an invalid "published, no primary"
+            // state that drops the whole share (and its live siblings) from the
+            // feed/profile. Re-point it to a surviving published source.
+            Share::query()->whereIn('id', $shareIds)->where('user_id', $user->id)
+                ->whereNull('published_place_source_id')
+                ->with(['placeSources' => fn ($q) => $q->whereNotNull('published_at')->orderByDesc('is_primary')->orderBy('id')])
+                ->get()
+                ->each(function (Share $share): void {
+                    $primary = $share->placeSources->first();
+                    if ($primary !== null) {
+                        $primary->is_primary = true;
+                        $primary->save();
+                        $share->published_place_source_id = $primary->id;
+                        $share->save();
+                    }
+                });
+
             PlaceListItem::query()->where('place_id', $place->id)
                 ->whereHas('list', fn ($q) => $q->where('user_id', $user->id))->delete();
 
             HiddenPlace::where('user_id', $user->id)->where('place_id', $place->id)->delete();
         });
 
-        // Counters reflect the remaining published sources (other users may keep it).
+        // Recompute the canonical place's counters from its remaining published
+        // sources (other users may keep it) — shares_count AND the rolling avg
+        // confidence, so a deleted source no longer skews it.
+        // NOTE: if I was the last source the place is now sourceless but still
+        // publiclyVisible (a rare ghost pin, source_count 0); tombstoning
+        // sourceless places wants its own cleanup pass — deferred follow-up.
         if (($fresh = $place->fresh()) !== null) {
             $fresh->shares_count = $fresh->sources()->whereNotNull('published_at')->count();
+            $fresh->avg_extraction_confidence = $this->avgConfidence($fresh->id);
             $fresh->save();
         }
+    }
+
+    /** Rolling average of non-null model confidences across a place's sources. */
+    private function avgConfidence(int $placeId): ?float
+    {
+        $avg = DB::table('place_sources')
+            ->join('analysis_runs', 'analysis_runs.id', '=', 'place_sources.analysis_run_id')
+            ->where('place_sources.place_id', $placeId)
+            ->whereNotNull('analysis_runs.overall_confidence')
+            ->avg('analysis_runs.overall_confidence');
+
+        return $avg !== null ? (float) $avg : null;
     }
 }

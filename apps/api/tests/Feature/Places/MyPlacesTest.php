@@ -173,20 +173,27 @@ it('DELETE /me/places?mode=full deletes my share + un-saves permanently (T-073)'
     $this->assertDatabaseMissing('place_list_items', ['place_id' => $place->id]);
 });
 
-it('DELETE ?mode=full on a multi-place post removes only this venue, keeping the share + siblings (T-073)', function () {
+it('DELETE ?mode=full on a multi-place post removes only this venue, re-pointing the primary to a survivor (T-073)', function () {
     $me = User::factory()->create();
     $a = myPlace('Venue A');
     $b = myPlace('Venue B');
+    // publishedShare makes A the primary (published_place_source_id → A's source).
     $share = publishedShare($a, sharer: $me);
-    PlaceSource::factory()->create(['place_id' => $b->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id, 'published_at' => now()]);
+    $bSource = PlaceSource::factory()->create(['place_id' => $b->id, 'share_id' => $share->id, 'source_post_id' => $share->source_post_id, 'published_at' => now()]);
 
     Sanctum::actingAs($me);
     $this->deleteJson("/api/v1/me/places/{$a->id}?mode=full")->assertNoContent();
 
-    // A's source removed; the share survives (still has B); B intact.
+    // A's source removed; the share survives with B re-pointed as the primary
+    // (never left published-with-null-primary, which would drop it from the feed).
     $this->assertDatabaseMissing('place_sources', ['place_id' => $a->id, 'share_id' => $share->id]);
-    $this->assertDatabaseHas('place_sources', ['place_id' => $b->id, 'share_id' => $share->id]);
-    $this->assertDatabaseHas('shares', ['id' => $share->id]);
+    $share->refresh();
+    expect($share->published_place_source_id)->toBe($bSource->id)
+        ->and($share->fresh()->publishedPlaceSource->is_primary)->toBeTrue();
+
+    // …and it still shows in the published feed (invariant held).
+    $feedIds = collect($this->getJson('/api/v1/feed')->assertOk()->json('data'))->pluck('id');
+    expect($feedIds)->toContain((string) $share->id);
 });
 
 it('rejects an unknown remove mode with 422', function () {
