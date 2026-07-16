@@ -1880,6 +1880,38 @@
       ],
       "agent": "executor",
       "notes": "Opened 2026-07-16, superseding closed PR #80. #80 wired yt-dlp into the IMAGE resolver chain, which cannot work for Instagram (verified live: yt-dlp's IG extractor yields only video formats -> 'No video formats found!' on every image slide). Image posts are already covered by InstagramApiResolver (#82). yt-dlp's real value is VIDEO: reels download cleanly. The media-adapter layer is already scaffolded for exactly this (FetchedMedia documents 'yt-dlp adapters return a localPath'; DownloadMedia handles the yt-dlp temp file; OEmbedAdapter.fetchMedia is intentionally empty pending yt-dlp) - this task adds the missing YtDlp SourceAdapter. NOTE: 'T-073' is not a formal task id - it was the informal label for the shipped list-centric collection work (PRs #91/#92), so this task is T-074."
+    },
+    {
+      "id": "T-075",
+      "title": "Resolve a venue's address/coords from its Instagram profile (geocode fallback)",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-013"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/Places/PlaceResolver.php",
+        "apps/api/app/Services/Media/Instagram/InstagramWebClient.php",
+        "apps/api/app/Services/Places/InstagramProfileLocator.php",
+        "packages/contracts/extraction.schema.json",
+        "apps/api/resources/prompts/extraction.system.md",
+        "apps/api/config/ingestion.php"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md",
+        "03-api-design.md"
+      ],
+      "acceptance": [
+        "extraction.schema.json gains places[].handle; prompt v7->v8 fills it per venue from the caption @mention; TS regen + contract drift green",
+        "Shared InstagramWebClient (extracted from InstagramApiResolver) exposes profile(handle); the media resolver reuses it (no duplicated cookie/header/redirect plumbing); both never throw",
+        "PlaceResolver: a place that would be geocode_failed WITH a handle is re-resolved from its IG profile - business_address_json coords resolve directly; a bio locality enriches the query and geocodes; full_name upgrades a bare-@handle name",
+        "A profile with no usable signal still ends geocode_failed (no invented location); no-cookie/4xx/timeout fall through gracefully",
+        "Only the failure path fetches a profile; per-handle cached within a run",
+        "Tests via Http::fake: business-address->resolved, bio-locality->geocode-retry, no-signal->geocode_failed, no-cookie/4xx->graceful, full_name name upgrade, ResolvePlace end-to-end"
+      ],
+      "agent": "executor",
+      "notes": "Opened 2026-07-16. Verified live: IG web_profile_info (same cookie'd API as InstagramApiResolver #82) for @lagranburgerok returns empty business_address_json but a bio '📍Barros Blancos' + full_name. Multi-signal fallback (business address coords > bio locality > external_url), hooked at PlaceResolver::resolveOne's geocodeFailed() branch, gated on the extracted @handle. Pairs with #93 (poster!=venue) and T-074 (video/audio)."
     }
   ]
 }
