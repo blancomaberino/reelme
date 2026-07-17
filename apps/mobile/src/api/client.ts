@@ -4,6 +4,7 @@ import axios, { AxiosError, AxiosHeaders } from 'axios';
 import { router } from 'expo-router';
 
 import { useSessionStore } from '@/stores/session';
+import { useSettingsStore } from '@/stores/settings';
 import { useUiStore } from '@/stores/ui';
 
 import { clearToken, getToken } from './token';
@@ -27,12 +28,14 @@ export const api = axios.create({
 api.interceptors.request.use(async (config) => {
   const isRelative = !/^([a-z][a-z\d+\-.]*:)?\/\//i.test(config.url ?? '');
   if (isRelative) {
+    const headers = AxiosHeaders.from(config.headers);
+    // Tells the API which locale to localize tag labels (etc.) to (ADR-084 #2).
+    headers.set('Accept-Language', useSettingsStore.getState().locale);
     const token = await getToken();
     if (token) {
-      const headers = AxiosHeaders.from(config.headers);
       headers.set('Authorization', `Bearer ${token}`);
-      config.headers = headers;
     }
+    config.headers = headers;
   }
   return config;
 });

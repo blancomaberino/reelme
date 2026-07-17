@@ -147,7 +147,7 @@ it('returns an empty list when I have no places', function () {
     expect($this->getJson('/api/v1/me/places/tags')->assertOk()->json('data'))->toBe([]);
 });
 
-it('carries the tag contract shape (id, kind, name, slug, places_count)', function () {
+it('carries the tag contract shape (id, kind, name, label, slug, places_count)', function () {
     $me = User::factory()->create();
     $p = myTagPlace('P');
     publishedShare($p, sharer: $me);
@@ -155,6 +155,24 @@ it('carries the tag contract shape (id, kind, name, slug, places_count)', functi
 
     Sanctum::actingAs($me);
     $row = $this->getJson('/api/v1/me/places/tags')->assertOk()->json('data.0');
-    expect($row)->toHaveKeys(['id', 'kind', 'name', 'slug', 'places_count']);
+    expect($row)->toHaveKeys(['id', 'kind', 'name', 'label', 'slug', 'places_count']);
     expect($row['slug'])->toBe('sushi');
+});
+
+it('localizes the facet label per request locale (ADR-084 #2)', function () {
+    $me = User::factory()->create();
+    $p = myTagPlace('P');
+    publishedShare($p, sharer: $me);
+    $p->tags()->attach(
+        Tag::factory()->create(['kind' => 'vibe', 'slug' => 'casual', 'name' => 'casual', 'name_i18n' => ['es' => 'Informal']])->id,
+        ['source' => 'extraction'],
+    );
+
+    Sanctum::actingAs($me);
+    // The facet groups by slug and re-selects name_i18n — the label must survive that.
+    $es = $this->getJson('/api/v1/me/places/tags?locale=es')->assertOk()->json('data.0');
+    expect($es['label'])->toBe('Informal')->and($es['name'])->toBe('casual');
+
+    $en = $this->getJson('/api/v1/me/places/tags?locale=en')->assertOk()->json('data.0');
+    expect($en['label'])->toBe('casual');
 });

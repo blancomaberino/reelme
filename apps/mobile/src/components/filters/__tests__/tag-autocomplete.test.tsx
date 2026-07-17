@@ -5,8 +5,8 @@ import type { TagSummary } from '@/api/places';
 import { TagAutocomplete } from '@/components/filters/tag-autocomplete';
 import { useSettingsStore } from '@/stores/settings';
 
-function tag(slug: string, name: string): TagSummary {
-  return { id: `t-${slug}`, kind: 'cuisine', name, slug };
+function tag(slug: string, name: string, label?: string): TagSummary {
+  return { id: `t-${slug}`, kind: 'cuisine', name, slug, label };
 }
 
 // The candidate set the caller passes in (facet of my places, or global catalog).
@@ -63,6 +63,17 @@ it('shows a no-results message when nothing matches', () => {
 
   fireEvent.changeText(screen.getByLabelText('Search tags…'), 'zzzz');
   expect(screen.getByText(/No tags for/)).toBeOnTheScreen();
+});
+
+it('prefers the server-provided label for display and search (ADR-084 #2)', () => {
+  // Locale is en, so fmt.tag('casual') would be "Casual"; the server label wins.
+  render(<Harness catalog={[tag('casual', 'casual', 'Informal')]} />);
+
+  expect(screen.getByLabelText('Informal')).toBeOnTheScreen();
+  fireEvent.changeText(screen.getByLabelText('Search tags…'), 'inform');
+  expect(screen.getByLabelText('Informal')).toBeOnTheScreen();
+  fireEvent.press(screen.getByLabelText('Informal'));
+  expect(screen.getByLabelText('Remove Informal filter')).toBeOnTheScreen();
 });
 
 it('removes a pre-selected tag when its chip is tapped', async () => {

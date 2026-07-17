@@ -244,7 +244,10 @@ export type Paginated<T> = {
 export type TagSummary = {
   id: string;
   kind: string;
+  /** Canonical English name. */
   name: string;
+  /** Name localized to the request locale (ADR-084 #2); falls back to `name`. */
+  label?: string;
   slug: string;
   places_count?: number;
 };

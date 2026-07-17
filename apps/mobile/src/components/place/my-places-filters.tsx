@@ -7,7 +7,7 @@ import { FilterGroup, FilterSheet, OptionPill } from '@/components/filters/filte
 import { type AppliedChip, FilterTriggerBar } from '@/components/filters/filter-trigger-bar';
 import { TagAutocomplete } from '@/components/filters/tag-autocomplete';
 import { useT } from '@/i18n';
-import { tagDisplayName } from '@/lib/tags';
+import { tagLabelForSlug } from '@/lib/tags';
 import { useFormat } from '@/lib/use-format';
 
 type Props = {
@@ -65,7 +65,7 @@ export function MyPlacesFilters({ places, filters, onChange }: Props) {
     for (const slug of activeTags) {
       out.push({
         key: `tag-${slug}`,
-        label: fmt.tag(tagDisplayName(tags, slug)),
+        label: tagLabelForSlug(tags, slug, fmt.tag),
         onRemove: () => onChange({ tags: activeTags.filter((s) => s !== slug) }),
       });
     }

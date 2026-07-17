@@ -5,6 +5,7 @@ namespace App\Services\Places;
 use App\Enums\TagKind;
 use App\Models\Place;
 use App\Models\Tag;
+use App\Support\TagTranslations;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -43,9 +44,11 @@ class TagMaterializer
                     continue;
                 }
 
+                // Seed the Spanish label from the dictionary on first creation
+                // (ADR-084 #2); an existing tag keeps whatever it already has.
                 $tag = Tag::query()->firstOrCreate(
                     ['kind' => $kind, 'slug' => $slug],
-                    ['name' => mb_substr($name, 0, 80)],
+                    ['name' => mb_substr($name, 0, 80), 'name_i18n' => TagTranslations::forName($name)],
                 );
                 $attach[$tag->id] = [
                     'source' => 'extraction',
