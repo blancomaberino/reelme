@@ -55,7 +55,8 @@ it('lists places for the tag and taps through to detail', async () => {
 
   render(<TagResultsScreen />, { wrapper: Providers });
 
-  expect(await screen.findByText('#noodles')).toBeOnTheScreen();
+  // The header localizes + title-cases the tag (locale is pinned to en in tests).
+  expect(await screen.findByText('#Noodles')).toBeOnTheScreen();
   fireEvent.press(await screen.findByLabelText('Place 1'));
   expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: 'place-1' } });
 });

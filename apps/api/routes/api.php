@@ -117,6 +117,10 @@ Route::prefix('v1')->group(function () {
         // map — places I shared (not soft-hidden) ∪ places I saved. Replaces the
         // removed global feed as the app's primary browse surface.
         Route::get('/me/places', [MePlacesController::class, 'index'])->middleware('throttle:map');
+        // Discovery-tag facet of my places (ADR-084): the tags actually on my
+        // places, for the filter autocomplete. Registered before any {place}
+        // route so the literal "tags" segment can never be read as a place.
+        Route::get('/me/places/tags', [MePlacesController::class, 'tags'])->middleware('throttle:map');
         // Remove a place from my collection (soft-hide my shares + un-save).
         Route::delete('/me/places/{place}', [MePlacesController::class, 'destroy']);
 

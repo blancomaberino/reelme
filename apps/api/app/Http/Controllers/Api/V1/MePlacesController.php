@@ -6,11 +6,13 @@ use App\Enums\ShareStatus;
 use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceListingRequest;
+use App\Http\Resources\TagResource;
 use App\Models\HiddenPlace;
 use App\Models\Place;
 use App\Models\PlaceListItem;
 use App\Models\PlaceSource;
 use App\Models\Share;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,6 +60,34 @@ class MePlacesController extends Controller
                 ],
             ],
         );
+    }
+
+    /**
+     * The discovery-tag facet of my places (ADR-084) — `GET /me/places/tags`.
+     * The tags actually attached to my places (same `mine` scope as the list),
+     * each with how many of my places carry it, most-used first. Powers the tag
+     * filter autocomplete: a bounded, complete candidate set (unlike the global
+     * popular catalog), so filtering can't offer a tag that matches zero of my
+     * places. Deduped by slug — the filter matches on slug, so a term that
+     * exists under two kinds (e.g. "pizza" as cuisine and dish) is one entry.
+     */
+    public function tags(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        // A fresh subquery per use — the ownership scope is the exact one the
+        // list view applies, so the facet and the results can never disagree.
+        $mineIds = fn () => Place::query()->publiclyVisible()->mine($user)->select('places.id');
+
+        $tags = Tag::query()
+            ->whereHas('places', fn ($q) => $q->whereIn('places.id', $mineIds()))
+            ->withCount(['places as places_count' => fn ($q) => $q->whereIn('places.id', $mineIds())])
+            ->orderByDesc('places_count')
+            ->orderBy('slug')
+            ->get()
+            ->unique('slug')
+            ->values();
+
+        return response()->json(['data' => TagResource::collection($tags)]);
     }
 
     /**

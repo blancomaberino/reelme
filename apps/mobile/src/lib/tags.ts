@@ -190,6 +190,43 @@ export function hasSpanishTag(raw: string): boolean {
   return raw.trim().toLowerCase() in TAGS_ES;
 }
 
+/**
+ * Normalize text for search: lowercase + strip the Spanish diacritics that
+ * appear in tags (Hermes-safe — avoids String.normalize). Makes matching
+ * case- and accent-insensitive, so "Café", "cafe" and "CAFÉ" all compare equal.
+ */
+export function foldSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[áàä]/g, 'a')
+    .replace(/[éèë]/g, 'e')
+    .replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o')
+    .replace(/[úùü]/g, 'u')
+    .replace(/ñ/g, 'n');
+}
+
+/**
+ * Where a tag matches a query, or -1 if it doesn't. Tags are stored in English
+ * but displayed in Spanish via {@link localizeTag}, so search must look at the
+ * *localized* label (what the user sees) as well as the raw name/slug — all
+ * folded, so the match is case-insensitive, accent-insensitive, and substring
+ * ("part of the word"). The returned index (0 = starts-with) lets callers rank
+ * prefix matches ahead of mid-word ones.
+ */
+export function tagMatchIndex(name: string, slug: string, query: string, locale: Locale): number {
+  const q = foldSearch(query);
+  if (!q) return 0;
+  const haystacks = [foldSearch(localizeTag(name, locale)), foldSearch(name), foldSearch(slug)];
+  let best = -1;
+  for (const h of haystacks) {
+    const i = h.indexOf(q);
+    if (i !== -1 && (best === -1 || i < best)) best = i;
+  }
+  return best;
+}
+
 /** Title-case a raw tag for display when it isn't in the dictionary. */
 function titleCase(raw: string): string {
   return raw.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());

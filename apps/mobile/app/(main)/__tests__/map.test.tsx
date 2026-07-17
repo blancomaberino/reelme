@@ -42,7 +42,11 @@ jest.mock('@/api/hooks/useMapPlaces', () => ({
     };
   },
 }));
-jest.mock('@/api/hooks/useTags', () => ({ usePopularTags: () => ({ data: [] }) }));
+jest.mock('@/api/hooks/useTags', () => ({
+  usePopularTags: () => ({ data: [] }),
+  useTagCatalog: () => ({ data: [] }),
+  useMyPlacesTags: () => ({ data: [] }),
+}));
 jest.mock('@/api/hooks/usePaymentCards', () => ({ usePaymentCards: () => ({ data: [] }) }));
 // The map screen removes a list-scoped pin via useListMembership().remove; the
 // map test has no QueryClientProvider, so stub the hook and capture the mutate.

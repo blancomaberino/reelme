@@ -103,6 +103,21 @@ export const es: Record<MessageKey, string> = {
   'map.removeFromList.confirm.message': 'Solo se quita de esta lista; sigue guardado donde sea que lo hayas guardado.',
   'map.removeFromList.confirm.cta': 'Quitar',
 
+  // Botón de filtros + hoja inferior (compartido por el mapa y Mis lugares).
+  'filters.title': 'Filtros',
+  'filters.clear': 'Limpiar',
+  'filters.apply': 'Ver resultados',
+  'filters.remove': 'Quitar filtro {{label}}',
+  'filters.price': 'Precio',
+  'filters.cards': 'Tarjetas y descuentos',
+  'filters.tags': 'Etiquetas',
+  'filters.tagSearch': 'Buscar etiquetas…',
+  'filters.tagClear': 'Borrar búsqueda de etiquetas',
+  'filters.tagNoResults': 'Sin etiquetas para «{{query}}»',
+  'filters.country': 'País',
+  'filters.cuisine': 'Cocina',
+  'filters.sort': 'Ordenar por',
+
   'quickShare.title': 'Agregar desde un enlace',
   'quickShare.placeholder': 'Pegá un enlace o describí el lugar',
   'quickShare.submit': 'Agregar',

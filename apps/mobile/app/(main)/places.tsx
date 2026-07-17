@@ -88,32 +88,37 @@ export default function MyPlacesScreen() {
 
       {!authed ? (
         <SignInPrompt styles={styles} c={c} t={t} />
-      ) : isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={c.primary} />
-        </View>
       ) : isError ? (
         <ErrorState styles={styles} c={c} t={t} onRetry={() => void refetch()} />
       ) : (
+        // The filter bar stays mounted while a facet change refetches (only the
+        // list area shows the spinner), so an open filter sheet isn't torn down
+        // mid-selection.
         <>
           <MyPlacesFilters places={facetItems.length ? facetItems : items} filters={filters} onChange={onChange} />
-          <FlashList
-            data={items}
-            renderItem={renderItem}
-            keyExtractor={(item) => item.id}
-            style={styles.flashList}
-            contentContainerStyle={styles.list}
-            ItemSeparatorComponent={Separator}
-            onEndReached={onEndReached}
-            onEndReachedThreshold={0.5}
-            refreshControl={
-              <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={c.primary} />
-            }
-            ListEmptyComponent={<EmptyState styles={styles} c={c} t={t} filtered={hasActiveFacets(filters)} />}
-            ListFooterComponent={
-              isFetchingNextPage ? <ActivityIndicator style={styles.footer} color={c.primary} /> : null
-            }
-          />
+          {isLoading ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={c.primary} />
+            </View>
+          ) : (
+            <FlashList
+              data={items}
+              renderItem={renderItem}
+              keyExtractor={(item) => item.id}
+              style={styles.flashList}
+              contentContainerStyle={styles.list}
+              ItemSeparatorComponent={Separator}
+              onEndReached={onEndReached}
+              onEndReachedThreshold={0.5}
+              refreshControl={
+                <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={c.primary} />
+              }
+              ListEmptyComponent={<EmptyState styles={styles} c={c} t={t} filtered={hasActiveFacets(filters)} />}
+              ListFooterComponent={
+                isFetchingNextPage ? <ActivityIndicator style={styles.footer} color={c.primary} /> : null
+              }
+            />
+          )}
         </>
       )}
     </SafeAreaView>
