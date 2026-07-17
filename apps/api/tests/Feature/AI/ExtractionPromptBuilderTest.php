@@ -8,7 +8,7 @@ use App\Services\AI\Prompts\ExtractionPromptBuilder;
 
 /**
  * The extraction prompt must hand the model the POSTING ACCOUNT and instruct it
- * that the poster is the reviewer, not a venue (extraction.v10). Regression for
+ * that the poster is the reviewer, not a venue (extraction.v11). Regression for
  * the @el_encantador_de_burgas reel, where the reviewer's branded cover frame
  * got read as the venue name and the actually-reviewed @lagranburgerok (named in
  * the caption) was missed.
@@ -43,7 +43,7 @@ it('injects the posting account and ships the v9 poster-exclusion rule', functio
     $text = promptText($req);
 
     // The prompt version bumped, so drift is recorded on the analysis run.
-    expect($req->promptVersion)->toBe('extraction.v10');
+    expect($req->promptVersion)->toBe('extraction.v11');
 
     // The account is surfaced to the model — handle AND the informative display name.
     expect($text)->toContain('POSTED BY:')
@@ -57,6 +57,18 @@ it('injects the posting account and ships the v9 poster-exclusion rule', functio
     expect($req->systemPrompt)
         ->toContain('POSTING ACCOUNT')
         ->toContain('NEVER use it as a `places[].name`');
+});
+
+it('ships the v11 card-discount guidance: a bank named once applies to each line', function () {
+    // Regression for the La Esquina Café (Santander) post: the caption states the
+    // bank once ("Descuento con Santander") then lists tiers ("25% con Platinum…",
+    // "15% con crédito y débito"); a small model left `issuer` null on every line,
+    // so the discounts were dropped for having no card label.
+    $sys = promptFor('caption', null)->systemPrompt;
+
+    expect($sys)
+        ->toContain('A bank/issuer named ONCE applies to EVERY discount line')
+        ->toContain('Every entry MUST carry a card identity');
 });
 
 it('ships the v9 price-alignment + cuisine-nationality guardrails', function () {
