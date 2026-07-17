@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Expression;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -38,7 +39,7 @@ use Laravel\Scout\Searchable;
  * @property numeric-string|null $google_rating
  * @property int|null $google_rating_count
  * @property array<int, array<string, mixed>>|null $google_reviews_json
- * @property \Illuminate\Support\Carbon|null $google_reviews_synced_at
+ * @property Carbon|null $google_reviews_synced_at
  * @property int|null $reviews_count
  * @property float|numeric-string|null $reviews_avg_rating
  */

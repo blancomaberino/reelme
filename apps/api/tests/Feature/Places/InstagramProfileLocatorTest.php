@@ -60,7 +60,7 @@ it('falls back to a 📍 bio locality when the business address is empty (the @l
     fakeProfile([
         'full_name' => 'La Gran Burger',
         'business_address_json' => '', // professional account that never set an address
-        'biography' => "🥩 Burger de asado 📍Barros Blancos 🛵 Delivery",
+        'biography' => '🥩 Burger de asado 📍Barros Blancos 🛵 Delivery',
     ]);
 
     $loc = makeLocator()->locate('lagranburgerok');
