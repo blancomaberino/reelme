@@ -40,7 +40,9 @@ export function FilterTriggerBar({ count, onOpen, chips, elevated }: Props) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t('filters.title')}
-        accessibilityState={{ expanded: false }}
+        // Announce the active count (the numeric badge below isn't read on its
+        // own) without changing the label.
+        accessibilityValue={active ? { text: String(count) } : undefined}
         onPress={onOpen}
         style={({ pressed }) => [
           styles.trigger,

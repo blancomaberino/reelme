@@ -43,9 +43,9 @@ jest.mock('@/api/hooks/useMapPlaces', () => ({
   },
 }));
 jest.mock('@/api/hooks/useTags', () => ({
-  usePopularTags: () => ({ data: [] }),
   useTagCatalog: () => ({ data: [] }),
   useMyPlacesTags: () => ({ data: [] }),
+  useMapTagCatalog: () => [],
 }));
 jest.mock('@/api/hooks/usePaymentCards', () => ({ usePaymentCards: () => ({ data: [] }) }));
 // The map screen removes a list-scoped pin via useListMembership().remove; the

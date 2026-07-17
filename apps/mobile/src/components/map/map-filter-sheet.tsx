@@ -1,14 +1,13 @@
 import { useMemo } from 'react';
 
 import { usePaymentCards } from '@/api/hooks/usePaymentCards';
-import { useMyPlacesTags, useTagCatalog } from '@/api/hooks/useTags';
+import { useMapTagCatalog } from '@/api/hooks/useTags';
 import type { MapFilters } from '@/api/keys';
 import { FilterGroup, FilterSheet, OptionPill } from '@/components/filters/filter-sheet';
 import { TagAutocomplete } from '@/components/filters/tag-autocomplete';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { useMapStore } from '@/stores/map';
-import { useSessionStore } from '@/stores/session';
 
 /** Active map filters that surface as chips/badge (price + card + tags). */
 export function mapFilterCount(f: MapFilters): number {
@@ -29,15 +28,9 @@ export function MapFilterSheet({ visible, onClose }: { visible: boolean; onClose
   const toggleCard = useMapStore((s) => s.toggleCard);
   const toggleTag = useMapStore((s) => s.toggleTag);
   const { data: cards } = usePaymentCards();
+  const tagCatalog = useMapTagCatalog();
 
-  // The map is the viewer's own places when authed (T-071) → filter by my tags;
-  // a guest browses the public map → fall back to the global popular catalog.
-  const authed = useSessionStore((s) => s.status === 'authed');
-  const { data: myTags } = useMyPlacesTags({ enabled: authed });
-  const { data: globalTags } = useTagCatalog({ enabled: !authed });
-  const tagCatalog = useMemo(() => (authed ? (myTags ?? []) : (globalTags ?? [])), [authed, myTags, globalTags]);
-
-  const activeTags = filters.tags ?? [];
+  const activeTags = useMemo(() => filters.tags ?? [], [filters.tags]);
 
   const clearFacets = () => {
     const s = useMapStore.getState();

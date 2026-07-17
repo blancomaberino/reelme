@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 
-import { usePopularTags } from '@/api/hooks/useTags';
+import { useMapTagCatalog } from '@/api/hooks/useTags';
 import { type AppliedChip, FilterTriggerBar } from '@/components/filters/filter-trigger-bar';
 import { MapFilterSheet, mapFilterCount } from '@/components/map/map-filter-sheet';
+import { tagDisplayName } from '@/lib/tags';
 import { useFormat } from '@/lib/use-format';
 import { useMapStore } from '@/stores/map';
 
@@ -21,11 +22,11 @@ export function FilterBar() {
   const togglePrice = useMapStore((s) => s.togglePrice);
   const toggleCard = useMapStore((s) => s.toggleCard);
   const toggleTag = useMapStore((s) => s.toggleTag);
-  const { data: tags } = usePopularTags();
+  // Same catalog the sheet selects from, so a chip's label always resolves
+  // (not just for tags in the global top-N).
+  const catalog = useMapTagCatalog();
 
-  // Applied filters, in a stable order: price → card → tags. Tag labels are
-  // localized from the popular list; a slug missing from it (shouldn't happen —
-  // selection comes from that list) falls back to the humanized slug.
+  // Applied filters, in a stable order: price → card → tags.
   const chips = useMemo<AppliedChip[]>(() => {
     const out: AppliedChip[] = [];
     if (filters.price_range) {
@@ -37,11 +38,10 @@ export function FilterBar() {
       out.push({ key: 'card', label: `💳 ${card}`, onRemove: () => toggleCard(card) });
     }
     for (const slug of filters.tags ?? []) {
-      const name = tags?.find((tg) => tg.slug === slug)?.name ?? slug.replace(/-/g, ' ');
-      out.push({ key: `tag-${slug}`, label: fmt.tag(name), onRemove: () => toggleTag(slug) });
+      out.push({ key: `tag-${slug}`, label: fmt.tag(tagDisplayName(catalog, slug)), onRemove: () => toggleTag(slug) });
     }
     return out;
-  }, [filters.price_range, filters.card, filters.tags, tags, fmt, togglePrice, toggleCard, toggleTag]);
+  }, [filters.price_range, filters.card, filters.tags, catalog, fmt, togglePrice, toggleCard, toggleTag]);
 
   return (
     <>

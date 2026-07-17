@@ -7,6 +7,7 @@ import { FilterGroup, FilterSheet, OptionPill } from '@/components/filters/filte
 import { type AppliedChip, FilterTriggerBar } from '@/components/filters/filter-trigger-bar';
 import { TagAutocomplete } from '@/components/filters/tag-autocomplete';
 import { useT } from '@/i18n';
+import { tagDisplayName } from '@/lib/tags';
 import { useFormat } from '@/lib/use-format';
 
 type Props = {
@@ -62,10 +63,9 @@ export function MyPlacesFilters({ places, filters, onChange }: Props) {
     if (filters.country) out.push({ key: 'country', label: filters.country, onRemove: () => onChange({ country: null }) });
     if (filters.type) out.push({ key: 'type', label: fmt.tag(filters.type), onRemove: () => onChange({ type: null }) });
     for (const slug of activeTags) {
-      const name = tags.find((tg) => tg.slug === slug)?.name ?? slug.replace(/-/g, ' ');
       out.push({
         key: `tag-${slug}`,
-        label: fmt.tag(name),
+        label: fmt.tag(tagDisplayName(tags, slug)),
         onRemove: () => onChange({ tags: activeTags.filter((s) => s !== slug) }),
       });
     }

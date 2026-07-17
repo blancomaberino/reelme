@@ -87,7 +87,7 @@ it('excludes tags whose only place I have soft-hidden', function () {
     expect($slugs)->not->toContain('hidden-only');
 });
 
-it('dedupes a slug that exists under two kinds into a single entry', function () {
+it('dedupes a slug that exists under two kinds into a single entry (same place)', function () {
     $me = User::factory()->create();
     $p = myTagPlace('P');
     publishedShare($p, sharer: $me);
@@ -99,7 +99,52 @@ it('dedupes a slug that exists under two kinds into a single entry', function ()
 
     Sanctum::actingAs($me);
     $data = $this->getJson('/api/v1/me/places/tags')->assertOk()->json('data');
-    expect(collect($data)->where('slug', 'pizza')->count())->toBe(1);
+    $pizza = collect($data)->where('slug', 'pizza');
+    // One row, and the count is DISTINCT places (both kinds on the one place = 1).
+    expect($pizza->count())->toBe(1)
+        ->and($pizza->first()['places_count'])->toBe(1);
+});
+
+it('counts a slug spanning two kinds across DIFFERENT places as the distinct place count', function () {
+    $me = User::factory()->create();
+    $a = myTagPlace('A');
+    $b = myTagPlace('B');
+    publishedShare($a, sharer: $me);
+    publishedShare($b, sharer: $me);
+    $cuisine = Tag::factory()->create(['kind' => 'cuisine', 'slug' => 'pizza', 'name' => 'Pizza']);
+    $dish = Tag::factory()->create(['kind' => 'dish', 'slug' => 'pizza', 'name' => 'Pizza']);
+    $a->tags()->attach($cuisine->id, ['source' => 'extraction']);
+    $b->tags()->attach($dish->id, ['source' => 'extraction']);
+
+    Sanctum::actingAs($me);
+    $data = $this->getJson('/api/v1/me/places/tags')->assertOk()->json('data');
+    $pizza = collect($data)->where('slug', 'pizza');
+    // Two distinct of my places carry the slug — the number filtering returns.
+    expect($pizza->count())->toBe(1)
+        ->and($pizza->first()['places_count'])->toBe(2);
+});
+
+it('counts only MY places for a tag also on a stranger’s place', function () {
+    $me = User::factory()->create();
+    $mine = myTagPlace('Mine');
+    $theirs = myTagPlace('Theirs');
+    publishedShare($mine, sharer: $me);
+    publishedShare($theirs); // stranger's
+
+    $shared = Tag::factory()->create(['slug' => 'shared', 'name' => 'Shared']);
+    $mine->tags()->attach($shared->id, ['source' => 'extraction']);
+    $theirs->tags()->attach($shared->id, ['source' => 'extraction']);
+
+    Sanctum::actingAs($me);
+    $data = $this->getJson('/api/v1/me/places/tags')->assertOk()->json('data');
+    // On 2 places total, but only 1 is mine — the count must not leak the stranger's.
+    expect(collect($data)->firstWhere('slug', 'shared')['places_count'])->toBe(1);
+});
+
+it('returns an empty list when I have no places', function () {
+    $me = User::factory()->create();
+    Sanctum::actingAs($me);
+    expect($this->getJson('/api/v1/me/places/tags')->assertOk()->json('data'))->toBe([]);
 });
 
 it('carries the tag contract shape (id, kind, name, slug, places_count)', function () {

@@ -34,7 +34,7 @@ it('matches case-insensitively and on part of the word, filtering out non-matche
   render(<Harness />);
 
   // "ASU" (uppercase, mid-word) matches "casual" but not "Ramen".
-  fireEvent.changeText(screen.getByLabelText('Tags'), 'ASU');
+  fireEvent.changeText(screen.getByLabelText('Search tags…'), 'ASU');
   expect(screen.getByLabelText('Casual')).toBeOnTheScreen();
   expect(screen.queryByLabelText('Ramen')).toBeNull();
 });
@@ -44,7 +44,7 @@ it('finds a tag by its Spanish label even though it is stored in English', () =>
   render(<Harness />);
 
   // "casual" is shown as "Informal" — searching the Spanish label finds it.
-  fireEvent.changeText(screen.getByLabelText('Etiquetas'), 'Informal');
+  fireEvent.changeText(screen.getByLabelText('Buscar etiquetas…'), 'Informal');
   fireEvent.press(screen.getByLabelText('Informal'));
   expect(screen.getByLabelText('Quitar filtro Informal')).toBeOnTheScreen();
 });
@@ -54,14 +54,14 @@ it('is accent-insensitive on localized labels', () => {
   render(<Harness />);
 
   // "cafe" (no accent) matches the accented label "Café" (for "coffee").
-  fireEvent.changeText(screen.getByLabelText('Etiquetas'), 'cafe');
+  fireEvent.changeText(screen.getByLabelText('Buscar etiquetas…'), 'cafe');
   expect(screen.getByLabelText('Café')).toBeOnTheScreen();
 });
 
 it('shows a no-results message when nothing matches', () => {
   render(<Harness />);
 
-  fireEvent.changeText(screen.getByLabelText('Tags'), 'zzzz');
+  fireEvent.changeText(screen.getByLabelText('Search tags…'), 'zzzz');
   expect(screen.getByText(/No tags for/)).toBeOnTheScreen();
 });
 

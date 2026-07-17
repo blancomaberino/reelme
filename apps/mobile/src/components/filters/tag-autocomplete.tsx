@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { TagSummary } from '@/api/places';
 import { useT } from '@/i18n';
-import { tagMatchIndex } from '@/lib/tags';
+import { foldSearch, haystackMatchIndex, tagDisplayName, tagHaystacks } from '@/lib/tags';
 import { useFormat } from '@/lib/use-format';
 import { useSettingsStore } from '@/stores/settings';
 import { type Palette, useColors } from '@/theme/colors';
@@ -45,32 +45,31 @@ export function TagAutocomplete({ catalog, selected, onToggle }: Props) {
   const typed = q.trim();
   const searching = typed.length > 0;
 
-  const tags = catalog;
-
-  // Resolve a selected slug's display name from the catalog; fall back to the
-  // humanized slug, which fmt.tag title-cases (e.g. "wine-bar" → "Wine Bar").
-  const nameBySlug = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const tag of tags) map[tag.slug] = tag.name;
-    return map;
-  }, [tags]);
-  const labelFor = (slug: string) => fmt.tag(nameBySlug[slug] ?? slug.replace(/-/g, ' '));
+  const labelFor = (slug: string) => fmt.tag(tagDisplayName(catalog, slug));
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
+  // Precompute each tag's folded haystacks once per catalog/locale — not per
+  // keystroke — so typing only folds the query and runs plain indexOf.
+  const indexed = useMemo(
+    () => catalog.map((tag) => ({ tag, hay: tagHaystacks(tag.name, tag.slug, locale) })),
+    [catalog, locale],
+  );
+
   // Suggestions: while typing, every catalog tag that matches (ranked so
-  // starts-with beats mid-word), else a few popular ones — minus what's already
+  // starts-with beats mid-word), else a few catalog tags — minus what's already
   // selected (those live in the chips row above).
   const suggestions = useMemo<TagSummary[]>(() => {
-    const available = tags.filter((tag) => !selectedSet.has(tag.slug));
-    if (!searching) return available.slice(0, POPULAR_SUGGESTIONS);
+    const available = indexed.filter(({ tag }) => !selectedSet.has(tag.slug));
+    if (!searching) return available.slice(0, POPULAR_SUGGESTIONS).map(({ tag }) => tag);
+    const folded = foldSearch(typed);
     return available
-      .map((tag) => ({ tag, at: tagMatchIndex(tag.name, tag.slug, typed, locale) }))
+      .map(({ tag, hay }) => ({ tag, at: haystackMatchIndex(hay, folded) }))
       .filter((m) => m.at !== -1)
       .sort((a, b) => a.at - b.at)
       .slice(0, MAX_SUGGESTIONS)
       .map((m) => m.tag);
-  }, [tags, selectedSet, searching, typed, locale]);
+  }, [indexed, selectedSet, searching, typed]);
 
   const noMatches = searching && suggestions.length === 0;
 
@@ -106,7 +105,7 @@ export function TagAutocomplete({ catalog, selected, onToggle }: Props) {
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
-          accessibilityLabel={t('filters.tags')}
+          accessibilityLabel={t('filters.tagSearch')}
         />
         {q.length > 0 ? (
           <Pressable accessibilityRole="button" accessibilityLabel={t('filters.tagClear')} onPress={() => setQ('')} hitSlop={8}>

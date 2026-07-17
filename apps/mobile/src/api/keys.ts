@@ -40,7 +40,6 @@ export const queryKeys = {
   /** Prefix covering every map viewport/filter entry — for invalidation. */
   mapAll: () => ['places', 'map'] as const,
   search: (q: string, types: string) => ['search', q, types] as const,
-  tagsPopular: () => ['tags', 'popular'] as const,
   /** Broad tag catalog searched client-side by the filter autocomplete. */
   tagsCatalog: () => ['tags', 'catalog'] as const,
   /** Distinct payment-discount cards for the map filter (T-079). */

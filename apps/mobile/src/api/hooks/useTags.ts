@@ -1,4 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+
+import { useSessionStore } from '@/stores/session';
 
 import { api } from '../client';
 import { queryKeys } from '../keys';
@@ -7,15 +10,6 @@ import type { TagSummary } from '../places';
 async function fetchPopularTags(limit: number): Promise<TagSummary[]> {
   const { data } = await api.get<{ data: TagSummary[] }>('/tags', { params: { popular: 1, limit } });
   return data.data;
-}
-
-/** Top tags for the map filter bar chips (T-032) / search suggestions. */
-export function usePopularTags() {
-  return useQuery({
-    queryKey: queryKeys.tagsPopular(),
-    queryFn: () => fetchPopularTags(15),
-    staleTime: 10 * 60_000,
-  });
 }
 
 /**
@@ -56,4 +50,18 @@ export function useMyPlacesTags(opts?: { enabled?: boolean }) {
     staleTime: 5 * 60_000,
     enabled: opts?.enabled ?? true,
   });
+}
+
+/**
+ * The tag candidate set for the MAP filter, resolved by session: an authed
+ * viewer's map is their own places (T-071) → their tag facet; a guest browses
+ * the public map → the global popular catalog. One source of truth so the sheet
+ * (options) and the trigger bar (chip labels) never disagree, and only the
+ * relevant query runs.
+ */
+export function useMapTagCatalog(): TagSummary[] {
+  const authed = useSessionStore((s) => s.status === 'authed');
+  const { data: myTags } = useMyPlacesTags({ enabled: authed });
+  const { data: globalTags } = useTagCatalog({ enabled: !authed });
+  return useMemo(() => (authed ? (myTags ?? []) : (globalTags ?? [])), [authed, myTags, globalTags]);
 }
