@@ -17,7 +17,7 @@ import { Thumbnail } from '@/components/place/thumbnail';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { summarizeHours } from '@/lib/opening-hours';
-import { directionsUrl, googleMapsUrl, placeShareUrl } from '@/lib/directions';
+import { directionsUrl, googleMapsUrl, googleReviewsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
 import { useSessionStore } from '@/stores/session';
 import { fonts, type Palette, useColors } from '@/theme/colors';
@@ -275,6 +275,7 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
                 <ReviewRow
                   key={`g-${i}`}
                   name={r.author ?? t('place.googleUser')}
+                  suffix={r.relative_time ? ` · ${r.relative_time}` : undefined}
                   rating={r.rating}
                   text={r.text}
                   photo={r.profile_photo_url}
@@ -283,6 +284,18 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
                 />
               ))}
             </>
+          ) : null}
+          {googleReviewsUrl(place.google_place_id) ? (
+            <Pressable
+              onPress={() => openWebUrl(googleReviewsUrl(place.google_place_id))}
+              accessibilityRole="link"
+              accessibilityLabel={t('place.readOnGoogle')}
+              style={styles.readOnGoogle}
+            >
+              <Ionicons name="logo-google" size={15} color={c.primary} />
+              <Text style={[styles.rowText, styles.link]}>{t('place.readOnGoogle')}</Text>
+              <Ionicons name="open-outline" size={15} color={c.primary} />
+            </Pressable>
           ) : null}
         </View>
 
@@ -471,6 +484,7 @@ const makeStyles = (c: Palette) =>
     reviewName: { fontSize: 14, color: c.text, fontWeight: '600' },
     reviewStars: { color: c.gold },
     reviewText: { fontSize: 14, color: c.ink2, lineHeight: 19 },
+    readOnGoogle: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, marginTop: 2 },
     sourceList: { gap: 12 },
     footer: { height: 24 },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },

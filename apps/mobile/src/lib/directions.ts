@@ -49,3 +49,13 @@ export function googleMapsUrl(name: string, placeId: string | null): string | nu
   if (!placeId) return null;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${encodeURIComponent(placeId)}`;
 }
+
+/**
+ * A link that lands directly on the place's Google **reviews** list (not the
+ * map card). `search.google.com/local/reviews?placeid=…` is Google's canonical
+ * all-reviews page for a place id. Returns null when there's no Google place id.
+ */
+export function googleReviewsUrl(placeId: string | null): string | null {
+  if (!placeId) return null;
+  return `https://search.google.com/local/reviews?placeid=${encodeURIComponent(placeId)}`;
+}

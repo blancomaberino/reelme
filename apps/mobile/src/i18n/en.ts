@@ -66,6 +66,7 @@ export const en = {
   'place.you': ' (you)',
   'place.anonymous': 'anonymous',
   'place.googleUser': 'Google user',
+  'place.readOnGoogle': 'Read all reviews on Google',
   'place.sourceCount': '{{count}} sources',
   'place.sourceCount_one': '{{count}} source',
   'place.sourceCount_other': '{{count}} sources',
