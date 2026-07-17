@@ -47,7 +47,12 @@ services:
             POSTGRES_USER: '${DB_USERNAME}'
             POSTGRES_PASSWORD: '${DB_PASSWORD:-secret}'
         volumes:
-            - 'sail-pgsql:/var/lib/postgresql'
+            # Mount the named volume AT PGDATA (/var/lib/postgresql/data), not its
+            # parent — the postgres image declares `VOLUME /var/lib/postgresql/data`,
+            # so mounting the parent leaves PGDATA in a fresh anonymous volume that
+            # is re-created on every container recreation (→ empty DB, migrations
+            # re-run each time). This matches stock Laravel Sail.
+            - 'sail-pgsql:/var/lib/postgresql/data'
             - './vendor/laravel/sail/database/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
         networks:
             - sail
