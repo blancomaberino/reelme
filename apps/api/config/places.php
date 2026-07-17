@@ -39,4 +39,14 @@ return [
         'enabled' => (bool) env('PLACES_IG_PROFILE_ENABLED', true),
     ],
 
+    /*
+    | Google-ToS refresh window (T-059/T-080). Cached Google review content may
+    | not be kept beyond ~30 days; past this age it must be refreshed or dropped.
+    | Drives both the daily `reelmap:google:refresh-stale` sweep AND the on-demand
+    | refresh a re-share triggers when it re-resolves a known-but-stale place.
+    */
+    'google' => [
+        'refresh_after_days' => (int) env('PLACES_GOOGLE_REFRESH_AFTER_DAYS', 30),
+    ],
+
 ];

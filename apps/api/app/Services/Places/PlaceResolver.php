@@ -26,6 +26,7 @@ class PlaceResolver
     public function __construct(
         private readonly Geocoder $geocoder,
         private readonly InstagramProfileLocator $profileLocator,
+        private readonly GooglePlaceRefresher $googleRefresher,
     ) {}
 
     /**
@@ -273,8 +274,10 @@ class PlaceResolver
 
         if ($byId !== null) {
             $target = $this->terminal($byId);
-            // Backfill Google's rating/reviews onto a place that predates them.
-            if ($this->backfillGoogleSignal($target, $geo)) {
+            // Exact google_place_id re-match (a re-share of a known place):
+            // backfill a place that predates our capture, or refresh-or-drop one
+            // whose cached content has aged past the ToS window (T-080).
+            if ($this->syncGoogleSignal($target, $geo)) {
                 $target->save();
             }
 
@@ -493,6 +496,24 @@ class PlaceResolver
             lng: $location->lng ?? $base->lng,
             language: $base->language,
         );
+    }
+
+    /**
+     * Keep a re-matched place's Google signal current on an exact
+     * google_place_id hit (identity is guaranteed here, so a refresh-or-drop is
+     * safe — unlike the fuzzy path, which may match a different listing). A place
+     * that predates our capture is backfilled; one with cached snippets past the
+     * ToS window is refreshed-or-dropped from the in-hand geocode (no extra call).
+     * Returns whether the model changed (caller saves).
+     */
+    private function syncGoogleSignal(Place $place, GeocodeResult $geo): bool
+    {
+        if ($place->google_rating === null) {
+            return $this->backfillGoogleSignal($place, $geo);
+        }
+
+        return $this->googleRefresher->isStale($place)
+            && $this->googleRefresher->applyGeocode($place, $geo);
     }
 
     /**
