@@ -7,6 +7,7 @@ use App\Models\Tag;
 use App\Services\AI\Contracts\AnalysisEngine;
 use App\Services\AI\Data\GenerationPart;
 use App\Services\AI\Data\GenerationRequest;
+use App\Services\AI\Exceptions\EngineUnavailable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -30,6 +31,9 @@ class TranslateTag implements ShouldQueue
     use SerializesModels;
 
     public int $tries = 2;
+
+    /** @var list<int> */
+    public array $backoff = [60];
 
     public int $timeout = 45;
 
@@ -78,7 +82,13 @@ class TranslateTag implements ShouldQueue
 
         try {
             $raw = $engine->generate($request, config('ai.openrouter.default_model'))->rawText;
+        } catch (EngineUnavailable $e) {
+            // Transport failure — let the job retry (tries/backoff) rather than
+            // permanently leaving the tag English on a transient blip.
+            throw $e;
         } catch (Throwable $e) {
+            // Reached but failed (bad output, cost cap, …) — a retry won't help;
+            // keep the English fallback.
             Log::warning('TranslateTag: engine call failed', ['tag_id' => $this->tagId, 'locale' => $locale, 'error' => $e->getMessage()]);
 
             return null;
@@ -97,6 +107,6 @@ class TranslateTag implements ShouldQueue
             return null;
         }
 
-        return mb_substr($line, 0, 80);
+        return $line;
     }
 }

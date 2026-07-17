@@ -62,13 +62,28 @@ it('clears name_i18n to null when the override is blanked (falls back to English
         ->and($tag->fresh()->localizedName('es'))->toBe('casual');
 });
 
-it('queues a re-translation from the row action', function () {
+it('queues a translation from the row action with the configured locales', function () {
     Bus::fake();
     $this->actingAs(User::factory()->admin()->create());
-    $tag = Tag::factory()->create(['name' => 'kombucha', 'slug' => 'kombucha', 'name_i18n' => null]);
+    $tag = Tag::factory()->create(['kind' => 'vibe', 'name' => 'kombucha', 'slug' => 'kombucha', 'name_i18n' => null]);
 
     Livewire::test(ListTags::class)
-        ->callAction(TestAction::make('retranslate')->table($tag));
+        ->callAction(TestAction::make('translate')->table($tag));
 
-    Bus::assertDispatched(TranslateTag::class, fn (TranslateTag $job): bool => $job->tagId === $tag->id);
+    Bus::assertDispatched(
+        TranslateTag::class,
+        fn (TranslateTag $job): bool => $job->tagId === $tag->id && $job->locales === ['es'],
+    );
+});
+
+it('hides the translate action for dishes and already-translated tags', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    $dish = Tag::factory()->create(['kind' => 'dish', 'name' => 'chivito', 'slug' => 'chivito', 'name_i18n' => null]);
+    $done = Tag::factory()->create(['kind' => 'vibe', 'name' => 'casual', 'slug' => 'casual', 'name_i18n' => ['es' => 'Informal']]);
+    $todo = Tag::factory()->create(['kind' => 'vibe', 'name' => 'kombucha', 'slug' => 'kombucha', 'name_i18n' => null]);
+
+    Livewire::test(ListTags::class)
+        ->assertActionHidden(TestAction::make('translate')->table($dish))
+        ->assertActionHidden(TestAction::make('translate')->table($done))
+        ->assertActionVisible(TestAction::make('translate')->table($todo));
 });

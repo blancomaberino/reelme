@@ -136,7 +136,7 @@ function RowView({ row, styles, c }: { row: Row; styles: Styles; c: Palette }) {
   if (row.type === 'tag') {
     // Prefer the server-localized label (ADR-084) so a Spanish search shows the
     // Spanish name; fall back to the locale-formatted English name.
-    const label = row.tag.label ?? fmt.tag(row.tag.name);
+    const label = row.tag.label ? row.tag.label : fmt.tag(row.tag.name);
     return (
       <Pressable
         accessibilityRole="button"

@@ -37,6 +37,15 @@ it('falls back to the English name when the locale has no translation', function
     expect($row['label'])->toBe('poutine');
 });
 
+it('treats a blank/null locale value as no translation without breaking indexing', function () {
+    $tag = Tag::factory()->create(['name' => 'casual', 'slug' => 'casual', 'name_i18n' => ['es' => '']]);
+
+    // localizedName falls back to the English name for a blank override…
+    expect($tag->localizedName('es'))->toBe('casual');
+    // …and searchableNames drops the blank without a TypeError (indexing is safe).
+    expect($tag->searchableNames())->toBe(['casual']);
+});
+
 it('resolves the locale from Accept-Language when no ?locale is given', function () {
     Tag::factory()->create(['name' => 'casual', 'slug' => 'casual', 'name_i18n' => ['es' => 'Informal']]);
     $row = $this->getJson('/api/v1/tags?q=casual', ['Accept-Language' => 'es-419,es;q=0.9'])->assertOk()->json('data.0');

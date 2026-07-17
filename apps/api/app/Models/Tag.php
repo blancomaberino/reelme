@@ -110,7 +110,11 @@ class Tag extends Model
     {
         return array_values(array_unique(array_filter(
             [$this->name, ...array_values($this->name_i18n ?? [])],
-            static fn (string $n) => trim($n) !== '',
+            // Defensive against a null/blank locale value (same guard as
+            // localizedName) — a bad value must never break indexing. The jsonb
+            // cast can yield a non-string at runtime despite the property type.
+            // @phpstan-ignore function.alreadyNarrowedType
+            static fn ($n) => is_string($n) && trim($n) !== '',
         )));
     }
 }

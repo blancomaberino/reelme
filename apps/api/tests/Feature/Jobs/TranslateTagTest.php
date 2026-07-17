@@ -3,6 +3,7 @@
 use App\Jobs\TranslateTag;
 use App\Models\Tag;
 use App\Services\AI\Contracts\AnalysisEngine;
+use App\Services\AI\Exceptions\EngineUnavailable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\FakeRemoteEngine;
 
@@ -60,11 +61,12 @@ it('drops an implausible (sentence-like) reply and stays untranslated', function
     expect($tag->fresh()->name_i18n)->toBeNull();
 });
 
-it('swallows an engine failure, keeping the English fallback', function () {
+it('re-throws a transient transport failure so the job retries, writing nothing', function () {
     $tag = Tag::factory()->create(['kind' => 'cuisine', 'name' => 'noodles', 'slug' => 'noodles', 'name_i18n' => null]);
+    // rawText null → FakeRemoteEngine throws EngineUnavailable (transport down).
+    $engine = new FakeRemoteEngine(rawText: null);
+    app()->instance(AnalysisEngine::class, $engine);
 
-    // rawText null → FakeRemoteEngine throws EngineUnavailable; the job must not throw.
-    runTranslate($tag, null);
-
-    expect($tag->fresh()->name_i18n)->toBeNull();
+    expect(fn () => (new TranslateTag($tag->id, ['es']))->handle($engine))->toThrow(EngineUnavailable::class);
+    expect($tag->fresh()->name_i18n)->toBeNull(); // no partial write
 });

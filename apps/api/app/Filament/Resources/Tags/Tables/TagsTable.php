@@ -41,11 +41,15 @@ class TagsTable
             ])
             ->recordActions([
                 EditAction::make(),
-                Action::make('retranslate')
-                    ->label('Re-translate')
+                // Only where the job will actually act: a non-dish tag still
+                // missing its Spanish label (the job skips dishes and set locales).
+                // To fix a bad translation, edit the label directly.
+                Action::make('translate')
+                    ->label('Translate')
                     ->icon('heroicon-o-language')
+                    ->visible(fn (Tag $record): bool => $record->kind !== TagKind::Dish && blank($record->name_i18n['es'] ?? null))
                     ->requiresConfirmation()
-                    ->modalDescription('Queue an AI translation for this tag. It runs in the background and overwrites nothing already set.')
+                    ->modalDescription('Queue a background AI translation for this tag.')
                     ->action(function (Tag $record): void {
                         TranslateTag::dispatch($record->id, config('ai.translate_locales'));
                         Notification::make()->title('Translation queued')->success()->send();
