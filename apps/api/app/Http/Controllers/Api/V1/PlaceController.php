@@ -14,6 +14,8 @@ use App\Models\Place;
 use App\Support\KeysetCursor;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -71,6 +73,11 @@ class PlaceController extends Controller
             $query->anyTagSlug($tags);
         }
 
+        // Filter to places offering a discount for a given card/bank/wallet (T-079).
+        if (($card = (string) ($request->validated('card') ?? '')) !== '') {
+            $query->withPaymentCard($card);
+        }
+
         if (($influencerId = $request->validated('influencer_id')) !== null) {
             $query->whereExists(fn ($sub) => $sub->from('place_sources')
                 ->join('source_posts', 'source_posts.id', '=', 'place_sources.source_post_id')
@@ -100,6 +107,45 @@ class PlaceController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Distinct card/bank/wallet discount labels across visible places (T-079) —
+     * the facet source for the map's "filter by card" chips, ordered by how many
+     * places offer each. `card` is the same display label {@see Place::discountCard()}
+     * computes (resolved issuer → scheme → @handle), so a returned value feeds
+     * straight back into `?card=`.
+     */
+    public function paymentCards(): JsonResponse
+    {
+        // The facet unnests every visible place's discount snapshots (no index on
+        // the jsonb) — cache it: the set only shifts as new extractions publish,
+        // and clients poll it on a 10-min staleTime. Short TTL keeps it fresh
+        // enough while collapsing the repeated full scan.
+        $data = Cache::remember('places:payment-cards', now()->addMinutes(5), function () {
+            // Same array-guarded jsonb + label expression the card filter uses, so
+            // the facet lists exactly the labels `?card=` matches (Place::discountCard()).
+            $inner = Place::query()
+                ->publiclyVisible()
+                ->join('place_sources', 'place_sources.place_id', '=', 'places.id')
+                ->crossJoin(DB::raw('LATERAL jsonb_array_elements('.Place::DISCOUNTS_JSONB.') AS d'))
+                ->whereRaw(Place::DISCOUNT_HAS_TERMS)
+                ->selectRaw(Place::DISCOUNT_CARD_SQL.' AS card, places.id AS place_id');
+
+            return DB::query()
+                ->fromSub($inner, 't')
+                ->whereRaw("card IS NOT NULL AND card <> ''")
+                ->groupBy('card')
+                ->selectRaw('card, COUNT(DISTINCT place_id) AS uses')
+                ->orderByDesc('uses')
+                ->orderBy('card')
+                ->limit(40)
+                ->get()
+                ->map(fn ($r) => ['card' => (string) $r->card, 'count' => (int) $r->uses])
+                ->all();
+        });
+
+        return response()->json(['data' => $data]);
     }
 
     public function show(PlaceShowRequest $request, Place $place): JsonResponse

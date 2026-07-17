@@ -13,6 +13,7 @@ use App\Services\AI\Exceptions\CostCapExceeded;
 use App\Services\AI\Exceptions\QuotaExhausted;
 use App\Services\AI\ModelRouter;
 use App\Services\AI\Prompts\ExtractionPromptBuilder;
+use App\Services\Places\CardIssuerResolver;
 use App\Support\Contracts\ExtractionSchema;
 use Closure;
 use Illuminate\Support\Str;
@@ -63,6 +64,9 @@ class ExtractPlaceData extends PipelineStubJob
         $share->loadMissing('sourcePost.influencer');
 
         if (($existing = $this->existingSuccess($share)) !== null) {
+            // Re-delivery: the prior success was already issuer-enriched on its
+            // first pass — don't re-run it (a dead handle would re-hit Instagram
+            // every retry).
             $this->gate($share, $existing);
 
             return;
@@ -78,9 +82,11 @@ class ExtractPlaceData extends PipelineStubJob
             return;
         } catch (AllEnginesFailed $e) {
             // A schema-valid but low-confidence result (kept by the router on a
-            // failed run) is reviewable, not a hard failure — salvage it.
+            // failed run) is reviewable, not a hard failure — salvage it. It is
+            // being gated for the FIRST time here, so enrich it too (T-079).
             $salvage = $this->salvageableRun($share);
             if ($salvage !== null) {
+                $this->resolveDiscountIssuers($salvage);
                 $this->gate($share, $salvage);
 
                 return;
@@ -89,7 +95,59 @@ class ExtractPlaceData extends PipelineStubJob
             throw $e; // genuinely unusable output — retry per job policy, then failed()
         }
 
+        // T-079: fill each discount's issuer name from its @handle before the
+        // snapshot is frozen. On the newly produced run only (fresh + salvage) —
+        // a re-delivered success above was enriched on its first pass.
+        $this->resolveDiscountIssuers($run);
         $this->gate($share, $run);
+    }
+
+    /**
+     * When a caption attributed a card discount to a bank only by an @mention,
+     * resolve that issuer's display name from its Instagram profile (T-079) and
+     * write it back onto the run's result so the frozen place_source snapshot
+     * carries "Santander", not just "@santander.uy". Config-gated; never throws
+     * (a dead profile / missing cookie leaves the @handle fallback in place).
+     */
+    private function resolveDiscountIssuers(AnalysisRun $run): void
+    {
+        if (! (bool) config('places.card_discounts.resolve_issuer', true)) {
+            return;
+        }
+
+        $result = $run->result_json;
+        if (! is_array($result) || ! is_array($result['places'] ?? null)) {
+            return;
+        }
+
+        $resolver = app(CardIssuerResolver::class);
+        $changed = false;
+
+        foreach ($result['places'] as $pi => $place) {
+            if (! is_array($place) || ! is_array($place['discounts'] ?? null)) {
+                continue;
+            }
+            foreach ($place['discounts'] as $di => $discount) {
+                if (! is_array($discount)) {
+                    continue;
+                }
+                $handle = trim((string) ($discount['handle'] ?? ''));
+                $issuer = trim((string) ($discount['issuer'] ?? ''));
+                if ($handle === '' || $issuer !== '') {
+                    continue; // no handle, or already named in plain text
+                }
+                $name = $resolver->resolve($handle);
+                if ($name !== null) {
+                    $result['places'][$pi]['discounts'][$di]['issuer'] = $name;
+                    $changed = true;
+                }
+            }
+        }
+
+        if ($changed) {
+            $run->result_json = $result;
+            $run->save();
+        }
     }
 
     /**

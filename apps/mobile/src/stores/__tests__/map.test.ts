@@ -31,13 +31,24 @@ it('setting a list clears any residual scope filter; clearing it restores none',
   expect(useMapStore.getState().filters.list).toBeNull();
 });
 
+it('toggles a payment card, replacing the prior one (single-select)', () => {
+  useMapStore.getState().toggleCard('Santander');
+  expect(useMapStore.getState().filters.card).toBe('Santander');
+  useMapStore.getState().toggleCard('Visa');
+  expect(useMapStore.getState().filters.card).toBe('Visa');
+  useMapStore.getState().toggleCard('Visa');
+  expect(useMapStore.getState().filters.card).toBeNull();
+});
+
 it('clearFilters resets everything', () => {
   useMapStore.getState().togglePrice(3);
   useMapStore.getState().toggleTag('brunch');
+  useMapStore.getState().toggleCard('Santander');
   useMapStore.getState().clearFilters();
   expect(useMapStore.getState().filters).toEqual({
     cuisine: null,
     price_range: null,
+    card: null,
     tags: [],
     list: null,
     filter: null,

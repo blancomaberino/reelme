@@ -40,6 +40,7 @@ const PLACE: PlaceDetail = {
   dishes_language: 'en',
   source_count: 1,
   rating: { google: { value: 4.5, count: 527 }, app: { value: null, count: 0 } },
+  discounts: [],
   sources: [
     {
       id: '4',
@@ -265,4 +266,29 @@ it('navigates to the map tab when the mini-map is tapped', async () => {
   expect(mockRouter.push).toHaveBeenCalledWith(
     expect.objectContaining({ pathname: '/(main)/map', params: { lat: '-34.890555', lng: '-56.055278' } }),
   );
+});
+
+it('renders card discount chips when the place has discounts', async () => {
+  const withDiscounts: PlaceDetail = {
+    ...PLACE,
+    discounts: [
+      { card: 'Santander', terms: '20% off', percent: 20 },
+      { card: 'Visa', terms: '3 cuotas sin interés', percent: null },
+    ],
+  };
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withDiscounts });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Card discounts')).toBeOnTheScreen();
+  expect(screen.getByText(/Santander · 20% off/)).toBeOnTheScreen();
+  expect(screen.getByText(/Visa · 3 cuotas sin interés/)).toBeOnTheScreen();
+});
+
+it('omits the discounts section when there are none', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+  await screen.findByText('1921 Restaurant');
+  expect(screen.queryByText('Card discounts')).toBeNull();
 });

@@ -50,6 +50,20 @@ export interface PlaceDetail {
     time?: number | null;
     profile_photo_url?: string | null;
   }[];
+  /**
+   * Card/bank/wallet payment discounts mentioned across the place's sources (T-079), aggregated + deduped. `card` is the display label (resolved issuer, else scheme, else @handle); filter the map/index by it via ?card=.
+   */
+  discounts: {
+    /**
+     * Display label of the paying card/bank/wallet.
+     */
+    card: string;
+    /**
+     * The benefit as stated, e.g. "20% off".
+     */
+    terms: string;
+    percent: number | null;
+  }[];
   sources?: PlaceSource[];
   offers?: unknown[];
   /**

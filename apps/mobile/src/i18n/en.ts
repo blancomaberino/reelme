@@ -52,6 +52,7 @@ export const en = {
   'menu.videoLegend': '🎬 shown in the video',
   'place.sources': 'Where it came from',
   'place.reviews': 'Reviews',
+  'place.discounts': 'Card discounts',
   'place.fromGoogle': 'From Google',
   'review.rate': 'Rate this place',
   'review.your': 'Your review',

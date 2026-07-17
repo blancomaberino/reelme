@@ -46,6 +46,7 @@ class MapPlacesRequest extends FormRequest
             'zoom' => ['required', 'integer', 'between:1,20'],
             'cuisine' => ['nullable', 'string', 'max:64'],
             'price_range' => ['nullable', 'integer', 'between:1,4'],
+            'card' => ['nullable', 'string', 'max:64'],
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'filter' => ['nullable', Rule::in(['all', 'following', 'mine'])],

@@ -13,6 +13,7 @@ type MapState = {
   setFilters: (filters: MapFilters) => void;
   toggleCuisine: (cuisine: string) => void;
   togglePrice: (price: number) => void;
+  toggleCard: (card: string) => void;
   toggleTag: (tag: string) => void;
   /** Restrict the map to a list (or null to clear); keeps other filters. */
   setList: (list: { id: string; name: string } | null) => void;
@@ -20,7 +21,7 @@ type MapState = {
   select: (pin: MapPin | null) => void;
 };
 
-const EMPTY: MapFilters = { cuisine: null, price_range: null, tags: [], list: null, filter: null };
+const EMPTY: MapFilters = { cuisine: null, price_range: null, card: null, tags: [], list: null, filter: null };
 
 export const useMapStore = create<MapState>((set) => ({
   filters: EMPTY,
@@ -36,6 +37,11 @@ export const useMapStore = create<MapState>((set) => ({
   togglePrice: (price) =>
     set((s) => ({
       filters: { ...s.filters, price_range: s.filters.price_range === price ? null : price },
+      selected: null,
+    })),
+  toggleCard: (card) =>
+    set((s) => ({
+      filters: { ...s.filters, card: s.filters.card === card ? null : card },
       selected: null,
     })),
   toggleTag: (tag) =>

@@ -140,6 +140,22 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
       {/* My tags — private, owner-only annotations (T-064) */}
       {authed ? <MyTags slug={place.slug} tags={place.my_tags ?? []} /> : null}
 
+      {/* Card/bank/wallet payment discounts mentioned in the reels (T-079) */}
+      {place.discounts.length > 0 ? (
+        <View style={styles.block}>
+          <Text style={styles.sectionTitle}>{t('place.discounts')}</Text>
+          <View style={styles.chips}>
+            {place.discounts.map((d) => (
+              <View key={`${d.card}-${d.terms}`} style={styles.discount}>
+                <Text style={styles.discountText}>
+                  💳 {d.card} · {d.terms}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {/* Info: address / hours / phone / website */}
       <View style={styles.block}>
         {place.address ? (
@@ -435,6 +451,15 @@ const makeStyles = (c: Palette) =>
     metaMuted: { fontSize: 14, color: c.muted },
     rating: { fontSize: 14, color: c.text, fontWeight: '600' },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    discount: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: c.secondarySoft,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.secondary,
+    },
+    discountText: { color: c.secondary, fontSize: 13, fontWeight: '700' },
     row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 6 },
     rowIcon: { marginTop: 1 },
     rowBody: { flex: 1, flexDirection: 'row', alignItems: 'center' },

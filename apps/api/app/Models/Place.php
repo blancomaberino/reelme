@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Query\Expression;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -38,7 +39,7 @@ use Laravel\Scout\Searchable;
  * @property numeric-string|null $google_rating
  * @property int|null $google_rating_count
  * @property array<int, array<string, mixed>>|null $google_reviews_json
- * @property \Illuminate\Support\Carbon|null $google_reviews_synced_at
+ * @property Carbon|null $google_reviews_synced_at
  * @property int|null $reviews_count
  * @property float|numeric-string|null $reviews_avg_rating
  */
@@ -48,6 +49,31 @@ class Place extends Model
     use HasFactory;
 
     use Searchable;
+
+    /**
+     * A place_source's `discounts` snapshot as jsonb, guarded to an empty array
+     * unless it is actually a JSON array — a malformed/legacy snapshot must not
+     * make `jsonb_array_elements` error. Mirrors the `is_array()` guard in
+     * {@see aggregatedDiscounts()}. Consumed by the T-079 card filter + facet.
+     */
+    public const DISCOUNTS_JSONB = "CASE WHEN jsonb_typeof(place_sources.extraction_snapshot_json->'discounts') = 'array'"
+        ." THEN place_sources.extraction_snapshot_json->'discounts' ELSE '[]'::jsonb END";
+
+    /**
+     * The display card label for a `d` discount element — the SQL twin of
+     * {@see discountCard()} (resolved issuer → scheme → `@handle`, a leading `@`
+     * on the stored handle collapsed so both sides agree). The filter and facet
+     * must compute the SAME label the aggregation shows.
+     */
+    public const DISCOUNT_CARD_SQL = "COALESCE(NULLIF(trim(d->>'issuer'), ''), NULLIF(trim(d->>'scheme'), ''),"
+        ." '@' || NULLIF(ltrim(trim(d->>'handle'), '@'), ''))";
+
+    /**
+     * A `d` discount element carries a non-empty `terms` — the SQL twin of the
+     * `$terms === ''` skip in {@see aggregatedDiscounts()}. The filter + facet
+     * apply it so they never match/list a card the place detail wouldn't show.
+     */
+    public const DISCOUNT_HAS_TERMS = "NULLIF(trim(d->>'terms'), '') IS NOT NULL";
 
     // Written by the resolver/merger only; `location` is set via setPoint(), not
     // mass-assignment (it carries a raw SQL expression, not a scalar).
@@ -125,6 +151,31 @@ class Place extends Model
             ->join('tags', 'tags.id', '=', 'place_tag.tag_id')
             ->whereColumn('place_tag.place_id', 'places.id')
             ->whereIn('tags.slug', $slugs));
+    }
+
+    /**
+     * Places offering a payment discount for the given card/bank/wallet (T-079).
+     * Matches a place_source snapshot whose `discounts[]` carries the token as its
+     * resolved issuer, scheme, or `@handle` — the SAME label {@see discountCard()}
+     * computes for display, so the map/index filter and the shown chips agree.
+     * Case-insensitive; a blank token is a no-op.
+     *
+     * @param  Builder<Place>  $query
+     */
+    protected function scopeWithPaymentCard(Builder $query, string $card): void
+    {
+        $card = mb_strtolower(trim($card));
+        if ($card === '') {
+            return;
+        }
+
+        $query->whereExists(fn ($sub) => $sub->from('place_sources')
+            ->whereColumn('place_sources.place_id', 'places.id')
+            ->whereRaw(
+                'EXISTS (SELECT 1 FROM jsonb_array_elements('.self::DISCOUNTS_JSONB.
+                ') AS d WHERE lower('.self::DISCOUNT_CARD_SQL.') = ? AND '.self::DISCOUNT_HAS_TERMS.')',
+                [$card],
+            ));
     }
 
     /**
@@ -397,6 +448,69 @@ class Place extends Model
             'dietary_tags' => array_values($dietaryTags),
             'dishes' => array_values($dishes),
         ];
+    }
+
+    /**
+     * Union + dedupe the caption-derived card/bank/wallet discounts across every
+     * place_source snapshot (T-079). Each discount's display `card` is the
+     * resolved issuer, else the scheme, else the `@handle`; deduped by
+     * (card, terms) so two sources repeating the same offer collapse to one.
+     * Pure — reads the already-loaded `sources` relation, issuing no queries.
+     *
+     * @return list<array{card: string, terms: string, percent: int|null}>
+     */
+    public function aggregatedDiscounts(): array
+    {
+        /** @var array<string, array{card: string, terms: string, percent: int|null}> $discounts */
+        $discounts = [];
+
+        foreach ($this->sources as $source) {
+            $snapshot = $source->extraction_snapshot_json;
+            if (! is_array($snapshot['discounts'] ?? null)) {
+                continue;
+            }
+
+            foreach ($snapshot['discounts'] as $discount) {
+                if (! is_array($discount)) {
+                    continue;
+                }
+                $card = self::discountCard($discount);
+                $terms = trim((string) ($discount['terms'] ?? ''));
+                if ($card === '' || $terms === '') {
+                    continue;
+                }
+                $percent = is_int($discount['percent'] ?? null) ? $discount['percent'] : null;
+                $key = mb_strtolower($card).'|'.mb_strtolower($terms);
+                $discounts[$key] ??= ['card' => $card, 'terms' => $terms, 'percent' => $percent];
+            }
+        }
+
+        return array_values($discounts);
+    }
+
+    /**
+     * The display label for a raw discount snapshot: resolved issuer, else the
+     * card scheme, else the `@handle`. The SQL twin is {@see DISCOUNT_CARD_SQL}
+     * (used by the filter + facet) — keep the two in lockstep, including the
+     * leading-`@` collapse, so a shown card is always a filterable one.
+     *
+     * @param  array<string, mixed>  $discount
+     */
+    public static function discountCard(array $discount): string
+    {
+        $issuer = trim((string) ($discount['issuer'] ?? ''));
+        if ($issuer !== '') {
+            return $issuer;
+        }
+        $scheme = trim((string) ($discount['scheme'] ?? ''));
+        if ($scheme !== '') {
+            return $scheme;
+        }
+        // Strip any leading @ first, then re-prepend — a handle that is only @
+        // chars collapses to '' (dropped), matching DISCOUNT_CARD_SQL's NULL.
+        $handle = ltrim(trim((string) ($discount['handle'] ?? '')), '@');
+
+        return $handle !== '' ? '@'.$handle : '';
     }
 
     /**

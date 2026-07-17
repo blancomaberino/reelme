@@ -50,6 +50,10 @@ Route::prefix('v1')->group(function () {
     // detail + attribution sources. `{place}` binds by slug (canonical) or
     // numeric id. Same 120/min map limiter.
     Route::get('/places', [PlaceController::class, 'index'])->middleware('throttle:map');
+    // Distinct card/bank/wallet discounts across visible places (T-079) — the
+    // facet source for the map's "filter by card" chips. Before `{place}` so the
+    // literal path isn't captured as a slug.
+    Route::get('/places/payment-cards', [PlaceController::class, 'paymentCards'])->middleware('throttle:map');
     Route::get('/places/{place}', [PlaceController::class, 'show'])->middleware('throttle:map');
     Route::get('/places/{place}/sources', [PlaceController::class, 'sources'])->middleware('throttle:map');
 
