@@ -8,7 +8,7 @@ use App\Services\AI\Prompts\ExtractionPromptBuilder;
 
 /**
  * The extraction prompt must hand the model the POSTING ACCOUNT and instruct it
- * that the poster is the reviewer, not a venue (extraction.v8). Regression for
+ * that the poster is the reviewer, not a venue (extraction.v9). Regression for
  * the @el_encantador_de_burgas reel, where the reviewer's branded cover frame
  * got read as the venue name and the actually-reviewed @lagranburgerok (named in
  * the caption) was missed.
@@ -33,7 +33,7 @@ function promptText(GenerationRequest $req): string
         ->implode("\n");
 }
 
-it('injects the posting account and ships the v8 poster-exclusion rule', function () {
+it('injects the posting account and ships the v9 poster-exclusion rule', function () {
     $reviewer = Influencer::factory()->create([
         'handle' => 'el_encantador_de_burgas',
         'display_name' => 'El Encantador de Burgas',
@@ -43,7 +43,7 @@ it('injects the posting account and ships the v8 poster-exclusion rule', functio
     $text = promptText($req);
 
     // The prompt version bumped, so drift is recorded on the analysis run.
-    expect($req->promptVersion)->toBe('extraction.v8');
+    expect($req->promptVersion)->toBe('extraction.v9');
 
     // The account is surfaced to the model — handle AND the informative display name.
     expect($text)->toContain('POSTED BY:')
@@ -57,6 +57,21 @@ it('injects the posting account and ships the v8 poster-exclusion rule', functio
     expect($req->systemPrompt)
         ->toContain('POSTING ACCOUNT')
         ->toContain('NEVER use it as a `places[].name`');
+});
+
+it('ships the v9 price-alignment + cuisine-nationality guardrails', function () {
+    // Regression for the "Hugo" (Punta Carretas, Montevideo) post: a small vision
+    // model borrowed/repeated menu prices across caption-derived dishes and tagged
+    // the cuisine "argentinian" for a Uruguayan venue.
+    $sys = promptFor('caption', null)->systemPrompt;
+
+    expect($sys)
+        // Price alignment: never borrow/repeat a price across dishes.
+        ->toContain('do NOT borrow a price')
+        ->toContain('repeat the same price across different dishes')
+        // Cuisine nationality must match location/@handle, not dish style.
+        ->toContain('NATIONALITY/country cuisine')
+        ->toContain('is not "argentinian"');
 });
 
 it('omits a redundant display name equal to the handle', function () {
