@@ -4,6 +4,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tag translation (ADR-084 #4)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, a newly-materialized non-dish tag with no known dictionary
+    | translation queues a cheap LLM call to fill `name_i18n`. Off by default so
+    | environments without a remote key don't churn dead jobs; enable per-env.
+    */
+    'translate_tags' => (bool) env('AI_TRANSLATE_TAGS', false),
+
+    // Locales an auto-translated tag is filled for (English is the canonical source).
+    'translate_locales' => ['es'],
+
+    /*
+    |--------------------------------------------------------------------------
     | Local engine — Ollama
     |--------------------------------------------------------------------------
     |

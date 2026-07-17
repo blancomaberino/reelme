@@ -366,7 +366,10 @@ class Place extends Model
             'country_code' => $this->country_code,
             'cuisine_primary' => $this->cuisine_primary,
             'price_range' => $this->price_range,
+            // Slugs drive filtering; `tag_names` (English + every localized label)
+            // make the place findable by a tag typed in any language (ADR-084 #3).
             'tags' => $this->tags->pluck('slug')->all(),
+            'tag_names' => $this->tags->flatMap->searchableNames()->unique()->values()->all(),
             'shares_count' => (int) $this->shares_count,
             '_geo' => ['lat' => (float) $lat, 'lng' => (float) $lng],
         ];

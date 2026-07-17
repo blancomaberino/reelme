@@ -3,6 +3,7 @@
 namespace App\Services\Places;
 
 use App\Enums\TagKind;
+use App\Jobs\TranslateTag;
 use App\Models\Place;
 use App\Models\Tag;
 use App\Support\TagTranslations;
@@ -50,6 +51,18 @@ class TagMaterializer
                     ['kind' => $kind, 'slug' => $slug],
                     ['name' => mb_substr($name, 0, 80), 'name_i18n' => TagTranslations::forName($name)],
                 );
+
+                // A brand-new non-dish tag the dictionary didn't cover → queue a
+                // cheap LLM translation for the long tail (ADR-084 #4). After the
+                // publish transaction commits; opt-in per env.
+                if (
+                    $tag->wasRecentlyCreated
+                    && $kind !== TagKind::Dish->value
+                    && $tag->name_i18n === null
+                    && config('ai.translate_tags')
+                ) {
+                    TranslateTag::dispatch($tag->id, config('ai.translate_locales'))->afterCommit();
+                }
                 $attach[$tag->id] = [
                     'source' => 'extraction',
                     'confidence' => $confidence !== null ? round($confidence, 3) : null,

@@ -49,7 +49,11 @@ class Tag extends Model
      */
     public function localizedName(?string $locale): string
     {
-        return ($locale !== null ? ($this->name_i18n[$locale] ?? null) : null) ?? $this->name;
+        $label = $locale !== null ? ($this->name_i18n[$locale] ?? null) : null;
+
+        // Treat a blank override as "no translation" so it falls back, never
+        // rendering an empty label.
+        return $label !== null && trim($label) !== '' ? $label : $this->name;
     }
 
     protected static function booted(): void
@@ -87,7 +91,26 @@ class Tag extends Model
             'id' => $this->id,
             'kind' => $this->kind->value,
             'name' => $this->name,
+            // Every name the tag is known by — canonical English + each localized
+            // label — so a Spanish query ("parrilla", "informal") matches a tag
+            // stored in English (ADR-084 #3). Adding a locale later is a reindex,
+            // not a schema/client change.
+            'names' => $this->searchableNames(),
             'slug' => $this->slug,
         ];
+    }
+
+    /**
+     * Distinct, non-empty names across every locale (English `name` + all
+     * `name_i18n` values). Also used to index tag names on Place documents.
+     *
+     * @return list<string>
+     */
+    public function searchableNames(): array
+    {
+        return array_values(array_unique(array_filter(
+            [$this->name, ...array_values($this->name_i18n ?? [])],
+            static fn (string $n) => trim($n) !== '',
+        )));
     }
 }

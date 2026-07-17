@@ -161,3 +161,18 @@ it('reindex command rebuilds indexes with settings idempotently', function () {
         ->pluck('name');
     expect($names)->toContain('Reindexed Ramen');
 })->group('meilisearch');
+
+it('finds tags and places by their Spanish label through the real index (ADR-084 #3)', function () {
+    // Stored in English; the Spanish label is only reachable if the localized
+    // searchable attributes (Tag.names, Place.tag_names) actually shipped to Meili.
+    $tag = Tag::factory()->create(['kind' => 'cuisine', 'name' => 'steakhouse', 'slug' => 'steakhouse', 'name_i18n' => ['es' => 'Parrilla']]);
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'El Fogon']);
+    $place->tags()->attach($tag->id, ['source' => 'extraction']);
+    $place->searchable(); // re-index now that the tag is attached
+    waitForMeili($this->meili, $this->prefix);
+
+    $res = $this->getJson('/api/v1/search?q=parrilla')->assertOk();
+
+    expect(collect($res->json('data.tags'))->pluck('slug'))->toContain('steakhouse')
+        ->and(collect($res->json('data.places'))->pluck('name'))->toContain('El Fogon');
+})->group('meilisearch');
