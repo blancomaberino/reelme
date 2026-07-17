@@ -9,8 +9,10 @@ use Illuminate\Support\Facades\Log;
 /**
  * Runs transcription local-first with a hosted fallback (04 §1/§3). The primary
  * driver is skipped when unavailable or after it throws; hosted is tried only
- * when it too is available. Both exhausted → TranscriptionFailed (job maps to
- * `transcribe_error`). Logs which driver won.
+ * when it too is available. Both exhausted → TranscriptionFailed, which
+ * TranscribeAudio treats as best-effort: it degrades to an empty transcript and
+ * lets the pipeline continue (caption + keyframes still drive extraction), rather
+ * than failing the share. Logs which driver won.
  */
 class TranscriptionManager
 {

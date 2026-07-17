@@ -170,7 +170,91 @@ it('supports() matches only http(s) urls on supported platform hosts', function 
         ->and($adapter->supports('manual://ABC'))->toBeFalse();
 });
 
-it('fetchMetadata declines (PostUnavailable) — yt-dlp is media-only', function () {
+it('fetchMetadata returns the caption, author and posted date from yt-dlp -J', function () {
+    Process::fake(['*' => Process::result(output: json_encode([
+        'id' => 'DavzhF8h2Ym',
+        'title' => 'Video by el_encantador_de_burgas',
+        'description' => 'En la 13 visitamos a @lagranburgerok',
+        'channel' => 'el_encantador_de_burgas',
+        'uploader' => 'El Encantador de 🍔',
+        'timestamp' => 1783975505,
+    ]))]);
+
+    $data = (new YtDlpAdapter)->fetchMetadata('https://www.instagram.com/reels/DavzhF8h2Ym/', null);
+
+    expect($data)->toBeInstanceOf(SourcePostData::class)
+        ->and($data->platform)->toBe(Platform::Instagram)
+        ->and($data->externalId)->toBe('DavzhF8h2Ym')
+        ->and($data->caption)->toBe('En la 13 visitamos a @lagranburgerok') // description, not the generic title
+        ->and($data->authorHandle)->toBe('el_encantador_de_burgas')
+        ->and($data->authorDisplayName)->toBe('El Encantador de 🍔')
+        ->and($data->postedAt?->timestamp)->toBe(1783975505)
+        ->and($data->raw['source'])->toBe('ytdlp');
+
+    // Metadata is a dump (-J), never a download.
+    Process::assertRan(fn ($p) => in_array('-J', $p->command, true) && ! in_array('--no-simulate', $p->command, true));
+});
+
+it('fetchMetadata falls back to upload_date and the title when description is absent', function () {
+    Process::fake(['*' => Process::result(output: json_encode([
+        'id' => 'XYZ', 'title' => 'Best tacos in town', 'upload_date' => '20260713',
+    ]))]);
+
+    $data = (new YtDlpAdapter)->fetchMetadata('https://www.tiktok.com/@u/video/1', null);
+
+    expect($data->caption)->toBe('Best tacos in town')
+        ->and($data->platform)->toBe(Platform::Tiktok)
+        // `!Ymd` resets time-of-day to midnight (without the `!`, posted_at would
+        // inherit the current wall-clock time on the upload date).
+        ->and($data->postedAt?->format('Y-m-d H:i:s'))->toBe('2026-07-13 00:00:00');
+});
+
+it('fetchMetadata leaves postedAt null when neither timestamp nor upload_date is present', function () {
+    Process::fake(['*' => Process::result(output: json_encode(['id' => 'ABC', 'description' => 'x']))]);
+
+    expect((new YtDlpAdapter)->fetchMetadata('https://www.instagram.com/reel/ABC/', null)->postedAt)->toBeNull();
+});
+
+it('fetchMetadata throws PostUnavailable when the JSON has no id (object present, id missing)', function () {
+    Process::fake(['*' => Process::result(output: json_encode(['description' => 'no id here']))]);
+    (new YtDlpAdapter)->fetchMetadata('https://www.instagram.com/reel/ABC/', null);
+})->throws(PostUnavailable::class);
+
+it('fetchMetadata passes --cookies on the -J command when a cookie file is configured', function () {
+    $cookies = tempnam(sys_get_temp_dir(), 'ck_');
+    file_put_contents($cookies, "# Netscape\n");
+    Process::fake(['*' => Process::result(output: json_encode(['id' => 'ABC']))]);
+
+    (new YtDlpAdapter(cookiesPath: $cookies))->fetchMetadata('https://www.instagram.com/reel/ABC/', null);
+
+    Process::assertRan(function ($process) use ($cookies) {
+        $cmd = $process->command;
+        $i = array_search('--cookies', $cmd, true);
+
+        return in_array('-J', $cmd, true) && $i !== false && $cmd[$i + 1] === $cookies;
+    });
+    @unlink($cookies);
+});
+
+it('fetchMetadata throws PostUnavailable (advance the chain) when disabled — no process run', function () {
+    Process::fake();
+    expect(fn () => (new YtDlpAdapter(enabled: false))->fetchMetadata('https://www.instagram.com/reel/ABC/', null))
+        ->toThrow(PostUnavailable::class);
+    Process::assertNothingRan();
+});
+
+it('fetchMetadata throws PostUnavailable on a non-zero exit (missing binary / auth wall)', function () {
+    Process::fake(['*' => Process::result(output: '', errorOutput: 'HTTP Error 401', exitCode: 1)]);
+    (new YtDlpAdapter)->fetchMetadata('https://www.instagram.com/reel/ABC/', null);
+})->throws(PostUnavailable::class);
+
+it('fetchMetadata throws PostUnavailable when yt-dlp returns no usable id', function () {
+    Process::fake(['*' => Process::result(output: 'not json')]);
+    (new YtDlpAdapter)->fetchMetadata('https://www.instagram.com/reel/ABC/', null);
+})->throws(PostUnavailable::class);
+
+it('fetchMetadata throws PostUnavailable (advance), never propagating a process throw', function () {
+    Process::fake(['*' => fn () => throw new RuntimeException('timed out')]);
     (new YtDlpAdapter)->fetchMetadata('https://www.instagram.com/reel/ABC/', null);
 })->throws(PostUnavailable::class);
 
