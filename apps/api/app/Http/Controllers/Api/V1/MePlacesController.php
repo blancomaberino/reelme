@@ -89,6 +89,10 @@ class MePlacesController extends Controller
             ->select('tags.slug')
             ->selectRaw('min(tags.id) as id')
             ->selectRaw('min(tags.name) as name')
+            // Cast to text so it aggregates; twins of a slug share the same
+            // translation, so any representative is correct. The model's array
+            // cast decodes it back for localizedName().
+            ->selectRaw('min(tags.name_i18n::text) as name_i18n')
             ->selectRaw('min(tags.kind) as kind')
             ->selectRaw('count(distinct place_tag.place_id) as places_count')
             ->orderByDesc('places_count')

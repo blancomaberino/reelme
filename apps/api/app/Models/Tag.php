@@ -18,6 +18,7 @@ use Laravel\Scout\Searchable;
  * @property int $id
  * @property TagKind $kind
  * @property string $name
+ * @property array<string, string>|null $name_i18n
  * @property string $slug
  * @property int|null $places_count
  */
@@ -28,7 +29,7 @@ class Tag extends Model
 
     use Searchable;
 
-    protected $fillable = ['kind', 'name', 'slug'];
+    protected $fillable = ['kind', 'name', 'name_i18n', 'slug'];
 
     /**
      * @return array<string, string>
@@ -37,7 +38,18 @@ class Tag extends Model
     {
         return [
             'kind' => TagKind::class,
+            'name_i18n' => 'array',
         ];
+    }
+
+    /**
+     * The display label for a locale (ADR-084 #2): the localized name when one
+     * exists, else the canonical English `name`. `en` (and any untranslated
+     * locale) always yields `name`, which IS the English label.
+     */
+    public function localizedName(?string $locale): string
+    {
+        return ($locale !== null ? ($this->name_i18n[$locale] ?? null) : null) ?? $this->name;
     }
 
     protected static function booted(): void

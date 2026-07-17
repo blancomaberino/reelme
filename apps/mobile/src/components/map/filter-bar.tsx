@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { useMapTagCatalog } from '@/api/hooks/useTags';
 import { type AppliedChip, FilterTriggerBar } from '@/components/filters/filter-trigger-bar';
 import { MapFilterSheet, mapFilterCount } from '@/components/map/map-filter-sheet';
-import { tagDisplayName } from '@/lib/tags';
+import { tagLabelForSlug } from '@/lib/tags';
 import { useFormat } from '@/lib/use-format';
 import { useMapStore } from '@/stores/map';
 
@@ -38,7 +38,7 @@ export function FilterBar() {
       out.push({ key: 'card', label: `💳 ${card}`, onRemove: () => toggleCard(card) });
     }
     for (const slug of filters.tags ?? []) {
-      out.push({ key: `tag-${slug}`, label: fmt.tag(tagDisplayName(catalog, slug)), onRemove: () => toggleTag(slug) });
+      out.push({ key: `tag-${slug}`, label: tagLabelForSlug(catalog, slug, fmt.tag), onRemove: () => toggleTag(slug) });
     }
     return out;
   }, [filters.price_range, filters.card, filters.tags, catalog, fmt, togglePrice, toggleCard, toggleTag]);

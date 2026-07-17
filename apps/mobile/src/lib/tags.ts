@@ -192,12 +192,15 @@ export function hasSpanishTag(raw: string): boolean {
 }
 
 /**
- * A tag's raw display name resolved from a catalog by slug, falling back to the
- * humanized slug (which {@link localizeTag} then title-cases) when the slug
- * isn't in the catalog. Wrap the result in `fmt.tag(...)` to localize.
+ * A tag's display label resolved from a catalog by slug: the server-localized
+ * `label` when present (ADR-084 #2), else the `localize` fallback applied to the
+ * English name (or the humanized slug when the slug isn't in the catalog). Pass
+ * `fmt.tag` as `localize`.
  */
-export function tagDisplayName(tags: TagSummary[], slug: string): string {
-  return tags.find((t) => t.slug === slug)?.name ?? slug.replace(/-/g, ' ');
+export function tagLabelForSlug(tags: TagSummary[], slug: string, localize: (raw: string) => string): string {
+  const tag = tags.find((t) => t.slug === slug);
+  if (tag?.label) return tag.label;
+  return localize(tag?.name ?? slug.replace(/-/g, ' '));
 }
 
 /**
@@ -219,14 +222,13 @@ export function foldSearch(s: string): string {
 }
 
 /**
- * The folded strings a tag is matched against: its *localized* label (what the
- * user sees) plus its raw name/slug. Tags are stored in English but displayed
- * in Spanish via {@link localizeTag}, so all three must be searchable. These
- * depend only on the tag + locale, so a caller filtering a catalog per keystroke
- * should precompute them once (per catalog/locale) rather than re-folding.
+ * The folded strings a tag is matched against: its display `label` (what the
+ * user sees — pass the same string you render) plus its raw name/slug, so search
+ * and display never disagree. Precompute once per catalog/locale rather than
+ * re-folding on every keystroke.
  */
-export function tagHaystacks(name: string, slug: string, locale: Locale): string[] {
-  return [foldSearch(localizeTag(name, locale)), foldSearch(name), foldSearch(slug)];
+export function tagHaystacks(label: string, name: string, slug: string): string[] {
+  return [foldSearch(label), foldSearch(name), foldSearch(slug)];
 }
 
 /**
@@ -247,7 +249,7 @@ export function haystackMatchIndex(haystacks: string[], foldedQuery: string): nu
 
 /** Match a single tag against a raw query (folds both sides). See {@link haystackMatchIndex}. */
 export function tagMatchIndex(name: string, slug: string, query: string, locale: Locale): number {
-  return haystackMatchIndex(tagHaystacks(name, slug, locale), foldSearch(query));
+  return haystackMatchIndex(tagHaystacks(localizeTag(name, locale), name, slug), foldSearch(query));
 }
 
 /** Title-case a raw tag for display when it isn't in the dictionary. */

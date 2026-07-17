@@ -4,9 +4,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { TagSummary } from '@/api/places';
 import { useT } from '@/i18n';
-import { foldSearch, haystackMatchIndex, tagDisplayName, tagHaystacks } from '@/lib/tags';
+import { foldSearch, haystackMatchIndex, tagHaystacks, tagLabelForSlug } from '@/lib/tags';
 import { useFormat } from '@/lib/use-format';
-import { useSettingsStore } from '@/stores/settings';
 import { type Palette, useColors } from '@/theme/colors';
 
 /** Empty-state quick picks, and the cap on how many matches to show. */
@@ -38,22 +37,24 @@ export function TagAutocomplete({ catalog, selected, onToggle }: Props) {
   const t = useT();
   const fmt = useFormat();
   const c = useColors();
-  const locale = useSettingsStore((s) => s.locale);
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const [q, setQ] = useState('');
   const typed = q.trim();
   const searching = typed.length > 0;
 
-  const labelFor = (slug: string) => fmt.tag(tagDisplayName(catalog, slug));
+  // A tag's display label: server `label` if present, else locale-formatted name.
+  const display = (tag: TagSummary) => tag.label ?? fmt.tag(tag.name);
+  const labelFor = (slug: string) => tagLabelForSlug(catalog, slug, fmt.tag);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
   // Precompute each tag's folded haystacks once per catalog/locale — not per
-  // keystroke — so typing only folds the query and runs plain indexOf.
+  // keystroke — so typing only folds the query and runs plain indexOf. Matching
+  // uses the SAME label string we display, so search and label never disagree.
   const indexed = useMemo(
-    () => catalog.map((tag) => ({ tag, hay: tagHaystacks(tag.name, tag.slug, locale) })),
-    [catalog, locale],
+    () => catalog.map((tag) => ({ tag, hay: tagHaystacks(tag.label ?? fmt.tag(tag.name), tag.name, tag.slug) })),
+    [catalog, fmt],
   );
 
   // Suggestions: while typing, every catalog tag that matches (ranked so
@@ -122,12 +123,12 @@ export function TagAutocomplete({ catalog, selected, onToggle }: Props) {
             <Pressable
               key={tag.id}
               accessibilityRole="button"
-              accessibilityLabel={fmt.tag(tag.name)}
+              accessibilityLabel={display(tag)}
               onPress={() => onToggle(tag.slug)}
               style={({ pressed }) => [styles.suggestion, pressed && styles.pressed]}
             >
               <Ionicons name="add" size={14} color={c.primary} />
-              <Text style={styles.suggestionLabel}>{fmt.tag(tag.name)}</Text>
+              <Text style={styles.suggestionLabel}>{display(tag)}</Text>
             </Pressable>
           ))}
         </View>
