@@ -22,9 +22,9 @@ use Illuminate\Support\Facades\Process;
  *
  * `fetchMetadata()` runs `yt-dlp -J … -- <url>` (dump JSON, no download) → the
  * caption (`description`), author, and posted date; it is the rescue when the
- * keyless oEmbed is blocked/rate-limited (common for Instagram from a datacenter
- * IP), so a reel no longer dead-ends at the manual fallback. It throws the usual
- * typed adapter exceptions (advance the chain) on any yt-dlp failure.
+ * keyless oEmbed reports the post unavailable (common for Instagram from a
+ * datacenter IP), so a reel no longer dead-ends at the manual fallback. It throws
+ * the usual typed adapter exceptions (advance the chain) on any yt-dlp failure.
  *
  * `fetchMedia()` runs `yt-dlp … -o <temp> -- <url>` and returns the downloaded
  * file as a `FetchedMedia(localPath:…, kind: Video)`; `DownloadMedia` stores it

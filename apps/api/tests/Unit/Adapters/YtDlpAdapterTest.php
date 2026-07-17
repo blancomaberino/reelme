@@ -204,7 +204,36 @@ it('fetchMetadata falls back to upload_date and the title when description is ab
 
     expect($data->caption)->toBe('Best tacos in town')
         ->and($data->platform)->toBe(Platform::Tiktok)
-        ->and($data->postedAt?->format('Y-m-d'))->toBe('2026-07-13');
+        // `!Ymd` resets time-of-day to midnight (without the `!`, posted_at would
+        // inherit the current wall-clock time on the upload date).
+        ->and($data->postedAt?->format('Y-m-d H:i:s'))->toBe('2026-07-13 00:00:00');
+});
+
+it('fetchMetadata leaves postedAt null when neither timestamp nor upload_date is present', function () {
+    Process::fake(['*' => Process::result(output: json_encode(['id' => 'ABC', 'description' => 'x']))]);
+
+    expect((new YtDlpAdapter)->fetchMetadata('https://www.instagram.com/reel/ABC/', null)->postedAt)->toBeNull();
+});
+
+it('fetchMetadata throws PostUnavailable when the JSON has no id (object present, id missing)', function () {
+    Process::fake(['*' => Process::result(output: json_encode(['description' => 'no id here']))]);
+    (new YtDlpAdapter)->fetchMetadata('https://www.instagram.com/reel/ABC/', null);
+})->throws(PostUnavailable::class);
+
+it('fetchMetadata passes --cookies on the -J command when a cookie file is configured', function () {
+    $cookies = tempnam(sys_get_temp_dir(), 'ck_');
+    file_put_contents($cookies, "# Netscape\n");
+    Process::fake(['*' => Process::result(output: json_encode(['id' => 'ABC']))]);
+
+    (new YtDlpAdapter(cookiesPath: $cookies))->fetchMetadata('https://www.instagram.com/reel/ABC/', null);
+
+    Process::assertRan(function ($process) use ($cookies) {
+        $cmd = $process->command;
+        $i = array_search('--cookies', $cmd, true);
+
+        return in_array('-J', $cmd, true) && $i !== false && $cmd[$i + 1] === $cookies;
+    });
+    @unlink($cookies);
 });
 
 it('fetchMetadata throws PostUnavailable (advance the chain) when disabled — no process run', function () {

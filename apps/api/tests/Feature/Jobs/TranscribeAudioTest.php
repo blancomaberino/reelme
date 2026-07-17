@@ -117,3 +117,15 @@ it('degrades to an empty transcript (does NOT fail the share) when both engines 
         ->and($t['driver'])->toBe('failed')            // marks the degraded outcome
         ->and($share->fresh()->status)->toBe(ShareStatus::Fetching); // chain proceeds, share not dropped
 });
+
+it('still fails the share (transcribe_error) on a genuine infra error, not a transcriber failure', function () {
+    // The narrow catch degrades ONLY a TranscriptionFailed; an unexpected infra
+    // error (audio pull / storage / DB) must still propagate → retries → the
+    // failed() hook parks the share with the taxonomy code (not silently swallowed).
+    $share = shareWithAudio();
+
+    (new TranscribeAudio($share->id))->failed(new RuntimeException('audio disk read error'));
+
+    expect($share->fresh()->status)->toBe(ShareStatus::Failed)
+        ->and($share->fresh()->failure_reason)->toBe('transcribe_error');
+});
