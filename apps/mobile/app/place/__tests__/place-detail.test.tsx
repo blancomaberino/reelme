@@ -195,6 +195,7 @@ it('renders app + Google reviews with names, stars and text', async () => {
         author: 'Ana Pérez',
         rating: 4,
         text: 'Buena comida y atención.',
+        relative_time: 'hace 2 semanas',
         profile_photo_url: 'https://lh3.googleusercontent.com/a/ana.jpg',
       },
       { author: 'Sin foto', rating: 3, text: 'Correcto.', profile_photo_url: null },
@@ -209,11 +210,32 @@ it('renders app + Google reviews with names, stars and text', async () => {
   // source card, so the body is the unambiguous signal it rendered).
   expect(screen.getByText('Impecable, volvería.')).toBeOnTheScreen();
   expect(screen.getByText('From Google')).toBeOnTheScreen();
-  // Google review name + stars share a Text node → match the name as a substring.
+  // Google review name + relative time + stars share a Text node → substring match.
   expect(screen.getByText(/Ana Pérez/)).toBeOnTheScreen();
+  expect(screen.getByText(/hace 2 semanas/)).toBeOnTheScreen();
   expect(screen.getByText('Buena comida y atención.')).toBeOnTheScreen();
   // The photo-less Google review falls back to an initial avatar, not a crash.
   expect(screen.getByText(/Sin foto/)).toBeOnTheScreen();
+});
+
+it('links out to the place reviews on Google when a google_place_id is present', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+
+  fireEvent.press(await screen.findByLabelText('Read all reviews on Google'));
+  expect(Linking.openURL).toHaveBeenCalledWith(
+    `https://search.google.com/local/reviews?placeid=${encodeURIComponent(PLACE.google_place_id!)}`,
+  );
+});
+
+it('hides the Google reviews deep link when there is no google_place_id', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: { ...PLACE, google_place_id: null } });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+
+  await screen.findByText('1921 Restaurant');
+  expect(screen.queryByLabelText('Read all reviews on Google')).toBeNull();
 });
 
 it('shows a hero image when the primary source has a thumbnail', async () => {

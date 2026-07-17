@@ -366,6 +366,7 @@ const I18N = {
     'toast.error': 'Algo salió mal',
     'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.hours': 'HORARIO', 'place.googleMaps': 'Ver en Google Maps', 'place.dishesUpdated': 'Menú actualizado el', 'place.sources': 'VIDEOS DE ORIGEN',
     'place.reviews': 'RESEÑAS', 'place.fromGoogle': 'DE GOOGLE', 'place.watch': 'Ver original ↗',
+    'place.readOnGoogle': 'Ver todas las reseñas en Google',
     'place.sharedBy': 'compartido por', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reseñas',
     'review.rate': 'Calificá este lugar', 'review.your': 'Tu reseña', 'review.ph': 'Escribí una impresión…',
     'review.post': 'Publicar', 'review.update': 'Actualizar', 'review.delete': 'Eliminar',
@@ -408,6 +409,7 @@ const I18N = {
     'toast.error': 'Something went wrong',
     'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.hours': 'HOURS', 'place.googleMaps': 'View on Google Maps', 'place.dishesUpdated': 'Menu updated', 'place.sources': 'SOURCE VIDEOS',
     'place.reviews': 'REVIEWS', 'place.fromGoogle': 'FROM GOOGLE', 'place.watch': 'Watch original ↗',
+    'place.readOnGoogle': 'Read all reviews on Google',
     'place.sharedBy': 'shared by', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reviews',
     'review.rate': 'Rate this place', 'review.your': 'Your review', 'review.ph': 'Share a quick thought…',
     'review.post': 'Post', 'review.update': 'Update', 'review.delete': 'Delete',
@@ -754,6 +756,11 @@ function renderPlace(p) {
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name || "")}&query_place_id=${encodeURIComponent(p.google_place_id)}` : null;
   const gmaps = gmapsUrl
     ? `<div><a href="${esc(safeUrl(gmapsUrl))}" target="_blank" rel="noopener"><span style="color:var(--primary)">◆</span> ${t("place.googleMaps")}</a></div>` : "";
+  // Deep link to the place's Google reviews list (not the map card).
+  const greviewsUrl = p.google_place_id
+    ? `https://search.google.com/local/reviews?placeid=${encodeURIComponent(p.google_place_id)}` : null;
+  const readOnGoogle = greviewsUrl
+    ? `<div style="margin-top:4px"><a href="${esc(safeUrl(greviewsUrl))}" target="_blank" rel="noopener">${t("place.readOnGoogle")} ↗</a></div>` : "";
   const sources = (p.sources || []).map(s => {
     const post = s.source_post || {};
     const label = `${(post.platform || "post")}`;
@@ -769,7 +776,7 @@ function renderPlace(p) {
   }).join("");
   const gReviews = (p.google_reviews || []).slice(0, 3).map(r =>
     `<div class="review">${reviewAvatar(r.profile_photo_url, r.author)}
-       <div><div style="font-size:var(--fs-sm)"><b>${esc(r.author || t("review.googleUser"))}</b> <span class="stars">${starStr(r.rating)}</span></div>
+       <div><div style="font-size:var(--fs-sm)"><b>${esc(r.author || t("review.googleUser"))}</b> <span class="stars">${starStr(r.rating)}</span>${r.relative_time ? ` <span class="muted" style="color:var(--muted);font-size:var(--fs-xs)">· ${esc(r.relative_time)}</span>` : ""}</div>
        <p style="font-size:var(--fs-sm);color:var(--ink-2);margin:4px 0 0;line-height:1.5">${esc((r.text || "").slice(0, 200))}</p></div></div>`).join("");
   const appReviews = (p.reviews || []).map(r =>
     `<div class="review">${reviewAvatar(r.author && r.author.avatar_path, r.author ? r.author.username : "a")}
@@ -814,7 +821,7 @@ function renderPlace(p) {
       ${composer}
       <div><div class="sec-h" style="margin-bottom:10px">${t("place.reviews")}</div>
         ${appReviews || `<div style="font-size:var(--fs-sm);color:var(--ink-2)">${t("review.empty")}</div>`}</div>
-      ${gReviews ? `<div><div class="sec-h" style="margin-bottom:10px">${t("place.fromGoogle")}</div><div style="display:flex;flex-direction:column;gap:12px">${gReviews}</div></div>` : ""}
+      ${(gReviews || readOnGoogle) ? `<div><div class="sec-h" style="margin-bottom:10px">${t("place.fromGoogle")}</div>${gReviews ? `<div style="display:flex;flex-direction:column;gap:12px">${gReviews}</div>` : ""}${readOnGoogle}</div>` : ""}
     </div>`;
 }
 
