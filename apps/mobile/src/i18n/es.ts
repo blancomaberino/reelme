@@ -67,6 +67,7 @@ export const es: Record<MessageKey, string> = {
   'place.you': ' (vos)',
   'place.anonymous': 'anónimo',
   'place.googleUser': 'Usuario de Google',
+  'place.readOnGoogle': 'Ver todas las reseñas en Google',
   'place.sourceCount': '{{count}} fuentes',
   'place.sourceCount_one': '{{count}} fuente',
   'place.sourceCount_other': '{{count}} fuentes',

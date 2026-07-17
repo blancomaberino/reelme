@@ -1,4 +1,11 @@
-import { directionsUrl, googleMapsUrl, listShareUrl, listWebUrl, placeShareUrl } from '../directions';
+import {
+  directionsUrl,
+  googleMapsUrl,
+  googleReviewsUrl,
+  listShareUrl,
+  listWebUrl,
+  placeShareUrl,
+} from '../directions';
 
 describe('directionsUrl', () => {
   it('routes to the exact coordinates on iOS (no name search)', () => {
@@ -48,5 +55,16 @@ describe('googleMapsUrl', () => {
   });
   it('returns null without a place id', () => {
     expect(googleMapsUrl('Clara Café', null)).toBeNull();
+  });
+});
+
+describe('googleReviewsUrl', () => {
+  it('links to the place reviews list on Google when a place id is present', () => {
+    expect(googleReviewsUrl('ChIJ+abc/def')).toBe(
+      'https://search.google.com/local/reviews?placeid=ChIJ%2Babc%2Fdef',
+    );
+  });
+  it('returns null without a place id', () => {
+    expect(googleReviewsUrl(null)).toBeNull();
   });
 });

@@ -3,27 +3,27 @@
 namespace App\Console\Commands;
 
 use App\Models\Place;
-use App\Services\Geo\Geocoder;
-use App\Services\Geo\GeoHints;
+use App\Services\Places\GooglePlaceRefresher;
 use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * Google-ToS compliance (T-059): Places review content may not be cached
- * beyond ~30 days. For every place whose cached snippets are stale, try to
- * re-fetch through the configured geocoder; when that yields nothing (keyless
- * Nominatim dev setup, place no longer found, API error) the cached content
- * is DROPPED rather than kept — compliance beats prettiness. Scheduled daily.
+ * Google-ToS compliance (T-059): Places review content may not be cached beyond
+ * ~30 days. For every place whose cached snippets are stale, refresh-or-drop
+ * through the shared {@see GooglePlaceRefresher} — the SAME logic the on-demand
+ * re-share path uses (T-080), so both surfaces agree on what "stale" and
+ * "refresh-or-drop" mean. Scheduled daily.
  */
 class RefreshStaleGoogleReviews extends Command
 {
-    protected $signature = 'reelmap:google:refresh-stale {--days=30 : Max cache age before refresh-or-drop}';
+    protected $signature = 'reelmap:google:refresh-stale {--days= : Max cache age in days before refresh-or-drop (default: places.google.refresh_after_days)}';
 
     protected $description = 'Refresh or drop cached Google review snippets older than the ToS window';
 
-    public function handle(Geocoder $geocoder): int
+    public function handle(GooglePlaceRefresher $refresher): int
     {
-        $cutoff = now()->subDays(max(1, (int) $this->option('days')));
+        $days = $this->option('days') !== null ? (int) $this->option('days') : null;
+        $cutoff = now()->subDays($refresher->windowDays($days));
         $refreshed = 0;
         $dropped = 0;
 
@@ -32,42 +32,16 @@ class RefreshStaleGoogleReviews extends Command
             ->where(fn ($q) => $q
                 ->whereNull('google_reviews_synced_at')
                 ->orWhere('google_reviews_synced_at', '<', $cutoff))
-            ->chunkById(100, function ($places) use ($geocoder, &$refreshed, &$dropped) {
+            ->chunkById(100, function ($places) use ($refresher, &$refreshed, &$dropped) {
                 foreach ($places as $place) {
                     // Per-row isolation: one bad row must never abort the run —
                     // every remaining stale place would keep its expired content.
                     try {
-                        $fresh = null;
-                        $result = $geocoder->findPlace($place->name, new GeoHints(
-                            city: $place->city,
-                            country: $place->country_code,
-                        ));
-                        // Only trust a result that is the SAME Google place and
-                        // actually carries a rating + reviews.
-                        if ($result !== null
-                            && $place->google_place_id !== null
-                            && $result->googlePlaceId === $place->google_place_id
-                            && $result->rating !== null
-                            && $result->reviews !== []) {
-                            $fresh = $result;
-                        }
-
-                        if ($fresh !== null) {
-                            $place->google_rating = (string) $fresh->rating;
-                            $place->google_rating_count = $fresh->ratingCount;
-                            $place->google_reviews_json = $fresh->reviews;
-                            $place->google_reviews_synced_at = now();
-                            $refreshed++;
-                        } else {
-                            // Drop the whole cached Places signal — the rating is
-                            // Places content under the same caching policy.
-                            $place->google_rating = null;
-                            $place->google_rating_count = null;
-                            $place->google_reviews_json = null;
-                            $place->google_reviews_synced_at = null;
-                            $dropped++;
-                        }
-                        $place->save();
+                        match ($refresher->refresh($place)) {
+                            'refreshed' => $refreshed++,
+                            'dropped' => $dropped++,
+                            default => null,
+                        };
                     } catch (Throwable $e) {
                         report($e);
                     }
