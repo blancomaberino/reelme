@@ -43,8 +43,10 @@ export function TagAutocomplete({ catalog, selected, onToggle }: Props) {
   const typed = q.trim();
   const searching = typed.length > 0;
 
-  // A tag's display label: server `label` if present, else locale-formatted name.
-  const display = (tag: TagSummary) => tag.label ?? fmt.tag(tag.name);
+  // A tag's display label: server `label` when non-empty, else locale-formatted
+  // name. Truthy (not ??) so a blank label can't render as an empty pill — and
+  // it must match tagLabelForSlug's check so chips and suggestions never diverge.
+  const display = (tag: TagSummary) => (tag.label ? tag.label : fmt.tag(tag.name));
   const labelFor = (slug: string) => tagLabelForSlug(catalog, slug, fmt.tag);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -53,7 +55,8 @@ export function TagAutocomplete({ catalog, selected, onToggle }: Props) {
   // keystroke — so typing only folds the query and runs plain indexOf. Matching
   // uses the SAME label string we display, so search and label never disagree.
   const indexed = useMemo(
-    () => catalog.map((tag) => ({ tag, hay: tagHaystacks(tag.label ?? fmt.tag(tag.name), tag.name, tag.slug) })),
+    () => catalog.map((tag) => ({ tag, hay: tagHaystacks(display(tag), tag.name, tag.slug) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `display` is a pure fn of catalog+fmt, both listed
     [catalog, fmt],
   );
 

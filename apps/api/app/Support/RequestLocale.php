@@ -23,12 +23,26 @@ final class RequestLocale
             return $param;
         }
 
+        // Accept-Language, honoring the q-weights (highest wins, default 1.0).
+        $ranked = [];
         foreach (explode(',', (string) $request->header('Accept-Language', '')) as $part) {
-            // Drop the ";q=" weight and any region subtag ("es-419" → "es").
-            $tag = self::normalize(explode('-', trim(explode(';', $part)[0]))[0]);
-            if ($tag !== null) {
-                return $tag;
+            $bits = explode(';', $part);
+            $locale = self::normalize($bits[0]);
+            if ($locale === null) {
+                continue;
             }
+            $q = 1.0;
+            foreach (array_slice($bits, 1) as $bit) {
+                if (preg_match('/^\s*q=([0-9.]+)/i', $bit, $m)) {
+                    $q = (float) $m[1];
+                }
+            }
+            $ranked[$locale] = max($ranked[$locale] ?? 0.0, $q);
+        }
+        if ($ranked !== []) {
+            arsort($ranked);
+
+            return (string) array_key_first($ranked);
         }
 
         return self::normalize((string) config('app.locale')) ?? 'en';
@@ -36,7 +50,8 @@ final class RequestLocale
 
     private static function normalize(string $tag): ?string
     {
-        $tag = mb_strtolower(trim($tag));
+        // Lowercase and drop any region subtag ("es-419" → "es"), then allowlist.
+        $tag = mb_strtolower(trim(explode('-', trim($tag))[0]));
 
         return in_array($tag, self::SUPPORTED, true) ? $tag : null;
     }

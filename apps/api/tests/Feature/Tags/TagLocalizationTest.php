@@ -34,6 +34,18 @@ it('resolves the locale from Accept-Language when no ?locale is given', function
     expect($row['label'])->toBe('Informal');
 });
 
+it('honors Accept-Language q-weights over header order', function () {
+    Tag::factory()->create(['name' => 'casual', 'slug' => 'casual', 'name_i18n' => ['es' => 'Informal']]);
+
+    // en listed first but outranked by es → Spanish label.
+    $es = $this->getJson('/api/v1/tags?q=casual', ['Accept-Language' => 'en;q=0.5, es;q=0.9'])->assertOk()->json('data.0');
+    expect($es['label'])->toBe('Informal');
+
+    // es outranked by en → the canonical English name.
+    $en = $this->getJson('/api/v1/tags?q=casual', ['Accept-Language' => 'es;q=0.4, en;q=0.8'])->assertOk()->json('data.0');
+    expect($en['label'])->toBe('casual');
+});
+
 it('seeds name_i18n from the dictionary when materializing a new tag', function () {
     $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
     // "casual" is in the dictionary (→ Informal); "kombucha" is not.

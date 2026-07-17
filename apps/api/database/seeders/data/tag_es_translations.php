@@ -92,6 +92,7 @@ return [
     'diner' => 'Diner',
     'cantina' => 'Cantina',
     'taqueria' => 'Taquería',
+    'taquería' => 'Taquería',
     'creperie' => 'Crepería',
     'crepes' => 'Crepes',
     'waffles' => 'Waffles',
