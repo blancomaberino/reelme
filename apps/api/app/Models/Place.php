@@ -38,6 +38,7 @@ use Laravel\Scout\Searchable;
  * @property numeric-string|null $google_rating
  * @property int|null $google_rating_count
  * @property array<int, array<string, mixed>>|null $google_reviews_json
+ * @property \Illuminate\Support\Carbon|null $google_reviews_synced_at
  * @property int|null $reviews_count
  * @property float|numeric-string|null $reviews_avg_rating
  */
