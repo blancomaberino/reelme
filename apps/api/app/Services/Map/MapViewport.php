@@ -83,6 +83,10 @@ class MapViewport
             $query->anyTagSlug($tags);
         }
 
+        if (($card = (string) ($request->validated('card') ?? '')) !== '') {
+            $query->withPaymentCard($card);
+        }
+
         if ($constrain !== null) {
             $constrain($query);
         }

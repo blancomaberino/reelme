@@ -19,6 +19,7 @@ beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   mock = new AxiosMockAdapter(api);
   mock.onGet('/tags').reply(200, { data: [] });
+  mock.onGet('/places/payment-cards').reply(200, { data: [] });
   useMapStore.getState().clearFilters();
 });
 afterEach(() => {
@@ -33,6 +34,23 @@ it('toggles a price-tier filter into the map store', async () => {
   // Price tier 2 renders as "$$" via the format helper.
   fireEvent.press(await screen.findByText('$$'));
   await waitFor(() => expect(useMapStore.getState().filters.price_range).toBe(2));
+});
+
+it('toggles a payment-card filter into the map store (T-079)', async () => {
+  mock.onGet('/places/payment-cards').reply(200, {
+    data: [
+      { card: 'Santander', count: 5 },
+      { card: 'Visa', count: 2 },
+    ],
+  });
+  render(<FilterBar />, { wrapper: Providers });
+
+  fireEvent.press(await screen.findByText('💳 Santander'));
+  await waitFor(() => expect(useMapStore.getState().filters.card).toBe('Santander'));
+
+  // Pressing the active card again clears it.
+  fireEvent.press(screen.getByText('💳 Santander'));
+  await waitFor(() => expect(useMapStore.getState().filters.card).toBeNull());
 });
 
 it('no longer renders mine/following scope chips (the map is always personal, T-071)', () => {

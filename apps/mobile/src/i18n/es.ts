@@ -52,6 +52,7 @@ export const es: Record<MessageKey, string> = {
   'menu.videoLegend': '🎬 aparece en el video',
   'place.sources': 'De dónde salió',
   'place.reviews': 'Reseñas',
+  'place.discounts': 'Descuentos con tarjeta',
   'place.fromGoogle': 'De Google',
   'review.rate': 'Calificá este lugar',
   'review.your': 'Tu reseña',

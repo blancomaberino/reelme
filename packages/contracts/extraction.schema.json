@@ -67,7 +67,24 @@
           }
         },
         "vibe_tags":    { "type": "array", "maxItems": 12, "items": { "type": "string", "enum": ["cozy", "romantic", "lively", "quiet", "casual", "upscale", "trendy", "minimalist", "rustic", "family friendly", "outdoor seating", "rooftop", "great view", "good for groups", "date night", "counter seating", "pet friendly", "live music", "brunch spot", "late night", "quick eats", "hidden gem", "spacious"] }, "description": "Ambiance/occasion — pick ONLY values from the fixed enum (map a stated quality to its closest match; OMIT anything that doesn't clearly fit). A caption praising the lighting, décor, or acoustics is NOT a tag." },
-        "dietary_tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "enum": ["vegan", "vegan options", "vegetarian", "vegetarian options", "gluten-free", "dairy-free", "halal", "kosher", "organic", "plant-based"] }, "description": "ONLY values from the fixed enum, and only when stated or clearly shown." }
+        "dietary_tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "enum": ["vegan", "vegan options", "vegetarian", "vegetarian options", "gluten-free", "dairy-free", "halal", "kosher", "organic", "plant-based"] }, "description": "ONLY values from the fixed enum, and only when stated or clearly shown." },
+        "discounts": {
+          "type": "array",
+          "maxItems": 12,
+          "description": "Card/bank/wallet payment discounts stated in the caption/transcript for THIS venue — e.g. \"20% con Santander\", \"3 cuotas sin interés con Visa\", \"15% pagando con Mercado Pago\". ONLY when a payment method is explicitly tied to a benefit; NEVER inferred and NEVER borrowed from another venue in a roundup. Empty when none stated.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["terms"],
+            "properties": {
+              "scheme": { "type": ["string", "null"], "description": "Card network / wallet if named: e.g. \"Visa\", \"Mastercard\", \"Amex\", \"Diners\", \"Mercado Pago\". null if only a bank/issuer is named." },
+              "issuer": { "type": ["string", "null"], "description": "Bank / card issuer name if named in PLAIN TEXT (e.g. \"Santander\", \"Itaú\", \"BROU\", \"Prex\"). null if the issuer is given ONLY by an @handle (put it in `handle` instead)." },
+              "handle": { "type": ["string", "null"], "description": "Instagram handle of the bank/issuer WITHOUT the leading @, when the discount is attributed via an @mention rather than a plain-text name (e.g. \"santander.uy\"). The issuer name is resolved from that profile downstream. null otherwise." },
+              "terms": { "type": "string", "minLength": 1, "maxLength": 160, "description": "The discount/benefit EXACTLY as stated, e.g. \"20% off\", \"3 cuotas sin interés\", \"2x1\"." },
+              "percent": { "type": ["integer", "null"], "minimum": 1, "maximum": 100, "description": "The percentage discount if a % figure is stated, else null." }
+            }
+          }
+        }
       }
       }
     },

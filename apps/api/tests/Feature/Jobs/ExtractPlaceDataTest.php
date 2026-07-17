@@ -110,7 +110,7 @@ it('routes a clean high-confidence local extraction onward to ResolvePlace', fun
     $run = $share->analysisRun;
     expect($run->engine)->toBe(AnalysisEngineEnum::Local)
         ->and($run->status)->toBe(AnalysisStatus::Succeeded)
-        ->and($run->prompt_version)->toBe('extraction.v9')
+        ->and($run->prompt_version)->toBe('extraction.v10')
         ->and((float) $run->overall_confidence)->toBe(0.91)
         ->and($run->result_json['places'][0]['name'])->toBe('Lanzhou Beef Noodle House');
 });
@@ -165,7 +165,7 @@ it('falls back to OpenRouter after the local engine fails all repair attempts', 
         ->and($rows[0]->engine)->toBe(AnalysisEngineEnum::Local)
         ->and($rows[0]->status)->toBe(AnalysisStatus::Failed)
         ->and($rows[0]->error)->toStartWith('fallback:invalid_json')
-        ->and($rows[0]->prompt_version)->toBe('extraction.v9')
+        ->and($rows[0]->prompt_version)->toBe('extraction.v10')
         ->and($rows[1]->engine)->toBe(AnalysisEngineEnum::OpenRouter)
         ->and($rows[1]->status)->toBe(AnalysisStatus::Succeeded);
     expect($share->fresh()->status)->toBe(ShareStatus::Analyzing);
@@ -249,6 +249,31 @@ it('salvages a low-confidence extraction to review when both engines stay under 
         ->and($share->analysisRun->result_json['places'][0]['name'])->toBe('Lanzhou Beef Noodle House');
 });
 
+it('resolves discount issuers on a salvaged (low-confidence) run too', function () {
+    $cookie = (string) tempnam(sys_get_temp_dir(), 'igck_');
+    file_put_contents($cookie, "# Netscape HTTP Cookie File\n.instagram.com\tTRUE\t/\tTRUE\t2000000000\tsessionid\tSECRET\n");
+    config()->set('ingestion.instagram_api', ['enabled' => true, 'cookies_path' => $cookie, 'timeout' => 5]);
+
+    $lowConf = extraction([
+        'confidence.overall' => 0.3,
+        'places.0.discounts' => [['scheme' => null, 'issuer' => null, 'handle' => 'santander.uy', 'terms' => '20% off', 'percent' => 20]],
+    ]);
+    Http::fake([
+        '*/api/tags' => Http::response(['models' => []]),
+        '*/api/chat' => Http::response(ollamaChat($lowConf)),
+        'www.instagram.com/api/v1/users/web_profile_info*' => Http::response(
+            ['data' => ['user' => ['full_name' => 'Santander Uruguay']]], 200,
+        ),
+    ]);
+    bindExtractionRouter(new FakeRemoteEngine(rawText: $lowConf));
+
+    (new ExtractPlaceData(analyzableShare()->id))->handle();
+
+    // Parked for review (low confidence) but its discount issuer is still resolved.
+    $run = AnalysisRun::whereNotNull('result_json')->latest('id')->first();
+    expect($run->result_json['places'][0]['discounts'][0]['issuer'])->toBe('Santander Uruguay');
+});
+
 it('fails fast (no retry rows) when the per-run cost cap is exceeded', function () {
     config()->set('ai.max_cost_per_run', 0.0); // any priced model now exceeds the cap
     Http::fake(['*/api/tags' => Http::response(['models' => []])]);
@@ -291,4 +316,51 @@ it('no-ops when the share is not in fetching', function () {
 
     expect(AnalysisRun::count())->toBe(0)
         ->and($share->fresh()->status)->toBe(ShareStatus::Published);
+});
+
+it('resolves a card discount issuer name from its @handle (T-079)', function () {
+    $cookie = (string) tempnam(sys_get_temp_dir(), 'igck_');
+    file_put_contents($cookie, "# Netscape HTTP Cookie File\n.instagram.com\tTRUE\t/\tTRUE\t2000000000\tsessionid\tSECRET\n");
+    config()->set('ingestion.instagram_api', ['enabled' => true, 'cookies_path' => $cookie, 'timeout' => 5]);
+
+    Http::fake([
+        '*/api/tags' => Http::response(['models' => []]),
+        '*/api/chat' => Http::response(ollamaChat(extraction([
+            // A discount attributed to the bank ONLY by @handle (no plain-text name).
+            'places.0.discounts' => [
+                ['scheme' => null, 'issuer' => null, 'handle' => 'santander.uy', 'terms' => '20% off', 'percent' => 20],
+            ],
+        ]))),
+        'www.instagram.com/api/v1/users/web_profile_info*' => Http::response(
+            ['data' => ['user' => ['full_name' => 'Santander Uruguay']]], 200,
+        ),
+    ]);
+    bindExtractionRouter(new FakeRemoteEngine);
+    $share = analyzableShare();
+
+    (new ExtractPlaceData($share->id))->handle();
+
+    $discount = $share->fresh()->analysisRun->result_json['places'][0]['discounts'][0];
+    // The @handle is upgraded to the profile's full_name; handle kept for provenance.
+    expect($discount['issuer'])->toBe('Santander Uruguay')
+        ->and($discount['handle'])->toBe('santander.uy');
+});
+
+it('leaves discount issuer resolution off when disabled', function () {
+    config()->set('places.card_discounts.resolve_issuer', false);
+
+    Http::fake([
+        '*/api/tags' => Http::response(['models' => []]),
+        '*/api/chat' => Http::response(ollamaChat(extraction([
+            'places.0.discounts' => [
+                ['scheme' => null, 'issuer' => null, 'handle' => 'santander.uy', 'terms' => '20% off', 'percent' => 20],
+            ],
+        ]))),
+    ]);
+    bindExtractionRouter(new FakeRemoteEngine);
+
+    (new ExtractPlaceData(analyzableShare()->id))->handle();
+
+    // No profile fetch, issuer stays null — the @handle is the fallback label.
+    Http::assertNotSent(fn ($req) => str_contains($req->url(), 'web_profile_info'));
 });

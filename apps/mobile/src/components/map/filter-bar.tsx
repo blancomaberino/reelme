@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
+import { usePaymentCards } from '@/api/hooks/usePaymentCards';
 import { usePopularTags } from '@/api/hooks/useTags';
 import { useFormat } from '@/lib/use-format';
 import { useMapStore } from '@/stores/map';
@@ -20,8 +21,10 @@ export function FilterBar() {
   const styles = useMemo(() => makeStyles(c), [c]);
   const filters = useMapStore((s) => s.filters);
   const togglePrice = useMapStore((s) => s.togglePrice);
+  const toggleCard = useMapStore((s) => s.toggleCard);
   const toggleTag = useMapStore((s) => s.toggleTag);
   const { data: tags } = usePopularTags();
+  const { data: cards } = usePaymentCards();
 
   return (
     <ScrollView
@@ -36,6 +39,16 @@ export function FilterBar() {
           label={fmt.price(tier)}
           active={filters.price_range === tier}
           onPress={() => togglePrice(tier)}
+          styles={styles}
+        />
+      ))}
+
+      {(cards ?? []).map((card) => (
+        <FilterChip
+          key={`card-${card.card}`}
+          label={`💳 ${card.card}`}
+          active={filters.card === card.card}
+          onPress={() => toggleCard(card.card)}
           styles={styles}
         />
       ))}

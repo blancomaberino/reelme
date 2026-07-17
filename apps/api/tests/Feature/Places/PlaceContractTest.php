@@ -48,6 +48,7 @@ function contractPlace(): Place
         'extraction_snapshot_json' => [
             'cuisines' => ['chinese'],
             'dishes' => [['name' => 'Noodles', 'shown_in_video' => true]],
+            'discounts' => [['issuer' => 'Santander', 'terms' => '20% off', 'percent' => 20]],
         ],
         'is_primary' => true,
     ]);

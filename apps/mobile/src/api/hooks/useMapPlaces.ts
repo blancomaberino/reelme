@@ -17,6 +17,7 @@ async function fetchMapPlaces(region: Region, filters: MapFilters): Promise<MapD
   const params: Record<string, string | number | string[]> = { bbox: bboxParam(bbox), zoom };
   if (filters.cuisine) params.cuisine = filters.cuisine;
   if (filters.price_range) params.price_range = filters.price_range;
+  if (filters.card) params.card = filters.card;
   if (filters.tags && filters.tags.length > 0) params['tags[]'] = filters.tags;
   if (filters.list) params.list = Number(filters.list.id);
   if (filters.filter) params.filter = filters.filter;

@@ -100,6 +100,7 @@ class PlaceResource extends JsonResource
                 ],
             ],
             'google_reviews' => $this->google_reviews_json ?? [],
+            'discounts' => $this->aggregatedDiscounts(),
             'sources' => $this->when(
                 in_array('sources', $this->includes, true),
                 fn () => PlaceSourceResource::collection(

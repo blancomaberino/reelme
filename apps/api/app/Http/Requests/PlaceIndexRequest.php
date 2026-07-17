@@ -39,6 +39,7 @@ class PlaceIndexRequest extends FormRequest
             'q' => ['nullable', 'string', 'max:120'],
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
+            'card' => ['nullable', 'string', 'max:64'],
             'near' => ['nullable', 'string'],
             'nearLat' => ['required_with:near', 'numeric', 'between:-90,90'],
             'nearLng' => ['required_with:near', 'numeric', 'between:-180,180'],

@@ -69,6 +69,15 @@ export type Dish = {
   price: string | null;
 };
 
+/** A card/bank/wallet payment discount mentioned in a source (T-079). */
+export type Discount = {
+  /** Display label: resolved issuer, else scheme, else @handle. */
+  card: string;
+  /** The benefit as stated, e.g. "20% off". */
+  terms: string;
+  percent: number | null;
+};
+
 /** A Google-cached review snippet (place detail `google_reviews`). */
 export type GoogleReview = {
   author: string | null;
@@ -138,6 +147,8 @@ export type PlaceDetail = {
   dishes_language: string | null;
   source_count: number;
   rating: { google: RatingBlock; app: RatingBlock };
+  /** Card/bank/wallet payment discounts across the place's sources (T-079). */
+  discounts: Discount[];
   google_reviews?: GoogleReview[];
   reviews?: AppReview[];
   sources?: PlaceSourceItem[];

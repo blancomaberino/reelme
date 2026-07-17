@@ -39,4 +39,15 @@ return [
         'enabled' => (bool) env('PLACES_IG_PROFILE_ENABLED', true),
     ],
 
+    /*
+    | Card-discount issuer resolution (T-079): when a caption attributes a payment
+    | discount to a bank/card only by an @mention (no plain-text name), fetch that
+    | issuer's Instagram profile and use its full_name as the display label. Uses
+    | the same IG session cookie as the venue-profile locator (INGESTION_IG_*).
+    | Disable to keep the raw @handle label.
+    */
+    'card_discounts' => [
+        'resolve_issuer' => (bool) env('PLACES_CARD_ISSUER_RESOLVE', true),
+    ],
+
 ];

@@ -8,7 +8,7 @@ use App\Services\AI\Prompts\ExtractionPromptBuilder;
 
 /**
  * The extraction prompt must hand the model the POSTING ACCOUNT and instruct it
- * that the poster is the reviewer, not a venue (extraction.v9). Regression for
+ * that the poster is the reviewer, not a venue (extraction.v10). Regression for
  * the @el_encantador_de_burgas reel, where the reviewer's branded cover frame
  * got read as the venue name and the actually-reviewed @lagranburgerok (named in
  * the caption) was missed.
@@ -43,7 +43,7 @@ it('injects the posting account and ships the v9 poster-exclusion rule', functio
     $text = promptText($req);
 
     // The prompt version bumped, so drift is recorded on the analysis run.
-    expect($req->promptVersion)->toBe('extraction.v9');
+    expect($req->promptVersion)->toBe('extraction.v10');
 
     // The account is surfaced to the model — handle AND the informative display name.
     expect($text)->toContain('POSTED BY:')

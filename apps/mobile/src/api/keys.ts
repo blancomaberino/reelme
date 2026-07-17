@@ -14,6 +14,8 @@ export type MyPlacesFilters = {
 export type MapFilters = {
   cuisine?: string | null;
   price_range?: number | null;
+  /** Card/bank/wallet with a payment discount (T-079), or null for all. */
+  card?: string | null;
   tags?: string[];
   /** Restrict the map to a single owned place list (T-062). */
   list?: { id: string; name: string } | null;
@@ -37,6 +39,8 @@ export const queryKeys = {
   mapAll: () => ['places', 'map'] as const,
   search: (q: string, types: string) => ['search', q, types] as const,
   tagsPopular: () => ['tags', 'popular'] as const,
+  /** Distinct payment-discount cards for the map filter (T-079). */
+  paymentCards: () => ['places', 'payment-cards'] as const,
   placesByTag: (slug: string) => ['places', 'tag', slug] as const,
   share: (id: string) => ['shares', id] as const,
   lists: () => ['lists'] as const,
