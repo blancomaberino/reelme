@@ -1,9 +1,14 @@
 import type { Locale } from '@/stores/settings';
 
 // Categories / cuisines / vibe tags arrive from AI extraction + Google as free
-// English text. This curated dictionary translates the common ones to Spanish;
-// anything not listed falls back to the raw label (title-cased), so an unknown
-// tag is never lost — just untranslated. Keys are lowercased for lookup.
+// English text. This curated dictionary translates them to Spanish; keys are
+// lowercased for lookup, anything unlisted falls back to the raw label
+// (title-cased) so a tag is never lost — just untranslated.
+//
+// The vibe_tags + dietary_tags are a CONTROLLED vocabulary (fixed enums in
+// extraction.schema.json), so EVERY one of those must have an entry here — this
+// is enforced by tags.enum-coverage.test. `cuisines`/`category` are free text,
+// so we cover the common ones and title-case the long tail.
 const TAGS_ES: Record<string, string> = {
   // meals / times
   breakfast: 'Desayuno',
@@ -14,6 +19,18 @@ const TAGS_ES: Record<string, string> = {
   'late night': 'Trasnoche',
   // cuisines
   modern: 'Moderno',
+  contemporary: 'Contemporáneo',
+  gourmet: 'Gourmet',
+  international: 'Internacional',
+  european: 'Europea',
+  asian: 'Asiática',
+  latin: 'Latina',
+  'latin american': 'Latinoamericana',
+  regional: 'Regional',
+  homestyle: 'Casera',
+  'home cooking': 'Casera',
+  'comfort food': 'Comida casera',
+  rioplatense: 'Rioplatense',
   traditional: 'Tradicional',
   italian: 'Italiana',
   japanese: 'Japonesa',
@@ -71,6 +88,43 @@ const TAGS_ES: Record<string, string> = {
   'wine bar': 'Bar de vinos',
   cocktails: 'Cócteles',
   brewery: 'Cervecería',
+  // more food / venue types
+  neapolitan: 'Napolitana',
+  'neapolitan pizza': 'Pizza napolitana',
+  pizzeria: 'Pizzería',
+  trattoria: 'Trattoria',
+  osteria: 'Osteria',
+  bistro: 'Bistró',
+  brasserie: 'Brasserie',
+  gastropub: 'Gastropub',
+  pub: 'Pub',
+  diner: 'Diner',
+  cantina: 'Cantina',
+  taqueria: 'Taquería',
+  taquería: 'Taquería',
+  creperie: 'Crepería',
+  crepes: 'Crepes',
+  waffles: 'Waffles',
+  pancakes: 'Panqueques',
+  gelato: 'Gelato',
+  poke: 'Poke',
+  smoothies: 'Licuados',
+  juice: 'Jugos',
+  'juice bar': 'Jugería',
+  tea: 'Té',
+  'tea house': 'Casa de té',
+  izakaya: 'Izakaya',
+  'fast food': 'Comida rápida',
+  'food truck': 'Food truck',
+  'hot dogs': 'Panchos',
+  'fried chicken': 'Pollo frito',
+  'wood-fired': 'A la leña',
+  'wood fired': 'A la leña',
+  grill: 'Parrilla',
+  chivito: 'Chivito',
+  milanesa: 'Milanesa',
+  milanesas: 'Milanesas',
+  sandwich: 'Sándwiches',
   // dietary / vibe
   vegan: 'Vegano',
   vegetarian: 'Vegetariano',
@@ -130,6 +184,11 @@ const TAGS_ES: Record<string, string> = {
   falafel: 'Falafel',
   kebab: 'Kebab',
 };
+
+/** Whether a tag has an explicit Spanish entry (vs the title-case fallback). */
+export function hasSpanishTag(raw: string): boolean {
+  return raw.trim().toLowerCase() in TAGS_ES;
+}
 
 /** Title-case a raw tag for display when it isn't in the dictionary. */
 function titleCase(raw: string): string {

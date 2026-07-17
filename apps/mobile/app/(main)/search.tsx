@@ -137,12 +137,12 @@ function RowView({ row, styles, c }: { row: Row; styles: Styles; c: Palette }) {
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={row.tag.name}
+        accessibilityLabel={fmt.tag(row.tag.name)}
         onPress={() => router.push({ pathname: '/tag/[slug]', params: { slug: row.tag.slug } })}
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       >
         <Ionicons name="pricetag-outline" size={20} color={c.muted} />
-        <Text style={styles.rowTitle}>{row.tag.name}</Text>
+        <Text style={styles.rowTitle}>{fmt.tag(row.tag.name)}</Text>
       </Pressable>
     );
   }
