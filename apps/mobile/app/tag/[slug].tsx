@@ -54,7 +54,7 @@ export default function TagResultsScreen() {
           <Ionicons name="chevron-back" size={26} color={c.text} />
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>
-          #{slug}
+          #{fmt.tag(slug.replace(/-/g, ' '))}
         </Text>
       </View>
 
