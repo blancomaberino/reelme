@@ -103,6 +103,21 @@ export const en = {
   'map.removeFromList.confirm.message': 'This removes it from this list only — it stays anywhere else you saved it.',
   'map.removeFromList.confirm.cta': 'Remove',
 
+  // Filters button + bottom-sheet (map and My places share these).
+  'filters.title': 'Filters',
+  'filters.clear': 'Clear',
+  'filters.apply': 'Show results',
+  'filters.remove': 'Remove {{label}} filter',
+  'filters.price': 'Price',
+  'filters.cards': 'Cards & discounts',
+  'filters.tags': 'Tags',
+  'filters.tagSearch': 'Search tags…',
+  'filters.tagClear': 'Clear tag search',
+  'filters.tagNoResults': 'No tags for “{{query}}”',
+  'filters.country': 'Country',
+  'filters.cuisine': 'Cuisine',
+  'filters.sort': 'Sort by',
+
   'quickShare.title': 'Add from a link',
   'quickShare.placeholder': 'Paste a link or describe the place',
   'quickShare.submit': 'Add',

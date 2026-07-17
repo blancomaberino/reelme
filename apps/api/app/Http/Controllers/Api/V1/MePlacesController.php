@@ -6,11 +6,13 @@ use App\Enums\ShareStatus;
 use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceListingRequest;
+use App\Http\Resources\TagResource;
 use App\Models\HiddenPlace;
 use App\Models\Place;
 use App\Models\PlaceListItem;
 use App\Models\PlaceSource;
 use App\Models\Share;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,6 +60,42 @@ class MePlacesController extends Controller
                 ],
             ],
         );
+    }
+
+    /**
+     * The discovery-tag facet of my places (ADR-084) — `GET /me/places/tags`.
+     * The tags actually attached to my places (same `mine` scope as the list),
+     * each with how many of my places carry it, most-used first. Powers the tag
+     * filter autocomplete: a bounded, complete candidate set (unlike the global
+     * popular catalog), so filtering can't offer a tag that matches zero of my
+     * places. Grouped by slug — the filter matches on slug, so a term that
+     * exists under two kinds (e.g. "pizza" as cuisine and dish) is one entry.
+     */
+    public function tags(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        // The exact ownership scope the list view applies, so the facet and the
+        // results can never disagree.
+        $mineIds = Place::query()->publiclyVisible()->mine($user)->select('places.id');
+
+        // Group by SLUG (not tag id): a slug that exists under two kinds is one
+        // row whose count is the DISTINCT number of my places carrying it — the
+        // same number filtering by that slug returns. Representative id/name/kind
+        // via min() keep the row deterministic.
+        $tags = Tag::query()
+            ->join('place_tag', 'place_tag.tag_id', '=', 'tags.id')
+            ->whereIn('place_tag.place_id', $mineIds)
+            ->groupBy('tags.slug')
+            ->select('tags.slug')
+            ->selectRaw('min(tags.id) as id')
+            ->selectRaw('min(tags.name) as name')
+            ->selectRaw('min(tags.kind) as kind')
+            ->selectRaw('count(distinct place_tag.place_id) as places_count')
+            ->orderByDesc('places_count')
+            ->orderBy('tags.slug')
+            ->get();
+
+        return response()->json(['data' => TagResource::collection($tags)]);
     }
 
     /**

@@ -1,3 +1,4 @@
+import type { TagSummary } from '@/api/places';
 import type { Locale } from '@/stores/settings';
 
 // Categories / cuisines / vibe tags arrive from AI extraction + Google as free
@@ -188,6 +189,65 @@ const TAGS_ES: Record<string, string> = {
 /** Whether a tag has an explicit Spanish entry (vs the title-case fallback). */
 export function hasSpanishTag(raw: string): boolean {
   return raw.trim().toLowerCase() in TAGS_ES;
+}
+
+/**
+ * A tag's raw display name resolved from a catalog by slug, falling back to the
+ * humanized slug (which {@link localizeTag} then title-cases) when the slug
+ * isn't in the catalog. Wrap the result in `fmt.tag(...)` to localize.
+ */
+export function tagDisplayName(tags: TagSummary[], slug: string): string {
+  return tags.find((t) => t.slug === slug)?.name ?? slug.replace(/-/g, ' ');
+}
+
+/**
+ * Normalize text for search: lowercase + strip the Spanish diacritics that
+ * appear in tags (Hermes-safe — avoids String.normalize). Makes matching
+ * case- and accent-insensitive, so "Café", "cafe" and "CAFÉ" all compare equal.
+ */
+export function foldSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[áàä]/g, 'a')
+    .replace(/[éèë]/g, 'e')
+    .replace(/[íìï]/g, 'i')
+    .replace(/[óòö]/g, 'o')
+    .replace(/[úùü]/g, 'u')
+    .replace(/ñ/g, 'n')
+    .replace(/ç/g, 'c');
+}
+
+/**
+ * The folded strings a tag is matched against: its *localized* label (what the
+ * user sees) plus its raw name/slug. Tags are stored in English but displayed
+ * in Spanish via {@link localizeTag}, so all three must be searchable. These
+ * depend only on the tag + locale, so a caller filtering a catalog per keystroke
+ * should precompute them once (per catalog/locale) rather than re-folding.
+ */
+export function tagHaystacks(name: string, slug: string, locale: Locale): string[] {
+  return [foldSearch(localizeTag(name, locale)), foldSearch(name), foldSearch(slug)];
+}
+
+/**
+ * Earliest index at which the folded query occurs in any haystack, or -1 for no
+ * match (0 = starts-with, so callers can rank prefix matches ahead of mid-word).
+ * An empty query matches everything at 0. The match is case-insensitive,
+ * accent-insensitive, and substring ("part of the word").
+ */
+export function haystackMatchIndex(haystacks: string[], foldedQuery: string): number {
+  if (!foldedQuery) return 0;
+  let best = -1;
+  for (const h of haystacks) {
+    const i = h.indexOf(foldedQuery);
+    if (i !== -1 && (best === -1 || i < best)) best = i;
+  }
+  return best;
+}
+
+/** Match a single tag against a raw query (folds both sides). See {@link haystackMatchIndex}. */
+export function tagMatchIndex(name: string, slug: string, query: string, locale: Locale): number {
+  return haystackMatchIndex(tagHaystacks(name, slug, locale), foldSearch(query));
 }
 
 /** Title-case a raw tag for display when it isn't in the dictionary. */

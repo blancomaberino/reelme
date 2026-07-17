@@ -8,7 +8,10 @@ type Data = InfiniteData<Paginated<PlaceSummary>>;
 
 /** Drop a place from every cached my-places page (optimistic remove). */
 function removePlace(data: Data | undefined, placeId: string): Data | undefined {
-  if (!data) return data;
+  // setQueriesData spans the whole ['me','places'] prefix, which also covers the
+  // non-paginated tag facet (['me','places','tags']) — leave any non-page-shaped
+  // entry untouched so we only rewrite the infinite list pages.
+  if (!data || !Array.isArray(data.pages)) return data;
   return { ...data, pages: data.pages.map((p) => ({ ...p, data: p.data.filter((row) => row.id !== placeId) })) };
 }
 

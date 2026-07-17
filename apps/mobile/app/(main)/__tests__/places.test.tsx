@@ -48,6 +48,7 @@ beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   mock = new AxiosMockAdapter(api);
   mock.onGet('/tags').reply(200, { data: [] });
+  mock.onGet('/me/places/tags').reply(200, { data: [] });
   mockRouter.push.mockClear();
   // My places requires auth.
   useSessionStore.setState({ user: null, status: 'authed' });
@@ -106,8 +107,9 @@ it('re-fetches with country filter when a facet chip is toggled', async () => {
   render(<MyPlacesScreen />, { wrapper: Providers });
   await screen.findByText('Place 1');
 
-  // The country facet chip is derived from the loaded rows (PT).
-  fireEvent.press(screen.getByText('PT'));
+  // The country facet lives in the filter sheet, derived from the loaded rows (PT).
+  fireEvent.press(screen.getByLabelText('Filters'));
+  fireEvent.press(await screen.findByLabelText('PT'));
   await waitFor(() =>
     expect(mock.history.get.some((r) => r.url === '/me/places' && r.params?.country === 'PT')).toBe(true),
   );
@@ -122,14 +124,17 @@ it('keeps all country facet chips after filtering, so you can switch directly (B
 
   render(<MyPlacesScreen />, { wrapper: Providers });
   await screen.findByText('Place 1');
-  expect(screen.getByText('PT')).toBeOnTheScreen();
-  expect(screen.getByText('AR')).toBeOnTheScreen();
 
-  fireEvent.press(screen.getByText('PT'));
-  // After filtering to PT, the AR chip must NOT vanish (facets come from the
+  // Both country options are offered in the filter sheet.
+  fireEvent.press(screen.getByLabelText('Filters'));
+  expect(await screen.findByLabelText('PT')).toBeOnTheScreen();
+  expect(screen.getByLabelText('AR')).toBeOnTheScreen();
+
+  fireEvent.press(screen.getByLabelText('PT'));
+  // After filtering to PT, the AR option must NOT vanish (facets come from the
   // unfiltered set) — you can switch straight to AR.
   await waitFor(() => expect(screen.queryByText('Place 2')).toBeNull());
-  expect(screen.getByText('AR')).toBeOnTheScreen();
+  expect(screen.getByLabelText('AR')).toBeOnTheScreen();
 });
 
 /** Auto-tap a labelled button in the remove Alert (default: the destructive one). */

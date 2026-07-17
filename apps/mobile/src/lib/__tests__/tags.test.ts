@@ -1,4 +1,4 @@
-import { hasSpanishTag, localizeTag } from '../tags';
+import { hasSpanishTag, localizeTag, tagMatchIndex } from '../tags';
 
 // The controlled vibe/dietary vocabulary — MUST mirror the `vibe_tags` and
 // `dietary_tags` enums in packages/contracts/extraction.schema.json. Every one of
@@ -46,5 +46,33 @@ describe('localizeTag', () => {
   it('has a Spanish translation for every controlled vibe + dietary tag', () => {
     const missing = [...VIBE_TAGS, ...DIETARY_TAGS].filter((t) => !hasSpanishTag(t));
     expect(missing).toEqual([]);
+  });
+});
+
+describe('tagMatchIndex', () => {
+  // The stored English tag is "casual"; Spanish shows it as "Informal".
+  it('matches the Spanish label the user actually sees', () => {
+    expect(tagMatchIndex('casual', 'casual', 'Informal', 'es')).toBe(0);
+  });
+
+  it('is case-insensitive and matches part of the word (not just the prefix)', () => {
+    expect(tagMatchIndex('casual', 'casual', 'INFORMAL', 'es')).toBe(0);
+    // "form" is in the middle of "Informal" → index 2, still a match.
+    expect(tagMatchIndex('casual', 'casual', 'form', 'es')).toBe(2);
+  });
+
+  it('is accent-insensitive', () => {
+    // "cafe" (no accent) matches the accented label "Café".
+    expect(tagMatchIndex('coffee', 'coffee', 'cafe', 'es')).toBe(0);
+  });
+
+  it('still matches the raw English name/slug (for English locale + dish tags)', () => {
+    expect(tagMatchIndex('casual', 'casual', 'casu', 'en')).toBe(0);
+    expect(tagMatchIndex('Chivito', 'chivito', 'vito', 'en')).toBe(3);
+  });
+
+  it('returns -1 when nothing matches, and 0 for an empty query', () => {
+    expect(tagMatchIndex('casual', 'casual', 'sushi', 'es')).toBe(-1);
+    expect(tagMatchIndex('casual', 'casual', '   ', 'es')).toBe(0);
   });
 });
