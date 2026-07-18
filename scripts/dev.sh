@@ -96,7 +96,7 @@ lan_ip() { ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/n
 
 launch_ios() {
   use_node; cd "$MOBILE_DIR"
-  if [ "$1" = start ]; then
+  if [ "${1:-}" = start ]; then
     log "Starting Metro (press i to open iOS). API: $API_URL"
     EXPO_PUBLIC_API_URL="$API_URL" npx expo start --dev-client
   else
@@ -112,7 +112,7 @@ launch_android() {
   log "Android points at $url — make sure your phone is on the SAME Wi-Fi (a physical device can't reach localhost)."
   [ -n "${GOOGLE_MAPS_ANDROID_KEY:-}" ] || echo "  (heads up: GOOGLE_MAPS_ANDROID_KEY is unset — the map screen will be blank on Android)"
   use_node; cd "$MOBILE_DIR"
-  if [ "$1" = start ]; then
+  if [ "${1:-}" = start ]; then
     EXPO_PUBLIC_API_URL="$url" npx expo start --dev-client
   else
     log "Building & launching on the Android device (needs a device connected — check with: adb devices)."
