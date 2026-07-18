@@ -8,6 +8,7 @@ use App\Services\AI\Contracts\AnalysisEngine;
 use App\Services\AI\Data\GenerationPart;
 use App\Services\AI\Data\GenerationRequest;
 use App\Services\AI\Exceptions\EngineUnavailable;
+use App\Services\AI\LocalEngine;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -18,9 +19,11 @@ use Throwable;
 
 /**
  * Fill a tag's missing `name_i18n` labels with a cheap LLM translation (ADR-084
- * #4) — the long tail the seed dictionary doesn't cover. Best-effort: any
- * failure just leaves the English `name` as the fallback, so it never blocks
- * publishing and never retries into the ground. Dishes are never translated
+ * #4) — the long tail the seed dictionary doesn't cover. Local-first (ADR-005):
+ * uses the free local Ollama engine when it's up, and only falls back to the
+ * hosted engine when one is configured — so no remote API key is required to
+ * run this. Best-effort: an unreachable engine or an implausible reply just
+ * leaves the English `name` as the fallback. Dishes are never translated
  * (verbatim menu text); the dispatcher already excludes them.
  */
 class TranslateTag implements ShouldQueue
@@ -32,7 +35,12 @@ class TranslateTag implements ShouldQueue
 
     public int $tries = 2;
 
-    /** @var list<int> */
+    /**
+     * Keep this > ai.ollama.health_cache_seconds (30s) so a retry after a
+     * transient local blip lands once the cached-healthy probe has expired.
+     *
+     * @var list<int>
+     */
     public array $backoff = [60];
 
     public int $timeout = 45;
@@ -43,11 +51,16 @@ class TranslateTag implements ShouldQueue
     /** @param  list<string>  $locales */
     public function __construct(public readonly int $tagId, public readonly array $locales) {}
 
-    public function handle(AnalysisEngine $engine): void
+    public function handle(): void
     {
         $tag = Tag::query()->find($this->tagId);
         if ($tag === null || $tag->kind === TagKind::Dish) {
             return;
+        }
+
+        [$engine, $model] = $this->pickEngine();
+        if ($engine === null) {
+            return; // no engine reachable/configured — keep the English fallback
         }
 
         $i18n = $tag->name_i18n ?? [];
@@ -56,7 +69,7 @@ class TranslateTag implements ShouldQueue
             if (! isset(self::LANGUAGE[$locale]) || isset($i18n[$locale])) {
                 continue; // unsupported, or already translated (dictionary / prior run)
             }
-            $translation = $this->translate($engine, $tag->name, $locale);
+            $translation = $this->translate($engine, $model, $tag->name, $locale);
             if ($translation !== null) {
                 $i18n[$locale] = $translation;
                 $added = true;
@@ -69,8 +82,28 @@ class TranslateTag implements ShouldQueue
         }
     }
 
+    /**
+     * Local-first engine selection (ADR-005): the free Ollama engine when it's
+     * healthy (null model → it picks its own text model), else the hosted engine
+     * when configured, else nothing.
+     *
+     * @return array{0: AnalysisEngine|null, 1: string|null}
+     */
+    private function pickEngine(): array
+    {
+        $local = app(LocalEngine::class);
+        if ($local->isHealthy()) {
+            return [$local, null];
+        }
+        if (filled(config('ai.openrouter.api_key'))) {
+            return [app(AnalysisEngine::class), config('ai.openrouter.default_model')];
+        }
+
+        return [null, null];
+    }
+
     /** One translation, or null on any failure / an implausible (sentence-like) reply. */
-    private function translate(AnalysisEngine $engine, string $name, string $locale): ?string
+    private function translate(AnalysisEngine $engine, ?string $model, string $name, string $locale): ?string
     {
         $language = self::LANGUAGE[$locale];
         $request = new GenerationRequest(
@@ -81,7 +114,7 @@ class TranslateTag implements ShouldQueue
         );
 
         try {
-            $raw = $engine->generate($request, config('ai.openrouter.default_model'))->rawText;
+            $raw = $engine->generate($request, $model)->rawText;
         } catch (EngineUnavailable $e) {
             // Transport failure — let the job retry (tries/backoff) rather than
             // permanently leaving the tag English on a transient blip.

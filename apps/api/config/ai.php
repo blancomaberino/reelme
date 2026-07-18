@@ -8,8 +8,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | When enabled, a newly-materialized non-dish tag with no known dictionary
-    | translation queues a cheap LLM call to fill `name_i18n`. Off by default so
-    | environments without a remote key don't churn dead jobs; enable per-env.
+    | translation queues a cheap LLM call to fill `name_i18n`. Local-first: the
+    | free Ollama engine when it's up, the hosted engine only as a fallback. Off
+    | by default so it stays opt-in; enable per-env.
     */
     'translate_tags' => (bool) env('AI_TRANSLATE_TAGS', false),
 
