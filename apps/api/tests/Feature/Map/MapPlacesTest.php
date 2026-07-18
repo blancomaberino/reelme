@@ -260,6 +260,22 @@ it('filters map pins by tags[] via the pivot (live since T-031)', function () {
     expect($pin['tags'])->toBe(['ramen']);
 });
 
+it('AND-filters map pins when multiple tags[] are given', function () {
+    $both = activePlace(51.5117, -0.1300, ['name' => 'Both']);
+    $ramenOnly = activePlace(51.5100, -0.1200, ['name' => 'RamenOnly']);
+    $ramen = Tag::factory()->create(['slug' => 'ramen', 'name' => 'Ramen']);
+    $sushi = Tag::factory()->create(['slug' => 'sushi', 'name' => 'Sushi']);
+    $both->tags()->attach([$ramen->id => ['source' => 'extraction'], $sushi->id => ['source' => 'extraction']]);
+    $ramenOnly->tags()->attach($ramen->id, ['source' => 'extraction']);
+
+    // Selecting two tags narrows to pins carrying BOTH — not either one.
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&tags[]=ramen&tags[]=sushi')->assertOk();
+
+    $names = collect($res->json('data.pins'))->pluck('name');
+    expect($names)->toContain('Both')->not->toContain('RamenOnly');
+    $res->assertJsonPath('meta.total_in_bbox', 1);
+});
+
 it('restricts the map to an owned list when ?list is given', function () {
     $user = User::factory()->create();
     $inList = activePlace(51.50, -0.12, ['name' => 'In List']);
