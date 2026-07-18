@@ -95,6 +95,27 @@ it('exposes rate-limit headers', function () {
         ->assertHeader('X-RateLimit-Limit', '120');
 });
 
+it('finds a tag by its localized (Spanish) label even though it is stored in English (ADR-084 #3)', function () {
+    // "casual" is displayed as "Informal" in Spanish; the index carries both.
+    Tag::factory()->create(['name' => 'casual', 'slug' => 'casual', 'name_i18n' => ['es' => 'Informal']]);
+    Tag::factory()->create(['name' => 'sushi', 'slug' => 'sushi']);
+
+    $slugs = collect($this->getJson('/api/v1/search?q=informal&types=tags')->assertOk()->json('data.tags'))->pluck('slug');
+    expect($slugs)->toContain('casual')->not->toContain('sushi');
+});
+
+it('finds a place by a tag typed in Spanish (localized tag_names, ADR-084 #3)', function () {
+    // Neutral names — the ONLY "parrilla" match is via the tag's Spanish label.
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'El Fogon del Puerto']);
+    Place::factory()->active()->atPoint(51.5, -0.14)->create(['name' => 'Sushi Corner']);
+    $tag = Tag::factory()->create(['kind' => 'cuisine', 'name' => 'steakhouse', 'slug' => 'steakhouse', 'name_i18n' => ['es' => 'Parrilla']]);
+    $place->tags()->attach($tag->id, ['source' => 'extraction']);
+
+    // "parrilla" is the Spanish label for the English tag "steakhouse".
+    $names = collect($this->getJson('/api/v1/search?q=parrilla&types=places')->assertOk()->json('data.places'))->pluck('name');
+    expect($names)->toContain('El Fogon del Puerto')->not->toContain('Sushi Corner');
+});
+
 it('surfaces a freshly published place and its tags through search (full chain)', function () {
     // Runs on the collection driver, so the publish→materialize→searchable
     // chain is pinned even without a Meilisearch server.

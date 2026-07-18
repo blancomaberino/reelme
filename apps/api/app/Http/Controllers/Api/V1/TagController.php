@@ -39,7 +39,13 @@ class TagController extends Controller
             $needle = addcslashes(mb_strtolower($q), '%_\\');
             $query->where(fn ($w) => $w
                 ->whereRaw("slug like ? escape '\\'", [$needle.'%'])
-                ->orWhereRaw("lower(name) like ? escape '\\'", [$needle.'%']));
+                ->orWhereRaw("lower(name) like ? escape '\\'", [$needle.'%'])
+                // Also prefix-match any localized label (ADR-084 #3), so a Spanish
+                // query ("informal") finds the English-stored tag ("casual").
+                ->orWhereRaw(
+                    "exists (select 1 from jsonb_each_text(coalesce(name_i18n, '{}'::jsonb)) e where lower(e.value) like ? escape '\\')",
+                    [$needle.'%'],
+                ));
         }
 
         $cursor = KeysetCursor::decode($request->validated('cursor'), $sort, 2);

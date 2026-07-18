@@ -134,23 +134,28 @@ class Place extends Model
     }
 
     /**
-     * Places carrying any of the given tag slugs. The place_tag pivot lands in
-     * T-031 — until it exists this is a validated no-op (schema-guarded), so
-     * both the map and the browse index accept tags[] today.
+     * Places carrying ALL of the given tag slugs (AND) — each selected tag
+     * narrows the results, the way a multi-select filter is expected to (picking
+     * more tags returns fewer, not more, places). One EXISTS per distinct slug,
+     * every one required. The place_tag pivot lands in T-031 — until it exists
+     * this is a validated no-op (schema-guarded), so both the map and the browse
+     * index accept tags[] today.
      *
      * @param  Builder<Place>  $query
      * @param  list<string>  $slugs
      */
-    protected function scopeAnyTagSlug(Builder $query, array $slugs): void
+    protected function scopeAllTagSlugs(Builder $query, array $slugs): void
     {
         if ($slugs === [] || ! Schema::hasTable('place_tag')) {
             return;
         }
 
-        $query->whereExists(fn ($sub) => $sub->from('place_tag')
-            ->join('tags', 'tags.id', '=', 'place_tag.tag_id')
-            ->whereColumn('place_tag.place_id', 'places.id')
-            ->whereIn('tags.slug', $slugs));
+        foreach (array_unique($slugs) as $slug) {
+            $query->whereExists(fn ($sub) => $sub->from('place_tag')
+                ->join('tags', 'tags.id', '=', 'place_tag.tag_id')
+                ->whereColumn('place_tag.place_id', 'places.id')
+                ->where('tags.slug', $slug));
+        }
     }
 
     /**
@@ -366,7 +371,10 @@ class Place extends Model
             'country_code' => $this->country_code,
             'cuisine_primary' => $this->cuisine_primary,
             'price_range' => $this->price_range,
+            // Slugs drive filtering; `tag_names` (English + every localized label)
+            // make the place findable by a tag typed in any language (ADR-084 #3).
             'tags' => $this->tags->pluck('slug')->all(),
+            'tag_names' => $this->tags->flatMap->searchableNames()->unique()->values()->all(),
             'shares_count' => (int) $this->shares_count,
             '_geo' => ['lat' => (float) $lat, 'lng' => (float) $lng],
         ];

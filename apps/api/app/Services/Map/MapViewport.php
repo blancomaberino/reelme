@@ -80,7 +80,7 @@ class MapViewport
 
         $tags = $request->validated('tags');
         if (is_array($tags)) {
-            $query->anyTagSlug($tags);
+            $query->allTagSlugs($tags);
         }
 
         if (($card = (string) ($request->validated('card') ?? '')) !== '') {

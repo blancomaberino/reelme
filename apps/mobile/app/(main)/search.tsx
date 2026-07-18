@@ -134,15 +134,18 @@ function RowView({ row, styles, c }: { row: Row; styles: Styles; c: Palette }) {
     );
   }
   if (row.type === 'tag') {
+    // Prefer the server-localized label (ADR-084) so a Spanish search shows the
+    // Spanish name; fall back to the locale-formatted English name.
+    const label = row.tag.label ? row.tag.label : fmt.tag(row.tag.name);
     return (
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={fmt.tag(row.tag.name)}
+        accessibilityLabel={label}
         onPress={() => router.push({ pathname: '/tag/[slug]', params: { slug: row.tag.slug } })}
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       >
         <Ionicons name="pricetag-outline" size={20} color={c.muted} />
-        <Text style={styles.rowTitle}>{fmt.tag(row.tag.name)}</Text>
+        <Text style={styles.rowTitle}>{label}</Text>
       </Pressable>
     );
   }

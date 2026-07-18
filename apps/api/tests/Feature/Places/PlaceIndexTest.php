@@ -213,18 +213,21 @@ it('filters by influencer_id via source attribution', function () {
 });
 
 it('filters by tags[] via the pivot (live since T-031)', function () {
-    $tagged = Place::factory()->active()->atPoint(38.7, -9.1)->create(['name' => 'Tagged']);
+    $ramenOnly = Place::factory()->active()->atPoint(38.7, -9.1)->create(['name' => 'RamenOnly']);
+    $both = Place::factory()->active()->atPoint(38.7, -9.1)->create(['name' => 'Both']);
     Place::factory()->active()->atPoint(38.7, -9.1)->create(['name' => 'Untagged']);
-    $tag = Tag::factory()->create(['slug' => 'ramen', 'name' => 'Ramen']);
-    $tagged->tags()->attach($tag->id, ['source' => 'extraction']);
+    $ramen = Tag::factory()->create(['slug' => 'ramen', 'name' => 'Ramen']);
+    $sushi = Tag::factory()->create(['slug' => 'sushi', 'name' => 'Sushi']);
+    $ramenOnly->tags()->attach($ramen->id, ['source' => 'extraction']);
+    $both->tags()->attach([$ramen->id => ['source' => 'extraction'], $sushi->id => ['source' => 'extraction']]);
 
     $names = collect($this->getJson('/api/v1/places?tags[]=ramen')->assertOk()->json('data'))->pluck('name');
+    expect($names)->toContain('RamenOnly')->toContain('Both')->not->toContain('Untagged');
 
-    expect($names)->toContain('Tagged')->not->toContain('Untagged');
-
-    // Multiple slugs are OR'd — a place needs any one of them.
-    $ored = collect($this->getJson('/api/v1/places?tags[]=ramen&tags[]=sushi')->assertOk()->json('data'))->pluck('name');
-    expect($ored)->toContain('Tagged')->not->toContain('Untagged');
+    // Multiple slugs are AND'd — a place must carry EVERY selected tag, so adding
+    // a tag narrows the results (only the place with both survives).
+    $anded = collect($this->getJson('/api/v1/places?tags[]=ramen&tags[]=sushi')->assertOk()->json('data'))->pluck('name');
+    expect($anded)->toContain('Both')->not->toContain('RamenOnly')->not->toContain('Untagged');
 
     // A slug matching nothing filters everything out (no longer a no-op).
     expect($this->getJson('/api/v1/places?tags[]=nope')->assertOk()->json('data'))->toBe([]);

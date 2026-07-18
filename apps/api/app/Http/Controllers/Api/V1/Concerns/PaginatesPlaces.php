@@ -54,7 +54,7 @@ trait PaginatesPlaces
 
         $tags = $request->validated('tags');
         if (is_array($tags) && $tags !== []) {
-            $query->anyTagSlug($tags);
+            $query->allTagSlugs($tags);
         }
 
         if (($q = (string) ($request->validated('q') ?? '')) !== '') {

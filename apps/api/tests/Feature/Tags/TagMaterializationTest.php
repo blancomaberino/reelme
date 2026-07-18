@@ -1,10 +1,12 @@
 <?php
 
 use App\Enums\TagKind;
+use App\Jobs\TranslateTag;
 use App\Models\Place;
 use App\Models\Tag;
 use App\Services\Places\TagMaterializer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 
 uses(RefreshDatabase::class);
 
@@ -114,4 +116,32 @@ it('preserves a manual pivot source on republish', function () {
     $pivot = $place->tags()->where('slug', 'ramen')->first()->pivot;
     expect($pivot->source)->toBe('manual')
         ->and((float) $pivot->confidence)->toBe(0.7);
+});
+
+it('queues an AI translation for a new non-dish tag the dictionary did not cover (ADR-084 #4)', function () {
+    config(['ai.translate_tags' => true]);
+    Bus::fake();
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+
+    app(TagMaterializer::class)->materialize($place, ['vibe_tags' => ['kombucha']], 0.8); // not in the dictionary
+
+    $tag = Tag::query()->where('slug', 'kombucha')->first();
+    Bus::assertDispatched(TranslateTag::class, fn (TranslateTag $job): bool => $job->tagId === $tag->id);
+});
+
+it('never queues a translation for a dish, a dictionary-known tag, or when disabled (ADR-084 #4)', function () {
+    config(['ai.translate_tags' => true]);
+    Bus::fake();
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
+
+    app(TagMaterializer::class)->materialize($place, [
+        'vibe_tags' => ['casual'],                                        // in the dictionary → seeded, no AI
+        'dishes' => [['name' => 'poutine', 'shown_in_video' => false]],   // dish → never translated
+    ], 0.8);
+    Bus::assertNotDispatched(TranslateTag::class);
+
+    // Feature off → nothing queued even for an untranslated tag.
+    config(['ai.translate_tags' => false]);
+    app(TagMaterializer::class)->materialize($place, ['vibe_tags' => ['kombucha']], 0.8);
+    Bus::assertNotDispatched(TranslateTag::class);
 });

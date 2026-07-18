@@ -43,12 +43,12 @@ return [
         // settings must land BEFORE documents rely on _geo/filterables.
         'index-settings' => [
             Place::class => [
-                'searchableAttributes' => ['name', 'normalized_name', 'tags', 'city', 'cuisine_primary'],
+                'searchableAttributes' => ['name', 'normalized_name', 'tag_names', 'tags', 'city', 'cuisine_primary'],
                 'filterableAttributes' => ['price_range', 'cuisine_primary', 'tags', 'country_code', '_geo'],
                 'sortableAttributes' => ['shares_count', '_geo'],
             ],
             Tag::class => [
-                'searchableAttributes' => ['name', 'slug'],
+                'searchableAttributes' => ['name', 'names', 'slug'],
                 'filterableAttributes' => ['kind'],
             ],
             Influencer::class => [

@@ -70,7 +70,7 @@ class PlaceController extends Controller
         // tags[] pivot lands in T-031 — accepted now, no-op until it exists.
         $tags = $request->validated('tags');
         if (is_array($tags)) {
-            $query->anyTagSlug($tags);
+            $query->allTagSlugs($tags);
         }
 
         // Filter to places offering a discount for a given card/bank/wallet (T-079).

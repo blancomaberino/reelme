@@ -22,10 +22,28 @@ it('localizes the tag label to ?locale, falling back to the English name', funct
     expect($en['label'])->toBe('casual');
 });
 
+it('prefix-matches a localized label in ?q= (ADR-084 #3)', function () {
+    Tag::factory()->create(['name' => 'casual', 'slug' => 'casual', 'name_i18n' => ['es' => 'Informal']]);
+    Tag::factory()->create(['name' => 'sushi', 'slug' => 'sushi']);
+
+    // "inform" is a prefix of the Spanish label "Informal"; the tag is stored as "casual".
+    $slugs = collect($this->getJson('/api/v1/tags?q=inform')->assertOk()->json('data'))->pluck('slug');
+    expect($slugs)->toContain('casual')->not->toContain('sushi');
+});
+
 it('falls back to the English name when the locale has no translation', function () {
     Tag::factory()->create(['name' => 'poutine', 'slug' => 'poutine', 'name_i18n' => null]);
     $row = $this->getJson('/api/v1/tags?q=poutine&locale=es')->assertOk()->json('data.0');
     expect($row['label'])->toBe('poutine');
+});
+
+it('treats a blank/null locale value as no translation without breaking indexing', function () {
+    $tag = Tag::factory()->create(['name' => 'casual', 'slug' => 'casual', 'name_i18n' => ['es' => '']]);
+
+    // localizedName falls back to the English name for a blank override…
+    expect($tag->localizedName('es'))->toBe('casual');
+    // …and searchableNames drops the blank without a TypeError (indexing is safe).
+    expect($tag->searchableNames())->toBe(['casual']);
 });
 
 it('resolves the locale from Accept-Language when no ?locale is given', function () {

@@ -4,6 +4,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tag translation (ADR-084 #4)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, a newly-materialized non-dish tag with no known dictionary
+    | translation queues a cheap LLM call to fill `name_i18n`. Local-first: the
+    | free Ollama engine when it's up, the hosted engine only as a fallback. Off
+    | by default so it stays opt-in; enable per-env.
+    */
+    'translate_tags' => (bool) env('AI_TRANSLATE_TAGS', false),
+
+    // Locales an auto-translated tag is filled for (English is the canonical source).
+    'translate_locales' => ['es'],
+
+    /*
+    |--------------------------------------------------------------------------
     | Local engine — Ollama
     |--------------------------------------------------------------------------
     |
