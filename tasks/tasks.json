@@ -1854,7 +1854,7 @@
       "id": "T-074",
       "title": "yt-dlp video SourceAdapter: download reel video → real ffmpeg keyframes (+ audio) for video posts",
       "phase": "M2",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-013"
       ],
@@ -1885,7 +1885,7 @@
       "id": "T-075",
       "title": "Resolve a venue's address/coords from its Instagram profile (geocode fallback)",
       "phase": "M2",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-013"
       ],
@@ -1917,7 +1917,7 @@
       "id": "T-076",
       "title": "Open the place right after adding it",
       "phase": "M2",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-013",
         "T-071"
@@ -1944,7 +1944,7 @@
       "id": "T-077",
       "title": "Replace the 'Compartir' tab with a Search tab (find people & places)",
       "phase": "M2",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-071",
         "T-039"
@@ -1975,7 +1975,7 @@
       "id": "T-078",
       "title": "Map 'reset view' button (reset zoom / recenter)",
       "phase": "M2",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-032"
       ],

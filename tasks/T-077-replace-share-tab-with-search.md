@@ -43,3 +43,19 @@ this task should finish.
 - [ ] Backend people-search is private-profile-safe (no existence oracle)
 - [ ] Tests: tab renders Search not Share; search returns people+places; API people-search test
 - [ ] Gates: API Pint/PHPStan/Pest (if backend touched); mobile eslint + tsc + jest
+
+## Log
+
+- **2026-07-16** — Built. Backend: User is Scout-searchable (username/name/bio),
+  shouldBeSearchable gates on is_public; SearchService/Controller/scout/reindex
+  handle the `users` type; hydrate filters is_public=true (belt over the index).
+  Privacy proven on collection AND real-Meili engines incl. a stale-index case.
+  Mobile: Buscar tab replaces Compartir (search.tsx moved into (main); Share kept
+  as href:null route = iOS share-intent target); search finds People →
+  /users/[username] + Places + Tags; influencer "coming soon" stub removed. Gates:
+  API Pint+PHPStan+568 Pest; mobile eslint+tsc+201 jest. /coderabbit clean (2
+  parallel review agents; the one should-fix — untested prod privacy path — fixed).
+  **PR #96 open** (awaiting merge). Deliberate: influencer results dropped from
+  search UI (inert; return with T-038); is_public default-true posture flagged.
+
+- **2026-07-16 (merged)** — squash-merged to main; task done.

@@ -97,6 +97,21 @@ lookup.** Value by account type:
 
 ## Progress
 
+- **2026-07-16** — Built → **PR #98** (open, `/coderabbit`-approved, merge-ready;
+  merge gated to a human by the review policy). Shipped exactly as scoped:
+  `places[].handle` added to the extraction schema + prompt **v8**; a shared
+  `InstagramWebClient` **extracted** from `InstagramApiResolver` (one copy of the
+  cookie/`x-ig-app-id`/`allow_redirects`/never-throws plumbing) exposing
+  `mediaInfo(pk)` + `profile(handle)`; new `InstagramProfileLocator`
+  (business-address → bio 📍 locality → `full_name`, per-handle cached, never
+  throws); wired into `PlaceResolver::resolveOne` before `geocodeFailed()` —
+  enriched re-geocode first (keeps a `google_place_id`/dedup key, `full_name`
+  upgrades a bare handle), raw business-address coords (pending, no
+  `google_place_id`, still dedup-scanned) only when the geocoder still misses.
+  Config-gated `PLACES_IG_PROFILE_ENABLED` (reuses `INGESTION_IG_*`). Failure
+  path only — happy path unchanged. Full suite 592 green; Pint/PHPStan L6/
+  contracts jest+tsc clean; security review clean. Handle validated against the
+  IG username alphabet (SSRF/param-injection guard).
 - **2026-07-16** — Opened. Endpoint + payload **verified live** against
   `@lagranburgerok` (professional acct: empty `business_address_json`, bio
   `📍Barros Blancos`, `full_name` present) — confirms the mechanism and the

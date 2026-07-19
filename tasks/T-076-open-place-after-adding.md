@@ -35,3 +35,14 @@ to the place.
       form with the existing error UX)
 - [ ] Test: a mocked publish drives navigation to the place route with the right slug
 - [ ] Gates: mobile eslint + tsc + jest
+
+## Log
+
+- **2026-07-16** — Built. Map quick-add (`onQuickPublished`) now pushes
+  `/place/[slug]` (primary place) after the fly-to; share tab (`ShareProgress`)
+  auto-opens the detail on a single clean publish (ref-latched), while
+  multi-place/partial keep the result card so no venue is lost. Tests cover all
+  four branches. Gates green (jest 204, tsc, eslint). /coderabbit clean.
+  **PR #95 open** (awaiting merge).
+
+- **2026-07-16 (merged)** — squash-merged to main; task done.

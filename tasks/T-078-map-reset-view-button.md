@@ -33,3 +33,13 @@ recenter).
 - [ ] Accessible label; matches the map-control visual style
 - [ ] Test: pressing reset calls `animateToRegion` with the reset region
 - [ ] Gates: mobile eslint + tsc + jest
+
+## Log
+
+- **2026-07-16** — Built. Reset control (scan-outline) added to the bottom-right
+  zoom stack in `map.tsx`; `resetView()` animates to `DEFAULT_REGION`. i18n
+  `map.resetViewLabel` (en/es). Persistent `animateToRegion` spy exposed from the
+  RN-maps jest mock; test asserts reset → `animateToRegion(DEFAULT_REGION)`.
+  Gates green (jest 202, tsc, eslint). /coderabbit clean. **PR #94 open** (awaiting merge).
+
+- **2026-07-16 (merged)** — squash-merged to main; task done.

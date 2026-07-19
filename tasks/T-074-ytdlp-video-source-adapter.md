@@ -100,3 +100,33 @@ no video original → it falls to the image resolvers. Net: a reel never yields
   an image resolver; verified yt-dlp cannot read IG images). Grounded against the
   current adapter scaffolding — the missing piece is the `YtDlpAdapter` video
   fetcher; frame extraction downstream is already built.
+- **2026-07-16** — Built. `YtDlpAdapter` (media-only `SourceAdapter`) runs
+  `yt-dlp --no-playlist … -o <stem>.%(ext)s --print after_move:filepath
+  --no-simulate -- <url>`, parses the printed path, returns
+  `FetchedMedia(localPath, kind: Video)`; never throws (missing binary / image
+  post `No video formats found` / auth wall / timeout / disabled → empty). Chain
+  is `[OEmbedAdapter, YtDlpAdapter]` for IG/TikTok/YouTube — oEmbed still wins
+  metadata (caption), yt-dlp supplies the real video (oEmbed yields no media so
+  `DownloadMedia` advances to it). Config-gated `INGESTION_YTDLP_*` (cookies
+  default to `INGESTION_IG_COOKIES_PATH`), bound with primitive args in
+  `IngestionServiceProvider`, documented in `.env.example`. `dev.sh` re-adds the
+  container yt-dlp install (reverted with #80).
+  - **Deviation from the "DownloadMedia needs no change" note:** the yt-dlp
+    localPath was never cleaned (the old `finally` skipped `@unlink` for local
+    files, "the adapter owns the file" — but an adapter can't clean a file a
+    later job consumes, and a long-running worker leaks one video per share).
+    Fixed at the consumer: `DownloadMedia::ingest()` now always unlinks the temp
+    original after ingest. Tests updated to hand it throwaway temp copies (never
+    the committed fixture, which always-unlink would delete). Recorded here as
+    the ADR-style deviation note.
+  - **Prod (T-055):** no Dockerfile exists yet (Sail's vendored runtime); the
+    yt-dlp binary must be provided on the Forge worker host/image there. Noted in
+    `.env.example`.
+  - **Stretch (audio→transcription) deferred:** `PrepareMedia` already extracts
+    the audio WAV from any Video original and `TranscribeAudio` consumes it, so a
+    yt-dlp video now feeds the transcript for free — no extra work needed for the
+    reel's spoken menu/venue names. No separate task split required.
+  - Gates green: Pint, PHPStan L6, full Pest suite (583 passed). New tests:
+    `YtDlpAdapterTest` (13, Process::fake), `YtDlpVideoPipelineTest` (2, reel→
+    keyframes end-to-end + image-post fall-through), `DownloadMediaTest` updated
+    for temp-copy cleanup.
