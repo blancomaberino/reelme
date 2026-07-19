@@ -4,7 +4,7 @@ use App\Models\ExternalPlaceReview;
 use App\Models\Place;
 use App\Models\Review;
 use App\Models\User;
-use App\Services\Reviews\Drivers\TrustpilotReviewSource;
+use App\Services\Reviews\Drivers\NativeReviewSource;
 use App\Services\Reviews\ReviewSource;
 use App\Services\Reviews\ReviewSourceRegistry;
 use App\Services\Reviews\ReviewSourceSummary;
@@ -151,7 +151,7 @@ it('isolates a throwing driver so the others still aggregate', function () {
             throw new RuntimeException('provider exploded');
         }
     };
-    $native = new App\Services\Reviews\Drivers\NativeReviewSource;
+    $native = new NativeReviewSource;
 
     $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
     Review::factory()->create(['place_id' => $place->id, 'user_id' => User::factory(), 'rating' => 5]);
