@@ -34,13 +34,7 @@ class GoogleReviewSource implements ReviewSource
         }
 
         $rating = $place->google_rating !== null ? (float) $place->google_rating : null;
-        $snippets = array_map(
-            ReviewSnippet::fromArray(...),
-            array_values(array_filter(
-                $place->google_reviews_json ?? [],
-                is_array(...),
-            )),
-        );
+        $snippets = ReviewSnippet::listFromArray($place->google_reviews_json);
 
         // A resolvable id but no usable content (dropped cache) → omit, no empty row.
         if ($rating === null && $snippets === []) {

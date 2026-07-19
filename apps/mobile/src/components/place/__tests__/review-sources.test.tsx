@@ -48,14 +48,30 @@ it('opens the deep link only for a source that carries a url', () => {
     />,
   );
 
-  fireEvent.press(screen.getByLabelText('Read on Google'));
+  fireEvent.press(screen.getByLabelText(/Read on Google/));
   expect(openWebUrlMock).toHaveBeenCalledWith('https://search.google/x');
 
   // The native row is not a link (no url) — no read affordance rendered.
-  expect(screen.queryByLabelText('Read on Reelmap')).toBeNull();
+  expect(screen.queryByLabelText(/Read on Reelmap/)).toBeNull();
 });
 
 it('shows an em-dash for a source with no rating', () => {
   render(<ReviewSources sources={[summary({ source: 'trustpilot', rating: null, count: 0, url: 'https://tp/x' })]} />);
   expect(screen.getByText(/^—/)).toBeOnTheScreen();
+});
+
+it('falls back to the raw source id for an unknown provider', () => {
+  render(<ReviewSources sources={[summary({ source: 'foursquare', url: null })]} />);
+  expect(screen.getByText('foursquare')).toBeOnTheScreen();
+});
+
+it('shows the last-synced date for an external source that carries one', () => {
+  render(
+    <ReviewSources
+      sources={[summary({ source: 'google', url: 'https://g/x', synced_at: '2026-07-15T02:05:00Z' })]}
+    />,
+  );
+  // Both the read link and the freshness caption render (they are not exclusive).
+  expect(screen.getByLabelText(/Read on Google/)).toBeOnTheScreen();
+  expect(screen.getByText(/Updated/)).toBeOnTheScreen();
 });

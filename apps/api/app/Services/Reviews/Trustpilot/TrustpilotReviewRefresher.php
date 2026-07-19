@@ -2,7 +2,6 @@
 
 namespace App\Services\Reviews\Trustpilot;
 
-use App\Models\ExternalPlaceReview;
 use App\Models\Place;
 use App\Services\Places\GooglePlaceRefresher;
 use App\Services\Reviews\Drivers\TrustpilotReviewSource;
@@ -43,16 +42,17 @@ class TrustpilotReviewRefresher
             return false;
         }
 
-        $row = $this->cachedRow($place);
+        $row = $place->externalReview(TrustpilotReviewSource::ID);
 
         return $row === null || $row->synced_at->lt(now()->subDays($this->windowDays($windowDays)));
     }
 
     /**
-     * Fetch and upsert the place's Trustpilot summary. Returns
-     * 'refreshed' (row written/updated), 'dropped' (fetch resolved nothing → the
-     * stale row removed), or 'unchanged' (no domain, or a transient miss with a
-     * row kept). The sweep's per-row entry point; the client never throws.
+     * Fetch and upsert the place's Trustpilot summary. Returns 'refreshed' (row
+     * written/updated), 'dropped' (the API confirmed no business → stale row
+     * removed), or 'unchanged' (no domain, or a transient outage — the existing
+     * row is kept, never blanked on a blip). The sweep's per-row entry point; the
+     * client never throws.
      */
     public function refresh(Place $place): string
     {
@@ -61,14 +61,18 @@ class TrustpilotReviewRefresher
             return 'unchanged';
         }
 
-        $result = $this->client->fetch($domain);
-        $existing = $this->cachedRow($place);
+        $fetch = $this->client->fetch($domain);
+        $existing = $place->externalReview(TrustpilotReviewSource::ID);
 
-        if ($result === null) {
-            // Never fetched before → nothing to keep; a prior row → drop the stale
-            // signal (the source resolved to nothing now). A recent transient blip
-            // still drops here — acceptable: the driver just omits the place until
-            // the next successful sweep re-populates it.
+        if ($fetch->status === 'unavailable') {
+            // Transient (network/timeout/non-2xx) — keep any recent-enough row
+            // rather than blanking the place on a passing outage.
+            return 'unchanged';
+        }
+
+        if ($fetch->result === null) {
+            // The API answered but nothing resolved for this domain → drop a stale
+            // row so we don't keep showing a business Trustpilot no longer lists.
             if ($existing === null) {
                 return 'unchanged';
             }
@@ -77,6 +81,7 @@ class TrustpilotReviewRefresher
             return 'dropped';
         }
 
+        $result = $fetch->result;
         $place->externalReviews()->updateOrCreate(
             ['source' => TrustpilotReviewSource::ID],
             [
@@ -89,14 +94,5 @@ class TrustpilotReviewRefresher
         );
 
         return 'refreshed';
-    }
-
-    private function cachedRow(Place $place): ?ExternalPlaceReview
-    {
-        if ($place->relationLoaded('externalReviews')) {
-            return $place->externalReviews->firstWhere('source', TrustpilotReviewSource::ID);
-        }
-
-        return $place->externalReviews()->where('source', TrustpilotReviewSource::ID)->first();
     }
 }

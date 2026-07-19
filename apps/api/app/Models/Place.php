@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
+use App\Services\Reviews\ReviewSourceRegistry;
 use App\Services\Reviews\ReviewSourceSummary;
 use Database\Factories\PlaceFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -330,6 +331,22 @@ class Place extends Model
     }
 
     /**
+     * The cached external review row for one source (T-082), preferring the
+     * loaded `externalReviews` relation (no N+1 on the request path) and falling
+     * back to a scoped query otherwise. Shared by the ReviewSource driver and the
+     * out-of-band refresher so the relation-vs-query rule lives in one place and
+     * generalizes to the next external provider for free.
+     */
+    public function externalReview(string $source): ?ExternalPlaceReview
+    {
+        if ($this->relationLoaded('externalReviews')) {
+            return $this->externalReviews->firstWhere('source', $source);
+        }
+
+        return $this->externalReviews()->where('source', $source)->first();
+    }
+
+    /**
      * The place's per-source rating summaries (T-082): Google, native, Trustpilot,
      * … — whichever resolve, in registry order, each already reduced from its
      * cached signal. Powers the `review_sources[]` block on the place detail.
@@ -340,7 +357,7 @@ class Place extends Model
      */
     public function reviewSummaries(): array
     {
-        return app(\App\Services\Reviews\ReviewSourceRegistry::class)->summarize($this);
+        return app(ReviewSourceRegistry::class)->summarize($this);
     }
 
     /**

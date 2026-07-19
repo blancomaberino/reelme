@@ -788,20 +788,20 @@ function renderPlace(p) {
        <div><div style="font-size:var(--fs-sm)"><b>@${esc(r.author ? r.author.username : t("review.anon"))}</b>${r.is_own?` <span class="muted" style="color:var(--muted)">${t("review.you")}</span>`:""} <span class="stars">${starStr(r.rating)}</span></div>
        ${r.body ? `<p style="font-size:var(--fs-sm);color:var(--ink-2);margin:4px 0 0;line-height:1.5">${esc(r.body.slice(0,200))}</p>`:""}</div></div>`).join("");
   // Multi-source review aggregate (T-082): one row per resolving provider.
-  const srcLabel = s => t("reviewSrc." + s) !== ("reviewSrc." + s) ? t("reviewSrc." + s) : s;
+  const srcLabel = s => { const v = t("reviewSrc." + s); return v !== ("reviewSrc." + s) ? v : s; };
   const reviewSources = (p.review_sources || []).map(s => {
     const label = srcLabel(s.source);
     const val = s.rating != null ? Number(s.rating).toFixed(1) : "—";
-    const meta = s.url
+    const read = s.url
       ? `<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600">${t("reviewSrc.read")} ${esc(label)} ↗</a>`
-      : `<span class="muted" style="color:var(--muted)">${Number(s.count || 0)} ${t("reviewSrc.reviews")}</span>`;
+      : "";
     return `<div class="rsrc">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <span style="font-weight:700">${esc(label)}</span>
         <span class="stars" style="font-size:var(--fs-sm)">${starStr(s.rating)}</span></div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px">
         <span style="font-weight:600">${val} <span class="muted" style="color:var(--ink-2);font-weight:400;font-size:var(--fs-xs)">· ${Number(s.count || 0)} ${t("reviewSrc.reviews")}</span></span>
-        ${s.url ? meta : ""}</div></div>`;
+        ${read}</div></div>`;
   }).join("");
   const own = (p.reviews || []).find(r => r.is_own);
   const composer = token ? `

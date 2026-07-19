@@ -96,13 +96,24 @@ it('re-fetches and upserts a cached row past the refresh window', function () {
     expect((float) $row->rating)->toBe(4.3)->and($row->review_count)->toBe(512);
 });
 
-it('drops a stale cached row when the source no longer resolves', function () {
-    Http::fake(['api.trustpilot.com/*' => Http::response([], 500)]); // transient/failed fetch
+it('drops a stale cached row when the API confirms no business resolves', function () {
+    // A clean 200 that resolves nothing → the business is genuinely gone.
+    Http::fake(['api.trustpilot.com/v1/business-units/find*' => Http::response([], 200)]);
     $place = Place::factory()->active()->atPoint(51.5, -0.13)->create(['website' => 'https://joes.com']);
     ExternalPlaceReview::factory()->for($place)->syncedDaysAgo(30)->create();
 
     expect(app(TrustpilotReviewRefresher::class)->refresh($place))->toBe('dropped');
     expect(ExternalPlaceReview::count())->toBe(0);
+});
+
+it('keeps a cached row on a transient failure instead of blanking it', function () {
+    Http::fake(['api.trustpilot.com/*' => Http::response([], 500)]); // outage / non-2xx
+    $place = Place::factory()->active()->atPoint(51.5, -0.13)->create(['website' => 'https://joes.com']);
+    ExternalPlaceReview::factory()->for($place)->syncedDaysAgo(30)->create(['rating' => 4.1]);
+
+    expect(app(TrustpilotReviewRefresher::class)->refresh($place))->toBe('unchanged');
+    // The recent-enough summary survives the blip — self-heals next good sweep.
+    expect((float) ExternalPlaceReview::sole()->rating)->toBe(4.1);
 });
 
 it('sweeps only stale places and isolates per-row failures', function () {

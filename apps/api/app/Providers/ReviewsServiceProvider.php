@@ -12,10 +12,11 @@ use Illuminate\Support\ServiceProvider;
 /**
  * Wires the multi-source review aggregator (T-082): the enabled {@see ReviewSource}
  * drivers, in `config/reviews.php` order, behind a singleton
- * {@see ReviewSourceRegistry}. A source is included only when its
- * `reviews.sources.<id>.enabled` flag is set (Trustpilot additionally needs an
- * api key — an enabled-but-unkeyed source would only ever read an empty cache).
- * Tests can rebind the registry with a fixed driver set.
+ * {@see ReviewSourceRegistry}. Registration gates purely on
+ * `reviews.sources.<id>.enabled`. The Trustpilot api key gates *fetching*, not
+ * registration — an enabled-but-unkeyed Trustpilot driver is still registered
+ * but only ever reads an empty cache (the sweep no-ops without a key), so it
+ * returns null and is harmlessly omitted. Tests can rebind with a fixed set.
  */
 class ReviewsServiceProvider extends ServiceProvider
 {

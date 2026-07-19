@@ -2,7 +2,6 @@
 
 namespace App\Services\Reviews\Drivers;
 
-use App\Models\ExternalPlaceReview;
 use App\Models\Place;
 use App\Services\Reviews\ReviewSnippet;
 use App\Services\Reviews\ReviewSource;
@@ -30,16 +29,13 @@ class TrustpilotReviewSource implements ReviewSource
 
     public function summary(Place $place): ?ReviewSourceSummary
     {
-        $row = $this->cachedRow($place);
+        $row = $place->externalReview(self::ID);
         if ($row === null) {
             return null;
         }
 
         $rating = $row->rating !== null ? (float) $row->rating : null;
-        $snippets = array_map(
-            ReviewSnippet::fromArray(...),
-            array_values(array_filter($row->snippets_json ?? [], is_array(...))),
-        );
+        $snippets = ReviewSnippet::listFromArray($row->snippets_json);
 
         // A stale, emptied cache row (score dropped, no snippets) is not shown.
         if ($rating === null && $snippets === []) {
@@ -54,15 +50,5 @@ class TrustpilotReviewSource implements ReviewSource
             syncedAt: $row->synced_at,
             snippets: $snippets,
         );
-    }
-
-    /** The cached row, from the loaded relation when available, else a scoped query. */
-    private function cachedRow(Place $place): ?ExternalPlaceReview
-    {
-        if ($place->relationLoaded('externalReviews')) {
-            return $place->externalReviews->firstWhere('source', self::ID);
-        }
-
-        return $place->externalReviews()->where('source', self::ID)->first();
     }
 }

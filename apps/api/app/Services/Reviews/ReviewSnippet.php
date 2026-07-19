@@ -32,11 +32,30 @@ final readonly class ReviewSnippet
         $photo = $data['profile_photo_url'] ?? null;
 
         return new self(
+            // Clamp to the contract's 0–5 range so a dirty/legacy cached row can
+            // never emit a snippet rating that violates the place schema.
             author: self::str($data['author'] ?? null),
-            rating: isset($data['rating']) && is_numeric($data['rating']) ? (float) $data['rating'] : null,
+            rating: isset($data['rating']) && is_numeric($data['rating'])
+                ? max(0.0, min(5.0, (float) $data['rating']))
+                : null,
             text: self::str($data['text'] ?? null),
             relativeTime: self::str($data['relative_time'] ?? null),
             profilePhotoUrl: is_string($photo) && preg_match('#^https?://#i', $photo) === 1 ? $photo : null,
+        );
+    }
+
+    /**
+     * Normalize a cached rows array — `google_reviews_json`, a persisted
+     * Trustpilot snapshot, any external driver's stored snippets — to a snippet
+     * list, skipping non-array rows. The shared decode both external drivers use.
+     *
+     * @return list<self>
+     */
+    public static function listFromArray(mixed $rows): array
+    {
+        return array_map(
+            self::fromArray(...),
+            array_values(array_filter(is_array($rows) ? $rows : [], is_array(...))),
         );
     }
 

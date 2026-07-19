@@ -40,11 +40,12 @@ class RefreshStaleTrustpilotReviews extends Command
             ->with('externalReviews')
             ->chunkById(100, function ($places) use ($refresher, $days, &$refreshed, &$dropped) {
                 foreach ($places as $place) {
-                    if (! $refresher->isStale($place, $days)) {
-                        continue;
-                    }
-                    // Per-row isolation: one failure must never abort the sweep.
+                    // Per-row isolation: one failure (staleness check included)
+                    // must never abort the sweep and strand the remaining places.
                     try {
+                        if (! $refresher->isStale($place, $days)) {
+                            continue;
+                        }
                         match ($refresher->refresh($place)) {
                             'refreshed' => $refreshed++,
                             'dropped' => $dropped++,

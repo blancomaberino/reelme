@@ -51,13 +51,15 @@ export function ReviewSources({ sources }: Props) {
       <Text style={styles.sectionTitle}>{t('place.reviewSources')}</Text>
       <View style={styles.list}>
         {sources.map((s) => {
+          const name = label(s.source);
           const stars = s.rating != null ? Math.max(0, Math.min(5, Math.round(s.rating))) : 0;
+          const count = t('reviewSource.count', { count: s.count });
           const synced = s.synced_at ? fmt.date(s.synced_at) : '';
           const row = (
             <>
               <View style={styles.rowMain}>
                 <Text style={styles.source} numberOfLines={1}>
-                  {label(s.source)}
+                  {name}
                 </Text>
                 <Text style={styles.stars}>
                   {'★'.repeat(stars)}
@@ -69,18 +71,18 @@ export function ReviewSources({ sources }: Props) {
                   {s.rating != null ? s.rating.toFixed(1) : '—'}
                   <Text style={styles.count}>
                     {'  '}
-                    {t('reviewSource.count', { count: s.count })}
+                    {count}
                   </Text>
                 </Text>
                 {s.url ? (
                   <View style={styles.linkRow}>
-                    <Text style={styles.link}>{t('reviewSource.read', { source: label(s.source) })}</Text>
+                    <Text style={styles.link}>{t('reviewSource.read', { source: name })}</Text>
                     <Ionicons name="open-outline" size={13} color={c.primary} />
                   </View>
-                ) : synced ? (
-                  <Text style={styles.synced}>{t('reviewSource.synced', { date: synced })}</Text>
                 ) : null}
               </View>
+              {/* Freshness of an external cache (Google/Trustpilot); native has none. */}
+              {synced ? <Text style={styles.synced}>{t('reviewSource.synced', { date: synced })}</Text> : null}
             </>
           );
 
@@ -89,7 +91,7 @@ export function ReviewSources({ sources }: Props) {
               key={s.source}
               onPress={() => openWebUrl(s.url)}
               accessibilityRole="link"
-              accessibilityLabel={t('reviewSource.read', { source: label(s.source) })}
+              accessibilityLabel={`${name}, ${s.rating != null ? s.rating.toFixed(1) : '—'}, ${count}. ${t('reviewSource.read', { source: name })}`}
               style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
             >
               {row}

@@ -18,47 +18,64 @@ use Throwable;
  * query *value*, not a request host — and it still vets that domain as a public
  * hostname first (no IPs/localhost). Redirects are disabled so a 30x can't
  * bounce the request to an internal address. It NEVER throws: any error (missing
- * key, network, malformed body) returns null so one bad source degrades to the
- * others.
+ * key, network, malformed body) becomes an `unavailable` {@see TrustpilotFetch}
+ * so one bad source degrades to the others.
  */
 class TrustpilotClient
 {
     /**
      * Fetch the summary for a business by its website/domain (e.g.
-     * "https://joes.com" or "joes.com"), or null. Never throws.
+     * "https://joes.com" or "joes.com"). Never throws — a failure is reported as
+     * `unavailable` (keep any cached row), a clean "no business" as `empty`
+     * (drop the cached row), a hit as `resolved`.
      */
-    public function fetch(string $domain): ?TrustpilotResult
+    public function fetch(string $domain): TrustpilotFetch
     {
         $domain = $this->domainFor($domain);
-        if ($domain === null || ! $this->enabled()) {
-            return null;
+        if ($domain === null) {
+            return TrustpilotFetch::empty(); // no resolvable business for this place
+        }
+        if (! $this->enabled()) {
+            return TrustpilotFetch::unavailable(); // can't determine — leave cache as-is
         }
 
         try {
             $unit = $this->request()->get('/business-units/find', ['name' => $domain]);
             if (! $unit->successful() || ! is_array($unit->json())) {
-                return null;
+                return TrustpilotFetch::unavailable(); // transient / non-2xx
             }
             $body = $unit->json();
 
             $businessId = $this->str($body['id'] ?? null);
             $rating = $this->score($body['score'] ?? null);
-            $count = (int) ($body['numberOfReviews']['total'] ?? $body['numberOfReviews'] ?? 0);
+            $count = $this->reviewCount($body['numberOfReviews'] ?? null);
             if ($businessId === null && $rating === null && $count === 0) {
-                return null; // nothing resolved for this domain
+                return TrustpilotFetch::empty(); // API answered, nothing resolved
             }
 
-            return new TrustpilotResult(
+            return TrustpilotFetch::resolved(new TrustpilotResult(
                 rating: $rating,
-                count: max(0, $count),
+                count: $count,
                 url: 'https://www.trustpilot.com/review/'.$domain,
                 snippets: $businessId !== null ? $this->snippets($businessId) : [],
-            );
+            ));
         } catch (Throwable $e) {
             report($e);
 
-            return null;
+            return TrustpilotFetch::unavailable();
         }
+    }
+
+    /**
+     * Trustpilot's review total, from either `{total: N}` or a bare `N`. Guards
+     * the int-cast: a non-numeric/array-without-`total` shape yields 0, never a
+     * bogus `1` (PHP casts a non-empty array to 1).
+     */
+    private function reviewCount(mixed $numberOfReviews): int
+    {
+        $value = is_array($numberOfReviews) ? ($numberOfReviews['total'] ?? null) : $numberOfReviews;
+
+        return is_numeric($value) ? max(0, (int) $value) : 0;
     }
 
     /**
