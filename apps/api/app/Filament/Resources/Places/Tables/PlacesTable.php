@@ -4,13 +4,19 @@ namespace App\Filament\Resources\Places\Tables;
 
 use App\Enums\PlaceStatus;
 use App\Models\Place;
+use App\Services\Moderation\PlaceModerator;
+use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 class PlacesTable
 {
@@ -66,6 +72,51 @@ class PlacesTable
             ])
             ->recordActions([
                 ViewAction::make(),
+                Action::make('takeDown')
+                    ->label('Take down')
+                    ->icon('heroicon-o-eye-slash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalDescription('Pull this pin off the map, search, and every feed/profile card. Reversible with Restore.')
+                    ->visible(fn (Place $record): bool => in_array($record->status, [PlaceStatus::Pending, PlaceStatus::Active], true))
+                    ->action(function (Place $record): void {
+                        app(PlaceModerator::class)->takeDown([$record]);
+                        Notification::make()->success()->title('Place taken down')->send();
+                    }),
+                Action::make('restore')
+                    ->label('Restore')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->visible(fn (Place $record): bool => $record->status === PlaceStatus::Removed)
+                    ->action(function (Place $record): void {
+                        app(PlaceModerator::class)->restore([$record]);
+                        Notification::make()->success()->title('Place restored')->send();
+                    }),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    BulkAction::make('takeDown')
+                        ->label('Take down')
+                        ->icon('heroicon-o-eye-slash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records): void {
+                            app(PlaceModerator::class)->takeDown($records);
+                            Notification::make()->success()->title("Took down {$records->count()} place(s)")->send();
+                        }),
+                    BulkAction::make('restore')
+                        ->label('Restore')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records): void {
+                            app(PlaceModerator::class)->restore($records);
+                            Notification::make()->success()->title("Restored {$records->count()} place(s)")->send();
+                        }),
+                ]),
             ]);
     }
 }

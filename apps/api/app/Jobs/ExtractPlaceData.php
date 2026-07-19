@@ -44,6 +44,15 @@ class ExtractPlaceData extends PipelineStubJob
     /** @var array<int, int> */
     public array $backoff = [30, 180, 600];
 
+    /**
+     * @param  bool  $force  Admin reprocess (T-072): re-run the LLM even when a
+     *                       prior succeeded run exists, instead of reusing it.
+     */
+    public function __construct(int $shareId, public readonly bool $force = false)
+    {
+        parent::__construct($shareId);
+    }
+
     protected function stage(): string
     {
         return 'extract';
@@ -63,7 +72,7 @@ class ExtractPlaceData extends PipelineStubJob
     {
         $share->loadMissing('sourcePost.influencer');
 
-        if (($existing = $this->existingSuccess($share)) !== null) {
+        if (! $this->force && ($existing = $this->existingSuccess($share)) !== null) {
             // Re-delivery: the prior success was already issuer-enriched on its
             // first pass — don't re-run it (a dead handle would re-hit Instagram
             // every retry).
