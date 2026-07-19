@@ -1829,7 +1829,7 @@
       "id": "T-072",
       "title": "Admin moderation batch: force-reprocess flag, bulk delete/remove-from-feed, admin access",
       "phase": "M2",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-008"
       ],
