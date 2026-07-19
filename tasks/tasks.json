@@ -1994,6 +1994,210 @@
       ],
       "agent": "executor",
       "notes": "Requested 2026-07-16. Map has zoom +/- (zoomBy) but no reset. Reset target per design: DEFAULT_REGION / user location / fit-to-mine (lib/map-region.fitRegion). UI task -> /frontend-design."
+    },
+    {
+      "id": "T-079",
+      "title": "Card-specific discounts: extract from captions, surface on place, filter by card",
+      "phase": "M2",
+      "status": "done",
+      "depends_on": [
+        "T-021",
+        "T-023",
+        "T-030",
+        "T-033",
+        "T-032"
+      ],
+      "estimate": "M",
+      "paths": [
+        "packages/contracts/extraction.schema.json",
+        "apps/api/resources/prompts/extraction.system.md",
+        "apps/api/app/Models/Place.php",
+        "apps/api/app/Http/Resources/PlaceResource.php",
+        "apps/api/app/Http/Controllers/Api/V1/",
+        "apps/mobile/app/place/[slug].tsx",
+        "apps/mobile/src/components/map/filter-bar.tsx",
+        "apps/mobile/src/stores/map.ts",
+        "apps/api/public/demo.html"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md",
+        "03-api-design.md#places",
+        "05-mobile-app.md"
+      ],
+      "acceptance": [
+        "extraction.schema.json gains places[].discounts; prompt v10 fills it; issuer @handle resolved to display name (CardIssuerResolver)",
+        "Discounts aggregated read-time from source snapshots (not a places column); place detail shows discount chips (card + terms) on mobile + web",
+        "Map + my-places can filter to places offering a given card",
+        "Tests: fixture with card discounts populates the field; no-discount caption stays empty"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-16. DONE (merged). Full spec in tasks/T-079-card-discounts.md. Entry reconstructed 2026-07-19 (was an uncommitted tasks.json addition lost to a git-checkout revert)."
+    },
+    {
+      "id": "T-080",
+      "title": "Refresh a place's Google data on re-share when the cached copy is stale",
+      "phase": "M2",
+      "status": "done",
+      "depends_on": [
+        "T-023",
+        "T-059"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Jobs/ResolvePlace.php",
+        "apps/api/app/Services/Places/PlaceResolver.php",
+        "apps/api/app/Console/Commands/RefreshStaleGoogleReviews.php",
+        "apps/api/app/Services/Places/GooglePlaceRefresher.php",
+        "apps/api/config/places.php"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md#6",
+        "03-api-design.md#places"
+      ],
+      "acceptance": [
+        "Refresh-or-drop logic in one shared service (GooglePlaceRefresher) used by both the daily cron and the re-share hook",
+        "A re-shared post whose place is stale gets refreshed; a fresh place does not re-fetch",
+        "Refresh never throws (keyless/Nominatim dev, not-found, API error)",
+        "Tests: stale place on re-share -> refreshed; fresh -> no fetch"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-16. DONE (merged). Full spec in tasks/T-080-refresh-stale-google-on-reshare.md. Entry reconstructed 2026-07-19."
+    },
+    {
+      "id": "T-081",
+      "title": "Google reviews: in-app viewer + 'read all on Google' deep link (finish gaps)",
+      "phase": "M2",
+      "status": "done",
+      "depends_on": [
+        "T-033",
+        "T-065",
+        "T-059"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/place/[slug].tsx",
+        "apps/mobile/src/components/place/",
+        "apps/api/public/demo.html",
+        "apps/api/app/Http/Resources/PlaceResource.php"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md",
+        "03-api-design.md#places"
+      ],
+      "acceptance": [
+        "'Read all on Google' deep link on place detail (mobile + web) when google_place_id present",
+        "In-app snippet viewer shows author, star rating, relative time, photo",
+        "No google_place_id -> no link; no snippets -> section hidden",
+        "Tests: link built + guarded; snippets render"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-16. DONE (merged). Full spec in tasks/T-081-google-reviews-link-viewer.md. Entry reconstructed 2026-07-19."
+    },
+    {
+      "id": "T-082",
+      "title": "Multi-source review aggregator (Google + native + Trustpilot/others), normalized",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-059",
+        "T-081"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Services/Reviews/",
+        "apps/api/app/Models/Place.php",
+        "apps/api/app/Http/Resources/PlaceResource.php",
+        "apps/api/config/reviews.php",
+        "apps/mobile/app/place/[slug].tsx",
+        "apps/mobile/src/components/place/",
+        "apps/api/public/demo.html"
+      ],
+      "spec_refs": [
+        "04-analysis-pipeline.md",
+        "03-api-design.md#places"
+      ],
+      "acceptance": [
+        "ReviewSource abstraction + registry with drivers google, native, trustpilot/others",
+        "Place detail shows a per-source rating summary with label, deep link, last-synced",
+        "Each provider caches ToS-compliantly, is SSRF-safe, never throws",
+        "PlaceResource exposes review_sources[]; contract schema + TS regen, drift green",
+        "Tests (Http::fake/fixtures per provider): aggregation shape, provider-failure isolation"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-082-review-aggregator.md. Entry reconstructed 2026-07-19 (uncommitted tasks.json addition lost to a git-checkout revert)."
+    },
+    {
+      "id": "T-083",
+      "title": "'Suggest an edit' flow for place info + business-owner management",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-030",
+        "T-041"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Http/Controllers/Api/V1/PlaceEditSuggestionController.php",
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/",
+        "apps/api/app/Filament/Resources/",
+        "apps/mobile/app/place/[slug].tsx",
+        "apps/mobile/app/restaurant/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#restaurant-program",
+        "02-data-model.md",
+        "03-api-design.md#places"
+      ],
+      "acceptance": [
+        "place_edit_suggestions table + model; 'suggest an edit' open to any authed user",
+        "Filament moderation queue: approve patches the target places fields with an audit trail",
+        "Verified owners (is_restaurant_owner via a T-041 verified place_claim) get direct edit",
+        "Sharing preserved: a suggested/owner-managed place still surfaces as a pin + in feeds",
+        "Reuses is_restaurant_owner (place-scoped via T-041) - no new role system",
+        "Tests: any user can suggest; owner edit applies; non-owner queues; approve patches"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-083-suggest-edit-business-owner.md. Entry reconstructed 2026-07-19. Overlaps T-084 (manual editability) - coordinate."
+    },
+    {
+      "id": "T-084",
+      "title": "Places as first-class businesses: enrich (web/menu/GMB/reviews), manual edit, place picture (image + thumbnail)",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-030",
+        "T-035",
+        "T-059",
+        "T-082"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/api/app/Services/Places/",
+        "apps/api/app/Filament/Resources/Places/",
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/Place.php",
+        "apps/api/app/Http/Resources/PlaceResource.php",
+        "apps/api/app/Http/Resources/PlaceSummaryResource.php",
+        "packages/contracts/place-summary.json",
+        "apps/mobile/src/components/map/",
+        "apps/mobile/app/place/[slug].tsx",
+        "apps/api/public/demo.html"
+      ],
+      "spec_refs": [
+        "03-api-design.md#places",
+        "04-analysis-pipeline.md",
+        "05-mobile-app.md",
+        "02-data-model.md"
+      ],
+      "acceptance": [
+        "Enrich-as-business: a place-level action (Filament + optional API) that processes a place INDEPENDENT of any share/reel - fetch business info from the web (site/menu), Google (GMB/Places), and reviews - and populates place fields. Never throws; config-gated; ToS/SSRF-safe; caches per source. Reuses GooglePlaceRefresher (T-080) + the review aggregator (T-082) rather than duplicating.",
+        "Manual editability: places are admin-editable in Filament (name, address, cuisine, hours, phone, website, picture, etc.) with an audit trail. Manual overrides are respected - a later enrichment must not clobber fields a human set (precedence/locked-fields).",
+        "Place picture: add image_url + thumbnail_url to places (migration + model + PlaceResource/PlaceSummaryResource + contract place-summary.json + TS regen, drift green). The MAP MARKER uses thumbnail_url, falling back to image_url when thumbnail is null. Mobile map markers render the picture; place detail shows the main image. Source: enrichment or manual upload.",
+        "Tests: enricher populates fields with Http::fake/fixtures + never-throws + respects manual overrides; manual edit persists and survives re-enrichment; marker image uses thumbnail-else-main fallback; contract drift green; mobile eslint/tsc/jest green."
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-07-19 by owner: 'Places should be first-class businesses, not just post-derived pins.' Three parts, may split into slices: (1) enrich-as-business button (web/menu/GMB/reviews, independent of a reel); (2) manual editability with override precedence; (3) place picture image+thumbnail, markers use thumbnail-else-main. Relates to T-082 (reviews), T-080 (Google refresh), T-065 (enrichments), T-083 (suggest-edit / owner management - manual-edit overlap, coordinate). UI parts -> /frontend-design."
     }
   ]
 }
