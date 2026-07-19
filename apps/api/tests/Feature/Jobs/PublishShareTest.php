@@ -6,7 +6,9 @@ use App\Jobs\PublishShare;
 use App\Jobs\ResolvePlace;
 use App\Models\Place;
 use App\Models\PlaceSource;
+use App\Models\Share;
 use App\Services\Geo\FakeGeocoder;
+use App\Services\Places\PlacePublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -59,6 +61,61 @@ it('activates a place when the user confirmed in review, even with one source', 
     $place = Place::sole();
     expect($place->status)->toBe(PlaceStatus::Active)
         ->and($place->shares_count)->toBe(1);
+});
+
+it('activates a Google-verified place on its first source (ADR-086)', function () {
+    // Resolved to a real Google Places establishment with 80 reviews — third-party
+    // proof it exists, so it activates without waiting for a second share.
+    bindGeocoder((new FakeGeocoder)->seed(
+        'Lanzhou Beef Noodle House',
+        geoResult('ChIJverified', 51.5, -0.13, 0.9, 'Lanzhou Beef Noodle House', 4.6, 80),
+    ));
+    $share = analyzingShare();
+    (new ResolvePlace($share->id))->handle();
+
+    (new PublishShare($share->id))->handle();
+
+    $place = Place::sole();
+    expect($place->status)->toBe(PlaceStatus::Active)
+        ->and($place->shares_count)->toBe(1)
+        ->and($place->google_rating_count)->toBe(80);
+});
+
+it('leaves a Google-matched place with zero reviews pending (thin match)', function () {
+    // A google_place_id but no reviews (a thin / address-only match) is not proof
+    // of a real establishment — stays pending until a second source or a human.
+    bindGeocoder((new FakeGeocoder)->seed(
+        'Lanzhou Beef Noodle House',
+        geoResult('ChIJthin', 51.5, -0.13, 0.9, 'Lanzhou Beef Noodle House', null, 0),
+    ));
+    $share = analyzingShare();
+    (new ResolvePlace($share->id))->handle();
+
+    (new PublishShare($share->id))->handle();
+
+    $place = Place::sole();
+    expect($place->google_place_id)->not->toBeNull()
+        ->and($place->status)->toBe(PlaceStatus::Pending);
+});
+
+it('revives a taken-down Google-verified place to pending, not straight to active (ADR-086)', function () {
+    // A moderator take-down (Removed) must re-earn the map via normal review, not
+    // be undone by a single re-share off cached Google data.
+    $place = Place::factory()->create([
+        'status' => PlaceStatus::Removed,
+        'google_place_id' => 'ChIJremoved',
+        'google_rating_count' => 300,
+    ]);
+    $share = Share::factory()->create(['status' => ShareStatus::Analyzing, 'user_confirmed' => false]);
+    $source = PlaceSource::factory()->create([
+        'place_id' => $place->id,
+        'share_id' => $share->id,
+        'published_at' => now(),
+    ]);
+
+    app(PlacePublisher::class)->recompute($place, $share, $source);
+
+    expect($place->fresh()->status)->toBe(PlaceStatus::Pending); // revived, but back in review — not auto-activated
 });
 
 it('is idempotent across redelivery — publishing twice keeps counts stable', function () {
