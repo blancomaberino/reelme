@@ -61,6 +61,41 @@ it('activates a place when the user confirmed in review, even with one source', 
         ->and($place->shares_count)->toBe(1);
 });
 
+it('activates a Google-verified place on its first source (ADR-086)', function () {
+    // Resolved to a real Google Places establishment with 80 reviews — third-party
+    // proof it exists, so it activates without waiting for a second share.
+    bindGeocoder((new FakeGeocoder)->seed(
+        'Lanzhou Beef Noodle House',
+        geoResult('ChIJverified', 51.5, -0.13, 0.9, 'Lanzhou Beef Noodle House', 4.6, 80),
+    ));
+    $share = analyzingShare();
+    (new ResolvePlace($share->id))->handle();
+
+    (new PublishShare($share->id))->handle();
+
+    $place = Place::sole();
+    expect($place->status)->toBe(PlaceStatus::Active)
+        ->and($place->shares_count)->toBe(1)
+        ->and($place->google_rating_count)->toBe(80);
+});
+
+it('leaves a Google-matched place with zero reviews pending (thin match)', function () {
+    // A google_place_id but no reviews (a thin / address-only match) is not proof
+    // of a real establishment — stays pending until a second source or a human.
+    bindGeocoder((new FakeGeocoder)->seed(
+        'Lanzhou Beef Noodle House',
+        geoResult('ChIJthin', 51.5, -0.13, 0.9, 'Lanzhou Beef Noodle House', null, 0),
+    ));
+    $share = analyzingShare();
+    (new ResolvePlace($share->id))->handle();
+
+    (new PublishShare($share->id))->handle();
+
+    $place = Place::sole();
+    expect($place->google_place_id)->not->toBeNull()
+        ->and($place->status)->toBe(PlaceStatus::Pending);
+});
+
 it('is idempotent across redelivery — publishing twice keeps counts stable', function () {
     bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult('ChIJidem2', 51.5, -0.13)));
     $share = analyzingShare();

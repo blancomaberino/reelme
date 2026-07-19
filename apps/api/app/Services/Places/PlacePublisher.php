@@ -39,7 +39,8 @@ class PlacePublisher
             $place->status = PlaceStatus::Pending;
         }
 
-        if ($place->status === PlaceStatus::Pending && ($sourceCount >= 2 || $share->user_confirmed)) {
+        if ($place->status === PlaceStatus::Pending
+            && ($sourceCount >= 2 || $share->user_confirmed || $this->isGoogleVerified($place))) {
             $place->status = PlaceStatus::Active;
         }
 
@@ -56,6 +57,19 @@ class PlacePublisher
         $place->shares_count = $sourceCount;
         $place->avg_extraction_confidence = $this->avgConfidence($place->id);
         $place->save();
+    }
+
+    /**
+     * A place that resolved to a real Google Places establishment WITH at least
+     * one review is third-party-verified — a stronger corroboration signal than a
+     * second influencer share, so it activates on the first source (ADR-086). The
+     * resolver persists `google_rating_count` at resolve time, before this runs.
+     * A bare google_place_id with no reviews (a thin/address-only match) stays
+     * pending until a second source or a human confirms it.
+     */
+    private function isGoogleVerified(Place $place): bool
+    {
+        return $place->google_place_id !== null && (int) ($place->google_rating_count ?? 0) >= 1;
     }
 
     /** Rolling average of the non-null model confidences across the place's sources. */
