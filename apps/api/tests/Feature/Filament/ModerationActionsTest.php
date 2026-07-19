@@ -3,6 +3,8 @@
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
 use App\Filament\Resources\Places\Pages\ListPlaces;
+use App\Filament\Resources\Places\Pages\ViewPlace;
+use App\Filament\Resources\Places\RelationManagers\SourcesRelationManager;
 use App\Filament\Resources\Shares\Pages\ListShares;
 use App\Jobs\ExtractPlaceData;
 use App\Jobs\PublishShare;
@@ -87,6 +89,24 @@ it('wires the per-record place actions (take down + restore)', function () {
         ->filterTable('review_queue', false)
         ->callTableAction('restore', $place);
     expect($place->fresh()->status)->toBe(PlaceStatus::Pending);
+});
+
+it('reprocesses a share from the place-detail Sources table', function () {
+    Bus::fake();
+    $this->actingAs(User::factory()->admin()->create());
+
+    $place = Place::factory()->create(['status' => PlaceStatus::Pending, 'shares_count' => 1]);
+    $share = publishedShare($place);
+    $source = $share->publishedPlaceSource;
+
+    Livewire::test(SourcesRelationManager::class, [
+        'ownerRecord' => $place,
+        'pageClass' => ViewPlace::class,
+    ])->callTableAction('reprocess', $source);
+
+    expect($share->fresh()->status)->toBe(ShareStatus::Fetching)
+        ->and(PlaceSource::where('share_id', $share->id)->count())->toBe(0);
+    Bus::assertChained([ExtractPlaceData::class, ResolvePlace::class, PublishShare::class]);
 });
 
 it('forbids a non-admin from reaching the moderation panel', function () {
