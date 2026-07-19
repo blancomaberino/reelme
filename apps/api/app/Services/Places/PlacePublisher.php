@@ -33,14 +33,19 @@ class PlacePublisher
         $sourceCount = $place->sources()->whereNotNull('published_at')->count();
 
         // A published source on an orphaned tombstone revives it (T-073): the
-        // place is evidenced again, so bring it back to the unverified baseline;
-        // the activation rule below can lift it further on the same pass.
-        if ($place->status === PlaceStatus::Removed && $sourceCount >= 1) {
+        // place is evidenced again, so bring it back to the unverified baseline.
+        // The activation rule below can lift it further on the same pass — EXCEPT
+        // the Google-verified trigger (ADR-086): a place that was taken
+        // down/tombstoned (Removed) must re-earn the map through the normal
+        // corroboration path, not silently jump back to Active off its cached
+        // Google data, so a moderator's removal isn't undone by one re-share.
+        $wasRemoved = $place->status === PlaceStatus::Removed;
+        if ($wasRemoved && $sourceCount >= 1) {
             $place->status = PlaceStatus::Pending;
         }
 
         if ($place->status === PlaceStatus::Pending
-            && ($sourceCount >= 2 || $share->user_confirmed || $this->isGoogleVerified($place))) {
+            && ($sourceCount >= 2 || $share->user_confirmed || (! $wasRemoved && $this->isGoogleVerified($place)))) {
             $place->status = PlaceStatus::Active;
         }
 

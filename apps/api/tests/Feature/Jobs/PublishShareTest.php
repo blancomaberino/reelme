@@ -6,7 +6,9 @@ use App\Jobs\PublishShare;
 use App\Jobs\ResolvePlace;
 use App\Models\Place;
 use App\Models\PlaceSource;
+use App\Models\Share;
 use App\Services\Geo\FakeGeocoder;
+use App\Services\Places\PlacePublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -94,6 +96,26 @@ it('leaves a Google-matched place with zero reviews pending (thin match)', funct
     $place = Place::sole();
     expect($place->google_place_id)->not->toBeNull()
         ->and($place->status)->toBe(PlaceStatus::Pending);
+});
+
+it('revives a taken-down Google-verified place to pending, not straight to active (ADR-086)', function () {
+    // A moderator take-down (Removed) must re-earn the map via normal review, not
+    // be undone by a single re-share off cached Google data.
+    $place = Place::factory()->create([
+        'status' => PlaceStatus::Removed,
+        'google_place_id' => 'ChIJremoved',
+        'google_rating_count' => 300,
+    ]);
+    $share = Share::factory()->create(['status' => ShareStatus::Analyzing, 'user_confirmed' => false]);
+    $source = PlaceSource::factory()->create([
+        'place_id' => $place->id,
+        'share_id' => $share->id,
+        'published_at' => now(),
+    ]);
+
+    app(PlacePublisher::class)->recompute($place, $share, $source);
+
+    expect($place->fresh()->status)->toBe(PlaceStatus::Pending); // revived, but back in review — not auto-activated
 });
 
 it('is idempotent across redelivery — publishing twice keeps counts stable', function () {
