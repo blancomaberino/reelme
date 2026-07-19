@@ -75,38 +75,38 @@ class PlacesTable
             ->recordActions([
                 ViewAction::make(),
                 Action::make('takeDown')
-                    ->label('Take down')
+                    ->label('Hide')
                     ->icon('heroicon-o-eye-slash')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->modalDescription('Pull this pin off the map, search, and every feed/profile card. Reversible with Restore.')
+                    ->modalDescription('The place disappears from the map, browse, search and every feed/profile card. Its sources are kept. Reversible with Restore.')
                     ->visible(fn (Place $record): bool => in_array($record->status, [PlaceStatus::Pending, PlaceStatus::Active], true))
                     ->action(function (Place $record): void {
                         app(PlaceModerator::class)->takeDown([$record]);
-                        Notification::make()->success()->title('Place taken down')->send();
+                        Notification::make()->success()->title('Place hidden')->send();
                     }),
                 Action::make('restore')
                     ->label('Restore')
                     ->icon('heroicon-o-arrow-uturn-left')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (Place $record): bool => $record->status === PlaceStatus::Removed)
+                    ->visible(fn (Place $record): bool => $record->status === PlaceStatus::Hidden)
                     ->action(function (Place $record): void {
                         app(PlaceModerator::class)->restore([$record]);
-                        Notification::make()->success()->title('Place restored')->send();
+                        Notification::make()->success()->title('Place restored to the review queue')->send();
                     }),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
                     BulkAction::make('takeDown')
-                        ->label('Take down')
+                        ->label('Hide')
                         ->icon('heroicon-o-eye-slash')
                         ->color('danger')
                         ->requiresConfirmation()
                         ->deselectRecordsAfterCompletion()
                         ->action(function (Collection $records): void {
                             app(PlaceModerator::class)->takeDown($records);
-                            Notification::make()->success()->title("Took down {$records->count()} place(s)")->send();
+                            Notification::make()->success()->title("Hid {$records->count()} place(s)")->send();
                         }),
                     BulkAction::make('restore')
                         ->label('Restore')

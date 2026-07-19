@@ -54,10 +54,9 @@ it('lets an admin take down and restore places from the Places table', function 
 
     Livewire::test(ListPlaces::class)
         ->callTableBulkAction('takeDown', [$place]);
-    expect($place->fresh()->status)->toBe(PlaceStatus::Removed);
+    expect($place->fresh()->status)->toBe(PlaceStatus::Hidden);
 
     Livewire::test(ListPlaces::class)
-        ->filterTable('review_queue', false) // the default filter hides removed places
         ->callTableBulkAction('restore', [$place]);
     expect($place->fresh()->status)->toBe(PlaceStatus::Pending);
 });
@@ -83,11 +82,9 @@ it('wires the per-record place actions (take down + restore)', function () {
     publishedShare($place);
 
     Livewire::test(ListPlaces::class)->callTableAction('takeDown', $place);
-    expect($place->fresh()->status)->toBe(PlaceStatus::Removed);
+    expect($place->fresh()->status)->toBe(PlaceStatus::Hidden);
 
-    Livewire::test(ListPlaces::class)
-        ->filterTable('review_queue', false)
-        ->callTableAction('restore', $place);
+    Livewire::test(ListPlaces::class)->callTableAction('restore', $place);
     expect($place->fresh()->status)->toBe(PlaceStatus::Pending);
 });
 

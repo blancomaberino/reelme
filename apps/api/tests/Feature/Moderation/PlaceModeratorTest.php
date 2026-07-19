@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-it('pulls a taken-down place off the map, search, and the feed at once', function () {
+it('hides a place off the map, search, and the feed at once', function () {
     $place = Place::factory()->create(['status' => PlaceStatus::Active]);
     publishedShare($place);
 
@@ -19,23 +19,23 @@ it('pulls a taken-down place off the map, search, and the feed at once', functio
     app(PlaceModerator::class)->takeDown([$place]);
 
     $place->refresh();
-    expect($place->status)->toBe(PlaceStatus::Removed)
+    expect($place->status)->toBe(PlaceStatus::Hidden)
         ->and(Place::query()->publiclyVisible()->whereKey($place->id)->exists())->toBeFalse()
         ->and($place->shouldBeSearchable())->toBeFalse()
         ->and(app(PublishedShareFeed::class)->paginate('recent', null, 20)['items'])->toHaveCount(0);
 });
 
-it('never touches a merged or hidden place', function () {
+it('never touches a merged or removed place', function () {
     $merged = Place::factory()->create(['status' => PlaceStatus::Merged]);
-    $hidden = Place::factory()->create(['status' => PlaceStatus::Hidden]);
+    $removed = Place::factory()->create(['status' => PlaceStatus::Removed]);
 
-    app(PlaceModerator::class)->takeDown([$merged, $hidden]);
+    app(PlaceModerator::class)->takeDown([$merged, $removed]);
 
     expect($merged->fresh()->status)->toBe(PlaceStatus::Merged)
-        ->and($hidden->fresh()->status)->toBe(PlaceStatus::Hidden);
+        ->and($removed->fresh()->status)->toBe(PlaceStatus::Removed);
 });
 
-it('restores a removed place to its natural status from remaining sources', function () {
+it('restores a hidden place to the review queue (matching the per-record Restore)', function () {
     $single = Place::factory()->create(['status' => PlaceStatus::Active]);
     publishedShare($single);
     $double = Place::factory()->create(['status' => PlaceStatus::Active]);
@@ -45,28 +45,19 @@ it('restores a removed place to its natural status from remaining sources', func
     app(PlaceModerator::class)->takeDown([$single, $double]);
     app(PlaceModerator::class)->restore([$single, $double]);
 
-    expect($single->fresh()->status)->toBe(PlaceStatus::Pending)  // one source → unverified baseline
-        ->and($double->fresh()->status)->toBe(PlaceStatus::Active); // two sources → confirmed
+    // Both come back to Pending — a human re-reviews; a later publish can re-activate.
+    expect($single->fresh()->status)->toBe(PlaceStatus::Pending)
+        ->and($double->fresh()->status)->toBe(PlaceStatus::Pending);
 });
 
-it('never resurrects an orphan tombstone (a Removed place with no published sources)', function () {
-    // A place auto-tombstoned after its last source was un-published: Removed with
-    // zero published sources. Restoring it would put a provenance-less ghost pin
-    // back on the map — the guard must leave it Removed.
-    $orphan = Place::factory()->create(['status' => PlaceStatus::Active]);
-    $share = publishedShare($orphan);
-    $share->publishedPlaceSource->update(['published_at' => null]);
-    $orphan->update(['status' => PlaceStatus::Removed]);
-
-    app(PlaceModerator::class)->restore([$orphan]);
-
-    expect($orphan->fresh()->status)->toBe(PlaceStatus::Removed);
-});
-
-it('only reverses a take-down, leaving live places untouched', function () {
+it('only un-hides, leaving Removed orphans and live places untouched', function () {
+    // Removed is the auto-orphan tombstone path — restore must not revive it
+    // (that happens via a re-share), and it must not disturb a live place.
+    $removedOrphan = Place::factory()->create(['status' => PlaceStatus::Removed]);
     $active = Place::factory()->create(['status' => PlaceStatus::Active]);
 
-    app(PlaceModerator::class)->restore([$active]);
+    app(PlaceModerator::class)->restore([$removedOrphan, $active]);
 
-    expect($active->fresh()->status)->toBe(PlaceStatus::Active);
+    expect($removedOrphan->fresh()->status)->toBe(PlaceStatus::Removed)
+        ->and($active->fresh()->status)->toBe(PlaceStatus::Active);
 });

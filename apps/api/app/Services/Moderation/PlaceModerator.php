@@ -4,23 +4,23 @@ namespace App\Services\Moderation;
 
 use App\Enums\PlaceStatus;
 use App\Models\Place;
-use App\Services\Places\PlacePublisher;
 
 /**
- * Admin moderation (T-072): take a map pin down and put it back. A single column
- * change ({@see PlaceStatus::Removed}) pulls the place off EVERY public surface at
- * once — the global map/browse/search filter on `publiclyVisible` (matchable
- * status), and the feed/profile cards additionally require the published place to
- * be `publiclyVisible`, so a Removed place disappears from both. Soft & reversible:
- * the underlying sources are untouched, so `restore()` re-derives the pin's status.
+ * Admin moderation (T-072): hide a map pin and restore it — the BULK counterpart
+ * of the per-record Hide/Restore on the place detail page (T-035, ViewPlace), and
+ * it uses the SAME {@see PlaceStatus::Hidden} status so the two surfaces stay one
+ * concept. Hidden fails `publiclyVisible` (matchable = pending|active), so the
+ * place drops off the global map/browse/search AND the feed/profile cards (which
+ * require the published place to be publiclyVisible) in a single column change.
+ * Soft & reversible; sources are untouched. `Removed` is deliberately NOT used
+ * here — it belongs to the auto-orphan tombstone path (ShareModerator /
+ * ForceReprocessShare via {@see Place::tombstoneIfOrphaned}).
  */
 class PlaceModerator
 {
-    public function __construct(private readonly PlacePublisher $publisher) {}
-
     /**
-     * Take the given places off the map. Only a live (matchable) place is affected
-     * — a Merged tombstone or an already-Removed row is left as is.
+     * Hide the given places (admin take-down). Only a live (matchable) place is
+     * affected — a Merged/Removed tombstone or an already-Hidden row is left as is.
      *
      * @param  iterable<Place>  $places
      */
@@ -30,35 +30,26 @@ class PlaceModerator
             if (! in_array($place->status, [PlaceStatus::Pending, PlaceStatus::Active], true)) {
                 continue;
             }
-            $place->status = PlaceStatus::Removed;
+            $place->status = PlaceStatus::Hidden;
             $place->save();
         }
     }
 
     /**
-     * Reverse a take-down: bring a Removed place back to its natural status derived
-     * from its still-published sources (Active once ≥2 sources vouch for it, else
-     * Pending). Only reverses a take-down — never un-hides an admin Hidden row or
-     * un-merges a Merged one, and never resurrects a genuine ORPHAN: `Removed` is
-     * shared with the auto-tombstone ({@see Place::tombstoneIfOrphaned}, T-071/073),
-     * so a Removed place with zero published sources is a provenance-less ghost, not
-     * an admin take-down — restoring it would put a sourceless pin back on the map.
+     * Reverse a hide: bring a Hidden place back to the review queue (Pending),
+     * matching the per-record Restore. Only un-hides — never revives a Removed
+     * orphan (that comes back via a re-share) or un-merges a Merged row.
      *
      * @param  iterable<Place>  $places
      */
     public function restore(iterable $places): void
     {
         foreach ($places as $place) {
-            if ($place->status !== PlaceStatus::Removed) {
+            if ($place->status !== PlaceStatus::Hidden) {
                 continue;
             }
-            $publishedSources = $place->sources()->whereNotNull('published_at')->count();
-            if ($publishedSources < 1) {
-                continue; // orphan tombstone, not a take-down — nothing to vouch for it
-            }
-            $place->status = $publishedSources >= 2 ? PlaceStatus::Active : PlaceStatus::Pending;
-            // rollCounters saves the row (status + shares_count + refreshed avg confidence).
-            $this->publisher->rollCounters($place, $publishedSources);
+            $place->status = PlaceStatus::Pending;
+            $place->save();
         }
     }
 }
