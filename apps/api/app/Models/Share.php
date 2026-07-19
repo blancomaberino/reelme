@@ -171,4 +171,27 @@ class Share extends Model
 
         return true;
     }
+
+    /**
+     * Admin override (T-072): force the share to `$to` regardless of the
+     * transition map — the reason a moderator reprocesses a `published` share or
+     * takes one down is precisely that the normal state machine forbids it.
+     * Clears the review/failure metadata so a stale reason can't linger, and does
+     * NOT fire {@see ShareStatusChanged} (a moderation reset must not re-notify the
+     * user; the subsequent legal Fetching→Analyzing→Published transitions of a
+     * reprocess still fire normally).
+     */
+    public function forceResetStatus(ShareStatus $to, ?string $failureReason = null): void
+    {
+        $updates = [
+            'status' => $to->value,
+            'failure_reason' => $failureReason,
+            'review_reason' => null,
+            'review_meta_json' => null,
+            'updated_at' => now(),
+        ];
+
+        static::query()->whereKey($this->getKey())->update($updates);
+        $this->forceFill($updates)->syncOriginal();
+    }
 }

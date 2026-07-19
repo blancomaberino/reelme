@@ -44,6 +44,15 @@ class ExtractPlaceData extends PipelineStubJob
     /** @var array<int, int> */
     public array $backoff = [30, 180, 600];
 
+    /**
+     * @param  bool  $force  Admin reprocess (T-072): re-run the LLM even when a
+     *                       prior succeeded run exists, instead of reusing it.
+     */
+    public function __construct(int $shareId, public readonly bool $force = false)
+    {
+        parent::__construct($shareId);
+    }
+
     protected function stage(): string
     {
         return 'extract';
@@ -63,7 +72,7 @@ class ExtractPlaceData extends PipelineStubJob
     {
         $share->loadMissing('sourcePost.influencer');
 
-        if (($existing = $this->existingSuccess($share)) !== null) {
+        if (! $this->force && ($existing = $this->existingSuccess($share)) !== null) {
             // Re-delivery: the prior success was already issuer-enriched on its
             // first pass — don't re-run it (a dead handle would re-hit Instagram
             // every retry).
@@ -71,6 +80,12 @@ class ExtractPlaceData extends PipelineStubJob
 
             return;
         }
+
+        // Runs from THIS execution start above the prior max id — a force reprocess
+        // (T-072) leaves the old succeeded run in place, and salvage must never
+        // reach back to it (that would republish the exact stale pin the moderator
+        // is purging). For a normal first pass this is just `0`.
+        $priorMaxRunId = (int) $share->analysisRuns()->max('id');
 
         try {
             $run = $this->analyze($share);
@@ -84,7 +99,7 @@ class ExtractPlaceData extends PipelineStubJob
             // A schema-valid but low-confidence result (kept by the router on a
             // failed run) is reviewable, not a hard failure — salvage it. It is
             // being gated for the FIRST time here, so enrich it too (T-079).
-            $salvage = $this->salvageableRun($share);
+            $salvage = $this->salvageableRun($share, $priorMaxRunId);
             if ($salvage !== null) {
                 $this->resolveDiscountIssuers($salvage);
                 $this->gate($share, $salvage);
@@ -183,9 +198,10 @@ class ExtractPlaceData extends PipelineStubJob
      * `result_json` on a run it failed only for low confidence, so this recovers
      * an extraction worth a human's review after both engines dead-ended.
      */
-    private function salvageableRun(Share $share): ?AnalysisRun
+    private function salvageableRun(Share $share, int $afterRunId = 0): ?AnalysisRun
     {
         return $share->analysisRuns()
+            ->where('id', '>', $afterRunId)
             ->whereNotNull('result_json')
             ->latest('id')
             ->first();

@@ -53,7 +53,35 @@ class PlacePublisher
             report($e);
         }
 
-        $place->shares_count = $sourceCount;
+        $this->rollCounters($place, $sourceCount);
+    }
+
+    /**
+     * Recompute a place after one of its sources was REMOVED (admin reprocess /
+     * take-down, T-072) — the mirror of {@see recompute} for the un-publish
+     * direction. An orphaned place (no published source, not saved) is tombstoned
+     * off every surface; a surviving one just has its counters re-derived from the
+     * remaining published sources. Never re-activates (a lost source can't confirm
+     * a place) and never overrides a Merged/Hidden row (tombstoneIfOrphaned guards).
+     */
+    public function recountCounters(Place $place): void
+    {
+        if ($place->tombstoneIfOrphaned()) {
+            return; // now a Removed tombstone — off the map, counters moot
+        }
+
+        $this->rollCounters($place, $place->sources()->whereNotNull('published_at')->count());
+    }
+
+    /**
+     * Persist the denormalized counters (shares_count + avg confidence) from the
+     * place's published source set. The single writer for both counters so the
+     * publish, un-publish, and restore paths can't drift on how they're derived.
+     * Saves the row (including any status change the caller set on the instance).
+     */
+    public function rollCounters(Place $place, int $publishedCount): void
+    {
+        $place->shares_count = $publishedCount;
         $place->avg_extraction_confidence = $this->avgConfidence($place->id);
         $place->save();
     }

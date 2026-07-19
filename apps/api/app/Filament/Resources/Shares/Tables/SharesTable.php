@@ -4,10 +4,18 @@ namespace App\Filament\Resources\Shares\Tables;
 
 use App\Enums\Platform;
 use App\Enums\ShareStatus;
+use App\Models\Share;
+use App\Services\Moderation\ForceReprocessShare;
+use App\Services\Moderation\ShareModerator;
+use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\Collection;
 
 class SharesTable
 {
@@ -55,6 +63,56 @@ class SharesTable
             ])
             ->recordActions([
                 ViewAction::make(),
+                Action::make('forceReprocess')
+                    ->label('Force reprocess')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalDescription('Re-run extraction from scratch (re-invokes the LLM). Existing pins for this share are cleared and rebuilt.')
+                    ->action(function (Share $record): void {
+                        app(ForceReprocessShare::class)->run($record);
+                        Notification::make()->success()->title('Reprocess queued')->send();
+                    }),
+                Action::make('takeDown')
+                    ->label('Take down')
+                    ->icon('heroicon-o-eye-slash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalDescription('Unpublish this share (removes its feed card, and its map pin when no one else published it). Reversible via re-share or reprocess.')
+                    ->action(function (Share $record): void {
+                        app(ShareModerator::class)->takeDown($record);
+                        Notification::make()->success()->title('Share taken down')->send();
+                    }),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    BulkAction::make('forceReprocess')
+                        ->label('Force reprocess')
+                        ->icon('heroicon-o-arrow-path')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records): void {
+                            $service = app(ForceReprocessShare::class);
+                            foreach ($records as $record) {
+                                $service->run($record);
+                            }
+                            Notification::make()->success()->title("Reprocess queued for {$records->count()} share(s)")->send();
+                        }),
+                    BulkAction::make('takeDown')
+                        ->label('Take down')
+                        ->icon('heroicon-o-eye-slash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records): void {
+                            $service = app(ShareModerator::class);
+                            foreach ($records as $record) {
+                                $service->takeDown($record);
+                            }
+                            Notification::make()->success()->title("Took down {$records->count()} share(s)")->send();
+                        }),
+                ]),
             ]);
     }
 }

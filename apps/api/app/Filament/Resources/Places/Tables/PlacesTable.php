@@ -4,13 +4,19 @@ namespace App\Filament\Resources\Places\Tables;
 
 use App\Enums\PlaceStatus;
 use App\Models\Place;
+use App\Services\Moderation\PlaceModerator;
+use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 class PlacesTable
 {
@@ -52,11 +58,13 @@ class PlacesTable
             ->defaultSort('created_at', 'desc')
             ->filters([
                 // The T-035 review queue: pending places awaiting a human
-                // same-restaurant decision. On by default; clear it to browse all.
+                // same-restaurant decision. An OPTIONAL filter (not on by default) —
+                // defaulting it on hid every active place and every Removed one, so
+                // the list looked empty and taken-down places couldn't be found to
+                // Restore. Browse all statuses by default; toggle this for the queue.
                 Filter::make('review_queue')
                     ->label('Review queue (pending)')
-                    ->query(fn (Builder $query) => $query->where('status', PlaceStatus::Pending->value))
-                    ->default(),
+                    ->query(fn (Builder $query) => $query->where('status', PlaceStatus::Pending->value)),
                 SelectFilter::make('status')
                     ->options(PlaceStatus::class),
                 SelectFilter::make('country_code')
@@ -66,6 +74,51 @@ class PlacesTable
             ])
             ->recordActions([
                 ViewAction::make(),
+                Action::make('takeDown')
+                    ->label('Hide')
+                    ->icon('heroicon-o-eye-slash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalDescription('The place disappears from the map, browse, search and every feed/profile card. Its sources are kept. Reversible with Restore.')
+                    ->visible(fn (Place $record): bool => in_array($record->status, [PlaceStatus::Pending, PlaceStatus::Active], true))
+                    ->action(function (Place $record): void {
+                        app(PlaceModerator::class)->takeDown([$record]);
+                        Notification::make()->success()->title('Place hidden')->send();
+                    }),
+                Action::make('restore')
+                    ->label('Restore')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->visible(fn (Place $record): bool => $record->status === PlaceStatus::Hidden)
+                    ->action(function (Place $record): void {
+                        app(PlaceModerator::class)->restore([$record]);
+                        Notification::make()->success()->title('Place restored to the review queue')->send();
+                    }),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    BulkAction::make('takeDown')
+                        ->label('Hide')
+                        ->icon('heroicon-o-eye-slash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records): void {
+                            app(PlaceModerator::class)->takeDown($records);
+                            Notification::make()->success()->title("Hid {$records->count()} place(s)")->send();
+                        }),
+                    BulkAction::make('restore')
+                        ->label('Restore')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records): void {
+                            app(PlaceModerator::class)->restore($records);
+                            Notification::make()->success()->title("Restored {$records->count()} place(s)")->send();
+                        }),
+                ]),
             ]);
     }
 }

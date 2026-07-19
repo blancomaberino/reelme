@@ -42,9 +42,13 @@ final class Pipeline
     /**
      * Job instances for the full chain, or from `$fromStage` onward (retry).
      *
+     * `$forceExtract` (admin reprocess, T-072) makes the ExtractPlaceData stage
+     * skip its succeeded-run reuse so the LLM genuinely re-runs on a share that
+     * already has a prior extraction — the only stage the flag affects.
+     *
      * @return array<int, object>
      */
-    public static function chain(int $shareId, ?string $fromStage = null): array
+    public static function chain(int $shareId, ?string $fromStage = null, bool $forceExtract = false): array
     {
         $stages = array_keys(self::STAGES);
 
@@ -53,6 +57,11 @@ final class Pipeline
             $stages = $offset === false ? $stages : array_slice($stages, (int) $offset);
         }
 
-        return array_map(fn (string $stage) => new (self::STAGES[$stage])($shareId), $stages);
+        return array_map(
+            fn (string $stage): object => $stage === 'extract'
+                ? new ExtractPlaceData($shareId, $forceExtract)
+                : new (self::STAGES[$stage])($shareId),
+            $stages,
+        );
     }
 }

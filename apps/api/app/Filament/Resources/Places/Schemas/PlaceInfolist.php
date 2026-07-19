@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Places\Schemas;
 
 use App\Enums\PlaceStatus;
+use App\Enums\TagKind;
 use App\Filament\Resources\Places\PlaceResource;
 use App\Models\Place;
 use App\Services\Places\PlaceResolver;
@@ -56,6 +57,18 @@ class PlaceInfolist
                         TextEntry::make('avg_extraction_confidence')->label('Avg extraction confidence')->placeholder('—'),
                         TextEntry::make('created_at')->dateTime(),
                     ]),
+                Section::make('Discovery tags')
+                    ->description('Materialized from the shared posts/reels (cuisine, vibe, diet, dishes) — these belong to the place. Distinct from the private custom tags users add on their own maps (T-064).')
+                    ->columns(2)
+                    ->schema([
+                        self::tagEntry('Cuisine', TagKind::Cuisine),
+                        self::tagEntry('Vibe', TagKind::Vibe),
+                        self::tagEntry('Diet', TagKind::Diet),
+                        self::tagEntry('Dishes', TagKind::Dish),
+                        self::tagEntry('Other', TagKind::Other)
+                            ->visible(fn (Place $record): bool => $record->tags->contains('kind', TagKind::Other)),
+                    ])
+                    ->visible(fn (Place $record): bool => $record->tags->isNotEmpty()),
                 Section::make('Location')
                     ->schema([
                         ViewEntry::make('map')
@@ -74,5 +87,18 @@ class PlaceInfolist
                     ])
                     ->visible(fn (Place $record): bool => in_array($record->status, [PlaceStatus::Pending, PlaceStatus::Active], true)),
             ]);
+    }
+
+    /** One badge list of the place's discovery-tag names for a single kind. */
+    private static function tagEntry(string $label, TagKind $kind): TextEntry
+    {
+        return TextEntry::make("tags_{$kind->value}")
+            ->label($label)
+            ->badge()
+            ->placeholder('—')
+            ->state(fn (Place $record): array => $record->tags
+                ->where('kind', $kind)
+                ->pluck('name')
+                ->all());
     }
 }
