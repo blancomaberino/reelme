@@ -53,9 +53,7 @@ class PlacePublisher
             report($e);
         }
 
-        $place->shares_count = $sourceCount;
-        $place->avg_extraction_confidence = $this->avgConfidence($place->id);
-        $place->save();
+        $this->rollCounters($place, $sourceCount);
     }
 
     /**
@@ -72,7 +70,18 @@ class PlacePublisher
             return; // now a Removed tombstone — off the map, counters moot
         }
 
-        $place->shares_count = $place->sources()->whereNotNull('published_at')->count();
+        $this->rollCounters($place, $place->sources()->whereNotNull('published_at')->count());
+    }
+
+    /**
+     * Persist the denormalized counters (shares_count + avg confidence) from the
+     * place's published source set. The single writer for both counters so the
+     * publish, un-publish, and restore paths can't drift on how they're derived.
+     * Saves the row (including any status change the caller set on the instance).
+     */
+    public function rollCounters(Place $place, int $publishedCount): void
+    {
+        $place->shares_count = $publishedCount;
         $place->avg_extraction_confidence = $this->avgConfidence($place->id);
         $place->save();
     }

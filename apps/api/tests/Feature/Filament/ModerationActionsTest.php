@@ -60,6 +60,35 @@ it('lets an admin take down and restore places from the Places table', function 
     expect($place->fresh()->status)->toBe(PlaceStatus::Pending);
 });
 
+it('wires the per-record share actions (force reprocess + take down)', function () {
+    Bus::fake();
+    $this->actingAs(User::factory()->admin()->create());
+
+    $reprocess = publishedShare(Place::factory()->create(['status' => PlaceStatus::Pending, 'shares_count' => 1]));
+    Livewire::test(ListShares::class)->callTableAction('forceReprocess', $reprocess);
+    expect($reprocess->fresh()->status)->toBe(ShareStatus::Fetching);
+    Bus::assertChained([ExtractPlaceData::class, ResolvePlace::class, PublishShare::class]);
+
+    $takedown = publishedShare(Place::factory()->create(['status' => PlaceStatus::Pending, 'shares_count' => 1]));
+    Livewire::test(ListShares::class)->callTableAction('takeDown', $takedown);
+    expect($takedown->fresh()->status)->toBe(ShareStatus::Rejected);
+});
+
+it('wires the per-record place actions (take down + restore)', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $place = Place::factory()->create(['status' => PlaceStatus::Pending]);
+    publishedShare($place);
+
+    Livewire::test(ListPlaces::class)->callTableAction('takeDown', $place);
+    expect($place->fresh()->status)->toBe(PlaceStatus::Removed);
+
+    Livewire::test(ListPlaces::class)
+        ->filterTable('review_queue', false)
+        ->callTableAction('restore', $place);
+    expect($place->fresh()->status)->toBe(PlaceStatus::Pending);
+});
+
 it('forbids a non-admin from reaching the moderation panel', function () {
     $this->actingAs(User::factory()->create(['is_admin' => false]));
 

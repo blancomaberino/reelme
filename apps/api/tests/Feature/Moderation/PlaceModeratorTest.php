@@ -49,6 +49,20 @@ it('restores a removed place to its natural status from remaining sources', func
         ->and($double->fresh()->status)->toBe(PlaceStatus::Active); // two sources → confirmed
 });
 
+it('never resurrects an orphan tombstone (a Removed place with no published sources)', function () {
+    // A place auto-tombstoned after its last source was un-published: Removed with
+    // zero published sources. Restoring it would put a provenance-less ghost pin
+    // back on the map — the guard must leave it Removed.
+    $orphan = Place::factory()->create(['status' => PlaceStatus::Active]);
+    $share = publishedShare($orphan);
+    $share->publishedPlaceSource->update(['published_at' => null]);
+    $orphan->update(['status' => PlaceStatus::Removed]);
+
+    app(PlaceModerator::class)->restore([$orphan]);
+
+    expect($orphan->fresh()->status)->toBe(PlaceStatus::Removed);
+});
+
 it('only reverses a take-down, leaving live places untouched', function () {
     $active = Place::factory()->create(['status' => PlaceStatus::Active]);
 

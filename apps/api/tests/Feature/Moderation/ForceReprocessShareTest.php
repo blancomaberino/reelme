@@ -11,6 +11,7 @@ use App\Models\PlaceList;
 use App\Models\PlaceListItem;
 use App\Models\PlaceSource;
 use App\Models\Share;
+use App\Models\User;
 use App\Services\Moderation\ForceReprocessShare;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -61,6 +62,21 @@ it('keeps a saved place alive but re-counts it when its source is cleared', func
     $place->refresh();
     expect($place->status)->toBe(PlaceStatus::Active)
         ->and($place->shares_count)->toBe(0);
+});
+
+it('keeps a place alive and recounts it when another user still published it', function () {
+    Bus::fake();
+
+    $place = Place::factory()->create(['status' => PlaceStatus::Active, 'shares_count' => 2]);
+    $mine = publishedShare($place, User::factory()->create(['is_public' => true]));
+    publishedShare($place, User::factory()->create(['is_public' => true])); // someone else's source survives
+
+    app(ForceReprocessShare::class)->run($mine);
+
+    // Not orphaned (a sibling source keeps it) → stays on the map, counter re-derived.
+    $place->refresh();
+    expect($place->status)->toBe(PlaceStatus::Active)
+        ->and($place->shares_count)->toBe(1);
 });
 
 it('re-resolves and re-publishes without duplicating sources or corrupting counts', function () {

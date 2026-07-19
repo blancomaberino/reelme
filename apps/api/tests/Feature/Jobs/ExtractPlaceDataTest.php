@@ -364,3 +364,74 @@ it('leaves discount issuer resolution off when disabled', function () {
     // No profile fetch, issuer stays null — the @handle is the fallback label.
     Http::assertNotSent(fn ($req) => str_contains($req->url(), 'web_profile_info'));
 });
+
+/** A share parked in `fetching` that already carries a prior succeeded run. */
+function shareWithPriorRun(string $oldName = 'Old Stale Venue'): Share
+{
+    $share = analyzableShare();
+    $run = AnalysisRun::create([
+        'share_id' => $share->id,
+        'engine' => AnalysisEngineEnum::Local,
+        'model' => 'test-model',
+        'status' => AnalysisStatus::Succeeded,
+        'overall_confidence' => 0.9,
+        'result_json' => json_decode(extraction(['places.0.name' => $oldName]), true),
+        'started_at' => now(),
+        'finished_at' => now(),
+    ]);
+    $share->analysis_run_id = $run->id;
+    $share->save();
+
+    return $share;
+}
+
+it('reuses a prior succeeded run without the force flag (no LLM re-spend)', function () {
+    $share = shareWithPriorRun();
+
+    // No Http fake: if it tried to hit the LLM the test would fail loudly.
+    (new ExtractPlaceData($share->id))->handle();
+
+    expect(AnalysisRun::count())->toBe(1)                        // reused, not re-run
+        ->and($share->fresh()->status)->toBe(ShareStatus::Analyzing);
+    Http::assertNothingSent();
+});
+
+it('re-runs the LLM under the force flag instead of reusing the prior run (T-072)', function () {
+    Http::fake([
+        '*/api/tags' => Http::response(['models' => []]),
+        '*/api/chat' => Http::response(ollamaChat(extraction(['places.0.name' => 'Freshly Re-extracted Venue']))),
+    ]);
+    bindExtractionRouter(new FakeRemoteEngine);
+    $share = shareWithPriorRun('Old Stale Venue');
+
+    (new ExtractPlaceData($share->id, force: true))->handle();
+
+    $share->refresh();
+    // A second run was produced and it drives the share — the stale name is gone.
+    expect(AnalysisRun::count())->toBe(2)
+        ->and($share->status)->toBe(ShareStatus::Analyzing)
+        ->and($share->analysisRun->result_json['places'][0]['name'])->toBe('Freshly Re-extracted Venue');
+});
+
+it('never salvages the pre-reprocess run when a forced re-analyze dead-ends (T-072)', function () {
+    // The forced re-analyze produces only schema-invalid output (no result_json on
+    // the fresh runs); salvage must NOT reach back to the prior succeeded run.
+    Http::fake([
+        '*/api/tags' => Http::response(['models' => []]),
+        '*/api/chat' => Http::response(ollamaChat('not even json')),
+    ]);
+    bindExtractionRouter(new FakeRemoteEngine(rawText: 'also not json'));
+    $share = shareWithPriorRun('Old Stale Venue');
+
+    $job = new ExtractPlaceData($share->id, force: true);
+    try {
+        $job->handle();
+    } catch (AllEnginesFailed $e) {
+        $job->failed($e);
+    }
+
+    $share->refresh();
+    // Falls to Failed rather than republishing the stale pin under review.
+    expect($share->status)->toBe(ShareStatus::Failed)
+        ->and($share->failure_reason)->toBe('invalid_model_output');
+});
