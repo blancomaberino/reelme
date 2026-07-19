@@ -1,11 +1,13 @@
 <?php
 
 use App\Enums\PlaceStatus;
+use App\Enums\TagKind;
 use App\Filament\Resources\Places\Pages\ListPlaces;
 use App\Filament\Resources\Places\Pages\ViewPlace;
 use App\Models\Place;
 use App\Models\PlaceMerge;
 use App\Models\PlaceSource;
+use App\Models\Tag;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -37,26 +39,17 @@ it('blocks non-admins from Shares and AnalysisRuns resources', function () {
 
 // --- Review queue ---
 
-it('defaults the places list to the pending review queue', function () {
+it('lists all statuses by default, with the review queue as an opt-in filter', function () {
     actingAsAdmin();
 
     $pending = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Pending Pin']);
     $active = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Active Pin']);
 
     Livewire::test(ListPlaces::class)
+        ->assertCanSeeTableRecords([$pending, $active]) // no forced pending-only default
+        ->filterTable('review_queue', true)             // opt into the queue
         ->assertCanSeeTableRecords([$pending])
         ->assertCanNotSeeTableRecords([$active]);
-});
-
-it('shows all places once the review-queue filter is cleared', function () {
-    actingAsAdmin();
-
-    $pending = Place::factory()->atPoint(51.5, -0.13)->create();
-    $active = Place::factory()->active()->atPoint(51.5, -0.13)->create();
-
-    Livewire::test(ListPlaces::class)
-        ->removeTableFilter('review_queue')
-        ->assertCanSeeTableRecords([$pending, $active]);
 });
 
 // --- View page: candidates panel ---
@@ -73,6 +66,34 @@ it('renders nearby candidates with similarity and distance on the view page', fu
         ->assertSee('Lanzhou Noodles')
         ->assertSee('Possible duplicates')
         ->assertDontSee('48.85');
+});
+
+// --- Discovery tags on the view page ---
+
+it('shows the place\'s materialized discovery tags on the view page', function () {
+    actingAsAdmin();
+
+    $place = Place::factory()->atPoint(51.5, -0.13)->create();
+    $cuisine = Tag::create(['kind' => TagKind::Cuisine, 'name' => 'ramen', 'slug' => 'ramen']);
+    $vibe = Tag::create(['kind' => TagKind::Vibe, 'name' => 'cozy', 'slug' => 'cozy']);
+    $place->tags()->attach([
+        $cuisine->id => ['source' => 'extraction', 'confidence' => 0.9],
+        $vibe->id => ['source' => 'extraction', 'confidence' => 0.8],
+    ]);
+
+    Livewire::test(ViewPlace::class, ['record' => $place->getKey()])
+        ->assertSee('Discovery tags')
+        ->assertSee('ramen')
+        ->assertSee('cozy');
+});
+
+it('hides the discovery-tags section when a place has none', function () {
+    actingAsAdmin();
+
+    $place = Place::factory()->atPoint(51.5, -0.13)->create();
+
+    Livewire::test(ViewPlace::class, ['record' => $place->getKey()])
+        ->assertDontSee('Discovery tags');
 });
 
 // --- Actions ---

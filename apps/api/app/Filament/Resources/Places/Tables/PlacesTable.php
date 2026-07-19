@@ -58,11 +58,13 @@ class PlacesTable
             ->defaultSort('created_at', 'desc')
             ->filters([
                 // The T-035 review queue: pending places awaiting a human
-                // same-restaurant decision. On by default; clear it to browse all.
+                // same-restaurant decision. An OPTIONAL filter (not on by default) —
+                // defaulting it on hid every active place and every Removed one, so
+                // the list looked empty and taken-down places couldn't be found to
+                // Restore. Browse all statuses by default; toggle this for the queue.
                 Filter::make('review_queue')
                     ->label('Review queue (pending)')
-                    ->query(fn (Builder $query) => $query->where('status', PlaceStatus::Pending->value))
-                    ->default(),
+                    ->query(fn (Builder $query) => $query->where('status', PlaceStatus::Pending->value)),
                 SelectFilter::make('status')
                     ->options(PlaceStatus::class),
                 SelectFilter::make('country_code')
