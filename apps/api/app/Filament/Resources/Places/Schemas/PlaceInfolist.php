@@ -65,6 +65,8 @@ class PlaceInfolist
                         self::tagEntry('Vibe', TagKind::Vibe),
                         self::tagEntry('Diet', TagKind::Diet),
                         self::tagEntry('Dishes', TagKind::Dish),
+                        self::tagEntry('Other', TagKind::Other)
+                            ->visible(fn (Place $record): bool => $record->tags->contains('kind', TagKind::Other)),
                     ])
                     ->visible(fn (Place $record): bool => $record->tags->isNotEmpty()),
                 Section::make('Location')

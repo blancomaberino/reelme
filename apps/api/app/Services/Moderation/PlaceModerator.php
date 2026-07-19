@@ -4,6 +4,7 @@ namespace App\Services\Moderation;
 
 use App\Enums\PlaceStatus;
 use App\Models\Place;
+use App\Models\PlaceListItem;
 
 /**
  * Admin moderation (T-072): hide a map pin and restore it — the BULK counterpart
@@ -38,18 +39,28 @@ class PlaceModerator
     /**
      * Reverse a hide: bring a Hidden place back to the review queue (Pending),
      * matching the per-record Restore. Only un-hides — never revives a Removed
-     * orphan (that comes back via a re-share) or un-merges a Merged row.
+     * orphan (that comes back via a re-share) or un-merges a Merged row. A Hidden
+     * place that has lost all provenance (no published source and not saved to any
+     * list — e.g. after its only share was reprocessed away) is NOT restored: that
+     * would put a sourceless ghost pin back on the public map.
      *
      * @param  iterable<Place>  $places
      */
     public function restore(iterable $places): void
     {
         foreach ($places as $place) {
-            if ($place->status !== PlaceStatus::Hidden) {
+            if ($place->status !== PlaceStatus::Hidden || ! self::hasProvenance($place)) {
                 continue;
             }
             $place->status = PlaceStatus::Pending;
             $place->save();
         }
+    }
+
+    /** A place is worth showing again only if a published source or a saver vouches for it. */
+    public static function hasProvenance(Place $place): bool
+    {
+        return $place->sources()->whereNotNull('published_at')->exists()
+            || PlaceListItem::query()->where('place_id', $place->id)->exists();
     }
 }

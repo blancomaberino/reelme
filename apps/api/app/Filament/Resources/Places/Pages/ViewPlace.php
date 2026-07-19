@@ -6,6 +6,7 @@ use App\Enums\PlaceStatus;
 use App\Filament\Resources\Places\PlaceResource;
 use App\Models\Place;
 use App\Models\PlaceMerge;
+use App\Services\Moderation\PlaceModerator;
 use App\Services\Places\PlaceMerger;
 use App\Services\Places\PlaceResolver;
 use Filament\Actions\Action;
@@ -119,6 +120,17 @@ class ViewPlace extends ViewRecord
             ->requiresConfirmation()
             ->visible(fn (Place $record): bool => $record->status === PlaceStatus::Hidden)
             ->action(function (Place $record): void {
+                // A Hidden place that lost all provenance (no published source, not
+                // saved) would come back as a sourceless ghost pin — refuse.
+                if (! PlaceModerator::hasProvenance($record)) {
+                    Notification::make()
+                        ->title('Cannot restore')
+                        ->body('This place has no published source or saver — reprocess or re-share it instead.')
+                        ->danger()->send();
+
+                    return;
+                }
+
                 $record->status = PlaceStatus::Pending;
                 $record->save();
 

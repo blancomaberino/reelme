@@ -123,15 +123,28 @@ it('hides a place and drops it from public surfaces', function () {
         ->and($place->shouldBeSearchable())->toBeFalse();
 });
 
-it('restores a hidden place to the review queue', function () {
+it('restores a hidden place with provenance to the review queue', function () {
     actingAsAdmin();
 
     $place = Place::factory()->atPoint(51.5, -0.13)->create(['status' => PlaceStatus::Hidden->value]);
+    PlaceSource::factory()->create(['place_id' => $place->id, 'published_at' => now()]); // a source vouches for it
 
     Livewire::test(ViewPlace::class, ['record' => $place->getKey()])
         ->callAction('restore');
 
     expect($place->fresh()->status)->toBe(PlaceStatus::Pending);
+});
+
+it('refuses to restore a hidden place that has lost all provenance', function () {
+    actingAsAdmin();
+
+    // Hidden and sourceless — restoring would put a ghost pin back on the map.
+    $place = Place::factory()->atPoint(51.5, -0.13)->create(['status' => PlaceStatus::Hidden->value]);
+
+    Livewire::test(ViewPlace::class, ['record' => $place->getKey()])
+        ->callAction('restore');
+
+    expect($place->fresh()->status)->toBe(PlaceStatus::Hidden);
 });
 
 it('merges a pending place into a candidate and records the acting admin', function () {

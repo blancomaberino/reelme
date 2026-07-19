@@ -2,6 +2,7 @@
 
 use App\Enums\PlaceStatus;
 use App\Models\Place;
+use App\Models\PlaceSource;
 use App\Services\Feed\PublishedShareFeed;
 use App\Services\Moderation\PlaceModerator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -48,6 +49,19 @@ it('restores a hidden place to the review queue (matching the per-record Restore
     // Both come back to Pending — a human re-reviews; a later publish can re-activate.
     expect($single->fresh()->status)->toBe(PlaceStatus::Pending)
         ->and($double->fresh()->status)->toBe(PlaceStatus::Pending);
+});
+
+it('refuses to restore a Hidden place that has lost all provenance (no ghost pins)', function () {
+    // Hidden, then its only source was reprocessed away → sourceless. Restoring it
+    // would put a provenance-less pin back on the public map.
+    $orphan = Place::factory()->create(['status' => PlaceStatus::Active]);
+    $share = publishedShare($orphan);
+    app(PlaceModerator::class)->takeDown([$orphan]);           // → Hidden
+    PlaceSource::where('share_id', $share->id)->delete();      // now sourceless
+
+    app(PlaceModerator::class)->restore([$orphan]);
+
+    expect($orphan->fresh()->status)->toBe(PlaceStatus::Hidden);  // stays hidden — not resurrected
 });
 
 it('only un-hides, leaving Removed orphans and live places untouched', function () {
