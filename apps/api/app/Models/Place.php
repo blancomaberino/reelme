@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
+use App\Services\Reviews\ReviewSourceSummary;
 use Database\Factories\PlaceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -313,6 +314,33 @@ class Place extends Model
     public function reviews(): HasMany
     {
         return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Cached summaries from external review providers (T-082) — one row per
+     * source (Trustpilot, …), refreshed out of band. Distinct from both the
+     * native `reviews()` and the Google columns; read by the ReviewSource
+     * drivers, never fetched inline.
+     *
+     * @return HasMany<ExternalPlaceReview, $this>
+     */
+    public function externalReviews(): HasMany
+    {
+        return $this->hasMany(ExternalPlaceReview::class);
+    }
+
+    /**
+     * The place's per-source rating summaries (T-082): Google, native, Trustpilot,
+     * … — whichever resolve, in registry order, each already reduced from its
+     * cached signal. Powers the `review_sources[]` block on the place detail.
+     * Delegates to the {@see ReviewSourceRegistry} so the model stays ignorant of
+     * which providers exist or how each caches.
+     *
+     * @return list<ReviewSourceSummary>
+     */
+    public function reviewSummaries(): array
+    {
+        return app(\App\Services\Reviews\ReviewSourceRegistry::class)->summarize($this);
     }
 
     /**

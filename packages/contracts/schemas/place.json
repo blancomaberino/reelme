@@ -10,7 +10,7 @@
     "city", "country_code", "address", "google_place_id", "opening_hours",
     "phone", "website", "cuisines", "vibe_tags", "dietary_tags", "dishes",
     "dishes_updated_at", "dishes_language", "source_count", "rating", "google_reviews",
-    "discounts"
+    "review_sources", "discounts"
   ],
   "properties": {
     "id": { "type": "string" },
@@ -67,6 +67,37 @@
           "relative_time": { "type": ["string", "null"] },
           "time": { "type": ["integer", "null"] },
           "profile_photo_url": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "review_sources": {
+      "type": "array",
+      "description": "Multi-source review aggregate (T-082): one normalized row per resolving provider (`native`, `google`, `trustpilot`, …), in display order. A provider with no resolvable id for the place is omitted (no empty rows). `rating` is a 0–5 average; `url` deep links to the full reviews on that source (null for the intrinsic native source); `synced_at` is when external content was last fetched. Coexists with the back-compat `rating.google`/`rating.app`/`google_reviews`.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "rating", "count", "url", "synced_at", "snippets"],
+        "properties": {
+          "source": { "type": "string", "description": "Provider id / UI label key, e.g. \"google\"." },
+          "rating": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
+          "count": { "type": "integer", "minimum": 0 },
+          "url": { "type": ["string", "null"], "description": "Deep link to the full reviews on the source; null for native." },
+          "synced_at": { "type": ["string", "null"], "description": "ISO 8601 time the external summary was last fetched; null for computed sources." },
+          "snippets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["author", "rating", "text", "relative_time", "profile_photo_url"],
+              "properties": {
+                "author": { "type": ["string", "null"] },
+                "rating": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
+                "text": { "type": ["string", "null"] },
+                "relative_time": { "type": ["string", "null"] },
+                "profile_photo_url": { "type": ["string", "null"] }
+              }
+            }
+          }
         }
       }
     },
