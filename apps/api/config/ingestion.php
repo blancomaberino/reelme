@@ -1,7 +1,7 @@
 <?php
 
+use App\Adapters\InstagramAdapter;
 use App\Adapters\ManualUploadAdapter;
-use App\Adapters\OEmbedAdapter;
 use App\Adapters\TikTokAdapter;
 use App\Adapters\XAdapter;
 use App\Adapters\YouTubeAdapter;
@@ -25,13 +25,13 @@ return [
     | download the real video (metadata adapters expose none, so DownloadMedia
     | advances to yt-dlp), giving the pipeline actual scene keyframes + audio.
     | yt-dlp missing/auth-walled → the caption-only path remains the graceful
-    | fallback. Instagram uses the generic keyless OEmbedAdapter; X/TikTok/YouTube
-    | have dedicated adapters (T-014) that parse each provider's oEmbed/API shape
-    | (X blockquote HTML, TikTok author_unique_id, YouTube Data API v3 or oEmbed).
+    | fallback. Each platform has a dedicated metadata adapter that parses its
+    | own oEmbed/API shape: Instagram (keyless oEmbed), X (blockquote HTML),
+    | TikTok (author_unique_id), YouTube (Data API v3 or oEmbed) — all T-013/T-014.
     */
     'chains' => [
         // Instagram's oEmbed is keyless but best-effort (undocumented, IP-limited).
-        'instagram' => [OEmbedAdapter::class, YtDlpAdapter::class],
+        'instagram' => [InstagramAdapter::class, YtDlpAdapter::class],
         'x' => [XAdapter::class, YtDlpAdapter::class],
         'tiktok' => [TikTokAdapter::class, YtDlpAdapter::class],
         'youtube' => [YouTubeAdapter::class, YtDlpAdapter::class],

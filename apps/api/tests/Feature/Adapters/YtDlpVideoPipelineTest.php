@@ -1,7 +1,7 @@
 <?php
 
 use App\Adapters\AdapterRegistry;
-use App\Adapters\OEmbedAdapter;
+use App\Adapters\InstagramAdapter;
 use App\Adapters\YtDlpAdapter;
 use App\Enums\MediaKind;
 use App\Enums\Platform;
@@ -22,7 +22,7 @@ beforeEach(function () {
     Storage::fake('local_media');
     // The real chain: oEmbed (caption) → yt-dlp (video). oEmbed yields no media,
     // so DownloadMedia advances to the yt-dlp adapter for the real video.
-    config()->set('ingestion.chains.instagram', [OEmbedAdapter::class, YtDlpAdapter::class]);
+    config()->set('ingestion.chains.instagram', [InstagramAdapter::class, YtDlpAdapter::class]);
     // yt-dlp is disabled in the base test env — opt in (Process is faked below).
     config()->set('ingestion.ytdlp.enabled', true);
     app()->forgetInstance(AdapterRegistry::class);
