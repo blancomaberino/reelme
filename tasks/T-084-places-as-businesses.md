@@ -76,3 +76,5 @@ drift green).
   `field: old → new` diff (not just changed field names) so a moderator can see
   what an enrichment/edit did. Pushed to PR #114 (`684ee19`); CI green, receipt
   re-approved.
+- 2026-07-20 — MERGED to main (squash `9c9a30d`, PR #114; user authorized "you can
+  merge"). All 4 CI jobs green. tasks.json T-084 → done.
