@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Adapters\AdapterRegistry;
 use App\Enums\FetchStatus;
 use App\Enums\Platform;
 use App\Enums\ShareStatus;
@@ -30,7 +31,10 @@ class ShareController extends Controller
 {
     private const RELATIONS = ['sourcePost.influencer', 'analysisRuns', 'stageMetrics', 'publishedPlaceSource.place', 'publishedPlaceSources.place'];
 
-    public function __construct(private readonly UrlCanonicalizer $canonicalizer) {}
+    public function __construct(
+        private readonly UrlCanonicalizer $canonicalizer,
+        private readonly AdapterRegistry $registry,
+    ) {}
 
     public function store(StoreShareRequest $request): JsonResponse
     {
@@ -429,6 +433,16 @@ class ShareController extends Controller
             // URL pulled out of `shared_text` (max:5000) or a shortlink expansion can
             // exceed that — reject cleanly instead of letting Postgres 22001 → 500.
             abort_if(mb_strlen($canonical->url) > 2048, 422, 'The resolved URL is too long.');
+
+            // Launch gate (T-014): reject a share from a recognised but disabled
+            // source (Instagram-only at launch) with a clear message, instead of
+            // silently parking it for manual upload. Same switch the adapter chain
+            // reads — flip ingestion.platforms.<p>.enabled to open a source.
+            if ($canonical->platform !== null && ! $this->registry->platformEnabled($canonical->platform)) {
+                throw ValidationException::withMessages([
+                    'url' => "Sharing from {$canonical->platform->label()} isn't available yet — only Instagram is supported right now.",
+                ]);
+            }
             // NOTE: source_posts.platform is NOT NULL with 4 fixed values (02 §3.4),
             // but an unknown-host URL has no platform — a data-model gap. We store a
             // placeholder (hint or instagram) that FetchSourcePost ignores (it

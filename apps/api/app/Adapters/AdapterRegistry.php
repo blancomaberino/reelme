@@ -76,8 +76,12 @@ class AdapterRegistry
         return $adapters;
     }
 
-    /** Whether a platform's chain is enabled (kill switch); defaults on when unconfigured. */
-    private function platformEnabled(Platform $platform): bool
+    /**
+     * Whether a platform is enabled (config ingestion.platforms.<p>.enabled);
+     * defaults on when unconfigured. The single source of truth shared by
+     * resolve() (chain gating) and share acceptance (ShareController).
+     */
+    public function platformEnabled(Platform $platform): bool
     {
         return (bool) ($this->platforms[$platform->value]['enabled'] ?? true);
     }

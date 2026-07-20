@@ -41,18 +41,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Per-platform kill switches (T-014, 01 §5 operational rules)
+    | Per-platform enablement (T-014, 01 §5 operational rules)
     |--------------------------------------------------------------------------
-    | Force a whole platform to manual-only without a deploy. AdapterRegistry
-    | reads these: a disabled platform skips its ENTIRE chain (metadata adapter
-    | AND yt-dlp), resolving to the manual fallback only. Use when a provider's
-    | endpoint breaks or a ToS/legal concern requires standing the platform down.
-    | An unlisted platform (e.g. instagram) defaults to enabled.
+    | The single source of truth for which sources the app accepts. Both layers
+    | read it: ShareController REJECTS a share from a disabled platform ("only
+    | Instagram is supported right now"), and AdapterRegistry skips a disabled
+    | platform's ENTIRE chain (metadata adapter AND yt-dlp) → manual fallback.
+    |
+    | LAUNCH POSTURE: Instagram-only. X / TikTok / YouTube ship DISABLED. Enabling
+    | a source end-to-end is a one-line env flip (no deploy) — e.g. set
+    | `INGESTION_TIKTOK_ENABLED=true`. An unlisted platform (instagram) is always
+    | enabled.
     */
     'platforms' => [
-        'x' => ['enabled' => (bool) env('INGESTION_X_ENABLED', true)],
-        'tiktok' => ['enabled' => (bool) env('INGESTION_TIKTOK_ENABLED', true)],
-        'youtube' => ['enabled' => (bool) env('INGESTION_YOUTUBE_ENABLED', true)],
+        'x' => ['enabled' => (bool) env('INGESTION_X_ENABLED', false)],
+        'tiktok' => ['enabled' => (bool) env('INGESTION_TIKTOK_ENABLED', false)],
+        'youtube' => ['enabled' => (bool) env('INGESTION_YOUTUBE_ENABLED', false)],
     ],
 
     /*

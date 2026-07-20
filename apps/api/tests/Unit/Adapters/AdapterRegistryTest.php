@@ -76,6 +76,13 @@ dataset('platform lead adapters', [
 ]);
 
 it('leads each platform chain with its dedicated metadata adapter (T-014)', function (string $url, string $lead) {
+    // X/TikTok/YouTube ship disabled at launch — enable them to test the wiring.
+    config([
+        'ingestion.platforms.x.enabled' => true,
+        'ingestion.platforms.tiktok.enabled' => true,
+        'ingestion.platforms.youtube.enabled' => true,
+    ]);
+
     $chain = registry()->resolve($url);
 
     // Metadata adapter first, yt-dlp for media in the middle, manual last.
