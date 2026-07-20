@@ -20,11 +20,7 @@ class TikTokAdapter implements SourceAdapter
 
     public function supports(string $canonicalUrl): bool
     {
-        // Per-platform kill switch (01 §5): force TikTok to manual-only, no deploy.
-        if (! (bool) config('ingestion.platforms.tiktok.enabled', true)) {
-            return false;
-        }
-
+        // Kill switch is enforced in AdapterRegistry (skips the whole chain).
         return $this->onTikTok($canonicalUrl);
     }
 
@@ -62,14 +58,13 @@ class TikTokAdapter implements SourceAdapter
         return new MediaFetchResult;
     }
 
-    /** True for any tiktok.com host — full `www.` posts and `vm./vt.` shortlinks. */
+    /**
+     * True for any tiktok.com host — full `www.` posts and `vm./vt.` shortlinks
+     * (`tiktok.com.evil.com` does not match; hostMatches() is suffix-anchored).
+     */
     private function onTikTok(string $url): bool
     {
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-
-        // Suffix-anchored: `tiktok.com`, `www.tiktok.com`, `vm.tiktok.com`,
-        // `vt.tiktok.com` all match; `tiktok.com.evil.com` does not.
-        return $host === 'tiktok.com' || str_ends_with($host, '.tiktok.com');
+        return $this->hostMatches($url, ['tiktok.com']);
     }
 
     /**

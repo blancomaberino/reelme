@@ -25,11 +25,7 @@ class YouTubeAdapter implements SourceAdapter
 
     public function supports(string $canonicalUrl): bool
     {
-        // Per-platform kill switch (01 §5): force YouTube to manual-only, no deploy.
-        if (! (bool) config('ingestion.platforms.youtube.enabled', true)) {
-            return false;
-        }
-
+        // Kill switch is enforced in AdapterRegistry (skips the whole chain).
         return $this->videoId($canonicalUrl) !== null;
     }
 
@@ -124,9 +120,8 @@ class YouTubeAdapter implements SourceAdapter
      */
     private function videoId(string $url): ?string
     {
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-        $isShortHost = $host === 'youtu.be' || str_ends_with($host, '.youtu.be');
-        $isMainHost = $host === 'youtube.com' || str_ends_with($host, '.youtube.com');
+        $isShortHost = $this->hostMatches($url, ['youtu.be']);
+        $isMainHost = $this->hostMatches($url, ['youtube.com']);
         if (! $isShortHost && ! $isMainHost) {
             return null;
         }

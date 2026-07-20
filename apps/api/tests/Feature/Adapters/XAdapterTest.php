@@ -6,6 +6,7 @@ use App\Adapters\Exceptions\FetchFailed;
 use App\Adapters\Exceptions\PostUnavailable;
 use App\Adapters\XAdapter;
 use App\Enums\Platform;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
@@ -73,12 +74,34 @@ it('releases with a Retry-After backoff on a 429 rate-limit', function () {
     }
 });
 
-it('degrades to manual-only when the X kill switch is off, and never yields media', function () {
-    config()->set('ingestion.platforms.x.enabled', false);
-    expect((new XAdapter)->supports('https://x.com/u/status/1'))->toBeFalse();
+it('rejects a non-status URL called directly and never requires auth', function () {
+    // supports() gates this in the chain, but the adapter must still self-guard.
+    expect(fn () => (new XAdapter)->fetchMetadata('https://x.com/foodguy', null))
+        ->toThrow(PostUnavailable::class);
+    expect((new XAdapter)->requiresAuth())->toBeFalse();
+});
 
-    // fetchMedia is always empty — video comes from the yt-dlp step in the chain.
+it('yields null caption and handle when the oEmbed body has neither html nor author_url', function () {
+    Http::fake(['publish.x.com/oembed*' => Http::response(['author_name' => 'Food Guy'])]);
+
+    $data = (new XAdapter)->fetchMetadata('https://x.com/foodguy/status/9', null);
+
+    expect($data->caption)->toBeNull()
+        ->and($data->authorHandle)->toBeNull()
+        ->and($data->authorDisplayName)->toBe('Food Guy');
+});
+
+it('maps a connection error to FetchFailed (advance the chain)', function () {
+    Http::fake(fn () => throw new ConnectionException('boom'));
+
+    expect(fn () => (new XAdapter)->fetchMetadata('https://x.com/u/status/1', null))
+        ->toThrow(FetchFailed::class);
+});
+
+it('never yields media directly — video comes from the yt-dlp step in the chain', function () {
     $media = (new XAdapter)->fetchMedia(new SourcePostData(Platform::X, '1', 'https://x.com/u/status/1'), null);
     expect($media)->toBeInstanceOf(MediaFetchResult::class)
         ->and($media->media)->toBe([]);
+    // The X kill switch is enforced in AdapterRegistry, not supports() — see
+    // AdapterRegistryTest ("skips the whole chain when a platform is disabled").
 });

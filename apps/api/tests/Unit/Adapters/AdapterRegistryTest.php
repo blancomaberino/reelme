@@ -84,3 +84,22 @@ it('leads each platform chain with its dedicated metadata adapter (T-014)', func
         ->and($chain[1])->toBeInstanceOf(YtDlpAdapter::class)
         ->and(end($chain))->toBeInstanceOf(ManualUploadAdapter::class);
 })->with('platform lead adapters');
+
+it('skips the entire chain (manual-only) when a platform kill switch is off (T-014)', function () {
+    // Disabled BEFORE the registry singleton is first resolved so it captures it.
+    config()->set('ingestion.platforms.tiktok.enabled', false);
+
+    $chain = registry()->resolve('https://www.tiktok.com/@u/video/1');
+
+    // Neither the TikTok metadata adapter NOR yt-dlp runs — only manual remains.
+    expect($chain)->toHaveCount(1)
+        ->and($chain[0])->toBeInstanceOf(ManualUploadAdapter::class);
+});
+
+it('leaves an unconfigured platform (instagram) enabled by default', function () {
+    // No ingestion.platforms.instagram entry exists — it must still resolve.
+    $chain = registry()->resolve('https://www.instagram.com/reel/A/');
+
+    expect($chain)->toHaveCount(3)
+        ->and($chain[0])->toBeInstanceOf(OEmbedAdapter::class);
+});

@@ -28,11 +28,7 @@ class XAdapter implements SourceAdapter
 
     public function supports(string $canonicalUrl): bool
     {
-        // Per-platform kill switch (01 §5): force X to manual-only without a deploy.
-        if (! (bool) config('ingestion.platforms.x.enabled', true)) {
-            return false;
-        }
-
+        // Kill switch is enforced in AdapterRegistry (skips the whole chain).
         return $this->statusId($canonicalUrl) !== null;
     }
 
@@ -80,18 +76,7 @@ class XAdapter implements SourceAdapter
     /** The status id from `x.com|twitter.com/{user}/status(es)/{id}`, else null. */
     private function statusId(string $url): ?string
     {
-        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
-
-        $onHost = false;
-        foreach (self::HOSTS as $domain) {
-            // Suffix-anchored: exact host or a dot-subdomain — never a substring,
-            // so `x.com.evil.com` is not classified as X.
-            if ($host === $domain || str_ends_with($host, '.'.$domain)) {
-                $onHost = true;
-                break;
-            }
-        }
-        if (! $onHost) {
+        if (! $this->hostMatches($url, self::HOSTS)) {
             return null;
         }
 

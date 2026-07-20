@@ -66,14 +66,18 @@ it('maps permanent vs transient failures to the taxonomy', function (int $status
     'server error → transient' => [500, FetchFailed::class],
 ]);
 
-it('degrades to manual-only when the TikTok kill switch is off, and never yields media', function () {
-    config()->set('ingestion.platforms.tiktok.enabled', false);
-    expect((new TikTokAdapter)->supports('https://www.tiktok.com/@x/video/1'))->toBeFalse();
+it('rejects a non-tiktok URL called directly and never requires auth', function () {
+    expect(fn () => (new TikTokAdapter)->fetchMetadata('https://example.com/x', null))
+        ->toThrow(PostUnavailable::class);
+    expect((new TikTokAdapter)->requiresAuth())->toBeFalse();
+});
 
+it('never yields media directly — video comes from the yt-dlp step in the chain', function () {
     $media = (new TikTokAdapter)->fetchMedia(
         new SourcePostData(Platform::Tiktok, '1', 'https://www.tiktok.com/@x/video/1'),
         null,
     );
     expect($media)->toBeInstanceOf(MediaFetchResult::class)
         ->and($media->media)->toBe([]);
+    // The TikTok kill switch is enforced in AdapterRegistry, not supports().
 });

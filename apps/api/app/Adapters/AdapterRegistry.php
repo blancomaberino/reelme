@@ -17,11 +17,13 @@ class AdapterRegistry
     /**
      * @param  array<string, array<int, class-string<SourceAdapter>>>  $chains
      * @param  class-string<SourceAdapter>  $fallback
+     * @param  array<string, array{enabled?: bool}>  $platforms  Per-platform kill switches (config ingestion.platforms); a disabled platform resolves to manual-only (T-014).
      */
     public function __construct(
         private readonly Container $container,
         private readonly array $chains,
         private readonly string $fallback,
+        private readonly array $platforms = [],
     ) {}
 
     public function platformFor(string $canonicalUrl): ?Platform
@@ -52,7 +54,14 @@ class AdapterRegistry
     public function resolve(string $canonicalUrl): array
     {
         $platform = $this->platformFor($canonicalUrl);
-        $classes = $platform !== null ? ($this->chains[$platform->value] ?? []) : [];
+
+        // A per-platform kill switch (config ingestion.platforms.<p>.enabled)
+        // forces the whole platform to manual-only without a deploy: skip EVERY
+        // real adapter — metadata AND yt-dlp — so "disabled" honestly means
+        // manual-only (T-014, 01 §5). Unknown/unconfigured platforms default on.
+        $classes = $platform !== null && $this->platformEnabled($platform)
+            ? ($this->chains[$platform->value] ?? [])
+            : [];
 
         $adapters = [];
         foreach ($classes as $class) {
@@ -65,5 +74,11 @@ class AdapterRegistry
         $adapters[] = $this->container->make($this->fallback);
 
         return $adapters;
+    }
+
+    /** Whether a platform's chain is enabled (kill switch); defaults on when unconfigured. */
+    private function platformEnabled(Platform $platform): bool
+    {
+        return (bool) ($this->platforms[$platform->value]['enabled'] ?? true);
     }
 }

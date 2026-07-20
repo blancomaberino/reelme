@@ -70,6 +70,26 @@ trait FetchesOEmbed
         }
     }
 
+    /**
+     * Suffix-anchored host match (SSRF-relevant platform classification): true
+     * when the URL's host is exactly one of $domains or a dot-subdomain of one —
+     * never a bare substring, so `x.com.evil.com` is not classified as `x.com`.
+     *
+     * @param  array<int, string>  $domains
+     */
+    protected function hostMatches(string $url, array $domains): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        foreach ($domains as $domain) {
+            if ($host === $domain || str_ends_with($host, '.'.$domain)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** Coerce a possibly-missing/non-scalar oEmbed value to a trimmed non-empty string, else null. */
     protected function str(mixed $value): ?string
     {

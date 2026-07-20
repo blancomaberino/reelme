@@ -43,10 +43,11 @@ return [
     |--------------------------------------------------------------------------
     | Per-platform kill switches (T-014, 01 §5 operational rules)
     |--------------------------------------------------------------------------
-    | Force any platform's metadata adapter to stand down without a deploy: its
-    | supports() returns false, so a share degrades to the yt-dlp/manual tail of
-    | the chain. Use when a provider's endpoint breaks or a ToS concern arises.
-    | (yt-dlp has its own `ytdlp.enabled` switch below.)
+    | Force a whole platform to manual-only without a deploy. AdapterRegistry
+    | reads these: a disabled platform skips its ENTIRE chain (metadata adapter
+    | AND yt-dlp), resolving to the manual fallback only. Use when a provider's
+    | endpoint breaks or a ToS/legal concern requires standing the platform down.
+    | An unlisted platform (e.g. instagram) defaults to enabled.
     */
     'platforms' => [
         'x' => ['enabled' => (bool) env('INGESTION_X_ENABLED', true)],
