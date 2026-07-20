@@ -9,6 +9,7 @@ import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
 import { useT } from '@/i18n';
 import { formErrors } from '@/lib/form-errors';
+import { useUiStore } from '@/stores/ui';
 
 export default function LoginScreen() {
   const styles = useAuthFormStyles();
@@ -16,6 +17,10 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const login = useLogin();
+  // A share staged by the root ShareIntentRedirect while logged out (T-025):
+  // show a banner and, once signed in, resume on the ingest screen instead of
+  // dropping to the map — the shared link is never lost to the auth gate.
+  const pendingShare = useUiStore((s) => s.pendingShare);
 
   const { fieldErrors, generalError } = formErrors(login.error);
 
@@ -23,7 +28,7 @@ export default function LoginScreen() {
     login.mutate(
       { email: email.trim(), password },
       {
-        onSuccess: () => router.replace('/(main)/map'),
+        onSuccess: () => router.replace(pendingShare ? '/(main)/share' : '/(main)/map'),
         onError: (err) => {
           setPassword('');
           // Unconfirmed account → send them to the verify flow prefilled. Reset
@@ -40,6 +45,11 @@ export default function LoginScreen() {
 
   return (
     <AuthScreenLayout title={t('auth.login.title')} subtitle={t('auth.login.subtitle')}>
+      {pendingShare ? (
+        <View style={styles.banner} accessibilityRole="alert">
+          <Text style={styles.bannerText}>{t('auth.login.shareBanner')}</Text>
+        </View>
+      ) : null}
       <TextField
         label={t('auth.field.email')}
         value={email}
