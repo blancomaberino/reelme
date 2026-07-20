@@ -2,6 +2,11 @@
 
 use App\Adapters\AdapterRegistry;
 use App\Adapters\ManualUploadAdapter;
+use App\Adapters\OEmbedAdapter;
+use App\Adapters\TikTokAdapter;
+use App\Adapters\XAdapter;
+use App\Adapters\YouTubeAdapter;
+use App\Adapters\YtDlpAdapter;
 use App\Enums\Platform;
 use Tests\TestCase;
 
@@ -62,3 +67,20 @@ it('always terminates every chain in ManualUploadAdapter', function () {
         expect(end($chain))->toBeInstanceOf(ManualUploadAdapter::class);
     }
 });
+
+dataset('platform lead adapters', [
+    'x' => ['https://x.com/u/status/1', XAdapter::class],
+    'tiktok' => ['https://www.tiktok.com/@u/video/1', TikTokAdapter::class],
+    'youtube' => ['https://youtu.be/dQw4w9WgXcQ', YouTubeAdapter::class],
+    'instagram' => ['https://www.instagram.com/reel/A/', OEmbedAdapter::class],
+]);
+
+it('leads each platform chain with its dedicated metadata adapter (T-014)', function (string $url, string $lead) {
+    $chain = registry()->resolve($url);
+
+    // Metadata adapter first, yt-dlp for media in the middle, manual last.
+    expect($chain[0])->toBeInstanceOf($lead)
+        ->and($chain)->toHaveCount(3)
+        ->and($chain[1])->toBeInstanceOf(YtDlpAdapter::class)
+        ->and(end($chain))->toBeInstanceOf(ManualUploadAdapter::class);
+})->with('platform lead adapters');

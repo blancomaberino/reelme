@@ -2,6 +2,9 @@
 
 use App\Adapters\ManualUploadAdapter;
 use App\Adapters\OEmbedAdapter;
+use App\Adapters\TikTokAdapter;
+use App\Adapters\XAdapter;
+use App\Adapters\YouTubeAdapter;
 use App\Adapters\YtDlpAdapter;
 use App\Services\Media\Images\InstagramApiResolver;
 use App\Services\Media\Images\OEmbedThumbnailResolver;
@@ -17,22 +20,39 @@ return [
     | terminates in manual upload (ADR-011). Real platform adapters land in
     | T-013 (Instagram), T-014 (X/TikTok/YouTube), T-015 (authed Instagram).
     |
-    | OEmbedAdapter leads each chain so it supplies the caption/author (first
-    | successful fetchMetadata wins); YtDlpAdapter (T-074) follows to download the
-    | real video (OEmbed exposes none, so DownloadMedia advances to yt-dlp), giving
-    | the pipeline actual scene keyframes + audio. yt-dlp missing/auth-walled → the
-    | caption-only oEmbed path remains the graceful fallback.
+    | A keyless metadata adapter leads each chain so it supplies the caption/author
+    | (first successful fetchMetadata wins); YtDlpAdapter (T-074) follows to
+    | download the real video (metadata adapters expose none, so DownloadMedia
+    | advances to yt-dlp), giving the pipeline actual scene keyframes + audio.
+    | yt-dlp missing/auth-walled → the caption-only path remains the graceful
+    | fallback. Instagram uses the generic keyless OEmbedAdapter; X/TikTok/YouTube
+    | have dedicated adapters (T-014) that parse each provider's oEmbed/API shape
+    | (X blockquote HTML, TikTok author_unique_id, YouTube Data API v3 or oEmbed).
     */
     'chains' => [
-        // Keyless public oEmbed → real link title/author for the text path.
-        // Instagram's endpoint is keyless but best-effort (undocumented, IP-limited).
+        // Instagram's oEmbed is keyless but best-effort (undocumented, IP-limited).
         'instagram' => [OEmbedAdapter::class, YtDlpAdapter::class],
-        'x' => [],
-        'tiktok' => [OEmbedAdapter::class, YtDlpAdapter::class],
-        'youtube' => [OEmbedAdapter::class, YtDlpAdapter::class],
+        'x' => [XAdapter::class, YtDlpAdapter::class],
+        'tiktok' => [TikTokAdapter::class, YtDlpAdapter::class],
+        'youtube' => [YouTubeAdapter::class, YtDlpAdapter::class],
     ],
 
     'fallback' => ManualUploadAdapter::class,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Per-platform kill switches (T-014, 01 §5 operational rules)
+    |--------------------------------------------------------------------------
+    | Force any platform's metadata adapter to stand down without a deploy: its
+    | supports() returns false, so a share degrades to the yt-dlp/manual tail of
+    | the chain. Use when a provider's endpoint breaks or a ToS concern arises.
+    | (yt-dlp has its own `ytdlp.enabled` switch below.)
+    */
+    'platforms' => [
+        'x' => ['enabled' => (bool) env('INGESTION_X_ENABLED', true)],
+        'tiktok' => ['enabled' => (bool) env('INGESTION_TIKTOK_ENABLED', true)],
+        'youtube' => ['enabled' => (bool) env('INGESTION_YOUTUBE_ENABLED', true)],
+    ],
 
     /*
     |--------------------------------------------------------------------------
