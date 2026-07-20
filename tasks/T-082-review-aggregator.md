@@ -49,15 +49,15 @@ The new work is the **abstraction** + at least one external provider (Trustpilot
 
 ## Acceptance criteria
 
-- [ ] `ReviewSource` abstraction + registry with drivers `google`, `native`,
+- [x] `ReviewSource` abstraction + registry with drivers `google`, `native`,
       `trustpilot`, each yielding `{source, rating, count, url, synced_at, snippets}`
-- [ ] Place detail shows a per-source rating summary with label, deep link, last
+- [x] Place detail shows a per-source rating summary with label, deep link, last
       synced, and attribution; providers with no resolvable id are omitted (no
       empty rows) — mobile + web
-- [ ] Each external provider caches ToS-compliantly (own window), is SSRF-safe, and
+- [x] Each external provider caches ToS-compliantly (own window), is SSRF-safe, and
       never throws; one provider failing degrades gracefully to the others
-- [ ] `PlaceResource` exposes `review_sources[]`; contract schema + TS regen, drift green
-- [ ] Tests (`Http::fake`/fixtures per provider): aggregation shape, provider-failure
+- [x] `PlaceResource` exposes `review_sources[]`; contract schema + TS regen, drift green
+- [x] Tests (`Http::fake`/fixtures per provider): aggregation shape, provider-failure
       isolation, cache/ToS window, missing-id omission, mobile+web render; gates green
 
 ## Verification
