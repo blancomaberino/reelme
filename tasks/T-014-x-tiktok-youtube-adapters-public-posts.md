@@ -68,3 +68,11 @@ vendor/bin/pint --test && vendor/bin/phpstan analyse
 - Keep per-platform kill switches: reuse the pattern `config('ingestion.platforms.{x}.enabled')` so any platform can be force-downgraded to manual-only without deploy (01 §5 operational rules).
 - Posted-at parsing differs (X oEmbed has none; TikTok none; YouTube ISO 8601) — `posted_at` is nullable, leave null when absent.
 - oEmbed responses belong in `raw` so `FetchSourcePost` can persist them to `source_posts.oembed_json` — don't discard.
+
+## Log
+
+- 2026-07-20 (PR #115, branch `feat/T-014-x-tiktok-youtube-adapters`): implemented dedicated `XAdapter`, `TikTokAdapter`, `YouTubeAdapter` + shared `App\Adapters\Support\FetchesOEmbed` trait (HTTP client, §8 failure mapping, suffix-anchored `hostMatches`). Wired the `x`/`tiktok`/`youtube` chains in `config/ingestion.php` (each `[Adapter, YtDlpAdapter]` → manual fallback); added `services.youtube.api_key`. X media via yt-dlp (added `x.com`/`twitter.com` to `YtDlpAdapter::SUPPORTED_HOSTS`).
+  - **Kill switches** (`ingestion.platforms.{x,tiktok,youtube}.enabled`) enforced in `AdapterRegistry::resolve()` — a disabled platform skips the WHOLE chain (metadata + yt-dlp) → manual-only; unconfigured platforms default enabled (instagram gets one for free). This altitude fix came out of `/simplify`: the first cut gated each adapter's `supports()`, which left yt-dlp still scraping a "disabled" platform.
+  - Instagram still uses the generic `OEmbedAdapter`. **Deferred follow-up:** narrow/rename `OEmbedAdapter` → `InstagramAdapter` and fold it onto `FetchesOEmbed` (dead youtube/tiktok PROVIDERS entries; ~30 duplicated lines). Out of T-014 scope.
+  - Tests: per-platform fixture tests (`Http::fake`, no network/binary) — supports() matrix, happy parse, Data-API vs oEmbed, failure taxonomy, connection errors; registry tests for the kill switch. 100% coverage on the new adapters + trait. `/coderabbit` pass clean (grounding, `/simplify` applied, `/security-review` no findings). Pint/PHPStan green; Pest 792 passed.
+  - Also flipped **T-013 → done** in tasks.json (it shipped earlier via PRs #78/#82/#83; status had never been updated). T-014 stays `in_progress` until PR #115 merges.

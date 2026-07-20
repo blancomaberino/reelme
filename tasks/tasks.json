@@ -302,7 +302,7 @@
       "id": "T-013",
       "title": "Instagram adapter: oEmbed + yt-dlp fetcher for public posts",
       "phase": "M1",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-012"
       ],
@@ -327,7 +327,7 @@
       "id": "T-014",
       "title": "X, TikTok, YouTube adapters (public posts)",
       "phase": "M1",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-012"
       ],
