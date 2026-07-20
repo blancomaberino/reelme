@@ -10,6 +10,7 @@ use App\Adapters\Data\SourcePostData;
 use App\Adapters\Exceptions\FetchFailed;
 use App\Adapters\Exceptions\PostUnavailable;
 use App\Adapters\Support\FetchesOEmbed;
+use App\Adapters\Support\InstagramUrl;
 use App\Enums\MediaKind;
 use App\Enums\Platform;
 use Carbon\CarbonImmutable;
@@ -28,10 +29,20 @@ use Illuminate\Support\Facades\Http;
  * token it maps to `fetch_auth_required` (advance the chain, but record the
  * "link your account" reason); with a token it fetches caption + media_url by
  * matching the shared permalink against the linked user's own media.
+ *
+ * fetchMetadata() persists the resolved media item (incl. `media_url`) into the
+ * post's `raw`, so the later fetchMedia() reuses it instead of a second authed
+ * round-trip — the download path never re-hits the scarce Graph quota.
  */
 class InstagramGraphAdapter implements SourceAdapter
 {
     use FetchesOEmbed;
+
+    /** Marks a `raw` payload this adapter produced (read back by fetchMedia). */
+    private const SOURCE = 'instagram_graph';
+
+    /** Bound on `/me/media` pages walked to find an owned post (25/page ⇒ ~125). */
+    private const MAX_PAGES = 5;
 
     public function __construct(
         private readonly string $graphBase = 'https://graph.instagram.com',
@@ -71,31 +82,32 @@ class InstagramGraphAdapter implements SourceAdapter
 
         return new SourcePostData(
             platform: Platform::Instagram,
-            externalId: $this->externalId($canonicalUrl),
+            externalId: InstagramUrl::externalId($canonicalUrl),
             url: $canonicalUrl,
             caption: $this->str($media['caption'] ?? null),
-            // The linked account IS the sharer — but the post's real author is
-            // the poster, so only trust the handle for provenance, not naming.
+            // The linked account IS the sharer — trust the handle for provenance
+            // only, never for naming the venue.
             authorHandle: $account?->handle,
             postedAt: $this->timestamp($media['timestamp'] ?? null),
             media: $this->descriptors($media),
-            raw: ['source' => 'instagram_graph'] + $media,
+            // The media_url rides in `raw` so fetchMedia() can reuse it.
+            raw: ['source' => self::SOURCE] + $media,
         );
     }
 
     public function fetchMedia(SourcePostData $post, ?LinkedAccount $account): MediaFetchResult
     {
-        $token = $this->usableToken($account);
-        if ($token === null) {
+        // Reuse the media_url resolved (and persisted) by fetchMetadata — no
+        // second Graph call. A post this adapter didn't resolve (raw.source !==
+        // instagram_graph, e.g. a public oEmbed post) yields nothing and falls
+        // straight through to yt-dlp.
+        $media = $post->raw;
+        if (($media['source'] ?? null) !== self::SOURCE) {
             return new MediaFetchResult;
         }
 
-        $media = $this->findMedia($post->url, $token);
-        $url = $media !== null ? $this->str($media['media_url'] ?? null) : null;
-
-        // Only downloadable video bytes feed DownloadMedia; images go through the
-        // separate image-resolver chain (keyframes), not here.
-        if ($url === null || strtoupper((string) ($media['media_type'] ?? '')) !== 'VIDEO') {
+        $url = $this->str($media['media_url'] ?? null);
+        if ($url === null || ! $this->isVideo($media)) {
             return new MediaFetchResult;
         }
 
@@ -115,26 +127,41 @@ class InstagramGraphAdapter implements SourceAdapter
     }
 
     /**
-     * Fetch the linked user's recent media and return the entry whose permalink
-     * matches the shared URL's shortcode, or null when none matches.
+     * Walk the linked user's media (bounded pages) and return the entry whose
+     * permalink matches the shared URL's shortcode, or null when none matches.
      *
      * @return array<string, mixed>|null
      */
     private function findMedia(string $canonicalUrl, string $token): ?array
     {
-        $target = $this->shortcode($canonicalUrl);
+        $target = InstagramUrl::shortcode($canonicalUrl);
         if ($target === null) {
             return null; // a non-permalink URL can't be matched
         }
 
-        foreach ($this->requestMedia($token) as $item) {
-            if (! is_array($item)) {
-                continue;
+        $after = null;
+        for ($page = 0; $page < self::MAX_PAGES; $page++) {
+            $body = $this->requestMedia($token, $after);
+
+            /** @var array<int, mixed> $data */
+            $data = is_array($body['data'] ?? null) ? $body['data'] : [];
+            foreach ($data as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $permalink = $this->str($item['permalink'] ?? null);
+                if ($permalink !== null && InstagramUrl::shortcode($permalink) === $target) {
+                    /** @var array<string, mixed> $item */
+                    return $item;
+                }
             }
-            $permalink = $this->str($item['permalink'] ?? null);
-            if ($permalink !== null && $this->shortcode($permalink) === $target) {
-                /** @var array<string, mixed> $item */
-                return $item;
+
+            // Paginate by the `after` CURSOR against our fixed host (never follow
+            // the opaque `paging.next` URL — that would let the response steer the
+            // request host). Stop when the API reports no further page.
+            $after = $this->str(data_get($body, 'paging.cursors.after'));
+            if ($after === null || ! isset($body['paging']['next'])) {
+                break;
             }
         }
 
@@ -142,21 +169,25 @@ class InstagramGraphAdapter implements SourceAdapter
     }
 
     /**
-     * GET the linked user's media list. The token is a query VALUE against a
-     * fixed, hardcoded Graph host (never the request host) — the SSRF-relevant
-     * boundary. Failures map to the §8 taxonomy: 401/403 (token rejected) →
-     * auth-required; 429 → retryable; any other non-2xx / connection error →
-     * FetchFailed (advance the chain, never crash).
+     * GET one page of the linked user's media. The token is a query VALUE against
+     * the fixed, hardcoded Graph host (never the request host) — the SSRF-relevant
+     * boundary. 401/403 (token rejected) → auth-required; everything else maps via
+     * the shared oEmbed taxonomy (429 retryable, other non-2xx → FetchFailed).
      *
-     * @return array<int, mixed>
+     * @return array<string, mixed>
      */
-    private function requestMedia(string $token): array
+    private function requestMedia(string $token, ?string $after): array
     {
+        $query = [
+            'fields' => 'id,caption,media_type,media_url,permalink,timestamp',
+            'access_token' => $token,
+        ];
+        if ($after !== null) {
+            $query['after'] = $after;
+        }
+
         try {
-            $response = Http::timeout($this->timeout)->get($this->graphBase.'/me/media', [
-                'fields' => 'id,caption,media_type,media_url,permalink,timestamp',
-                'access_token' => $token,
-            ]);
+            $response = Http::timeout($this->timeout)->get($this->graphBase.'/me/media', $query);
         } catch (ConnectionException) {
             throw new FetchFailed('Instagram Graph request failed.');
         }
@@ -164,17 +195,15 @@ class InstagramGraphAdapter implements SourceAdapter
         if (in_array($response->status(), [401, 403], true)) {
             throw new PostUnavailable('Instagram token was rejected.', requiresAuth: true);
         }
-        if ($response->status() === 429) {
-            $retryAfter = (int) $response->header('Retry-After');
-            throw new FetchFailed('Instagram Graph rate limited.', retryAfter: $retryAfter > 0 ? $retryAfter : 60);
-        }
-        if ($response->failed()) {
-            throw new FetchFailed('Instagram Graph returned '.$response->status().'.');
-        }
 
-        $data = $response->json('data');
+        // Shared taxonomy: 429 → retryable FetchFailed(Retry-After); 404/410 →
+        // PostUnavailable; any other non-2xx → FetchFailed. Returns on 2xx.
+        $this->guard($response);
 
-        return is_array($data) ? $data : [];
+        /** @var array<string, mixed> $body */
+        $body = is_array($response->json()) ? $response->json() : [];
+
+        return $body;
     }
 
     /**
@@ -190,9 +219,18 @@ class InstagramGraphAdapter implements SourceAdapter
             return [];
         }
 
-        $type = strtoupper((string) ($media['media_type'] ?? '')) === 'VIDEO' ? 'video' : 'image';
+        return [new MediaDescriptor(type: $this->isVideo($media) ? 'video' : 'image', url: $url)];
+    }
 
-        return [new MediaDescriptor(type: $type, url: $url)];
+    /**
+     * Whether the Graph item is a video — the only media kind DownloadMedia
+     * ingests (images feed the separate keyframe resolver chain).
+     *
+     * @param  array<string, mixed>  $media
+     */
+    private function isVideo(array $media): bool
+    {
+        return strtoupper((string) ($media['media_type'] ?? '')) === 'VIDEO';
     }
 
     /** Parse Instagram's ISO-8601 timestamp, tolerating a missing/garbage value. */
@@ -207,17 +245,5 @@ class InstagramGraphAdapter implements SourceAdapter
         } catch (\Throwable) {
             return null;
         }
-    }
-
-    /** The shortcode from /p/, /reel/, /reels/, /tv/ (else null — nothing to match on). */
-    private function shortcode(string $url): ?string
-    {
-        return preg_match('#/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)#', $url, $m) === 1 ? $m[1] : null;
-    }
-
-    /** The shortcode, else a stable hash of the URL — mirrors InstagramAdapter. */
-    private function externalId(string $url): string
-    {
-        return $this->shortcode($url) ?? substr(sha1($url), 0, 24);
     }
 }

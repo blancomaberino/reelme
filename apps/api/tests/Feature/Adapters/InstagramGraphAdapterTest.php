@@ -64,17 +64,35 @@ it('fetches a private post caption + media with the linked token', function () {
         && str_contains(urldecode($r->url()), 'fields=id,caption,media_type,media_url,permalink,timestamp'));
 });
 
-it('resolves the downloadable video via fetchMedia with the linked token', function () {
-    fakeGraphMedia();
+it('resolves the downloadable video from the persisted raw payload — no second Graph call', function () {
+    Http::fake(); // must NOT be hit — fetchMedia reuses what fetchMetadata stored
+    $raw = [
+        'source' => 'instagram_graph',
+        'media_type' => 'VIDEO',
+        'media_url' => 'https://cdn.example.test/priv123.mp4',
+    ];
 
     $result = (new InstagramGraphAdapter)->fetchMedia(
-        new SourcePostData(Platform::Instagram, 'PRIV123', 'https://www.instagram.com/reel/PRIV123/'),
-        igAccount(),
+        new SourcePostData(Platform::Instagram, 'PRIV123', 'https://www.instagram.com/reel/PRIV123/', raw: $raw),
+        null,
     );
 
     expect($result->media)->toHaveCount(1)
         ->and($result->media[0]->kind)->toBe(MediaKind::Video)
         ->and($result->media[0]->url)->toBe('https://cdn.example.test/priv123.mp4');
+    Http::assertNothingSent();
+});
+
+it('fetchMedia yields nothing (no Graph call) for a post it did not resolve', function () {
+    Http::fake();
+    // A public post resolved by oEmbed carries a different raw.source → skip.
+    $result = (new InstagramGraphAdapter)->fetchMedia(
+        new SourcePostData(Platform::Instagram, 'PUB', 'https://www.instagram.com/reel/PUB/', raw: ['source' => 'oembed']),
+        igAccount(),
+    );
+
+    expect($result->media)->toBeEmpty();
+    Http::assertNothingSent();
 });
 
 it('maps a missing token to fetch_auth_required and never calls the Graph API', function () {
@@ -127,6 +145,31 @@ it('advances (PostUnavailable, not auth) when the post is not in the linked medi
     } catch (PostUnavailable $e) {
         expect($e->failureCode())->toBe('fetch_unavailable');
     }
+});
+
+it('paginates /me/media (by cursor) to find an owned post beyond the first page', function () {
+    Http::fake(['*graph.instagram.com/me/media*' => Http::sequence()
+        ->push([
+            'data' => [['id' => 'a', 'permalink' => 'https://www.instagram.com/reel/OTHER1/', 'media_type' => 'IMAGE']],
+            'paging' => ['next' => 'https://graph.instagram.com/me/media?x', 'cursors' => ['after' => 'CUR2']],
+        ])
+        ->push([
+            'data' => [[
+                'id' => 'b', 'caption' => 'Encontrado en la página 2', 'media_type' => 'VIDEO',
+                'media_url' => 'https://cdn.example.test/p2.mp4',
+                'permalink' => 'https://www.instagram.com/reel/PRIV123/', 'timestamp' => '2026-01-01T00:00:00+0000',
+            ]],
+        ]),
+    ]);
+
+    $data = (new InstagramGraphAdapter)->fetchMetadata('https://www.instagram.com/reel/PRIV123/', igAccount());
+
+    expect($data->caption)->toContain('página 2')
+        ->and($data->externalId)->toBe('PRIV123');
+    // Two pages fetched; the second request carried the `after` cursor (never the
+    // opaque paging.next URL).
+    Http::assertSentCount(2);
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), 'after=CUR2'));
 });
 
 it('releases on a 429 as a retryable FetchFailed with Retry-After', function () {

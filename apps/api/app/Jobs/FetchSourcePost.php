@@ -3,16 +3,18 @@
 namespace App\Jobs;
 
 use App\Adapters\AdapterRegistry;
+use App\Adapters\Data\LinkedAccount;
 use App\Adapters\Data\SourcePostData;
 use App\Adapters\Exceptions\FetchFailed;
 use App\Adapters\Exceptions\NeedsManualFallback;
 use App\Adapters\Exceptions\PostUnavailable;
 use App\Enums\FetchStatus;
+use App\Enums\Platform;
 use App\Enums\ShareStatus;
 use App\Jobs\Concerns\FailsShareOnError;
-use App\Jobs\Concerns\LoadsLinkedAccount;
 use App\Jobs\Concerns\RecordsStageMetrics;
 use App\Models\Influencer;
+use App\Models\PlatformAccount;
 use App\Models\Share;
 use App\Models\SourcePost;
 use Illuminate\Bus\Batchable;
@@ -30,7 +32,7 @@ use Illuminate\Queue\SerializesModels;
  */
 class FetchSourcePost implements ShouldQueue
 {
-    use Batchable, Dispatchable, FailsShareOnError, InteractsWithQueue, LoadsLinkedAccount, Queueable, RecordsStageMetrics, SerializesModels;
+    use Batchable, Dispatchable, FailsShareOnError, InteractsWithQueue, Queueable, RecordsStageMetrics, SerializesModels;
 
     public int $tries = 4;
 
@@ -95,10 +97,25 @@ class FetchSourcePost implements ShouldQueue
                 }
                 // advance to the next adapter in the chain
             } catch (PostUnavailable $e) {
-                $authRequired = $authRequired || $e->failureCode() === 'fetch_auth_required';
+                $authRequired = $authRequired || $e->requiresAuth;
                 // advance to the next adapter in the chain
             }
         }
+    }
+
+    /**
+     * The sharer's linked platform account (T-015) mapped to the adapter DTO,
+     * or null when unlinked/expired — the authed strategy in the chain uses it
+     * to fetch a private post the sharer authorized. Expired tokens map to null
+     * (via toLinkedAccount), so the public/manual path still runs.
+     */
+    private function linkedAccountFor(int $userId, Platform $platform): ?LinkedAccount
+    {
+        return PlatformAccount::query()
+            ->where('user_id', $userId)
+            ->where('platform', $platform)
+            ->first()
+            ?->toLinkedAccount();
     }
 
     private function persist(SourcePost $post, SourcePostData $data): void

@@ -79,7 +79,7 @@ class IngestionServiceProvider extends ServiceProvider
                 graphBase: is_string($ig['graph_base'] ?? null) && $ig['graph_base'] !== ''
                     ? $ig['graph_base']
                     : 'https://graph.instagram.com',
-                timeout: max(1, (int) ($app['config']->get('ingestion.oembed.timeout') ?? 10)),
+                timeout: max(1, (int) ($ig['timeout'] ?? 10)),
             );
         });
 

@@ -59,8 +59,9 @@ return [
             'trim',
             explode(',', (string) env('INSTAGRAM_SCOPES', 'instagram_business_basic'))
         ))),
-        // Graph base for the authed media fetch (InstagramGraphAdapter).
+        // Graph base + request timeout for the authed media fetch (InstagramGraphAdapter).
         'graph_base' => env('INSTAGRAM_GRAPH_BASE', 'https://graph.instagram.com'),
+        'timeout' => (int) env('INSTAGRAM_GRAPH_TIMEOUT', 10),
     ],
 
 ];

@@ -7,6 +7,7 @@ use App\Adapters\Data\MediaFetchResult;
 use App\Adapters\Data\SourcePostData;
 use App\Adapters\Exceptions\PostUnavailable;
 use App\Adapters\Support\FetchesOEmbed;
+use App\Adapters\Support\InstagramUrl;
 use App\Enums\Platform;
 
 /**
@@ -54,7 +55,7 @@ class InstagramAdapter implements SourceAdapter
 
         return new SourcePostData(
             platform: Platform::Instagram,
-            externalId: $this->externalId($canonicalUrl),
+            externalId: InstagramUrl::externalId($canonicalUrl),
             url: $canonicalUrl,
             // The title is the only text a public oEmbed exposes — it becomes the
             // caption the extractor reads.
@@ -70,16 +71,6 @@ class InstagramAdapter implements SourceAdapter
         // oEmbed exposes no downloadable media URL (only an embed iframe) — the
         // video comes from the yt-dlp step next in the chain.
         return new MediaFetchResult;
-    }
-
-    /** The shortcode from /p/, /reel/, /reels/, /tv/, else a stable hash of the URL. */
-    private function externalId(string $url): string
-    {
-        if (preg_match('#/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)#', $url, $m) === 1) {
-            return $m[1];
-        }
-
-        return substr(sha1($url), 0, 24);
     }
 
     /**

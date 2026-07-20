@@ -4,12 +4,10 @@ namespace App\Jobs;
 
 use App\Adapters\AdapterRegistry;
 use App\Adapters\Data\FetchedMedia;
-use App\Adapters\Data\LinkedAccount;
 use App\Adapters\Data\SourcePostData;
 use App\Enums\MediaKind;
 use App\Enums\ShareStatus;
 use App\Jobs\Concerns\FailsShareOnError;
-use App\Jobs\Concerns\LoadsLinkedAccount;
 use App\Jobs\Concerns\RecordsStageMetrics;
 use App\Jobs\Concerns\StreamsToDisk;
 use App\Models\MediaAsset;
@@ -35,7 +33,7 @@ use Illuminate\Support\Facades\Http;
  */
 class DownloadMedia implements ShouldQueue
 {
-    use Batchable, Dispatchable, FailsShareOnError, InteractsWithQueue, LoadsLinkedAccount, Queueable, RecordsStageMetrics, SerializesModels, StreamsToDisk;
+    use Batchable, Dispatchable, FailsShareOnError, InteractsWithQueue, Queueable, RecordsStageMetrics, SerializesModels, StreamsToDisk;
 
     public int $tries = 3;
 
@@ -75,11 +73,7 @@ class DownloadMedia implements ShouldQueue
 
         $this->recordStage($share->id, 'download');
 
-        // The sharer's linked account (T-015) authorizes the authed Instagram
-        // strategy to resolve a private post's media_url; null when unlinked.
-        $account = $this->linkedAccountFor($share->user_id, $post->platform);
-
-        $media = $this->firstDownloadable($registry, $post, $account);
+        $media = $this->firstDownloadable($registry, $post);
         if ($media === null) {
             return; // nothing to download (chain resolved no video)
         }
@@ -94,17 +88,20 @@ class DownloadMedia implements ShouldQueue
         }
     }
 
-    private function firstDownloadable(AdapterRegistry $registry, SourcePost $post, ?LinkedAccount $account): ?FetchedMedia
+    private function firstDownloadable(AdapterRegistry $registry, SourcePost $post): ?FetchedMedia
     {
         $data = new SourcePostData(
             platform: $post->platform,
             externalId: $post->external_id,
             url: $post->url,
             caption: $post->caption,
+            // Carry the persisted fetch payload so an adapter (T-015 Graph) can
+            // reuse a media_url it already resolved instead of re-fetching.
+            raw: is_array($post->oembed_json) ? $post->oembed_json : [],
         );
 
         foreach ($registry->resolve($post->url) as $adapter) {
-            foreach ($adapter->fetchMedia($data, $account)->media as $media) {
+            foreach ($adapter->fetchMedia($data, null)->media as $media) {
                 if (in_array($media->kind, [MediaKind::Video, MediaKind::ScreenRecording], true)) {
                     return $media;
                 }

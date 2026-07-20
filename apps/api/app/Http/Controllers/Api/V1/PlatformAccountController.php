@@ -6,6 +6,8 @@ use App\Enums\Platform;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PlatformAccountResource;
 use App\Models\PlatformAccount;
+use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -103,6 +105,12 @@ class PlatformAccountController extends Controller
             return $this->deepLink($platform, 'error');
         }
 
+        // The initiating user may have been deleted during the 10-min window;
+        // upserting against a dangling id would FK-violate (500). Bail cleanly.
+        if (! User::whereKey($userId)->exists()) {
+            return $this->deepLink($platform, 'error');
+        }
+
         $externalId = (string) $oauthUser->getId();
 
         // One Instagram identity, one Reelmap user: block linking an account
@@ -116,18 +124,24 @@ class PlatformAccountController extends Controller
             return $this->deepLink($platform, 'conflict');
         }
 
-        PlatformAccount::updateOrCreate(
-            ['user_id' => $userId, 'platform' => Platform::Instagram],
-            [
-                'external_user_id' => $externalId,
-                'handle' => $this->handleFor($oauthUser, $externalId),
-                'access_token' => $oauthUser->token,
-                'refresh_token' => $oauthUser->refreshToken ?: null,
-                'token_expires_at' => $this->expiryFor($oauthUser),
-                'scopes' => $this->grantedScopes($oauthUser),
-                'last_synced_at' => now(),
-            ],
-        );
+        try {
+            PlatformAccount::updateOrCreate(
+                ['user_id' => $userId, 'platform' => Platform::Instagram],
+                [
+                    'external_user_id' => $externalId,
+                    'handle' => $this->handleFor($oauthUser, $externalId),
+                    'access_token' => $oauthUser->token,
+                    'refresh_token' => $oauthUser->refreshToken ?: null,
+                    'token_expires_at' => $this->expiryFor($oauthUser),
+                    'scopes' => $this->grantedScopes($oauthUser),
+                    'last_synced_at' => now(),
+                ],
+            );
+        } catch (UniqueConstraintViolationException) {
+            // Race: another user linked this same IG identity between the check
+            // above and the insert — surface the intended conflict, not a 500.
+            return $this->deepLink($platform, 'conflict');
+        }
 
         return $this->deepLink($platform, 'ok');
     }
@@ -149,14 +163,7 @@ class PlatformAccountController extends Controller
     private function assertInstagram(string $platform): void
     {
         if ($platform !== Platform::Instagram->value) {
-            abort(response()->json([
-                'error' => [
-                    'code' => 'unsupported_platform',
-                    'message' => 'Only Instagram accounts can be linked right now.',
-                    'details' => (object) ['platform' => $platform],
-                    'request_id' => 'req_'.Str::ulid(),
-                ],
-            ], 422));
+            abort($this->error('unsupported_platform', 'Only Instagram accounts can be linked right now.', 422, ['platform' => $platform]));
         }
     }
 
@@ -221,14 +228,22 @@ class PlatformAccountController extends Controller
         ]));
     }
 
-    private function error(string $code, string $message, int $status): JsonResponse
+    /**
+     * The canonical error envelope (03 §1). Reuses the request-scoped request_id
+     * so it matches the rest of the request's logging (mirrors ApiExceptionRenderer).
+     *
+     * @param  array<string, mixed>  $details
+     */
+    private function error(string $code, string $message, int $status, array $details = []): JsonResponse
     {
+        $requestId = request()->attributes->get('request_id');
+
         return response()->json([
             'error' => [
                 'code' => $code,
                 'message' => $message,
-                'details' => (object) [],
-                'request_id' => 'req_'.Str::ulid(),
+                'details' => (object) $details,
+                'request_id' => 'req_'.(is_string($requestId) && $requestId !== '' ? $requestId : (string) Str::ulid()),
             ],
         ], $status);
     }
