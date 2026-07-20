@@ -11,6 +11,7 @@ import { MiniMap } from '@/components/place/mini-map';
 import { ReviewComposer } from '@/components/place/review-composer';
 import { MenuSheet } from '@/components/place/menu-sheet';
 import { MyTags } from '@/components/place/my-tags';
+import { ReviewSources } from '@/components/place/review-sources';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { SourceCard } from '@/components/place/source-card';
 import { Thumbnail } from '@/components/place/thumbnail';
@@ -269,6 +270,9 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
           </View>
         </View>
       ) : null}
+
+      {/* Ratings across the web: per-source summary rows (T-082) */}
+      <ReviewSources sources={place.review_sources ?? []} />
 
       {/* Reviews: your composer, then in-app + Google (with reviewer photos) */}
       <View style={styles.block}>

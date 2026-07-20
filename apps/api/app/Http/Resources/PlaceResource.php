@@ -12,7 +12,8 @@ use Illuminate\Support\Collection;
  * GET /places/{id} shape (03-api-design §3.3) — the public place detail. IDs
  * serialize as strings (§1). Aggregated discovery tags/dishes come from every
  * contributing place_source; `rating.google` mirrors Google Places while
- * `rating.app` is the native review average.
+ * `rating.app` is the native review average. `review_sources[]` is the pluggable
+ * multi-source aggregate (T-082): one normalized row per resolving provider.
  *
  * `?include=sources` embeds the attribution list (PlaceSourceResource shape);
  * `?include=offers` is accepted-but-empty until M4 (T-030).
@@ -100,6 +101,14 @@ class PlaceResource extends JsonResource
                 ],
             ],
             'google_reviews' => $this->google_reviews_json ?? [],
+            // Pluggable multi-source aggregate (T-082): per-source rating rows
+            // (Google, native, Trustpilot, …), each with a deep link + snippets.
+            // The `rating.google` / `rating.app` / `google_reviews` above stay for
+            // back-compat. Providers that don't resolve are simply absent.
+            'review_sources' => array_map(
+                fn ($summary) => $summary->toArray(),
+                $this->reviewSummaries(),
+            ),
             'discounts' => $this->aggregatedDiscounts(),
             'sources' => $this->when(
                 in_array('sources', $this->includes, true),

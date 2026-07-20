@@ -51,6 +51,32 @@ export interface PlaceDetail {
     profile_photo_url?: string | null;
   }[];
   /**
+   * Multi-source review aggregate (T-082): one normalized row per resolving provider (`native`, `google`, `trustpilot`, …), in display order. A provider with no resolvable id for the place is omitted (no empty rows). `rating` is a 0–5 average; `url` deep links to the full reviews on that source (null for the intrinsic native source); `synced_at` is when external content was last fetched. Coexists with the back-compat `rating.google`/`rating.app`/`google_reviews`.
+   */
+  review_sources: {
+    /**
+     * Provider id / UI label key, e.g. "google".
+     */
+    source: string;
+    rating: number | null;
+    count: number;
+    /**
+     * Deep link to the full reviews on the source; null for native.
+     */
+    url: string | null;
+    /**
+     * ISO 8601 time the external summary was last fetched; null for computed sources.
+     */
+    synced_at: string | null;
+    snippets: {
+      author: string | null;
+      rating: number | null;
+      text: string | null;
+      relative_time: string | null;
+      profile_photo_url: string | null;
+    }[];
+  }[];
+  /**
    * Card/bank/wallet payment discounts mentioned across the place's sources (T-079), aggregated + deduped. `card` is the display label (resolved issuer, else scheme, else @handle); filter the map/index by it via ?card=.
    */
   discounts: {

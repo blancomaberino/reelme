@@ -143,6 +143,8 @@ button{font-family:inherit;cursor:pointer;}
 .status-pill{display:inline-block;border-radius:var(--r-pill);padding:4px 10px;font-size:var(--fs-xs);font-weight:700;}
 .status-pill.open{background:var(--green-soft);color:var(--green);}
 .rating-cards{display:flex;gap:10px;}
+.rsrc-list{display:flex;flex-direction:column;gap:8px;}
+.rsrc{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;}
 .rating-card{flex:1;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-md);padding:12px;}
 .rating-num{font-family:var(--font-display);font-size:var(--fs-2xl);font-weight:700;line-height:1;}
 .stars{color:var(--gold);letter-spacing:2px;}
@@ -367,6 +369,7 @@ const I18N = {
     'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.hours': 'HORARIO', 'place.googleMaps': 'Ver en Google Maps', 'place.dishesUpdated': 'Menú actualizado el', 'place.sources': 'VIDEOS DE ORIGEN', 'place.discounts': 'DESCUENTOS CON TARJETA',
     'place.reviews': 'RESEÑAS', 'place.fromGoogle': 'DE GOOGLE', 'place.watch': 'Ver original ↗',
     'place.readOnGoogle': 'Ver todas las reseñas en Google',
+    'reviewSrc.title': 'RESEÑAS EN LA WEB', 'reviewSrc.native': 'Reelmap', 'reviewSrc.google': 'Google', 'reviewSrc.trustpilot': 'Trustpilot', 'reviewSrc.read': 'Ver en', 'reviewSrc.reviews': 'reseñas',
     'place.sharedBy': 'compartido por', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reseñas',
     'review.rate': 'Calificá este lugar', 'review.your': 'Tu reseña', 'review.ph': 'Escribí una impresión…',
     'review.post': 'Publicar', 'review.update': 'Actualizar', 'review.delete': 'Eliminar',
@@ -410,6 +413,7 @@ const I18N = {
     'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.hours': 'HOURS', 'place.googleMaps': 'View on Google Maps', 'place.dishesUpdated': 'Menu updated', 'place.sources': 'SOURCE VIDEOS', 'place.discounts': 'CARD DISCOUNTS',
     'place.reviews': 'REVIEWS', 'place.fromGoogle': 'FROM GOOGLE', 'place.watch': 'Watch original ↗',
     'place.readOnGoogle': 'Read all reviews on Google',
+    'reviewSrc.title': 'RATINGS ACROSS THE WEB', 'reviewSrc.native': 'Reelmap', 'reviewSrc.google': 'Google', 'reviewSrc.trustpilot': 'Trustpilot', 'reviewSrc.read': 'Read on', 'reviewSrc.reviews': 'reviews',
     'place.sharedBy': 'shared by', 'rating.reelmap': 'Reelmap', 'rating.google': 'Google', 'rating.reviews': 'reviews',
     'review.rate': 'Rate this place', 'review.your': 'Your review', 'review.ph': 'Share a quick thought…',
     'review.post': 'Post', 'review.update': 'Update', 'review.delete': 'Delete',
@@ -783,6 +787,22 @@ function renderPlace(p) {
     `<div class="review">${reviewAvatar(r.author && r.author.avatar_path, r.author ? r.author.username : "a")}
        <div><div style="font-size:var(--fs-sm)"><b>@${esc(r.author ? r.author.username : t("review.anon"))}</b>${r.is_own?` <span class="muted" style="color:var(--muted)">${t("review.you")}</span>`:""} <span class="stars">${starStr(r.rating)}</span></div>
        ${r.body ? `<p style="font-size:var(--fs-sm);color:var(--ink-2);margin:4px 0 0;line-height:1.5">${esc(r.body.slice(0,200))}</p>`:""}</div></div>`).join("");
+  // Multi-source review aggregate (T-082): one row per resolving provider.
+  const srcLabel = s => { const v = t("reviewSrc." + s); return v !== ("reviewSrc." + s) ? v : s; };
+  const reviewSources = (p.review_sources || []).map(s => {
+    const label = srcLabel(s.source);
+    const val = s.rating != null ? Number(s.rating).toFixed(1) : "—";
+    const read = s.url
+      ? `<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600">${t("reviewSrc.read")} ${esc(label)} ↗</a>`
+      : "";
+    return `<div class="rsrc">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-weight:700">${esc(label)}</span>
+        <span class="stars" style="font-size:var(--fs-sm)">${starStr(s.rating)}</span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px">
+        <span style="font-weight:600">${val} <span class="muted" style="color:var(--ink-2);font-weight:400;font-size:var(--fs-xs)">· ${Number(s.count || 0)} ${t("reviewSrc.reviews")}</span></span>
+        ${read}</div></div>`;
+  }).join("");
   const own = (p.reviews || []).find(r => r.is_own);
   const composer = token ? `
     <div class="revbox">
@@ -820,6 +840,7 @@ function renderPlace(p) {
       ${tags ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.tags")}</div>${tags}</div>` : ""}
       ${dishes ? `<div><div class="sec-h" style="margin-bottom:8px">${t("place.dishes")}</div>${dishes}${p.dishes_updated_at ? `<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:6px">${t("place.dishesUpdated")} ${esc(shortDate(p.dishes_updated_at))}</div>` : ""}</div>` : ""}
       ${sources ? `<div><div class="sec-h" style="margin-bottom:10px">${t("place.sources")} · ${Number(p.source_count||0)}</div>${sources}</div>` : ""}
+      ${reviewSources ? `<div><div class="sec-h" style="margin-bottom:10px">${t("reviewSrc.title")}</div><div class="rsrc-list">${reviewSources}</div></div>` : ""}
       ${composer}
       <div><div class="sec-h" style="margin-bottom:10px">${t("place.reviews")}</div>
         ${appReviews || `<div style="font-size:var(--fs-sm);color:var(--ink-2)">${t("review.empty")}</div>`}</div>

@@ -88,6 +88,31 @@ export type GoogleReview = {
   profile_photo_url?: string | null;
 };
 
+/** One normalized excerpt inside a `ReviewSourceSummary` (T-082). */
+export type ReviewSnippet = {
+  author: string | null;
+  rating: number | null;
+  text: string | null;
+  relative_time: string | null;
+  profile_photo_url: string | null;
+};
+
+/**
+ * One provider's contribution to the multi-source review aggregate (T-082) —
+ * a row in `review_sources[]`. `source` is the driver id / label key ('google',
+ * 'native', 'trustpilot', …); `url` deep links to the full reviews on that
+ * source (null for the intrinsic native source); `synced_at` is when external
+ * content was last fetched.
+ */
+export type ReviewSourceSummary = {
+  source: string;
+  rating: number | null;
+  count: number;
+  url: string | null;
+  synced_at: string | null;
+  snippets: ReviewSnippet[];
+};
+
 /** A native (in-app) review (place detail `reviews`, via ?include=reviews). */
 export type AppReview = {
   id: string;
@@ -147,6 +172,13 @@ export type PlaceDetail = {
   dishes_language: string | null;
   source_count: number;
   rating: { google: RatingBlock; app: RatingBlock };
+  /**
+   * Multi-source review aggregate (T-082): one normalized row per resolving
+   * provider, in display order. Coexists with the back-compat `rating`/
+   * `google_reviews`; a provider with no resolvable id is omitted. Always
+   * present on the live API; optional here so older cached payloads still type.
+   */
+  review_sources?: ReviewSourceSummary[];
   /** Card/bank/wallet payment discounts across the place's sources (T-079). */
   discounts: Discount[];
   google_reviews?: GoogleReview[];

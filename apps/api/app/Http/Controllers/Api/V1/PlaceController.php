@@ -177,6 +177,9 @@ class PlaceController extends Controller
             'sources' => fn ($q) => $q
                 ->when($withSources, fn ($qq) => $qq->with(['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user']))
                 ->orderByDesc('is_primary')->orderBy('id')->limit(self::SOURCE_CAP),
+            // Cached external review summaries (T-082) — read by the Trustpilot
+            // ReviewSource driver; eager-loaded so `review_sources[]` costs no N+1.
+            'externalReviews',
         ]);
         // Hidden (moderated) reviews never count toward the public aggregate.
         $place->loadCount(['reviews' => fn ($q) => $q->visible()])

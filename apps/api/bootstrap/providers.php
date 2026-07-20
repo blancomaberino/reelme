@@ -6,6 +6,7 @@ use App\Providers\Filament\AdminPanelProvider;
 use App\Providers\GeoServiceProvider;
 use App\Providers\HorizonServiceProvider;
 use App\Providers\IngestionServiceProvider;
+use App\Providers\ReviewsServiceProvider;
 use App\Providers\TranscriptionServiceProvider;
 
 return [
@@ -15,5 +16,6 @@ return [
     GeoServiceProvider::class,
     HorizonServiceProvider::class,
     IngestionServiceProvider::class,
+    ReviewsServiceProvider::class,
     TranscriptionServiceProvider::class,
 ];

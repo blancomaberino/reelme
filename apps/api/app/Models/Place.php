@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
+use App\Services\Reviews\ReviewSourceRegistry;
+use App\Services\Reviews\ReviewSourceSummary;
 use Database\Factories\PlaceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -313,6 +315,49 @@ class Place extends Model
     public function reviews(): HasMany
     {
         return $this->hasMany(Review::class);
+    }
+
+    /**
+     * Cached summaries from external review providers (T-082) — one row per
+     * source (Trustpilot, …), refreshed out of band. Distinct from both the
+     * native `reviews()` and the Google columns; read by the ReviewSource
+     * drivers, never fetched inline.
+     *
+     * @return HasMany<ExternalPlaceReview, $this>
+     */
+    public function externalReviews(): HasMany
+    {
+        return $this->hasMany(ExternalPlaceReview::class);
+    }
+
+    /**
+     * The cached external review row for one source (T-082), preferring the
+     * loaded `externalReviews` relation (no N+1 on the request path) and falling
+     * back to a scoped query otherwise. Shared by the ReviewSource driver and the
+     * out-of-band refresher so the relation-vs-query rule lives in one place and
+     * generalizes to the next external provider for free.
+     */
+    public function externalReview(string $source): ?ExternalPlaceReview
+    {
+        if ($this->relationLoaded('externalReviews')) {
+            return $this->externalReviews->firstWhere('source', $source);
+        }
+
+        return $this->externalReviews()->where('source', $source)->first();
+    }
+
+    /**
+     * The place's per-source rating summaries (T-082): Google, native, Trustpilot,
+     * … — whichever resolve, in registry order, each already reduced from its
+     * cached signal. Powers the `review_sources[]` block on the place detail.
+     * Delegates to the {@see ReviewSourceRegistry} so the model stays ignorant of
+     * which providers exist or how each caches.
+     *
+     * @return list<ReviewSourceSummary>
+     */
+    public function reviewSummaries(): array
+    {
+        return app(ReviewSourceRegistry::class)->summarize($this);
     }
 
     /**
