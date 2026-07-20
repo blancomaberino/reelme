@@ -3,7 +3,6 @@
 namespace App\Services\Media;
 
 use App\Services\Http\PublicUrlGuard;
-use App\Services\Http\UnsafeUrlException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -54,30 +53,17 @@ class RemoteFileFetcher
 
     /**
      * https only, and (in non-test envs) a public host — blocks SSRF to internal
-     * IPs. Delegates to the shared {@see PublicUrlGuard}; the messages keep the
-     * "https"/"public" wording downstream callers assert on. DNS resolution hits
-     * the network, so it is skipped under the no-network test env (toggle via
-     * MEDIA_VERIFY_IMAGE_HOST); production keeps the guard.
+     * IPs. Delegates to the shared {@see PublicUrlGuard}, whose UnsafeUrlException
+     * is a RuntimeException and already carries "…https"/"…public address"
+     * wording. DNS resolution hits the network, so it is skipped under the
+     * no-network test env (toggle via MEDIA_VERIFY_IMAGE_HOST); production keeps it.
      */
     private function assertFetchable(string $url): void
     {
-        try {
-            (new PublicUrlGuard)->assertPublic(
-                $url,
-                allowedSchemes: ['https'],
-                verifyHost: (bool) config('media.verify_image_host', true),
-            );
-        } catch (UnsafeUrlException $e) {
-            // Preserve this class's historical "https"/"public" message wording.
-            $message = str_contains($e->getMessage(), 'scheme')
-                ? 'remote url must be https'
-                : ($e->getMessage() === 'url has no host'
-                    ? 'remote url has no host'
-                    : ($e->getMessage() === 'url host did not resolve'
-                        ? 'remote url host did not resolve'
-                        : 'remote url host is not a public address'));
-
-            throw new RuntimeException($message);
-        }
+        (new PublicUrlGuard)->assertPublic(
+            $url,
+            allowedSchemes: ['https'],
+            verifyHost: (bool) config('media.verify_image_host', true),
+        );
     }
 }

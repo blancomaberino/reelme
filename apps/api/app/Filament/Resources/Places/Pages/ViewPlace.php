@@ -15,6 +15,7 @@ use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 use Throwable;
 
@@ -29,6 +30,12 @@ class ViewPlace extends ViewRecord
     use EnrichesPlace;
 
     protected static string $resource = PlaceResource::class;
+
+    /** Eager-load the audit trail (+ its editors) so the history panel is one query, not N+1. */
+    protected function resolveRecord(int|string $key): Model
+    {
+        return parent::resolveRecord($key)->load('placeEdits.user');
+    }
 
     protected function getHeaderActions(): array
     {

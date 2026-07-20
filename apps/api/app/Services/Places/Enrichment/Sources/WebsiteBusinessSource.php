@@ -5,9 +5,11 @@ namespace App\Services\Places\Enrichment\Sources;
 use App\Models\Place;
 use App\Services\Http\PublicUrlGuard;
 use App\Services\Places\Enrichment\BusinessEnrichmentSource;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * Enriches a place from the business's own website / menu (T-084): fetches the
@@ -69,16 +71,21 @@ class WebsiteBusinessSource implements BusinessEnrichmentSource
             verifyHost: (bool) config('places.enrich.website.verify_host', true),
         );
 
+        // Stream with a hard byte cap so a hostile/huge body can't exhaust memory
+        // (the cap must bound the READ, not trim an already-buffered body). No
+        // redirects: the SSRF guard only vetted THIS host.
         $response = Http::timeout((int) config('places.enrich.website.timeout_seconds', 8))
-            ->withOptions(['allow_redirects' => false])
+            ->withOptions(['allow_redirects' => false, 'stream' => true])
             ->withHeaders(['Accept' => 'text/html,application/xhtml+xml'])
             ->get($website);
 
+        // A non-2xx must NOT be cached as "no data" — throw so the enricher marks
+        // the source failed and the next run retries (see this method's contract).
         if (! $response->successful()) {
-            return [];
+            throw new RuntimeException('website fetch returned HTTP '.$response->status());
         }
 
-        $html = substr($response->body(), 0, (int) config('places.enrich.website.max_bytes', 512 * 1024));
+        $html = $this->readCapped($response, (int) config('places.enrich.website.max_bytes', 512 * 1024));
         $node = $this->firstBusinessNode($html);
         if ($node === null) {
             return [];
@@ -95,6 +102,21 @@ class WebsiteBusinessSource implements BusinessEnrichmentSource
             'postal_code' => $this->str($this->addressPart($node, 'postalCode'), 32),
             'country_code' => $this->countryCode($this->addressPart($node, 'addressCountry')),
         ], fn ($v) => $v !== null && $v !== '' && $v !== []);
+    }
+
+    /**
+     * Read at most $maxBytes from a streamed response body, chunk by chunk, so a
+     * multi-gigabyte body is never fully resident in memory.
+     */
+    private function readCapped(Response $response, int $maxBytes): string
+    {
+        $body = $response->toPsrResponse()->getBody();
+        $html = '';
+        while (! $body->eof() && strlen($html) < $maxBytes) {
+            $html .= $body->read(8192);
+        }
+
+        return substr($html, 0, $maxBytes);
     }
 
     /**
@@ -197,8 +219,9 @@ class WebsiteBusinessSource implements BusinessEnrichmentSource
             $dayLabel = implode(', ', array_filter($dayLabels));
             $opens = is_string($entry['opens'] ?? null) ? $entry['opens'] : '';
             $closes = is_string($entry['closes'] ?? null) ? $entry['closes'] : '';
-            $hours = trim($opens.($opens !== '' || $closes !== '' ? '–' : '').$closes, '–');
-            $line = trim($dayLabel.($dayLabel !== '' && $hours !== '' ? ' ' : '').$hours);
+            // The trims collapse the empty cases, so a plain separator suffices.
+            $hours = trim($opens.'–'.$closes, '–');
+            $line = trim($dayLabel.' '.$hours);
             if ($line !== '') {
                 $lines[] = $line;
             }

@@ -49,12 +49,18 @@ class BusinessEnricher
             }
         }
 
-        // Apply respecting locks + audit (no-op when nothing new/unlocked changed).
-        $edit = $this->editor->apply($place, $merged, PlaceEdit::ORIGIN_ENRICHMENT, $userId);
-
-        // Record that an enrichment ran, even if it changed nothing (a review-only
-        // refresh, or every field already locked/current).
-        $place->forceFill(['enriched_at' => now()])->save();
+        // Apply respecting locks + audit (no-op when nothing new/unlocked changed),
+        // and record that a run happened even if nothing changed. The whole write
+        // is guarded so a persistence error (e.g. a bad scraped value) still
+        // degrades gracefully — enrich() must never throw.
+        $edit = null;
+        try {
+            $edit = $this->editor->apply($place, $merged, PlaceEdit::ORIGIN_ENRICHMENT, $userId);
+            $place->forceFill(['enriched_at' => now()])->save();
+        } catch (Throwable $e) {
+            report($e);
+            $statuses[] = ['source' => 'persist', 'status' => 'failed', 'fields' => array_keys($merged)];
+        }
 
         return new BusinessEnrichmentResult($statuses, $edit);
     }

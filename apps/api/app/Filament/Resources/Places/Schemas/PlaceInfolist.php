@@ -102,7 +102,8 @@ class PlaceInfolist
                             ->columns(4),
                     ])
                     ->collapsible()
-                    ->visible(fn (Place $record): bool => $record->placeEdits()->exists()),
+                    // Uses the relation eager-loaded in ViewPlace::resolveRecord() — no extra query.
+                    ->visible(fn (Place $record): bool => $record->placeEdits->isNotEmpty()),
                 Section::make('Discovery tags')
                     ->description('Materialized from the shared posts/reels (cuisine, vibe, diet, dishes) — these belong to the place. Distinct from the private custom tags users add on their own maps (T-064).')
                     ->columns(2)

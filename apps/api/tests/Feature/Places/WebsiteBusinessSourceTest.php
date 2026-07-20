@@ -66,6 +66,21 @@ it('returns an empty patch when there is no business JSON-LD', function () {
     expect(scrapeSite('<html><body>no structured data</body></html>'))->toBe([]);
 });
 
+it('does not cache a transient upstream failure — it throws and retries', function () {
+    $ok = '<script type="application/ld+json">'.json_encode([
+        '@type' => 'Restaurant', 'telephone' => '+351 12 345',
+    ], JSON_THROW_ON_ERROR).'</script>';
+    Http::fake(['*' => Http::sequence()->push('upstream boom', 500)->push($ok, 200)]);
+
+    $place = Place::factory()->make(['website' => 'https://joes.example.com']);
+    $source = app(WebsiteBusinessSource::class);
+
+    // A 5xx must surface (so the enricher marks the source failed), not be cached.
+    expect(fn () => $source->enrich($place))->toThrow(RuntimeException::class);
+    // The next run retries and succeeds → nothing was cached from the failure.
+    expect($source->enrich($place))->toMatchArray(['phone' => '+351 12 345']);
+});
+
 it('is gated off by config', function () {
     config(['places.enrich.website.enabled' => false]);
     $place = Place::factory()->make(['website' => 'https://joes.example.com']);

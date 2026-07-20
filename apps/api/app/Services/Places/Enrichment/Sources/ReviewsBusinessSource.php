@@ -33,6 +33,10 @@ class ReviewsBusinessSource implements BusinessEnrichmentSource
      */
     public function enrich(Place $place): array
     {
+        if (! (bool) config('places.enrich.reviews.enabled', true)) {
+            return [];
+        }
+
         if ((bool) config('reviews.sources.google.enabled', true) && trim((string) $place->google_place_id) !== '') {
             $this->google->refresh($place);
         }

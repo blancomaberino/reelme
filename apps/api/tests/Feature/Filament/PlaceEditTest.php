@@ -51,17 +51,25 @@ it('saves a manual edit through PlaceEditor: locks the changed field and audits 
 
 it('renders the curation + audit sections on the view page', function () {
     editAsAdmin();
+    $auditor = User::factory()->admin()->create(['name' => 'Zelda Auditrix']);
     $place = Place::factory()->create([
         'image_url' => 'https://cdn.example/main.jpg',
-        'locked_fields' => ['phone'],
+        'locked_fields' => ['cuisine_primary'],
         'enriched_at' => now(),
     ]);
-    PlaceEdit::factory()->create(['place_id' => $place->id, 'origin' => PlaceEdit::ORIGIN_ENRICHMENT]);
+    PlaceEdit::factory()->create([
+        'place_id' => $place->id,
+        'user_id' => $auditor->id,
+        'origin' => PlaceEdit::ORIGIN_ENRICHMENT,
+        'changes' => ['website' => ['from' => null, 'to' => 'https://x.example']],
+    ]);
 
     Livewire::test(ViewPlace::class, ['record' => $place->getKey()])
         ->assertSuccessful()
-        ->assertSee('phone')       // locked-fields badge
-        ->assertSee('enrichment'); // audit-history origin badge
+        // Distinctive to the new sections: the raw field name only appears in the
+        // locked-fields badge, and the auditor's name only in the audit row.
+        ->assertSee('cuisine_primary')
+        ->assertSee('Zelda Auditrix');
 });
 
 it('runs the enrich action and pulls fresh values into the form', function () {
@@ -78,7 +86,10 @@ it('runs the enrich action and pulls fresh values into the form', function () {
 
     Livewire::test(EditPlace::class, ['record' => $place->getKey()])
         ->callAction('enrich')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        // Proves afterEnrichment() pulled the fresh value back into the open form,
+        // not just the DB (the whole reason EditPlace overrides the hook).
+        ->assertFormSet(['phone' => '+351 21 000 0000']);
 
     expect($place->refresh()->phone)->toBe('+351 21 000 0000')
         ->and($place->enriched_at)->not->toBeNull();
