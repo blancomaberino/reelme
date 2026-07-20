@@ -87,19 +87,23 @@ class PlaceInfolist
                             ->hiddenLabel()
                             ->schema([
                                 TextEntry::make('origin')->badge(),
-                                TextEntry::make('changes')
-                                    ->label('Fields')
-                                    ->state(fn ($record): string => implode(', ', array_keys(
-                                        is_array($record->changes) ? $record->changes : []
-                                    ))),
                                 TextEntry::make('user.name')->label('By')->placeholder('system'),
                                 TextEntry::make('created_at')
                                     ->label('When')
                                     ->state(fn ($record): ?string => $record->created_at instanceof Carbon
                                         ? $record->created_at->diffForHumans()
                                         : null),
+                                TextEntry::make('changes')
+                                    ->label('Changes')
+                                    ->columnSpanFull()
+                                    ->listWithLineBreaks()
+                                    ->bulleted()
+                                    // Show the actual per-field diff (old → new), not
+                                    // just the field names, so a moderator can see what
+                                    // an enrichment/edit really did.
+                                    ->state(fn ($record): array => self::formatChanges($record->changes)),
                             ])
-                            ->columns(4),
+                            ->columns(3),
                     ])
                     ->collapsible()
                     // Uses the relation eager-loaded in ViewPlace::resolveRecord() — no extra query.
@@ -134,6 +138,42 @@ class PlaceInfolist
                     ])
                     ->visible(fn (Place $record): bool => in_array($record->status, [PlaceStatus::Pending, PlaceStatus::Active], true)),
             ]);
+    }
+
+    /**
+     * Render a place_edits `changes` map ({field: {from, to}}) as readable
+     * "field: old → new" lines — the human-facing form of the audit diff.
+     *
+     * @param  mixed  $changes
+     * @return list<string>
+     */
+    private static function formatChanges($changes): array
+    {
+        if (! is_array($changes)) {
+            return [];
+        }
+
+        $lines = [];
+        foreach ($changes as $field => $diff) {
+            $from = is_array($diff) && array_key_exists('from', $diff) ? self::formatValue($diff['from']) : '—';
+            $to = is_array($diff) && array_key_exists('to', $diff) ? self::formatValue($diff['to']) : '—';
+            $lines[] = "{$field}: {$from} → {$to}";
+        }
+
+        return $lines;
+    }
+
+    /** A short, human-readable rendering of an audited value (null/array-aware, capped). */
+    private static function formatValue(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '(empty)';
+        }
+        $text = is_array($value)
+            ? (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            : (string) $value;
+
+        return mb_strlen($text) > 80 ? mb_substr($text, 0, 80).'…' : $text;
     }
 
     /** One badge list of the place's discovery-tag names for a single kind. */

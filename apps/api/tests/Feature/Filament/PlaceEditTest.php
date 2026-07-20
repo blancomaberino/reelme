@@ -61,7 +61,7 @@ it('renders the curation + audit sections on the view page', function () {
         'place_id' => $place->id,
         'user_id' => $auditor->id,
         'origin' => PlaceEdit::ORIGIN_ENRICHMENT,
-        'changes' => ['website' => ['from' => null, 'to' => 'https://x.example']],
+        'changes' => ['website' => ['from' => null, 'to' => 'https://joes-diner.example']],
     ]);
 
     Livewire::test(ViewPlace::class, ['record' => $place->getKey()])
@@ -69,7 +69,9 @@ it('renders the curation + audit sections on the view page', function () {
         // Distinctive to the new sections: the raw field name only appears in the
         // locked-fields badge, and the auditor's name only in the audit row.
         ->assertSee('cuisine_primary')
-        ->assertSee('Zelda Auditrix');
+        ->assertSee('Zelda Auditrix')
+        // The audit panel shows the actual before → after value, not just the field.
+        ->assertSee('https://joes-diner.example');
 });
 
 it('runs the enrich action and pulls fresh values into the form', function () {
