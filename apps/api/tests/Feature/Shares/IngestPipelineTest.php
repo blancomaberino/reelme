@@ -1,6 +1,8 @@
 <?php
 
 use App\Adapters\AdapterRegistry;
+use App\Adapters\InstagramAdapter;
+use App\Adapters\InstagramGraphAdapter;
 use App\Enums\FetchStatus;
 use App\Enums\PlaceStatus;
 use App\Enums\Platform;
@@ -9,6 +11,7 @@ use App\Jobs\FetchSourcePost;
 use App\Jobs\IngestShare;
 use App\Models\Place;
 use App\Models\PlaceSource;
+use App\Models\PlatformAccount;
 use App\Models\Share;
 use App\Models\User;
 use App\Services\Geo\FakeGeocoder;
@@ -66,6 +69,67 @@ it('parks the share in review when the chain needs manual fallback', function ()
 
     expect($share->fresh()->status)->toBe(ShareStatus::Review)
         ->and($share->fresh()->failure_reason)->toBe('fetch_unavailable');
+});
+
+it('parks a private post as fetch_auth_required when the sharer has no linked account (T-015)', function () {
+    // oEmbed → 401 (private), Graph strategy present but no linked token → the
+    // chain exhausts to manual, and the review reason reflects "link needed".
+    config(['ingestion.chains.instagram' => [
+        InstagramAdapter::class,
+        InstagramGraphAdapter::class,
+    ]]);
+    app()->forgetInstance(AdapterRegistry::class);
+    Http::fake(['*instagram.com/api/v1/oembed*' => Http::response('', 401)]);
+
+    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
+    $share->sourcePost->update([
+        'platform' => Platform::Instagram,
+        'url' => 'https://www.instagram.com/reel/PRIVX/',
+        'fetch_status' => FetchStatus::Pending,
+    ]);
+
+    (new FetchSourcePost($share->id))->handle(app(AdapterRegistry::class));
+
+    expect($share->fresh()->status)->toBe(ShareStatus::Review)
+        ->and($share->fresh()->failure_reason)->toBe('fetch_auth_required');
+});
+
+it('fetches a private post via the linked account when oEmbed is blocked (T-015)', function () {
+    config(['ingestion.chains.instagram' => [
+        InstagramAdapter::class,
+        InstagramGraphAdapter::class,
+    ]]);
+    app()->forgetInstance(AdapterRegistry::class);
+
+    Http::fake([
+        '*instagram.com/api/v1/oembed*' => Http::response('', 401), // public path blocked
+        '*graph.instagram.com/me/media*' => Http::response(['data' => [[
+            'id' => '1', 'caption' => 'Reel privado: hamburguesa secreta',
+            'media_type' => 'VIDEO', 'media_url' => 'https://cdn.example.test/p.mp4',
+            'permalink' => 'https://www.instagram.com/reel/PRIVX/', 'timestamp' => '2026-05-01T00:00:00+0000',
+        ]]]),
+    ]);
+
+    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
+    $share->sourcePost->update([
+        'platform' => Platform::Instagram,
+        'url' => 'https://www.instagram.com/reel/PRIVX/',
+        'fetch_status' => FetchStatus::Pending,
+    ]);
+    // The sharer linked their Instagram account — its token authorizes the fetch.
+    PlatformAccount::factory()->create([
+        'user_id' => $share->user_id,
+        'platform' => Platform::Instagram,
+        'handle' => 'lagranburgerok',
+        'access_token' => 'tok_live',
+    ]);
+
+    (new FetchSourcePost($share->id))->handle(app(AdapterRegistry::class));
+
+    $post = $share->sourcePost->fresh();
+    expect($post->fetch_status)->toBe(FetchStatus::Fetched)
+        ->and($post->caption)->toBe('Reel privado: hamburguesa secreta')
+        ->and($post->influencer->handle)->toBe('lagranburgerok');
 });
 
 it('runs the full pipeline to a resolved place (sync queue + fakes)', function () {

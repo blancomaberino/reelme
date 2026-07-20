@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\V1\MePlacesController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\PlaceController;
 use App\Http\Controllers\Api\V1\PlaceListController;
+use App\Http\Controllers\Api\V1\PlatformAccountController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SearchController;
@@ -109,9 +110,24 @@ Route::prefix('v1')->group(function () {
         });
     });
 
+    // Platform-account OAuth callback (T-015, 03 §2.3). PUBLIC — the provider
+    // redirects here unauthenticated; the controller re-binds it to the user via
+    // a signed, single-use state nonce. Throttled like the other auth surfaces.
+    Route::get('/platform-accounts/{platform}/callback', [PlatformAccountController::class, 'callback'])
+        ->middleware('throttle:auth');
+
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::patch('/me', [MeController::class, 'update']);
+
+        // Linked platform accounts (T-015): list / start-link / unlink. The
+        // unauthenticated OAuth callback is registered publicly above. A light
+        // write throttle matches the other write surfaces.
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::get('/platform-accounts', [PlatformAccountController::class, 'index']);
+            Route::post('/platform-accounts/{platform}/link', [PlatformAccountController::class, 'link']);
+            Route::delete('/platform-accounts/{platformAccount}', [PlatformAccountController::class, 'destroy']);
+        });
 
         // The personal "my places" list (T-071): the filterable list view of my
         // map — places I shared (not soft-hidden) ∪ places I saved. Replaces the

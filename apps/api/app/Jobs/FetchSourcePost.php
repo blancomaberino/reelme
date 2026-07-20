@@ -10,6 +10,7 @@ use App\Adapters\Exceptions\PostUnavailable;
 use App\Enums\FetchStatus;
 use App\Enums\ShareStatus;
 use App\Jobs\Concerns\FailsShareOnError;
+use App\Jobs\Concerns\LoadsLinkedAccount;
 use App\Jobs\Concerns\RecordsStageMetrics;
 use App\Models\Influencer;
 use App\Models\Share;
@@ -29,7 +30,7 @@ use Illuminate\Queue\SerializesModels;
  */
 class FetchSourcePost implements ShouldQueue
 {
-    use Batchable, Dispatchable, FailsShareOnError, InteractsWithQueue, Queueable, RecordsStageMetrics, SerializesModels;
+    use Batchable, Dispatchable, FailsShareOnError, InteractsWithQueue, LoadsLinkedAccount, Queueable, RecordsStageMetrics, SerializesModels;
 
     public int $tries = 4;
 
@@ -67,14 +68,23 @@ class FetchSourcePost implements ShouldQueue
 
         $this->recordStage($share->id, 'fetch');
 
+        // The sharer's linked platform account (T-015) authorizes the authed
+        // Instagram strategy in the chain; null when unlinked/expired.
+        $account = $this->linkedAccountFor($share->user_id, $post->platform);
+
+        // Remember if a strategy reported "private, needs a linked account" so an
+        // exhausted chain parks the share with `fetch_auth_required` (prompting
+        // "link your account") rather than the generic `fetch_unavailable`.
+        $authRequired = false;
+
         foreach ($registry->resolve($post->url) as $adapter) {
             try {
-                $this->persist($post, $adapter->fetchMetadata($post->url, null));
+                $this->persist($post, $adapter->fetchMetadata($post->url, $account));
 
                 return; // success — chain continues to DownloadMedia
             } catch (NeedsManualFallback) {
                 // Chain exhausted → park for manual entry (not a failure).
-                $share->transitionTo(ShareStatus::Review, 'fetch_unavailable');
+                $share->transitionTo(ShareStatus::Review, $authRequired ? 'fetch_auth_required' : 'fetch_unavailable');
 
                 return;
             } catch (FetchFailed $e) {
@@ -84,7 +94,8 @@ class FetchSourcePost implements ShouldQueue
                     return;
                 }
                 // advance to the next adapter in the chain
-            } catch (PostUnavailable) {
+            } catch (PostUnavailable $e) {
+                $authRequired = $authRequired || $e->failureCode() === 'fetch_auth_required';
                 // advance to the next adapter in the chain
             }
         }
