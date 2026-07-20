@@ -72,3 +72,7 @@ drift green).
   green. Status left `in_progress` pending CI + user merge authorization (agent does
   not self-merge, per T-082 precedent). Initial CI run failed only on a transient
   GitHub 503 in `dorny/paths-filter`; re-run triggered.
+- 2026-07-20 — Follow-up: Filament "Edit history" panel now renders the actual
+  `field: old → new` diff (not just changed field names) so a moderator can see
+  what an enrichment/edit did. Pushed to PR #114 (`684ee19`); CI green, receipt
+  re-approved.
