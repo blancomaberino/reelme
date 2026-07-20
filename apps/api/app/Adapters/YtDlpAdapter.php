@@ -42,6 +42,10 @@ class YtDlpAdapter implements SourceAdapter
         'tiktok.com' => Platform::Tiktok,
         'youtube.com' => Platform::Youtube,
         'youtu.be' => Platform::Youtube,
+        // X video posts (T-014): the metadata adapter is oEmbed, the media is
+        // yt-dlp's twitter extractor. Image-only tweets simply yield no video.
+        'x.com' => Platform::X,
+        'twitter.com' => Platform::X,
     ];
 
     public function __construct(
@@ -84,7 +88,7 @@ class YtDlpAdapter implements SourceAdapter
      * rescue when the keyless oEmbed is blocked/rate-limited. Throws PostUnavailable
      * (advance the chain to the manual fallback) when yt-dlp is disabled, the URL
      * is unsupported, the binary is missing, the fetch fails/times out, or the
-     * payload is unusable — mirroring how OEmbedAdapter signals the chain.
+     * payload is unusable — mirroring how the oEmbed adapters signal the chain.
      */
     public function fetchMetadata(string $canonicalUrl, ?LinkedAccount $account): SourcePostData
     {

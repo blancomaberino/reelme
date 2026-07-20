@@ -39,4 +39,10 @@ return [
         'key' => env('GOOGLE_PLACES_API_KEY'),
     ],
 
+    // YouTube Data API v3 (T-014). When set, YouTubeAdapter uses it for full
+    // video descriptions; unset, it silently falls back to the keyless oEmbed.
+    'youtube' => [
+        'api_key' => env('YOUTUBE_API_KEY'),
+    ],
+
 ];

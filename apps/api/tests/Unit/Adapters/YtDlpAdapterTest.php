@@ -164,6 +164,9 @@ it('supports() matches only http(s) urls on supported platform hosts', function 
         ->and($adapter->supports('https://youtu.be/abc'))->toBeTrue()
         ->and($adapter->supports('https://m.youtube.com/watch?v=abc'))->toBeTrue()
         ->and($adapter->supports('http://instagram.com/reel/x/'))->toBeTrue()
+        // X video posts (T-014): yt-dlp's twitter extractor handles the media.
+        ->and($adapter->supports('https://x.com/u/status/1'))->toBeTrue()
+        ->and($adapter->supports('https://twitter.com/u/status/1'))->toBeTrue()
         // Look-alike and unsupported hosts + non-http schemes are rejected.
         ->and($adapter->supports('https://instagram.com.evil.com/reel/x/'))->toBeFalse()
         ->and($adapter->supports('https://example.com/x'))->toBeFalse()

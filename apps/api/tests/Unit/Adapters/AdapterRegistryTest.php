@@ -1,7 +1,12 @@
 <?php
 
 use App\Adapters\AdapterRegistry;
+use App\Adapters\InstagramAdapter;
 use App\Adapters\ManualUploadAdapter;
+use App\Adapters\TikTokAdapter;
+use App\Adapters\XAdapter;
+use App\Adapters\YouTubeAdapter;
+use App\Adapters\YtDlpAdapter;
 use App\Enums\Platform;
 use Tests\TestCase;
 
@@ -61,4 +66,47 @@ it('always terminates every chain in ManualUploadAdapter', function () {
         $chain = registry()->resolve($url);
         expect(end($chain))->toBeInstanceOf(ManualUploadAdapter::class);
     }
+});
+
+dataset('platform lead adapters', [
+    'x' => ['https://x.com/u/status/1', XAdapter::class],
+    'tiktok' => ['https://www.tiktok.com/@u/video/1', TikTokAdapter::class],
+    'youtube' => ['https://youtu.be/dQw4w9WgXcQ', YouTubeAdapter::class],
+    'instagram' => ['https://www.instagram.com/reel/A/', InstagramAdapter::class],
+]);
+
+it('leads each platform chain with its dedicated metadata adapter (T-014)', function (string $url, string $lead) {
+    // X/TikTok/YouTube ship disabled at launch — enable them to test the wiring.
+    config([
+        'ingestion.platforms.x.enabled' => true,
+        'ingestion.platforms.tiktok.enabled' => true,
+        'ingestion.platforms.youtube.enabled' => true,
+    ]);
+
+    $chain = registry()->resolve($url);
+
+    // Metadata adapter first, yt-dlp for media in the middle, manual last.
+    expect($chain[0])->toBeInstanceOf($lead)
+        ->and($chain)->toHaveCount(3)
+        ->and($chain[1])->toBeInstanceOf(YtDlpAdapter::class)
+        ->and(end($chain))->toBeInstanceOf(ManualUploadAdapter::class);
+})->with('platform lead adapters');
+
+it('skips the entire chain (manual-only) when a platform kill switch is off (T-014)', function () {
+    // Disabled BEFORE the registry singleton is first resolved so it captures it.
+    config()->set('ingestion.platforms.tiktok.enabled', false);
+
+    $chain = registry()->resolve('https://www.tiktok.com/@u/video/1');
+
+    // Neither the TikTok metadata adapter NOR yt-dlp runs — only manual remains.
+    expect($chain)->toHaveCount(1)
+        ->and($chain[0])->toBeInstanceOf(ManualUploadAdapter::class);
+});
+
+it('leaves an unconfigured platform (instagram) enabled by default', function () {
+    // No ingestion.platforms.instagram entry exists — it must still resolve.
+    $chain = registry()->resolve('https://www.instagram.com/reel/A/');
+
+    expect($chain)->toHaveCount(3)
+        ->and($chain[0])->toBeInstanceOf(InstagramAdapter::class);
 });

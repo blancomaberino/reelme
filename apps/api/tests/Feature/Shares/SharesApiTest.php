@@ -28,6 +28,35 @@ it('creates a pending share and dispatches the pipeline (202)', function () {
     $this->assertDatabaseHas('shares', ['status' => 'pending']);
 });
 
+it('rejects a share from a disabled source at launch (Instagram-only)', function (string $url, string $platformLabel) {
+    Bus::fake();
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->postJson('/api/v1/shares', ['url' => $url])
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed')
+        ->assertJsonPath('error.details.url.0', "Sharing from {$platformLabel} isn't available yet — only Instagram is supported right now.");
+
+    Bus::assertNotDispatched(IngestShare::class);
+    $this->assertDatabaseCount('shares', 0);
+})->with([
+    'tiktok' => ['https://www.tiktok.com/@u/video/123', 'TikTok'],
+    'youtube' => ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'YouTube'],
+    'x' => ['https://x.com/u/status/1790000000000000001', 'X'],
+]);
+
+it('accepts a source once its launch switch is flipped on', function () {
+    config(['ingestion.platforms.tiktok.enabled' => true]);
+    Bus::fake();
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->postJson('/api/v1/shares', ['url' => 'https://www.tiktok.com/@u/video/123'])
+        ->assertStatus(202)
+        ->assertJsonPath('data.platform', 'tiktok');
+
+    Bus::assertDispatched(IngestShare::class);
+});
+
 it('returns the existing share on a duplicate URL (idempotent, no 2nd row)', function () {
     Bus::fake();
     $user = User::factory()->create();
@@ -73,9 +102,9 @@ it('extracts a URL from shared_text', function () {
     Bus::fake();
     Sanctum::actingAs(User::factory()->create());
 
-    $this->postJson('/api/v1/shares', ['shared_text' => 'check this https://www.tiktok.com/@u/video/123 🔥'])
+    $this->postJson('/api/v1/shares', ['shared_text' => 'check this https://www.instagram.com/reel/ABC123/ 🔥'])
         ->assertStatus(202)
-        ->assertJsonPath('data.platform', 'tiktok');
+        ->assertJsonPath('data.platform', 'instagram');
 });
 
 it('shows a share to its owner and 403s other users', function () {

@@ -77,6 +77,9 @@ class IngestionServiceProvider extends ServiceProvider
                 // Default the terminal fallback so a missing/partial config fails
                 // with working behaviour, not a TypeError on a null string arg.
                 fallback: $config['fallback'] ?? ManualUploadAdapter::class,
+                // Per-platform kill switches (T-014): a disabled platform resolves
+                // to manual-only for the whole chain, yt-dlp included.
+                platforms: is_array($config['platforms'] ?? null) ? $config['platforms'] : [],
             );
         });
 
