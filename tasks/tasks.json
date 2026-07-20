@@ -2164,7 +2164,7 @@
       "id": "T-084",
       "title": "Places as first-class businesses: enrich (web/menu/GMB/reviews), manual edit, place picture (image + thumbnail)",
       "phase": "M2",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-030",
         "T-035",

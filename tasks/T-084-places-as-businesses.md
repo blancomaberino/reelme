@@ -56,3 +56,19 @@ drift green).
 - UI parts (Filament forms, mobile marker image, detail image) → `/frontend-design`.
 - Consider a `place_field_overrides` (or per-field `*_locked`) mechanism so
   enrichment and manual edits compose deterministically.
+
+## Log
+
+- 2026-07-19 — Implemented all three deliverables on `feat/T-084-places-as-businesses`
+  (PR #114). Enrich-as-business via `BusinessEnricher` + pluggable
+  `BusinessEnrichmentSource` seam (Google/GMB wider-mask `businessDetails`,
+  website schema.org JSON-LD SSRF-guarded via shared `PublicUrlGuard`, review-cache
+  refresh); manual edit via Filament `EditPlace` → single `PlaceEditor` write path
+  with per-field locking + `place_edits` audit trail; `places.image_url`/
+  `thumbnail_url` end-to-end (migration → resources → contract → mobile marker/detail
+  + demo.html). `/coderabbit` pass done (grounding clean, gates green, grounded
+  review + /simplify + /security-review, findings fixed, receipt written). API 756
+  tests green, PHPStan L6 + Pint clean, contract drift green, mobile tsc/eslint/jest
+  green. Status left `in_progress` pending CI + user merge authorization (agent does
+  not self-merge, per T-082 precedent). Initial CI run failed only on a transient
+  GitHub 503 in `dorny/paths-filter`; re-run triggered.
