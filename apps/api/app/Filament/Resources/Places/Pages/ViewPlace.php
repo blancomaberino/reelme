@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Places\Pages;
 
 use App\Enums\PlaceStatus;
+use App\Filament\Resources\Places\Concerns\EnrichesPlace;
 use App\Filament\Resources\Places\PlaceResource;
 use App\Models\Place;
 use App\Models\PlaceMerge;
@@ -10,9 +11,11 @@ use App\Services\Moderation\PlaceModerator;
 use App\Services\Places\PlaceMerger;
 use App\Services\Places\PlaceResolver;
 use Filament\Actions\Action;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 use Throwable;
 
@@ -24,11 +27,21 @@ use Throwable;
  */
 class ViewPlace extends ViewRecord
 {
+    use EnrichesPlace;
+
     protected static string $resource = PlaceResource::class;
+
+    /** Eager-load the audit trail (+ its editors) so the history panel is one query, not N+1. */
+    protected function resolveRecord(int|string $key): Model
+    {
+        return parent::resolveRecord($key)->load('placeEdits.user');
+    }
 
     protected function getHeaderActions(): array
     {
         return [
+            EditAction::make(),
+            $this->enrichAction(),
             $this->approveAction(),
             $this->mergeAction(),
             $this->hideAction(),

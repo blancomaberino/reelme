@@ -2,6 +2,7 @@
 
 namespace App\Services\Media;
 
+use App\Services\Http\PublicUrlGuard;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -50,65 +51,19 @@ class RemoteFileFetcher
         return $tmp;
     }
 
-    /** https only, and (in non-test envs) a public host — blocks SSRF to internal IPs. */
+    /**
+     * https only, and (in non-test envs) a public host — blocks SSRF to internal
+     * IPs. Delegates to the shared {@see PublicUrlGuard}, whose UnsafeUrlException
+     * is a RuntimeException and already carries "…https"/"…public address"
+     * wording. DNS resolution hits the network, so it is skipped under the
+     * no-network test env (toggle via MEDIA_VERIFY_IMAGE_HOST); production keeps it.
+     */
     private function assertFetchable(string $url): void
     {
-        $parts = parse_url($url);
-        if (($parts['scheme'] ?? '') !== 'https') {
-            throw new RuntimeException('remote url must be https');
-        }
-
-        // DNS resolution hits the network, so skip it under the no-network test
-        // env (toggle via MEDIA_VERIFY_IMAGE_HOST); production keeps the guard.
-        if (! (bool) config('media.verify_image_host', true)) {
-            return;
-        }
-
-        $host = $parts['host'] ?? '';
-        if ($host === '') {
-            throw new RuntimeException('remote url has no host');
-        }
-
-        // Validate EVERY address the host resolves to (A + AAAA), not just the
-        // first IPv4: curl picks its own address, so a dual-stack host with a
-        // public A but a private/loopback AAAA would otherwise slip through.
-        foreach ($this->resolveAddresses($host) as $ip) {
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-                throw new RuntimeException('remote url host is not a public address');
-            }
-        }
-    }
-
-    /**
-     * Every IP the host resolves to (IPv4 + IPv6). An IP literal returns itself.
-     *
-     * @return list<string>
-     */
-    private function resolveAddresses(string $host): array
-    {
-        $host = trim($host, '[]'); // unwrap a bracketed IPv6 literal
-
-        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
-            return [$host];
-        }
-
-        $records = array_merge(
-            dns_get_record($host, DNS_A) ?: [],
-            dns_get_record($host, DNS_AAAA) ?: [],
+        (new PublicUrlGuard)->assertPublic(
+            $url,
+            allowedSchemes: ['https'],
+            verifyHost: (bool) config('media.verify_image_host', true),
         );
-
-        $ips = [];
-        foreach ($records as $record) {
-            $ip = $record['ip'] ?? $record['ipv6'] ?? null;
-            if (is_string($ip)) {
-                $ips[] = $ip;
-            }
-        }
-
-        if ($ips === []) {
-            throw new RuntimeException('remote url host did not resolve');
-        }
-
-        return $ips;
     }
 }

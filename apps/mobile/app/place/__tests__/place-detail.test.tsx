@@ -29,6 +29,8 @@ const PLACE: PlaceDetail = {
   opening_hours: null,
   phone: '+59829021621',
   website: 'https://sofitel.com',
+  image_url: null,
+  thumbnail_url: null,
   cuisines: ['modern', 'seafood'],
   vibe_tags: ['fine dining'],
   dietary_tags: [],
@@ -254,6 +256,25 @@ it('shows a hero image when the primary source has a thumbnail', async () => {
   render(<PlaceDetailScreen />, { wrapper: Providers });
   await screen.findByText('1921 Restaurant');
   expect(await screen.findByTestId('place-hero')).toBeOnTheScreen();
+});
+
+it('prefers the curated business image over the reel poster for the hero (T-084)', async () => {
+  const withImage: PlaceDetail = {
+    ...PLACE,
+    image_url: 'https://cdn.example/business.jpg',
+    sources: [
+      {
+        ...PLACE.sources![0],
+        source_post: { ...PLACE.sources![0].source_post, thumbnail_url: 'https://cdn.example/reel.jpg' },
+      },
+    ],
+  };
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withImage });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+  await screen.findByText('1921 Restaurant');
+  const hero = await screen.findByTestId('place-hero');
+  expect(hero.props.source).toEqual({ uri: 'https://cdn.example/business.jpg' });
 });
 
 it('navigates to the map tab when the mini-map is tapped', async () => {

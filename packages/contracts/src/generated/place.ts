@@ -21,6 +21,14 @@ export interface PlaceDetail {
   opening_hours: {} | unknown[] | null;
   phone: string | null;
   website: string | null;
+  /**
+   * Curated business photo (T-084); the detail hero, else the client falls back to the reel poster.
+   */
+  image_url: string | null;
+  /**
+   * Curated marker photo (T-084); the map marker prefers it, falling back to image_url then the reel poster.
+   */
+  thumbnail_url: string | null;
   cuisines: string[];
   vibe_tags: string[];
   dietary_tags: string[];

@@ -815,7 +815,15 @@ function renderPlace(p) {
         ${own ? `<button class="btn" style="padding:9px 12px" onclick="deleteReview(${Number(p.id)})">${t("review.delete")}</button>` : ""}
       </div><div class="err-line" id="revErr"></div>
     </div>` : `<div class="revbox" style="text-align:center"><a href="#" onclick="openModal('authModal');return false">${t("review.signin1")}</a> ${t("review.signin2")}</div>`;
-  return `<div class="hero" style="background:${heroGrad(p.name)}"><button class="close" onclick="closeDetail()">✕</button></div>
+  // Hero: curated business image (T-084), else the reel poster, else a gradient.
+  const heroImg = p.image_url
+    || (p.sources || []).find(s => s.is_primary)?.source_post?.thumbnail_url
+    || (p.sources || [])[0]?.source_post?.thumbnail_url
+    || null;
+  const heroStyle = heroImg
+    ? `background:#000 center/cover no-repeat;background-image:url('${cssUrl(heroImg)}')`
+    : `background:${heroGrad(p.name)}`;
+  return `<div class="hero" style="${heroStyle}"><button class="close" onclick="closeDetail()">✕</button></div>
     <div class="drawer-scroll">
       <div>
         <h3 class="serif" style="font-size:var(--fs-2xl);font-weight:700;margin:0 0 8px">${esc(p.name)}</h3>

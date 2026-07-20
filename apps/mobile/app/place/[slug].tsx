@@ -88,11 +88,13 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
     [place.cuisines, place.vibe_tags, place.dietary_tags],
   );
-  // Hero picture from the reel: prefer the primary source, else the first.
+  // Hero picture: prefer the curated business image (T-084), then the reel
+  // poster (primary source, else the first).
   const heroUri = useMemo(() => {
+    if (place.image_url) return place.image_url;
     const s = place.sources?.find((x) => x.is_primary) ?? place.sources?.[0];
     return s?.source_post?.thumbnail_url ?? null;
-  }, [place.sources]);
+  }, [place.image_url, place.sources]);
   const appReviews = place.reviews ?? [];
   const googleReviews = place.google_reviews ?? [];
   // The viewer's own review (prefills the composer); listed rows exclude it.

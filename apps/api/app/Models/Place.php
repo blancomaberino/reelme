@@ -37,6 +37,10 @@ use Laravel\Scout\Searchable;
  * @property string|null $google_place_id
  * @property PlaceStatus $status
  * @property int|null $merged_into_place_id
+ * @property string|null $image_url
+ * @property string|null $thumbnail_url
+ * @property array<int, string>|null $locked_fields
+ * @property Carbon|null $enriched_at
  * @property int $shares_count
  * @property numeric-string|null $google_rating
  * @property int|null $google_rating_count
@@ -82,10 +86,24 @@ class Place extends Model
     protected $fillable = [
         'name', 'slug', 'address_line1', 'address_line2', 'city', 'region',
         'postal_code', 'country_code', 'google_place_id', 'cuisine_primary',
-        'price_range', 'phone', 'website', 'opening_hours_json', 'status',
+        'price_range', 'phone', 'website', 'image_url', 'thumbnail_url',
+        'opening_hours_json', 'locked_fields', 'enriched_at', 'status',
         'merged_into_place_id', 'shares_count', 'avg_extraction_confidence',
         'normalized_name', 'google_rating', 'google_rating_count', 'google_reviews_json',
         'google_reviews_synced_at',
+    ];
+
+    /**
+     * Curated business fields a human may hand-set (T-084) and thereby lock. The
+     * enricher and re-share resolve backfills only ever touch a field in this set
+     * when it is NOT in {@see lockedFields()} — a manual override always wins.
+     *
+     * @var list<string>
+     */
+    public const CURATED_FIELDS = [
+        'name', 'address_line1', 'address_line2', 'city', 'region', 'postal_code',
+        'country_code', 'cuisine_primary', 'price_range', 'phone', 'website',
+        'image_url', 'thumbnail_url', 'opening_hours_json',
     ];
 
     /**
@@ -96,6 +114,8 @@ class Place extends Model
         return [
             'status' => PlaceStatus::class,
             'opening_hours_json' => 'array',
+            'locked_fields' => 'array',
+            'enriched_at' => 'datetime',
             'price_range' => 'integer',
             'shares_count' => 'integer',
             'avg_extraction_confidence' => 'decimal:3',
@@ -344,6 +364,66 @@ class Place extends Model
         }
 
         return $this->externalReviews()->where('source', $source)->first();
+    }
+
+    /**
+     * Audit trail of curated-field changes (T-084) — manual edits, enrichment
+     * runs, system writes — newest first. Powers the Filament history panel and
+     * is the shared record the owner suggest-edit flow (T-083) can reuse.
+     *
+     * @return HasMany<PlaceEdit, $this>
+     */
+    public function placeEdits(): HasMany
+    {
+        return $this->hasMany(PlaceEdit::class)->latest();
+    }
+
+    /**
+     * Curated fields a human has hand-set and thereby locked (T-084). Always a
+     * list of {@see CURATED_FIELDS} names; an unset/legacy row reads as empty.
+     *
+     * @return list<string>
+     */
+    public function lockedFields(): array
+    {
+        $locked = $this->locked_fields;
+
+        return is_array($locked) ? array_values(array_intersect(self::CURATED_FIELDS, $locked)) : [];
+    }
+
+    /** Whether a human owns this field, so enrichment/resolve must not touch it. */
+    public function isFieldLocked(string $field): bool
+    {
+        return in_array($field, $this->lockedFields(), true);
+    }
+
+    /**
+     * Mark the given curated fields as human-owned (T-084) — merged into the
+     * existing set, deduped, and confined to {@see CURATED_FIELDS}. Stages the
+     * attribute only; the caller persists. Unknown field names are ignored.
+     *
+     * @param  iterable<string>  $fields
+     */
+    public function lockFields(iterable $fields): void
+    {
+        $merged = array_unique([...$this->lockedFields(), ...$fields]);
+        $this->locked_fields = array_values(array_intersect(self::CURATED_FIELDS, $merged));
+    }
+
+    /**
+     * Drop any locked (human-owned) keys from an enrichment/backfill patch so a
+     * manual override survives (T-084). Non-curated keys pass through untouched.
+     *
+     * @param  array<string, mixed>  $patch
+     * @return array<string, mixed>
+     */
+    public function withoutLockedFields(array $patch): array
+    {
+        return array_filter(
+            $patch,
+            fn (string $field) => ! $this->isFieldLocked($field),
+            ARRAY_FILTER_USE_KEY,
+        );
     }
 
     /**

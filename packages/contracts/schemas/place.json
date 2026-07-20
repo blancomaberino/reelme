@@ -10,7 +10,7 @@
     "city", "country_code", "address", "google_place_id", "opening_hours",
     "phone", "website", "cuisines", "vibe_tags", "dietary_tags", "dishes",
     "dishes_updated_at", "dishes_language", "source_count", "rating", "google_reviews",
-    "review_sources", "discounts"
+    "review_sources", "discounts", "image_url", "thumbnail_url"
   ],
   "properties": {
     "id": { "type": "string" },
@@ -28,6 +28,8 @@
     "opening_hours": { "type": ["object", "array", "null"] },
     "phone": { "type": ["string", "null"] },
     "website": { "type": ["string", "null"] },
+    "image_url": { "type": ["string", "null"], "description": "Curated business photo (T-084); the detail hero, else the client falls back to the reel poster." },
+    "thumbnail_url": { "type": ["string", "null"], "description": "Curated marker photo (T-084); the map marker prefers it, falling back to image_url then the reel poster." },
     "cuisines": { "type": "array", "items": { "type": "string" } },
     "vibe_tags": { "type": "array", "items": { "type": "string" } },
     "dietary_tags": { "type": "array", "items": { "type": "string" } },

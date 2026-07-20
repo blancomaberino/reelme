@@ -60,4 +60,31 @@ return [
         'refresh_after_days' => (int) env('PLACES_GOOGLE_REFRESH_AFTER_DAYS', 30),
     ],
 
+    /*
+    | "Enrich as business" (T-084): the on-demand action that populates a place's
+    | curated fields from external sources, independent of any share. Each source
+    | is individually gated and failure-isolated; a locked (human-set) field is
+    | never overwritten. The Google source uses a WIDER Places field mask than the
+    | pipeline (extra billed SKU) — hence opt-in and admin-triggered only.
+    */
+    'enrich' => [
+        'google' => [
+            'enabled' => (bool) env('PLACES_ENRICH_GOOGLE_ENABLED', true),
+        ],
+        'website' => [
+            'enabled' => (bool) env('PLACES_ENRICH_WEBSITE_ENABLED', true),
+            // Cap + timeout for the business-site fetch (SSRF-guarded, no redirects).
+            'timeout_seconds' => (int) env('PLACES_ENRICH_WEBSITE_TIMEOUT', 8),
+            'max_bytes' => (int) env('PLACES_ENRICH_WEBSITE_MAX_BYTES', 512 * 1024),
+            // Cache a scraped site this many days (per website URL).
+            'cache_days' => (int) env('PLACES_ENRICH_WEBSITE_CACHE_DAYS', 7),
+            // DNS-resolve + vet the host is public. Disabled in the no-network
+            // test env (mirrors media.verify_image_host); production keeps it on.
+            'verify_host' => (bool) env('PLACES_ENRICH_WEBSITE_VERIFY_HOST', true),
+        ],
+        'reviews' => [
+            'enabled' => (bool) env('PLACES_ENRICH_REVIEWS_ENABLED', true),
+        ],
+    ],
+
 ];

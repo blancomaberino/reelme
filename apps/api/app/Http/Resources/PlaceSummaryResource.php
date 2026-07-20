@@ -37,11 +37,15 @@ class PlaceSummaryResource extends JsonResource
             'price_range' => $this->price_range,
             'city' => $this->city,
             'country_code' => $this->country_code,
-            // The primary reel poster (T-070/T-034), when the query loaded it.
-            'thumbnail_url' => $this->whenLoaded(
-                'primarySource',
-                fn () => $this->resolveThumbnail($this->primarySource?->sourcePost),
-            ),
+            // Marker photo (T-084): a curated place-owned picture wins — the
+            // marker thumbnail, else the main image — over the primary reel
+            // poster (T-070/T-034), which is still used when the place has no
+            // picture of its own and the query loaded `primarySource`.
+            'thumbnail_url' => ($this->thumbnail_url ?? $this->image_url)
+                ?? $this->whenLoaded(
+                    'primarySource',
+                    fn () => $this->resolveThumbnail($this->primarySource?->sourcePost),
+                ),
             // Viewer-relative provenance — how this place is "mine" (T-071),
             // present only on /me/places (which selects the aliases). Drives the
             // remove action: soft-hide `share_id`, or un-save when only `saved`.
