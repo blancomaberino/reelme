@@ -15,12 +15,17 @@ use Illuminate\Support\Str;
  * are cached 30 days keyed by a normalized (name, city, country) triple, both as
  * a cost control and to bound latency.
  */
-class GooglePlacesGeocoder implements Geocoder
+class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
 {
     private const BASE_URL = 'https://maps.googleapis.com/maps/api/place';
 
     // Minimal Place Details field list — widening this raises the billed SKU.
     private const DETAILS_FIELDS = 'place_id,name,formatted_address,address_component,geometry/location,type,rating,user_ratings_total,reviews';
+
+    // Wider mask for the on-demand enrich action ONLY (T-084) — pulls the extra
+    // contact/hours fields the pipeline never needs, so this SKU is paid only
+    // when an admin explicitly enriches a place. Cached separately, 30 days.
+    private const BUSINESS_FIELDS = 'international_phone_number,formatted_phone_number,website,opening_hours,rating,user_ratings_total';
 
     private const CACHE_DAYS = 30;
 
@@ -41,6 +46,57 @@ class GooglePlacesGeocoder implements Geocoder
         });
 
         return $payload['miss'] ? null : GeocodeResult::fromArray($payload['result']);
+    }
+
+    public function businessDetails(string $googlePlaceId): ?BusinessDetails
+    {
+        $googlePlaceId = trim($googlePlaceId);
+        if ($googlePlaceId === '' || $this->apiKey() === '') {
+            return null;
+        }
+
+        $key = 'geocode:business:'.sha1($googlePlaceId);
+
+        $payload = Cache::remember($key, now()->addDays(self::CACHE_DAYS), function () use ($googlePlaceId): array {
+            $json = $this->get('/details/json', [
+                'place_id' => $googlePlaceId,
+                'fields' => self::BUSINESS_FIELDS,
+                'key' => $this->apiKey(),
+            ]);
+            $status = (string) ($json['status'] ?? '');
+            if ($status === 'ZERO_RESULTS' || $status === 'NOT_FOUND') {
+                return ['miss' => true];
+            }
+            $this->assertOk($status, $json);
+
+            /** @var array<string, mixed> $result */
+            $result = $json['result'] ?? [];
+
+            return ['miss' => false, 'details' => $this->mapBusinessDetails($result)->toArray()];
+        });
+
+        return $payload['miss'] ? null : BusinessDetails::fromArray($payload['details']);
+    }
+
+    /**
+     * Map a Google Place Details `result` (business field mask) to our DTO.
+     * Prefers the international phone number; opening hours are stored as the
+     * human-readable `weekday_text` lines (the shape the place detail renders).
+     *
+     * @param  array<string, mixed>  $result
+     */
+    private function mapBusinessDetails(array $result): BusinessDetails
+    {
+        $phone = $result['international_phone_number'] ?? $result['formatted_phone_number'] ?? null;
+        $weekdayText = $result['opening_hours']['weekday_text'] ?? null;
+
+        return new BusinessDetails(
+            phone: is_string($phone) && trim($phone) !== '' ? trim($phone) : null,
+            website: is_string($result['website'] ?? null) && trim($result['website']) !== '' ? trim($result['website']) : null,
+            openingHours: is_array($weekdayText) && $weekdayText !== [] ? array_values($weekdayText) : null,
+            rating: isset($result['rating']) ? (float) $result['rating'] : null,
+            ratingCount: isset($result['user_ratings_total']) ? (int) $result['user_ratings_total'] : null,
+        );
     }
 
     private function lookup(string $name, GeoHints $hints): ?GeocodeResult

@@ -229,9 +229,11 @@ class MapViewport
             'tags' => $place->tags->pluck('slug')->take(8)->values()->all(),
             'source_count' => $place->shares_count,
             'has_active_offer' => false, // M4
-            // The primary reel's poster — lets the map draw a Google-style photo
-            // marker instead of a blank pin. Null when the source has no imagery.
-            'thumbnail_url' => $this->resolveThumbnail($sourcePost),
+            // Marker photo: a curated place-owned picture (T-084) wins — the
+            // marker thumbnail, else the main image — over the primary reel's
+            // poster (T-070), which still draws the Google-style photo marker when
+            // the place has no picture of its own. Null when neither exists.
+            'thumbnail_url' => $place->thumbnail_url ?? $place->image_url ?? $this->resolveThumbnail($sourcePost),
             'top_influencer' => $influencer === null ? null : [
                 'handle' => $influencer->handle,
                 'display_name' => $influencer->display_name,

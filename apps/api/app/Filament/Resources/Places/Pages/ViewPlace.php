@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Places\Pages;
 
 use App\Enums\PlaceStatus;
+use App\Filament\Resources\Places\Concerns\EnrichesPlace;
 use App\Filament\Resources\Places\PlaceResource;
 use App\Models\Place;
 use App\Models\PlaceMerge;
@@ -10,6 +11,7 @@ use App\Services\Moderation\PlaceModerator;
 use App\Services\Places\PlaceMerger;
 use App\Services\Places\PlaceResolver;
 use Filament\Actions\Action;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
@@ -24,11 +26,15 @@ use Throwable;
  */
 class ViewPlace extends ViewRecord
 {
+    use EnrichesPlace;
+
     protected static string $resource = PlaceResource::class;
 
     protected function getHeaderActions(): array
     {
         return [
+            EditAction::make(),
+            $this->enrichAction(),
             $this->approveAction(),
             $this->mergeAction(),
             $this->hideAction(),

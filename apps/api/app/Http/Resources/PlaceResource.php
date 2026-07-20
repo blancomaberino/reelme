@@ -81,6 +81,11 @@ class PlaceResource extends JsonResource
             'opening_hours' => $this->opening_hours_json,
             'phone' => $this->phone,
             'website' => $this->website,
+            // Curated business picture (T-084): the main image drives the detail
+            // hero (else the client falls back to the reel poster); the thumbnail
+            // is what the map marker prefers.
+            'image_url' => $this->image_url,
+            'thumbnail_url' => $this->thumbnail_url,
             'cuisines' => $tags['cuisines'],
             'vibe_tags' => $tags['vibe_tags'],
             'dietary_tags' => $tags['dietary_tags'],

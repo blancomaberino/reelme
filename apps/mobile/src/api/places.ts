@@ -162,6 +162,10 @@ export type PlaceDetail = {
   opening_hours: OpeningHours | null;
   phone: string | null;
   website: string | null;
+  // Curated business picture (T-084): the main image drives the detail hero
+  // (else we fall back to the reel poster); the thumbnail is the marker photo.
+  image_url: string | null;
+  thumbnail_url: string | null;
   cuisines: string[];
   vibe_tags: string[];
   dietary_tags: string[];
