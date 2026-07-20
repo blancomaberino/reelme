@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Adapters\AdapterRegistry;
+use App\Adapters\InstagramGraphAdapter;
 use App\Adapters\ManualUploadAdapter;
 use App\Adapters\YtDlpAdapter;
 use App\Services\Media\Images\InstagramApiResolver;
@@ -64,6 +65,21 @@ class IngestionServiceProvider extends ServiceProvider
                     ? $cfg['cookies_path']
                     : null,
                 enabled: (bool) ($cfg['enabled'] ?? true),
+            );
+        });
+
+        // The authed Instagram strategy (T-015) takes primitive config (the Graph
+        // base + a bounded timeout), so bind it explicitly like the other config
+        // adapters. Host is fixed/hardcoded config — never user-derived.
+        $this->app->bind(InstagramGraphAdapter::class, function (Container $app) {
+            /** @var array<string, mixed> $ig */
+            $ig = (array) ($app['config']->get('services.instagram') ?? []);
+
+            return new InstagramGraphAdapter(
+                graphBase: is_string($ig['graph_base'] ?? null) && $ig['graph_base'] !== ''
+                    ? $ig['graph_base']
+                    : 'https://graph.instagram.com',
+                timeout: max(1, (int) ($ig['timeout'] ?? 10)),
             );
         });
 

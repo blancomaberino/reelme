@@ -3,15 +3,18 @@
 namespace App\Jobs;
 
 use App\Adapters\AdapterRegistry;
+use App\Adapters\Data\LinkedAccount;
 use App\Adapters\Data\SourcePostData;
 use App\Adapters\Exceptions\FetchFailed;
 use App\Adapters\Exceptions\NeedsManualFallback;
 use App\Adapters\Exceptions\PostUnavailable;
 use App\Enums\FetchStatus;
+use App\Enums\Platform;
 use App\Enums\ShareStatus;
 use App\Jobs\Concerns\FailsShareOnError;
 use App\Jobs\Concerns\RecordsStageMetrics;
 use App\Models\Influencer;
+use App\Models\PlatformAccount;
 use App\Models\Share;
 use App\Models\SourcePost;
 use Illuminate\Bus\Batchable;
@@ -67,14 +70,23 @@ class FetchSourcePost implements ShouldQueue
 
         $this->recordStage($share->id, 'fetch');
 
+        // The sharer's linked platform account (T-015) authorizes the authed
+        // Instagram strategy in the chain; null when unlinked/expired.
+        $account = $this->linkedAccountFor($share->user_id, $post->platform);
+
+        // Remember if a strategy reported "private, needs a linked account" so an
+        // exhausted chain parks the share with `fetch_auth_required` (prompting
+        // "link your account") rather than the generic `fetch_unavailable`.
+        $authRequired = false;
+
         foreach ($registry->resolve($post->url) as $adapter) {
             try {
-                $this->persist($post, $adapter->fetchMetadata($post->url, null));
+                $this->persist($post, $adapter->fetchMetadata($post->url, $account));
 
                 return; // success — chain continues to DownloadMedia
             } catch (NeedsManualFallback) {
                 // Chain exhausted → park for manual entry (not a failure).
-                $share->transitionTo(ShareStatus::Review, 'fetch_unavailable');
+                $share->transitionTo(ShareStatus::Review, $authRequired ? 'fetch_auth_required' : 'fetch_unavailable');
 
                 return;
             } catch (FetchFailed $e) {
@@ -84,10 +96,26 @@ class FetchSourcePost implements ShouldQueue
                     return;
                 }
                 // advance to the next adapter in the chain
-            } catch (PostUnavailable) {
+            } catch (PostUnavailable $e) {
+                $authRequired = $authRequired || $e->requiresAuth;
                 // advance to the next adapter in the chain
             }
         }
+    }
+
+    /**
+     * The sharer's linked platform account (T-015) mapped to the adapter DTO,
+     * or null when unlinked/expired — the authed strategy in the chain uses it
+     * to fetch a private post the sharer authorized. Expired tokens map to null
+     * (via toLinkedAccount), so the public/manual path still runs.
+     */
+    private function linkedAccountFor(int $userId, Platform $platform): ?LinkedAccount
+    {
+        return PlatformAccount::query()
+            ->where('user_id', $userId)
+            ->where('platform', $platform)
+            ->first()
+            ?->toLinkedAccount();
     }
 
     private function persist(SourcePost $post, SourcePostData $data): void

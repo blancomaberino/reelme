@@ -109,6 +109,17 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     }
 
     /**
+     * Linked platform accounts whose OAuth tokens authorize private-post fetches
+     * (T-015). Cascade-deleted with the user at the DB level.
+     *
+     * @return HasMany<PlatformAccount, $this>
+     */
+    public function platformAccounts(): HasMany
+    {
+        return $this->hasMany(PlatformAccount::class);
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

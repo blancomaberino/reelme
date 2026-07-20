@@ -1,6 +1,7 @@
 <?php
 
 use App\Adapters\InstagramAdapter;
+use App\Adapters\InstagramGraphAdapter;
 use App\Adapters\ManualUploadAdapter;
 use App\Adapters\TikTokAdapter;
 use App\Adapters\XAdapter;
@@ -30,8 +31,10 @@ return [
     | TikTok (author_unique_id), YouTube (Data API v3 or oEmbed) — all T-013/T-014.
     */
     'chains' => [
-        // Instagram's oEmbed is keyless but best-effort (undocumented, IP-limited).
-        'instagram' => [InstagramAdapter::class, YtDlpAdapter::class],
+        // Instagram's oEmbed is keyless but best-effort (undocumented, IP-limited);
+        // InstagramGraphAdapter (T-015) slots after it to read a private post the
+        // sharer authorized via their linked account, before yt-dlp.
+        'instagram' => [InstagramAdapter::class, InstagramGraphAdapter::class, YtDlpAdapter::class],
         'x' => [XAdapter::class, YtDlpAdapter::class],
         'tiktok' => [TikTokAdapter::class, YtDlpAdapter::class],
         'youtube' => [YouTubeAdapter::class, YtDlpAdapter::class],

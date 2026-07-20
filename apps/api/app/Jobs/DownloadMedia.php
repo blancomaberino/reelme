@@ -95,6 +95,9 @@ class DownloadMedia implements ShouldQueue
             externalId: $post->external_id,
             url: $post->url,
             caption: $post->caption,
+            // Carry the persisted fetch payload so an adapter (T-015 Graph) can
+            // reuse a media_url it already resolved instead of re-fetching.
+            raw: is_array($post->oembed_json) ? $post->oembed_json : [],
         );
 
         foreach ($registry->resolve($post->url) as $adapter) {

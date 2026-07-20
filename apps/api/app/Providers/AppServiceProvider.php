@@ -7,8 +7,11 @@ use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use SocialiteProviders\Instagram\Provider as InstagramProvider;
+use SocialiteProviders\Manager\SocialiteWasCalled;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,6 +33,12 @@ class AppServiceProvider extends ServiceProvider
             'user' => User::class,
             'influencer' => Influencer::class,
         ]);
+
+        // Register the SocialiteProviders "instagram" driver (T-015). This
+        // codebase has no EventServiceProvider, so wire the listener explicitly.
+        Event::listen(SocialiteWasCalled::class, function (SocialiteWasCalled $event): void {
+            $event->extendSocialite('instagram', InstagramProvider::class);
+        });
 
         // Auth endpoints: 5/min per IP (03-api-design §1). The 429 renders through
         // ApiExceptionRenderer as a rate_limited error envelope with Retry-After.

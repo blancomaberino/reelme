@@ -2,6 +2,7 @@
 
 use App\Adapters\AdapterRegistry;
 use App\Adapters\InstagramAdapter;
+use App\Adapters\InstagramGraphAdapter;
 use App\Adapters\ManualUploadAdapter;
 use App\Adapters\TikTokAdapter;
 use App\Adapters\XAdapter;
@@ -68,11 +69,13 @@ it('always terminates every chain in ManualUploadAdapter', function () {
     }
 });
 
+// Instagram is asserted separately below — its chain also carries the authed
+// InstagramGraphAdapter (T-015), so it has a different shape than the keyless
+// metadata → yt-dlp → manual chains of the other platforms.
 dataset('platform lead adapters', [
     'x' => ['https://x.com/u/status/1', XAdapter::class],
     'tiktok' => ['https://www.tiktok.com/@u/video/1', TikTokAdapter::class],
     'youtube' => ['https://youtu.be/dQw4w9WgXcQ', YouTubeAdapter::class],
-    'instagram' => ['https://www.instagram.com/reel/A/', InstagramAdapter::class],
 ]);
 
 it('leads each platform chain with its dedicated metadata adapter (T-014)', function (string $url, string $lead) {
@@ -103,10 +106,14 @@ it('skips the entire chain (manual-only) when a platform kill switch is off (T-0
         ->and($chain[0])->toBeInstanceOf(ManualUploadAdapter::class);
 });
 
-it('leaves an unconfigured platform (instagram) enabled by default', function () {
-    // No ingestion.platforms.instagram entry exists — it must still resolve.
+it('leads the instagram chain with keyless oEmbed then the authed Graph strategy (T-015)', function () {
+    // No ingestion.platforms.instagram entry exists — it must still resolve, and
+    // in order: keyless oEmbed → authed Graph → yt-dlp → manual fallback.
     $chain = registry()->resolve('https://www.instagram.com/reel/A/');
 
-    expect($chain)->toHaveCount(3)
-        ->and($chain[0])->toBeInstanceOf(InstagramAdapter::class);
+    expect($chain)->toHaveCount(4)
+        ->and($chain[0])->toBeInstanceOf(InstagramAdapter::class)
+        ->and($chain[1])->toBeInstanceOf(InstagramGraphAdapter::class)
+        ->and($chain[2])->toBeInstanceOf(YtDlpAdapter::class)
+        ->and(end($chain))->toBeInstanceOf(ManualUploadAdapter::class);
 });

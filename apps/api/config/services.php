@@ -45,4 +45,23 @@ return [
         'api_key' => env('YOUTUBE_API_KEY'),
     ],
 
+    // Instagram OAuth linking (T-015). Powers the Socialite "instagram" driver
+    // (Instagram API with Instagram Login — a Professional/Business account, the
+    // deprecated Basic Display flow is gone). `redirect` must point at the
+    // platform-accounts callback route. Scopes are configurable — granted scopes
+    // are stored per-account. Client id/secret unset ⇒ linking is simply
+    // unavailable (the pipeline still runs on keyless oEmbed).
+    'instagram' => [
+        'client_id' => env('INSTAGRAM_CLIENT_ID'),
+        'client_secret' => env('INSTAGRAM_CLIENT_SECRET'),
+        'redirect' => env('INSTAGRAM_REDIRECT_URI'),
+        'scopes' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('INSTAGRAM_SCOPES', 'instagram_business_basic'))
+        ))),
+        // Graph base + request timeout for the authed media fetch (InstagramGraphAdapter).
+        'graph_base' => env('INSTAGRAM_GRAPH_BASE', 'https://graph.instagram.com'),
+        'timeout' => (int) env('INSTAGRAM_GRAPH_TIMEOUT', 10),
+    ],
+
 ];
