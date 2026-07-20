@@ -327,7 +327,7 @@
       "id": "T-014",
       "title": "X, TikTok, YouTube adapters (public posts)",
       "phase": "M1",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-012"
       ],
