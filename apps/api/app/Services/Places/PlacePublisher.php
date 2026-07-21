@@ -28,27 +28,11 @@ class PlacePublisher
      */
     public function recompute(Place $place, Share $share, PlaceSource $source): void
     {
-        // Only PUBLISHED sources count — a sibling attached-but-not-yet-published
-        // in another share's resolve window must not prematurely activate a place.
-        $sourceCount = $place->sources()->whereNotNull('published_at')->count();
-
-        // A published source on an orphaned tombstone revives it (T-073): the
-        // place is evidenced again, so bring it back to the unverified baseline.
-        // The activation rule below can lift it further on the same pass — EXCEPT
-        // the Google-verified trigger (ADR-086): a place that was taken
-        // down/tombstoned (Removed) must re-earn the map through the normal
-        // corroboration path, not silently jump back to Active off its cached
-        // Google data, so a moderator's removal isn't undone by one re-share.
-        $wasRemoved = $place->status === PlaceStatus::Removed;
-        if ($wasRemoved && $sourceCount >= 1) {
-            $place->status = PlaceStatus::Pending;
-        }
-
-        if ($place->status === PlaceStatus::Pending
-            && ($sourceCount >= 2 || $share->user_confirmed || (! $wasRemoved && $this->isGoogleVerified($place)))) {
-            $place->status = PlaceStatus::Active;
-        }
-
+        // Best-effort tag materialization (Scout/tag writes + a staged
+        // cuisine_primary) stays OUTSIDE the row lock: its I/O must not hold a
+        // place lock, and a throw here never blocks the counter writes (the share
+        // is already live). It only touches tag tables + stages cuisine_primary on
+        // the instance, which the locked rollCounters save below persists.
         try {
             app(TagMaterializer::class)->materialize(
                 $place,
@@ -59,7 +43,48 @@ class PlacePublisher
             report($e);
         }
 
-        $this->rollCounters($place, $sourceCount);
+        // Activation decision + counter read/write under a row lock so two shares
+        // publishing to the same place concurrently (two influencers posting the
+        // same restaurant) can't both read a stale published-source count and
+        // clobber each other's shares_count or activation trigger — the last save
+        // would otherwise win with a smaller count and possibly write back a stale
+        // status, undoing the other's activation (T-087). PlaceMerger locks both
+        // rows for exactly this reason.
+        DB::transaction(function () use ($place, $share): void {
+            $locked = Place::query()->whereKey($place->getKey())->lockForUpdate()->first();
+            if ($locked === null) {
+                return;
+            }
+
+            // Adopt the just-locked, authoritative status: a concurrent publish may
+            // already have activated or revived the place. Deciding off the pre-lock
+            // snapshot would let this pass save a stale status and undo that.
+            $place->status = $locked->status;
+
+            // Only PUBLISHED sources count — a sibling attached-but-not-yet-published
+            // in another share's resolve window must not prematurely activate a place.
+            // Read under the lock so both concurrent publishers see the full set.
+            $sourceCount = $place->sources()->whereNotNull('published_at')->count();
+
+            // A published source on an orphaned tombstone revives it (T-073): the
+            // place is evidenced again, so bring it back to the unverified baseline.
+            // The activation rule below can lift it further on the same pass — EXCEPT
+            // the Google-verified trigger (ADR-086): a place that was taken
+            // down/tombstoned (Removed) must re-earn the map through the normal
+            // corroboration path, not silently jump back to Active off its cached
+            // Google data, so a moderator's removal isn't undone by one re-share.
+            $wasRemoved = $place->status === PlaceStatus::Removed;
+            if ($wasRemoved && $sourceCount >= 1) {
+                $place->status = PlaceStatus::Pending;
+            }
+
+            if ($place->status === PlaceStatus::Pending
+                && ($sourceCount >= 2 || $share->user_confirmed || (! $wasRemoved && $this->isGoogleVerified($place)))) {
+                $place->status = PlaceStatus::Active;
+            }
+
+            $this->rollCounters($place, $sourceCount);
+        });
     }
 
     /**
