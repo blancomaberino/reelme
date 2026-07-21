@@ -632,7 +632,7 @@
       "id": "T-026",
       "title": "Mobile: AnalysisStatus + ExtractionReview screens",
       "phase": "M1",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-025",
         "T-024"
@@ -2563,6 +2563,35 @@
       ],
       "agent": "executor",
       "notes": "P1 testability/SRP. Audit 2026-07-21: ShareController (525 lines, largest in app) embeds a recursive JSON merge/diff engine untestable without the HTTP layer and unreusable by Filament reprocess. | 2026-07-21: implemented (ExtractionCorrector service), gates green (831), /coderabbit approved, PR #125. | MERGED to main (PR #125) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
+    },
+    {
+      "id": "T-098",
+      "title": "Confirm-before-publish for uncertain shares + admin-owned cleanup",
+      "phase": "M3",
+      "status": "pending",
+      "depends_on": [
+        "T-026",
+        "T-072"
+      ],
+      "estimate": "L",
+      "paths": [
+        "apps/mobile/app/(main)/share.tsx",
+        "apps/mobile/app/shares/",
+        "apps/api/app/Jobs/",
+        "apps/api/app/Filament/"
+      ],
+      "spec_refs": [
+        "tasks/T-098-confirm-before-publish.md"
+      ],
+      "acceptance": [
+        "Uncertain first-share (low-confidence OR ambiguous match) shows the T-026 review form inline as a confirm-before-publish step; confident extractions auto-publish silently",
+        "Skip/back-out publishes the best-guess AND flags the place for admin moderation (place always appears + is tracked) — decision: publish + flag admin",
+        "geocode_failed (no location) exception: still tracked for the sharer + routed to the admin queue to be located; not on the public map until located",
+        "Filament admin queue/filter surfaces needs_admin_review places for cleanup by an admin, not the sharer",
+        "No user-facing lingering review chore; abandoned confirms do not dead-end"
+      ],
+      "agent": "executor",
+      "notes": "Owner reframe (2026-07-21): review is not a user chore. Decisions via AskUserQuestion: (1) skip → publish best-guess + flag admin; (2) confirm only when uncertain. T-026 screens are the reusable foundation (form/pin/candidate/confidence/evidence). Also fold the reelmap:// deep-link guard (ShareIntentRedirect ignore internal app-route intents) here or with T-027."
     }
   ]
 }
