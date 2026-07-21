@@ -48,6 +48,10 @@ export const queryKeys = {
   paymentCards: () => ['places', 'payment-cards'] as const,
   placesByTag: (slug: string) => ['places', 'tag', slug] as const,
   share: (id: string) => ['shares', id] as const,
+  /** The viewer's recent-shares list (ingest history), keyed by page size. */
+  sharesList: (limit: number) => ['shares', 'list', limit] as const,
+  /** Prefix covering every recent-shares page — for invalidation. */
+  sharesListAll: () => ['shares', 'list'] as const,
   lists: () => ['lists'] as const,
   list: (id: string) => ['lists', id] as const,
   /** A public, shared list keyed by its global public_slug (T-063). */

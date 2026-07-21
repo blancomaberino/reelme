@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { api } from '../client';
+import { queryKeys } from '../keys';
 import { isTerminal, type ShareDetail } from '../shares';
 
 /**
@@ -10,7 +11,7 @@ import { isTerminal, type ShareDetail } from '../shares';
  */
 export function useShares(limit = 10) {
   return useQuery({
-    queryKey: ['shares', 'list', limit] as const,
+    queryKey: queryKeys.sharesList(limit),
     queryFn: async () => {
       const { data } = await api.get<{ data: ShareDetail[] }>('/shares', { params: { limit } });
       return data.data;

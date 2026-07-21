@@ -9,6 +9,7 @@ import { useRetryShare } from '@/api/hooks/useRetryShare';
 import { useShares } from '@/api/hooks/useShares';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
 import {
+  hasEditableExtraction,
   isTerminal,
   platformFromUrl,
   type ShareDetail,
@@ -18,6 +19,7 @@ import {
 import { Button } from '@/components/button';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { PendingVenues } from '@/components/share/pending-venues';
+import { ShareRow } from '@/components/share/share-row';
 import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
 import { platformIcon } from '@/lib/format';
@@ -157,7 +159,7 @@ export default function ShareScreen() {
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Button title={t('share.submit')} onPress={submit} loading={create.isPending} />
-            <RecentShares c={c} styles={styles} t={t} />
+            <RecentShares styles={styles} t={t} />
           </View>
         )}
       </ScrollView>
@@ -165,58 +167,17 @@ export default function ShareScreen() {
   );
 }
 
-const STATUS_KEY: Record<ShareStatus, MessageKey> = {
-  pending: 'share.status.pending',
-  fetching: 'share.status.fetching',
-  analyzing: 'share.status.analyzing',
-  review: 'share.status.review',
-  published: 'share.status.published',
-  failed: 'share.status.failed',
-  rejected: 'share.status.rejected',
-};
-
 /** The viewer's own recent submissions, with a live-updating status pill. */
-function RecentShares({ c, styles, t }: { c: Palette; styles: Styles; t: (key: MessageKey) => string }) {
+function RecentShares({ styles, t }: { styles: Styles; t: (key: MessageKey) => string }) {
   const { data: shares } = useShares(10);
   if (!shares || shares.length === 0) return null;
 
   return (
     <View style={styles.recent}>
       <Text style={styles.recentTitle}>{t('share.recent')}</Text>
-      {shares.map((s) => {
-        const label =
-          s.place?.name ?? s.source_post.caption ?? s.source_post.url?.replace(/^https?:\/\//, '') ?? '—';
-        const tone =
-          s.status === 'published'
-            ? { bg: c.greenSoft, fg: c.green }
-            : s.status === 'review'
-              ? { bg: c.goldSoft, fg: c.gold }
-              : s.status === 'failed' || s.status === 'rejected'
-                ? { bg: c.dangerSoft, fg: c.danger }
-                : { bg: c.primarySoft, fg: c.primary };
-        const go =
-          s.place != null
-            ? () => router.push({ pathname: '/place/[slug]', params: { slug: s.place!.id } })
-            : undefined;
-        return (
-          <Pressable
-            key={s.id}
-            accessibilityRole={go ? 'button' : undefined}
-            accessibilityLabel={label}
-            onPress={go}
-            disabled={!go}
-            style={({ pressed }) => [styles.recentRow, pressed && go ? styles.rowPressed : null]}
-          >
-            <Text style={styles.recentLabel} numberOfLines={1}>
-              {label}
-            </Text>
-            <View style={[styles.pill, { backgroundColor: tone.bg }]}>
-              <Text style={[styles.pillText, { color: tone.fg }]}>{t(STATUS_KEY[s.status])}</Text>
-            </View>
-            {go ? <Ionicons name="chevron-forward" size={16} color={c.muted} /> : null}
-          </Pressable>
-        );
-      })}
+      {shares.map((s) => (
+        <ShareRow key={s.id} share={s} />
+      ))}
     </View>
   );
 }
@@ -341,6 +302,10 @@ function ShareProgress({
   }
 
   const isReview = status === 'review';
+  // A review with an extraction the user can correct → hand off to the dedicated
+  // review-and-publish form (T-026). A review WITHOUT one (a fetch failure) has
+  // nothing to edit, so it stays here with the failure copy + retry.
+  const canReview = isReview && share != null && hasEditableExtraction(share);
   return (
     <View style={styles.result}>
       <View style={[styles.badge, isReview ? styles.badgeWarn : styles.badgeErr]}>
@@ -349,6 +314,12 @@ function ShareProgress({
       <Text style={styles.resultTitle}>{isReview ? t('share.review.title') : t('share.failed.title')}</Text>
       {replay ? <Text style={styles.replayNote}>{t('share.duplicate.note')}</Text> : null}
       {share?.failure?.message ? <Text style={styles.resultBody}>{share.failure.message}</Text> : null}
+      {canReview ? (
+        <Button
+          title={t('shares.action.review')}
+          onPress={() => router.push({ pathname: '/shares/[id]/review', params: { id: share.id } })}
+        />
+      ) : null}
       {status === 'failed' && share ? (
         <Button title={t('share.retry')} onPress={() => retry.mutate()} loading={retry.isPending} />
       ) : null}
@@ -409,17 +380,4 @@ const makeStyles = (c: Palette) =>
     link: { color: c.primary, fontSize: 15, fontWeight: '700', marginTop: 4 },
     recent: { marginTop: 28, gap: 8 },
     recentTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: c.muted },
-    recentRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingVertical: 12,
-      paddingHorizontal: 4,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: c.border,
-    },
-    rowPressed: { opacity: 0.6 },
-    recentLabel: { flex: 1, fontSize: 15, color: c.text },
-    pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
-    pillText: { fontSize: 12, fontWeight: '700' },
   });

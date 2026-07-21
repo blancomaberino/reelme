@@ -2,6 +2,10 @@
 // (app/Http/Resources/ShareResource.php). A share moves pending → fetching →
 // analyzing → published | review | failed | rejected; `place` is populated once
 // it publishes so the client can jump straight to the pin.
+import type { ReelmapExtraction } from '@reelmap/contracts';
+
+/** One extracted venue — the unit the review form edits (review is single-place today). */
+export type ExtractionPlace = ReelmapExtraction['places'][number];
 
 export type ShareStatus =
   | 'pending'
@@ -25,6 +29,45 @@ export type ShareFailure = {
   message: string;
   manual_fallback: boolean;
 };
+
+/**
+ * The pipeline writes `failure.code` as a free string at each stage (there is no
+ * PHP enum). These are the values a client actually sees; anything else falls
+ * through to the generic copy/action. A `review` share always carries a code too
+ * (manual_fallback = true) — it explains WHY the pipeline paused for the user.
+ */
+export type FailureCode =
+  | 'fetch_unavailable' // couldn't load the post → retry / add manually
+  | 'fetch_auth_required' // private post → link account / add manually
+  | 'geocode_failed' // extraction ok, couldn't place it → edit address / drop pin
+  | 'media_too_large'
+  | 'ffmpeg_error'
+  | 'transcribe_error'
+  | 'cost_cap_exceeded'
+  | 'quota_exhausted'
+  | 'invalid_model_output'
+  | 'ollama_unreachable' // local model host unreachable — humanized share-side too
+  | 'resolve_conflict';
+
+/**
+ * The API only lets a share be retried while it's `failed`, or `review` with a
+ * transient fetch failure (ShareController::retry). Gating the button on the
+ * same rule avoids a guaranteed 409/422.
+ */
+export function isRetryable(share: Pick<ShareDetail, 'status' | 'failure'>): boolean {
+  if (share.status === 'failed') return true;
+  return share.status === 'review' && share.failure?.code === 'fetch_unavailable';
+}
+
+/**
+ * A share paused in `review` where the model produced an extraction but the
+ * pipeline couldn't place/confirm it — the case the correction form is for. A
+ * fetch failure (`fetch_*`) has no extraction yet, so those route to
+ * retry/link-account instead of the editable form.
+ */
+export function hasEditableExtraction(share: Pick<ShareDetail, 'analysis'>): boolean {
+  return !!share.analysis?.extraction?.places?.length;
+}
 
 /** The published pin (coordinates only — navigate by id, the place route accepts it). */
 export type SharePlace = {
@@ -51,7 +94,10 @@ export type ShareDetail = {
     model: string | null;
     status: string;
     confidence: number | null;
-    extraction: Record<string, unknown> | null;
+    // The raw model output, conforming to the `@reelmap/contracts` extraction
+    // schema. The review form (T-026) reads places[0], per-field confidence and
+    // evidence out of it; PATCH /shares/:id takes a partial correction back.
+    extraction: ReelmapExtraction | null;
   } | null;
   failure: ShareFailure | null;
   /** The primary published pin (back-compat; first of `places`). */
@@ -107,6 +153,26 @@ export type CreateShareResult = {
   id: string;
   status: ShareStatus;
   idempotentReplay: boolean;
+};
+
+/**
+ * The corrections body for PATCH /shares/:id (UpdateShareRequest). `extraction`
+ * is a PARTIAL, deep-merged onto the original run by ExtractionCorrector — send
+ * only the changed leaves. `place_candidate.place_id` attaches to an existing
+ * place from the offered dedupe candidates; `lat`/`lng` drop a manual pin.
+ * `action: 'publish'` confirms and resumes the pipeline; omitting it just saves.
+ */
+export type ShareUpdatePayload = {
+  extraction?: {
+    places?: Partial<ExtractionPlace>[];
+    influencer?: Partial<ReelmapExtraction['influencer']>;
+  };
+  place_candidate?: {
+    place_id?: number | null;
+    lat?: number | null;
+    lng?: number | null;
+  };
+  action?: 'publish';
 };
 
 /**
