@@ -2312,7 +2312,7 @@
    "id": "T-089",
    "title": "ARCH/P0: PlaceMerge unmerge() must restore place_list_items/hidden_places (admin-undo data loss)",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-035"
    ],
@@ -2333,7 +2333,7 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P0 data integrity. Self-documented gap at PlaceMerger.php:94-107 ('unmerge does NOT restore these ... follow-up'). Snapshot mechanism already exists; scoped extension."
+   "notes": "P0 data integrity. Self-documented gap at PlaceMerger.php:94-107 ('unmerge does NOT restore these ... follow-up'). Snapshot mechanism already exists; scoped extension. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #121 open."
   },
   {
    "id": "T-090",
