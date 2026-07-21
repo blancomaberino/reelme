@@ -6,6 +6,10 @@ export const es: Record<MessageKey, string> = {
   'common.tryAgain': 'Reintentar',
   'common.cancel': 'Cancelar',
 
+  'errorBoundary.title': 'Algo salió mal',
+  'errorBoundary.body': 'La app tuvo un error inesperado. Puedes reintentar; si sigue pasando, reiniciar suele solucionarlo.',
+  'errorBoundary.restart': 'Reintentar',
+
   'tabs.map': 'Mapa',
   'tabs.myPlaces': 'Mis lugares',
   'tabs.search': 'Buscar',

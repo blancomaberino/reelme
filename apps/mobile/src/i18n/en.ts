@@ -6,6 +6,10 @@ export const en = {
   'common.tryAgain': 'Try again',
   'common.cancel': 'Cancel',
 
+  'errorBoundary.title': 'Something went wrong',
+  'errorBoundary.body': 'The app hit an unexpected error. You can try again — if it keeps happening, restarting usually fixes it.',
+  'errorBoundary.restart': 'Try again',
+
   'tabs.map': 'Map',
   'tabs.myPlaces': 'My places',
   'tabs.search': 'Search',
