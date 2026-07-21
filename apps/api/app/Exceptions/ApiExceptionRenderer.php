@@ -35,12 +35,19 @@ class ApiExceptionRenderer
         // X-RateLimit-* on a 429 throttle response).
         $headers = $e instanceof HttpExceptionInterface ? $e->getHeaders() : [];
 
+        // Also echo X-Request-Id here (not just in AssignRequestId): a thrown
+        // request never reaches the middleware's post-$next header write, so the
+        // header would otherwise be missing on exactly the error responses that
+        // most need to be cross-referenced (T-092).
+        $requestId = self::requestId($request);
+        $headers['X-Request-Id'] = $requestId;
+
         return response()->json([
             'error' => [
                 'code' => $code,
                 'message' => $message,
                 'details' => (object) $details,
-                'request_id' => self::requestId($request),
+                'request_id' => $requestId,
             ],
         ], $status, $headers);
     }
@@ -93,8 +100,15 @@ class ApiExceptionRenderer
 
     private static function requestId(Request $request): string
     {
+        // Reuse the id AssignRequestId (T-092) set so the envelope, the
+        // X-Request-Id header, and this request's logs/jobs all share one value.
+        // Fall back to a fresh id only if the middleware never ran (a non-API
+        // entrypoint, or an exception thrown before the stack reached it).
         $existing = $request->attributes->get('request_id');
+        if (is_string($existing) && $existing !== '') {
+            return $existing;
+        }
 
-        return 'req_'.(is_string($existing) && $existing !== '' ? $existing : (string) Str::ulid());
+        return 'req_'.(string) Str::ulid();
     }
 }
