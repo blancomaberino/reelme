@@ -56,7 +56,7 @@ it('propagates the request id from Context into a dispatched pipeline job log', 
     (new IngestShare($share->id))->handle();
 
     Log::shouldHaveReceived('info')
-        ->withArgs(fn (string $message, array $ctx): bool => $message === 'pipeline.ingest.start'
+        ->withArgs(fn (string $message, array $ctx): bool => $message === 'pipeline.entry'
             && ($ctx['share_id'] ?? null) === $share->id
             && ($ctx['request_id'] ?? null) === 'req_JOB_CORRELATION')
         ->once();

@@ -55,10 +55,11 @@ class IngestShare implements ShouldQueue
             return; // already advanced (idempotent re-entry) — exit silently
         }
 
-        // Entry log carrying the request that kicked off this async pipeline
-        // (T-092): request_id rides the Context Laravel serialized onto this job,
-        // so the whole share:N chain correlates back to the originating request.
-        Log::info('pipeline.ingest.start', [
+        // Pipeline entry-point log carrying the request that kicked off this async
+        // run (T-092): request_id rides the Context Laravel serialized onto this
+        // job, so the whole share:N chain correlates back to the originating
+        // request. Distinct from the per-stage `pipeline.<stage>.start` metrics.
+        Log::info('pipeline.entry', [
             'share_id' => $share->id,
             'request_id' => Context::get('request_id'),
         ]);
