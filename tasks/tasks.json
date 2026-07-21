@@ -2455,7 +2455,7 @@
    "id": "T-094",
    "title": "ARCH/P1: mobile consumes @reelmap/contracts generated types (kill hand-duplicated API shapes / close the un-diffed drift gap)",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-005",
     "T-004"
@@ -2479,7 +2479,7 @@
     "Gates: mobile eslint + tsc + jest green; contracts tests green"
    ],
    "agent": "executor",
-   "notes": "P1 contract safety. Flagged by 2 audit agents 2026-07-21: contracts drift is enforced schema<->generated-TS and schema<->API, but the types mobile actually codes against are a third un-diffed copy (0 imports of @reelmap/contracts). Overdue, not blocked. Relates to CI T-006."
+   "notes": "P1 contract safety. Flagged by 2 audit agents 2026-07-21: contracts drift is enforced schema<->generated-TS and schema<->API, but the types mobile actually codes against are a third un-diffed copy (0 imports of @reelmap/contracts). Overdue, not blocked. Relates to CI T-006. | 2026-07-21: PlaceSummary+UserProfile contract-derived + conformance test (drift fails tsc); PlaceDetail/PlaceSource deferred on schema gaps (reviews include). Gates green (255). PR #128."
   },
   {
    "id": "T-095",
