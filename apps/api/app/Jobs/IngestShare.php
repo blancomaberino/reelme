@@ -13,6 +13,8 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Entry stage: transitions the share pending → fetching and dispatches the rest
@@ -52,6 +54,15 @@ class IngestShare implements ShouldQueue
         if ($share === null || $share->status !== ShareStatus::Pending) {
             return; // already advanced (idempotent re-entry) — exit silently
         }
+
+        // Pipeline entry-point log carrying the request that kicked off this async
+        // run (T-092): request_id rides the Context Laravel serialized onto this
+        // job, so the whole share:N chain correlates back to the originating
+        // request. Distinct from the per-stage `pipeline.<stage>.start` metrics.
+        Log::info('pipeline.entry', [
+            'share_id' => $share->id,
+            'request_id' => Context::get('request_id'),
+        ]);
 
         $this->recordStage($share->id, 'ingest');
 
