@@ -2512,7 +2512,7 @@
    "id": "T-096",
    "title": "ARCH/P1: decompose Place god model (787 lines) into PlaceAggregations; add a DISCOUNT_CARD_SQL<->PHP twin-drift test",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-023",
     "T-079",
@@ -2535,7 +2535,7 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P1 maintainability + latent-bug guard. Audit 2026-07-21: Place spans Scout indexing + tag/discount aggregation + geo + curation-locking; the SQL/PHP discount twin is kept in lockstep by comment discipline alone. Coordinate with T-095 (both in Services/Places)."
+   "notes": "P1 maintainability + latent-bug guard. Audit 2026-07-21: Place spans Scout indexing + tag/discount aggregation + geo + curation-locking; the SQL/PHP discount twin is kept in lockstep by comment discipline alone. Coordinate with T-095 (both in Services/Places). | 2026-07-21: implemented (PlaceAggregations + twin-drift test), gates green (828), /coderabbit approved, PR #127."
   },
   {
    "id": "T-097",
