@@ -31,7 +31,7 @@ export function CandidatePicker({
     <View style={styles.wrap}>
       <Text style={styles.title}>{t('review.candidates.title')}</Text>
       <Text style={styles.hint}>{t('review.candidates.hint')}</Text>
-      <View style={styles.rows}>
+      <View accessibilityRole="radiogroup" style={styles.rows}>
         {candidates.map((cand) => {
           const id = Number(cand.place_id);
           const on = selectedId === id;

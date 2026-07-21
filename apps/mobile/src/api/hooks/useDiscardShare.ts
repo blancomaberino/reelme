@@ -16,9 +16,8 @@ export function useDiscardShare(shareId: string) {
     mutationFn: () => api.delete(`/shares/${encodeURIComponent(shareId)}`),
     onSuccess: () => {
       qc.removeQueries({ queryKey: queryKeys.share(shareId) });
-      // The recent-shares list uses an inline key (['shares','list',limit]);
-      // invalidate the prefix so the discarded share drops out.
-      qc.invalidateQueries({ queryKey: ['shares', 'list'] });
+      // Drop the discarded share from the recent-shares list (all page sizes).
+      qc.invalidateQueries({ queryKey: queryKeys.sharesListAll() });
     },
   });
 }

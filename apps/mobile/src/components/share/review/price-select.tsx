@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useT } from '@/i18n';
+import { priceGlyphs } from '@/lib/format';
 import { type Palette, useColors } from '@/theme/colors';
 
 type Props = {
@@ -28,15 +29,15 @@ export function PriceSelect({ label, value, onChange }: Props) {
               key={n}
               accessibilityRole="button"
               accessibilityState={{ selected: on }}
-              accessibilityLabel={'$'.repeat(n)}
+              accessibilityLabel={priceGlyphs(n)}
               onPress={() => onChange(on ? null : n)}
               style={({ pressed }) => [styles.seg, on && styles.segOn, pressed && styles.segPressed]}
             >
-              <Text style={[styles.segText, on && styles.segTextOn]}>{'$'.repeat(n)}</Text>
+              <Text style={[styles.segText, on && styles.segTextOn]}>{priceGlyphs(n)}</Text>
             </Pressable>
           );
         })}
-        <Text style={styles.unset}>{value == null ? t('review.price.unset') : ''}</Text>
+        {value == null ? <Text style={styles.unset}>{t('review.price.unset')}</Text> : null}
       </View>
     </View>
   );

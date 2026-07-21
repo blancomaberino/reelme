@@ -73,7 +73,7 @@ export function DishEditor({
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={t('review.field.addDish')}
+          accessibilityLabel={t('review.field.addDishAction')}
           onPress={add}
           hitSlop={8}
           style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}

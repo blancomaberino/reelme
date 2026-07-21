@@ -54,6 +54,11 @@ const titleCase = (v: string) =>
 const toChips = (values: readonly string[], label: (v: string) => string): ChipOption[] =>
   values.map((v) => ({ value: v, label: label(v) }));
 
+// Vibe/dietary labels aren't localized (canonical English enums), so the chip
+// options are fully static — build them once at module load, not per render.
+const VIBE_OPTIONS = toChips(VIBE_VALUES, titleCase);
+const DIETARY_OPTIONS = toChips(DIETARY_VALUES, titleCase);
+
 /** Deep clone the extraction place so edits don't mutate the cached query data. */
 const clonePlace = (p: ExtractionPlace): ExtractionPlace => JSON.parse(JSON.stringify(p));
 
@@ -100,7 +105,8 @@ function ReviewForm({ share, shareId }: { share: ShareDetail; shareId: string })
   // Editable copy of the (single) extracted place — lazily cloned so edits never
   // mutate the cached query data.
   const [place, setPlace] = useState<ExtractionPlace>(() => clonePlace(first));
-  const [pin, setPin] = useState(() => (first.geo ? { lat: first.geo.lat, lng: first.geo.lng } : FALLBACK));
+  const [initialPin] = useState(() => (first.geo ? { lat: first.geo.lat, lng: first.geo.lng } : FALLBACK));
+  const [pin, setPin] = useState(initialPin);
   const pinTouched = useRef(false);
   const [candidateId, setCandidateId] = useState<number | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -115,15 +121,25 @@ function ReviewForm({ share, shareId }: { share: ShareDetail; shareId: string })
   const patchAddress = (key: keyof ExtractionPlace['address'], value: string) =>
     setPlace((p) => ({ ...p, address: { ...p.address, [key]: value || null } }));
 
+  // Mark the pin "touched" only on a real drag. react-native-maps fires an initial
+  // settle whose center can differ from the seed by a few metres (tile snap), so
+  // compare against the ORIGINAL seed with a ~11 m threshold — otherwise that
+  // spurious settle would send the fallback coordinate and pin the place at the
+  // map's default centre. An untouched pin lets the backend re-geocode the address.
   const onPinChange = (lat: number, lng: number) => {
-    if (Math.abs(lat - pin.lat) > 1e-6 || Math.abs(lng - pin.lng) > 1e-6) pinTouched.current = true;
+    if (Math.abs(lat - initialPin.lat) > 1e-4 || Math.abs(lng - initialPin.lng) > 1e-4) {
+      pinTouched.current = true;
+    }
     setPin({ lat, lng });
   };
 
-  const errorFor = (suffix: string): string | undefined => {
-    const hit = Object.entries(fieldErrors).find(([k]) => k.endsWith(suffix));
-    return hit?.[1];
-  };
+  // The API validates the merged extraction with opis/json-schema, which reports
+  // failures as JSON-Pointer keys (`/places/0/address/street`) — copied verbatim
+  // into the 422 interceptor's `fields`. Look up the exact pointer for places[0]
+  // (review is single-place); a suffix/dot match would never hit the slash keys
+  // and could mis-attach a `/places/0/dishes/0/name` error to the place name.
+  const errorFor = (leaf: string): string | undefined =>
+    fieldErrors[`/places/0/${leaf.replace(/\./g, '/')}`];
 
   const onConfirm = () => {
     setSaveError(null);
@@ -171,12 +187,21 @@ function ReviewForm({ share, shareId }: { share: ShareDetail; shareId: string })
       {
         text: t('review.discardConfirm'),
         style: 'destructive',
-        onPress: () => discard.mutate(undefined, { onSuccess: () => router.replace('/(main)/share') }),
+        onPress: () =>
+          discard.mutate(undefined, {
+            onSuccess: () => router.replace('/(main)/share'),
+            onError: () => setSaveError(t('review.saveError')),
+          }),
       },
     ]);
   };
 
-  const categoryOptions = toChips(CATEGORY_VALUES, (v) => t(`review.category.${v}` as MessageKey));
+  // Category labels ARE localized, so memoize on the translator (stable per locale)
+  // rather than rebuilding all 9 chips on every keystroke.
+  const categoryOptions = useMemo(
+    () => toChips(CATEGORY_VALUES, (v) => t(`review.category.${v}` as MessageKey)),
+    [t],
+  );
   const busy = update.isPending || discard.isPending;
 
   return (
@@ -300,13 +325,13 @@ function ReviewForm({ share, shareId }: { share: ShareDetail; shareId: string })
           />
           <ChipSelect
             label={t('review.field.vibe')}
-            options={toChips(VIBE_VALUES, titleCase)}
+            options={VIBE_OPTIONS}
             selected={place.vibe_tags}
             onToggle={(v) => patch('vibe_tags', toggle(place.vibe_tags, v) as ExtractionPlace['vibe_tags'])}
           />
           <ChipSelect
             label={t('review.field.dietary')}
-            options={toChips(DIETARY_VALUES, titleCase)}
+            options={DIETARY_OPTIONS}
             selected={place.dietary_tags}
             onToggle={(v) => patch('dietary_tags', toggle(place.dietary_tags, v) as ExtractionPlace['dietary_tags'])}
           />
@@ -324,7 +349,12 @@ function ReviewForm({ share, shareId }: { share: ShareDetail; shareId: string })
 
         {saveError ? <Text style={styles.saveError}>{saveError}</Text> : null}
 
-        <Button title={busy ? t('review.publishing') : t('review.confirm')} onPress={onConfirm} loading={update.isPending} />
+        <Button
+          title={update.isPending ? t('review.publishing') : t('review.confirm')}
+          onPress={onConfirm}
+          loading={update.isPending}
+          disabled={busy}
+        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('review.discard')}

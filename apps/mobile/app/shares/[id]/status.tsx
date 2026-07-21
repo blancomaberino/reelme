@@ -6,7 +6,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useRetryShare } from '@/api/hooks/useRetryShare';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
-import { hasEditableExtraction, isRetryable, isTerminal, type ShareDetail, type ShareStatus } from '@/api/shares';
+import {
+  type FailureCode,
+  hasEditableExtraction,
+  isRetryable,
+  isTerminal,
+  type ShareDetail,
+  type ShareStatus,
+} from '@/api/shares';
 import { Button } from '@/components/button';
 import { PendingVenues } from '@/components/share/pending-venues';
 import { type MessageKey, useT } from '@/i18n';
@@ -22,37 +29,43 @@ const STEPS: { status: ShareStatus; label: MessageKey }[] = [
   { status: 'review', label: 'shares.step.review' },
 ];
 
+// How far the pipeline got — the failed status's index in STEPS, clamping every
+// stopped state (published/failed/rejected, none of which are stepper rows) to
+// the last node. Deriving off STEPS keeps the stage order stated in one place.
 const reachedIndex = (status: ShareStatus): number => {
-  switch (status) {
-    case 'pending':
-      return 0;
-    case 'fetching':
-      return 1;
-    case 'analyzing':
-      return 2;
-    default:
-      return 3; // review / published / failed / rejected — the pipeline has stopped
-  }
+  const i = STEPS.findIndex((s) => s.status === status);
+  return i === -1 ? STEPS.length - 1 : i;
 };
 
-/**
- * The available action buttons for a terminal failure, keyed on `failure.code`.
- * Retry is emitted only when the API would honor it (isRetryable); link-account
- * is deferred (no mobile screen yet, T-015), so private posts route to manual.
- */
 type FailAction = 'retry' | 'addManually' | 'aiSettings';
-const FAIL_ACTIONS: Record<string, FailAction[]> = {
-  fetch_unavailable: ['retry', 'addManually'],
-  fetch_auth_required: ['addManually'],
-  geocode_failed: ['addManually'],
-  media_too_large: ['addManually'],
-  ffmpeg_error: ['retry'],
-  transcribe_error: ['retry'],
-  cost_cap_exceeded: [],
-  quota_exhausted: ['aiSettings'],
-  invalid_model_output: ['retry', 'aiSettings'],
-  resolve_conflict: ['retry'],
+
+/**
+ * Single source of truth for how each terminal failure is presented, keyed on
+ * `failure.code`. `stopStep` is the STEPS index the pipeline halted at (fetch
+ * failures at "fetching", model/transcribe at "analyzing", geocode/resolve at
+ * "review") — drives the stepper's error marker so un-run stages never render as
+ * done. `actions` are the buttons offered (retry only when the API honors it;
+ * link-account is deferred per T-015, so private posts route to manual). Typing
+ * this `Record<FailureCode, …>` forces an entry per code — a new failure can't be
+ * half-wired — and its keys double as the "known code has dedicated copy" set.
+ */
+const FAILURE_TAXONOMY: Record<FailureCode, { actions: FailAction[]; stopStep: number }> = {
+  fetch_unavailable: { actions: ['retry', 'addManually'], stopStep: 1 },
+  fetch_auth_required: { actions: ['addManually'], stopStep: 1 },
+  media_too_large: { actions: ['addManually'], stopStep: 1 },
+  ffmpeg_error: { actions: ['retry'], stopStep: 1 },
+  transcribe_error: { actions: ['retry'], stopStep: 2 },
+  cost_cap_exceeded: { actions: [], stopStep: 2 },
+  quota_exhausted: { actions: ['aiSettings'], stopStep: 2 },
+  invalid_model_output: { actions: ['retry', 'aiSettings'], stopStep: 2 },
+  ollama_unreachable: { actions: ['retry', 'aiSettings'], stopStep: 2 },
+  geocode_failed: { actions: ['addManually'], stopStep: 3 },
+  resolve_conflict: { actions: ['retry'], stopStep: 3 },
 };
+
+/** The taxonomy entry for a raw `failure.code`, or null for an unrecognized code. */
+const failureEntry = (code: string | undefined): { actions: FailAction[]; stopStep: number } | null =>
+  code && code in FAILURE_TAXONOMY ? FAILURE_TAXONOMY[code as FailureCode] : null;
 
 export default function StatusScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -91,7 +104,7 @@ export default function StatusScreen() {
           <Text style={styles.notFound}>{t('shares.notFound')}</Text>
         ) : (
           <>
-            <Stepper status={share.status} styles={styles} c={c} t={t} />
+            <Stepper share={share} styles={styles} c={c} t={t} />
             <Terminal share={share} shareId={shareId} styles={styles} c={c} t={t} />
           </>
         )}
@@ -101,36 +114,51 @@ export default function StatusScreen() {
 }
 
 function Stepper({
-  status,
+  share,
   styles,
   c,
   t,
 }: {
-  status: ShareStatus;
+  share: ShareDetail;
   styles: Styles;
   c: Palette;
   t: (k: MessageKey) => string;
 }) {
-  const reached = reachedIndex(status);
-  const failed = status === 'failed' || status === 'rejected';
+  const { status } = share;
   const published = status === 'published';
+  // A failure is a failed/rejected share OR a review the user can't correct (a
+  // fetch failure with no extraction). Those stop MID-pipeline, so the error node
+  // sits where they stopped and later stages stay "todo" — never a green check
+  // above the red failure card. Editable reviews / in-progress use reachedIndex.
+  const failed = status === 'failed' || status === 'rejected' || (status === 'review' && !hasEditableExtraction(share));
+  const errorIdx = failed ? (failureEntry(share.failure?.code)?.stopStep ?? STEPS.length - 1) : -1;
+  const reached = reachedIndex(status);
+  // How far the rail is "complete" — up to the error node, else the reached node.
+  const filledTo = failed ? errorIdx : reached;
 
   return (
     <View style={styles.stepper}>
       {STEPS.map((step, i) => {
         const isLast = i === STEPS.length - 1;
         const label = isLast && published ? t('shares.step.published') : t(step.label);
-        // Node state: done (past, or a happy terminal), active (current & running),
-        // error (terminal failure at the final node), or upcoming (dim).
+        // Node state: done (past a completed stage), error (the stage it failed
+        // at), active (current & running), or upcoming (dim).
         let node: 'done' | 'active' | 'error' | 'todo';
-        if (i < reached) node = 'done';
-        else if (i === reached) node = failed ? 'error' : published || status === 'review' ? 'done' : 'active';
-        else node = 'todo';
+        if (failed) {
+          node = i < errorIdx ? 'done' : i === errorIdx ? 'error' : 'todo';
+        } else if (i < reached) {
+          node = 'done';
+        } else if (i === reached) {
+          node = published || status === 'review' ? 'done' : 'active';
+        } else {
+          node = 'todo';
+        }
 
         return (
           <View key={step.status} style={styles.stepRow}>
             <View style={styles.stepRail}>
               <View
+                testID={`step-${step.status}-${node}`}
                 style={[
                   styles.node,
                   node === 'done' && styles.nodeDone,
@@ -148,7 +176,7 @@ function Stepper({
                   <View style={styles.nodeDot} />
                 )}
               </View>
-              {!isLast ? <View style={[styles.connector, i < reached && styles.connectorDone]} /> : null}
+              {!isLast ? <View style={[styles.connector, i < filledTo && styles.connectorDone]} /> : null}
             </View>
             <Text style={[styles.stepLabel, node === 'todo' && styles.stepLabelTodo]}>{label}</Text>
           </View>
@@ -217,7 +245,10 @@ function Terminal({
 
   // review (non-editable — a fetch failure) or failed / rejected → the failure card.
   const code = share.failure?.code ?? 'default';
-  const actions = FAIL_ACTIONS[code] ?? ['retry'];
+  // Unknown codes (and a `rejected` share with null failure) must still offer an
+  // escape: retry only if the API would honor it, always "add by hand" — never a
+  // card whose only button is a disabled Retry.
+  const actions = failureEntry(code)?.actions ?? (isRetryable(share) ? ['retry', 'addManually'] : ['addManually']);
 
   const runAction = (a: FailAction) => {
     if (a === 'retry') retry.mutate();
@@ -252,14 +283,11 @@ function Terminal({
 
 // The failure copy keys are static strings; fall back to the generic pair when a
 // code has no dedicated copy (unlisted pipeline reasons).
-const KNOWN_FAIL_CODES = new Set([
-  'fetch_unavailable', 'fetch_auth_required', 'geocode_failed', 'media_too_large', 'ffmpeg_error',
-  'transcribe_error', 'cost_cap_exceeded', 'quota_exhausted', 'invalid_model_output', 'resolve_conflict',
-]);
+// A code in the taxonomy has dedicated copy; anything else uses the generic pair.
 const failTitle = (code: string): MessageKey =>
-  (KNOWN_FAIL_CODES.has(code) ? `shares.fail.${code}.title` : 'shares.fail.default.title') as MessageKey;
+  (code in FAILURE_TAXONOMY ? `shares.fail.${code}.title` : 'shares.fail.default.title') as MessageKey;
 const failBody = (code: string): MessageKey =>
-  (KNOWN_FAIL_CODES.has(code) ? `shares.fail.${code}.body` : 'shares.fail.default.body') as MessageKey;
+  (code in FAILURE_TAXONOMY ? `shares.fail.${code}.body` : 'shares.fail.default.body') as MessageKey;
 
 type Styles = ReturnType<typeof makeStyles>;
 

@@ -46,6 +46,7 @@ export type FailureCode =
   | 'cost_cap_exceeded'
   | 'quota_exhausted'
   | 'invalid_model_output'
+  | 'ollama_unreachable' // local model host unreachable — humanized share-side too
   | 'resolve_conflict';
 
 /**

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { Alert } from 'react-native';
 
 import ReviewScreen from '../review';
-import { reviewShare } from '@/test/share-fixtures';
+import { reviewShare, shareDetail } from '@/test/share-fixtures';
 import { api } from '@/api/client';
 
 import { mockRouter } from '../../../../jest.setup';
@@ -42,7 +42,7 @@ it('prefills the form and tints only the low-confidence field', async () => {
   expect(screen.getByLabelText('Restaurant').props.accessibilityState.selected).toBe(true);
   // cuisines flattened to a comma list
   expect(screen.getByLabelText('Cuisines').props.value).toBe('burgers');
-  // Only `address.city` is below the confidence threshold (0.4) → one hint.
+  // Only `address.city` (per-field 0.4) sits below the 0.6 threshold → one hint.
   expect(screen.getAllByText('Low confidence — worth a check')).toHaveLength(1);
 });
 
@@ -123,6 +123,10 @@ it('folds edited price, vibe tags and dishes into the payload', async () => {
   fireEvent.press(screen.getByLabelText('Cozy')); // add a vibe tag
   fireEvent.changeText(screen.getByPlaceholderText('Add a dish'), 'Fries');
   fireEvent(screen.getByPlaceholderText('Add a dish'), 'submitEditing');
+  // field transforms: cuisines comma-split→lowercase, handle strips a leading @
+  fireEvent.changeText(screen.getByLabelText('Cuisines'), 'Burgers, American');
+  fireEvent.changeText(screen.getByLabelText('Instagram handle'), '@newhandle');
+  fireEvent.changeText(screen.getByLabelText('Street'), 'Nueva Calle 5');
   fireEvent.press(screen.getByText('Publish'));
 
   await waitFor(() => expect(mock.history.patch).toHaveLength(1));
@@ -130,20 +134,61 @@ it('folds edited price, vibe tags and dishes into the payload', async () => {
   expect(place.price_range).toBe(3);
   expect(place.vibe_tags).toEqual(['casual', 'cozy']); // existing + added
   expect(place.dishes.map((d: { name: string }) => d.name)).toEqual(['Cheeseburger', 'Fries']);
+  expect(place.cuisines).toEqual(['burgers', 'american']); // split + lowercased
+  expect(place.handle).toBe('newhandle'); // @ stripped
+  expect(place.address.street).toBe('Nueva Calle 5');
 });
 
-it('maps a 422 onto the offending field', async () => {
+it('maps a 422 onto the offending field (JSON-Pointer keys)', async () => {
   mock.onGet('/shares/1').reply(200, { data: reviewShare() });
+  // The API validates with opis/json-schema and returns JSON-Pointer keys, NOT
+  // dotted paths — the field-error lookup must match `/places/0/...` exactly.
   mock.onPatch('/shares/1').reply(422, {
-    error: { message: 'Validation failed.', details: { 'extraction.places.0.name': ['The name is invalid.'] } },
+    error: {
+      message: 'Validation failed.',
+      details: {
+        '/places/0/address/street': ['The street is invalid.'],
+        // a nested dish error must NOT leak onto the place-name field
+        '/places/0/dishes/0/name': ['bad dish'],
+      },
+    },
   });
 
   render(<ReviewScreen />, { wrapper: Providers });
   await screen.findByLabelText('Name');
   fireEvent.press(screen.getByText('Publish'));
 
-  expect(await screen.findByText('The name is invalid.')).toBeOnTheScreen();
+  // street error lands on the street field…
+  expect(await screen.findByText('The street is invalid.')).toBeOnTheScreen();
+  // …and the dish error does NOT surface as the name-field error.
+  expect(screen.queryByText('bad dish')).toBeNull();
   expect(mockRouter.replace).not.toHaveBeenCalled();
+});
+
+it('shows a generic error and stays put when the save fails (non-422)', async () => {
+  mock.onGet('/shares/1').reply(200, { data: reviewShare() });
+  mock.onPatch('/shares/1').reply(500, {});
+
+  render(<ReviewScreen />, { wrapper: Providers });
+  await screen.findByLabelText('Name');
+  fireEvent.press(screen.getByText('Publish'));
+
+  expect(await screen.findByText('Couldn’t save. Please try again.')).toBeOnTheScreen();
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+});
+
+it('bounces a non-editable share to the status screen instead of rendering the form', async () => {
+  // A published share is not correctable — the loader must redirect, not crash.
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+  });
+
+  render(<ReviewScreen />, { wrapper: Providers });
+
+  await waitFor(() =>
+    expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: '/shares/[id]/status', params: { id: '1' } }),
+  );
+  expect(screen.queryByText('Publish')).toBeNull();
 });
 
 it('discards the share and returns to the composer', async () => {

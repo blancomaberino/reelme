@@ -25,6 +25,10 @@ export function useUpdateShare(shareId: string) {
     onSuccess: (share) => {
       qc.setQueryData(queryKeys.share(shareId), share);
       qc.invalidateQueries({ queryKey: queryKeys.share(shareId) });
+      // `review` is terminal, so the recent-shares list stopped polling; a publish
+      // moves the share review→analyzing, so refresh the list or it shows a stale
+      // "in review" row.
+      qc.invalidateQueries({ queryKey: queryKeys.sharesListAll() });
       qc.invalidateQueries({ queryKey: queryKeys.mapAll() });
       qc.invalidateQueries({ queryKey: queryKeys.myPlacesAll() });
     },
