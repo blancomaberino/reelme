@@ -60,14 +60,14 @@ class Place extends Model
      * A place_source's `discounts` snapshot as jsonb, guarded to an empty array
      * unless it is actually a JSON array — a malformed/legacy snapshot must not
      * make `jsonb_array_elements` error. Mirrors the `is_array()` guard in
-     * {@see aggregatedDiscounts()}. Consumed by the T-079 card filter + facet.
+     * `PlaceAggregations::discounts()`. Consumed by the T-079 card filter + facet.
      */
     public const DISCOUNTS_JSONB = "CASE WHEN jsonb_typeof(place_sources.extraction_snapshot_json->'discounts') = 'array'"
         ." THEN place_sources.extraction_snapshot_json->'discounts' ELSE '[]'::jsonb END";
 
     /**
      * The display card label for a `d` discount element — the SQL twin of
-     * {@see discountCard()} (resolved issuer → scheme → `@handle`, a leading `@`
+     * `PlaceAggregations::discountCard()` (resolved issuer → scheme → `@handle`, a leading `@`
      * on the stored handle collapsed so both sides agree). The filter and facet
      * must compute the SAME label the aggregation shows.
      */
@@ -76,7 +76,7 @@ class Place extends Model
 
     /**
      * A `d` discount element carries a non-empty `terms` — the SQL twin of the
-     * `$terms === ''` skip in {@see aggregatedDiscounts()}. The filter + facet
+     * `$terms === ''` skip in `PlaceAggregations::discounts()`. The filter + facet
      * apply it so they never match/list a card the place detail wouldn't show.
      */
     public const DISCOUNT_HAS_TERMS = "NULLIF(trim(d->>'terms'), '') IS NOT NULL";
@@ -183,7 +183,7 @@ class Place extends Model
     /**
      * Places offering a payment discount for the given card/bank/wallet (T-079).
      * Matches a place_source snapshot whose `discounts[]` carries the token as its
-     * resolved issuer, scheme, or `@handle` — the SAME label {@see discountCard()}
+     * resolved issuer, scheme, or `@handle` — the SAME label `PlaceAggregations::discountCard()`
      * computes for display, so the map/index filter and the shown chips agree.
      * Case-insensitive; a blank token is a no-op.
      *
@@ -518,135 +518,6 @@ class Place extends Model
     }
 
     /**
-     * Union + dedupe the discovery tags across every place_source's frozen
-     * extraction snapshot. `cuisines`/`vibe_tags`/`dietary_tags` are string lists;
-     * `dishes` are `{name, shown_in_video}` objects deduped by name (first wins).
-     * Pure: it reads the already-loaded `sources` relation, issuing no queries.
-     *
-     * @return array{cuisines: list<string>, vibe_tags: list<string>, dietary_tags: list<string>, dishes: list<array{name: string, shown_in_video: bool, price: string|null}>}
-     */
-    public function aggregatedTags(): array
-    {
-        $cuisines = [];
-        $vibeTags = [];
-        $dietaryTags = [];
-        /** @var array<string, array{name: string, shown_in_video: bool, price: string|null}> $dishes */
-        $dishes = [];
-
-        foreach ($this->sources as $source) {
-            $snapshot = $source->extraction_snapshot_json;
-
-            foreach ($this->stringList($snapshot['cuisines'] ?? null) as $value) {
-                $cuisines[$value] = $value;
-            }
-            foreach ($this->stringList($snapshot['vibe_tags'] ?? null) as $value) {
-                $vibeTags[$value] = $value;
-            }
-            foreach ($this->stringList($snapshot['dietary_tags'] ?? null) as $value) {
-                $dietaryTags[$value] = $value;
-            }
-
-            if (is_array($snapshot['dishes'] ?? null)) {
-                foreach ($snapshot['dishes'] as $dish) {
-                    if (! is_array($dish)) {
-                        continue;
-                    }
-                    $name = trim((string) ($dish['name'] ?? ''));
-                    if ($name === '') {
-                        continue;
-                    }
-                    $priceRaw = $dish['price'] ?? null;
-                    $price = is_string($priceRaw) && trim($priceRaw) !== '' ? trim($priceRaw) : null;
-                    if (isset($dishes[$name])) {
-                        // First occurrence wins for the dish, but a later source
-                        // can fill in a price the first one lacked (menu update).
-                        if ($dishes[$name]['price'] === null && $price !== null) {
-                            $dishes[$name]['price'] = $price;
-                        }
-
-                        continue;
-                    }
-                    $dishes[$name] = [
-                        'name' => $name,
-                        'shown_in_video' => (bool) ($dish['shown_in_video'] ?? false),
-                        'price' => $price,
-                    ];
-                }
-            }
-        }
-
-        return [
-            'cuisines' => array_values($cuisines),
-            'vibe_tags' => array_values($vibeTags),
-            'dietary_tags' => array_values($dietaryTags),
-            'dishes' => array_values($dishes),
-        ];
-    }
-
-    /**
-     * Union + dedupe the caption-derived card/bank/wallet discounts across every
-     * place_source snapshot (T-079). Each discount's display `card` is the
-     * resolved issuer, else the scheme, else the `@handle`; deduped by
-     * (card, terms) so two sources repeating the same offer collapse to one.
-     * Pure — reads the already-loaded `sources` relation, issuing no queries.
-     *
-     * @return list<array{card: string, terms: string, percent: int|null}>
-     */
-    public function aggregatedDiscounts(): array
-    {
-        /** @var array<string, array{card: string, terms: string, percent: int|null}> $discounts */
-        $discounts = [];
-
-        foreach ($this->sources as $source) {
-            $snapshot = $source->extraction_snapshot_json;
-            if (! is_array($snapshot['discounts'] ?? null)) {
-                continue;
-            }
-
-            foreach ($snapshot['discounts'] as $discount) {
-                if (! is_array($discount)) {
-                    continue;
-                }
-                $card = self::discountCard($discount);
-                $terms = trim((string) ($discount['terms'] ?? ''));
-                if ($card === '' || $terms === '') {
-                    continue;
-                }
-                $percent = is_int($discount['percent'] ?? null) ? $discount['percent'] : null;
-                $key = mb_strtolower($card).'|'.mb_strtolower($terms);
-                $discounts[$key] ??= ['card' => $card, 'terms' => $terms, 'percent' => $percent];
-            }
-        }
-
-        return array_values($discounts);
-    }
-
-    /**
-     * The display label for a raw discount snapshot: resolved issuer, else the
-     * card scheme, else the `@handle`. The SQL twin is {@see DISCOUNT_CARD_SQL}
-     * (used by the filter + facet) — keep the two in lockstep, including the
-     * leading-`@` collapse, so a shown card is always a filterable one.
-     *
-     * @param  array<string, mixed>  $discount
-     */
-    public static function discountCard(array $discount): string
-    {
-        $issuer = trim((string) ($discount['issuer'] ?? ''));
-        if ($issuer !== '') {
-            return $issuer;
-        }
-        $scheme = trim((string) ($discount['scheme'] ?? ''));
-        if ($scheme !== '') {
-            return $scheme;
-        }
-        // Strip any leading @ first, then re-prepend — a handle that is only @
-        // chars collapses to '' (dropped), matching DISCOUNT_CARD_SQL's NULL.
-        $handle = ltrim(trim((string) ($discount['handle'] ?? '')), '@');
-
-        return $handle !== '' ? '@'.$handle : '';
-    }
-
-    /**
      * When the dish/menu list was last refreshed — the most recent source that
      * contributed any dishes (its snapshot is frozen at publish, so its
      * `created_at` is when those dishes landed on the place). Null if no source
@@ -687,31 +558,6 @@ class Place extends Model
         }
 
         return null;
-    }
-
-    /**
-     * Coerce a snapshot value to a deduped list of non-empty trimmed strings.
-     *
-     * @return list<string>
-     */
-    private function stringList(mixed $value): array
-    {
-        if (! is_array($value)) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($value as $item) {
-            if (! is_scalar($item)) {
-                continue;
-            }
-            $trimmed = trim((string) $item);
-            if ($trimmed !== '') {
-                $out[] = $trimmed;
-            }
-        }
-
-        return $out;
     }
 
     /**
