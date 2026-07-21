@@ -47,6 +47,8 @@ export default function RootLayout() {
                   <Stack.Screen name="(auth)" />
                   <Stack.Screen name="(main)" />
                   <Stack.Screen name="place/[slug]" />
+                  <Stack.Screen name="shares/[id]/status" />
+                  <Stack.Screen name="shares/[id]/review" />
                   <Stack.Screen name="tag/[slug]" />
                   <Stack.Screen name="settings" />
                   <Stack.Screen name="profile/edit" />

@@ -9,6 +9,7 @@ import { useRetryShare } from '@/api/hooks/useRetryShare';
 import { useShares } from '@/api/hooks/useShares';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
 import {
+  hasEditableExtraction,
   isTerminal,
   platformFromUrl,
   type ShareDetail,
@@ -194,18 +195,19 @@ function RecentShares({ c, styles, t }: { c: Palette; styles: Styles; t: (key: M
               : s.status === 'failed' || s.status === 'rejected'
                 ? { bg: c.dangerSoft, fg: c.danger }
                 : { bg: c.primarySoft, fg: c.primary };
+        // A published pin jumps to the place; anything still in flight, in review,
+        // or failed opens the status/detail screen so it can be resumed (T-026).
         const go =
           s.place != null
             ? () => router.push({ pathname: '/place/[slug]', params: { slug: s.place!.id } })
-            : undefined;
+            : () => router.push({ pathname: '/shares/[id]/status', params: { id: s.id } });
         return (
           <Pressable
             key={s.id}
-            accessibilityRole={go ? 'button' : undefined}
+            accessibilityRole="button"
             accessibilityLabel={label}
             onPress={go}
-            disabled={!go}
-            style={({ pressed }) => [styles.recentRow, pressed && go ? styles.rowPressed : null]}
+            style={({ pressed }) => [styles.recentRow, pressed && styles.rowPressed]}
           >
             <Text style={styles.recentLabel} numberOfLines={1}>
               {label}
@@ -213,7 +215,7 @@ function RecentShares({ c, styles, t }: { c: Palette; styles: Styles; t: (key: M
             <View style={[styles.pill, { backgroundColor: tone.bg }]}>
               <Text style={[styles.pillText, { color: tone.fg }]}>{t(STATUS_KEY[s.status])}</Text>
             </View>
-            {go ? <Ionicons name="chevron-forward" size={16} color={c.muted} /> : null}
+            <Ionicons name="chevron-forward" size={16} color={c.muted} />
           </Pressable>
         );
       })}
@@ -341,6 +343,10 @@ function ShareProgress({
   }
 
   const isReview = status === 'review';
+  // A review with an extraction the user can correct → hand off to the dedicated
+  // review-and-publish form (T-026). A review WITHOUT one (a fetch failure) has
+  // nothing to edit, so it stays here with the failure copy + retry.
+  const canReview = isReview && share != null && hasEditableExtraction(share);
   return (
     <View style={styles.result}>
       <View style={[styles.badge, isReview ? styles.badgeWarn : styles.badgeErr]}>
@@ -349,6 +355,12 @@ function ShareProgress({
       <Text style={styles.resultTitle}>{isReview ? t('share.review.title') : t('share.failed.title')}</Text>
       {replay ? <Text style={styles.replayNote}>{t('share.duplicate.note')}</Text> : null}
       {share?.failure?.message ? <Text style={styles.resultBody}>{share.failure.message}</Text> : null}
+      {canReview ? (
+        <Button
+          title={t('shares.action.review')}
+          onPress={() => router.push({ pathname: '/shares/[id]/review', params: { id: share.id } })}
+        />
+      ) : null}
       {status === 'failed' && share ? (
         <Button title={t('share.retry')} onPress={() => retry.mutate()} loading={retry.isPending} />
       ) : null}
