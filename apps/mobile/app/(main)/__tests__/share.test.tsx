@@ -28,6 +28,7 @@ function shareDetail(over: Partial<ShareDetail>): ShareDetail {
     },
     analysis: null,
     failure: null,
+    can_publish_best_guess: false,
     place: null,
     places: [],
     pending_place_count: 0,
@@ -94,6 +95,25 @@ it('fetches the real state when POST replays an already-published share (no fals
 
   expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
   expect(screen.getByText('Clara Café')).toBeOnTheScreen();
+});
+
+it('offers "Publish anyway" for an uncertain review and skips to the status screen (T-098)', async () => {
+  mock.onPost('/shares').reply(201, { data: shareDetail({ id: '1', status: 'pending' }) });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ id: '1', status: 'review', can_publish_best_guess: true }),
+  });
+  mock.onPost('/shares/1/publish-best-guess').reply(200, {
+    data: shareDetail({ id: '1', status: 'analyzing' }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+
+  fireEvent.press(await screen.findByText('Publish anyway'));
+
+  await waitFor(() => expect(mock.history.post.some((r) => r.url === '/shares/1/publish-best-guess')).toBe(true));
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/shares/[id]/status', params: { id: '1' } });
 });
 
 it('auto-submits a link shared in from the iOS share sheet', async () => {

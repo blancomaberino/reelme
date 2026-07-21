@@ -5,6 +5,7 @@ import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, V
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCreateShare } from '@/api/hooks/useCreateShare';
+import { usePublishBestGuess } from '@/api/hooks/usePublishBestGuess';
 import { useRetryShare } from '@/api/hooks/useRetryShare';
 import { useShares } from '@/api/hooks/useShares';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
@@ -203,6 +204,7 @@ function ShareProgress({
   const [saveFor, setSaveFor] = useState<string | null>(null);
   // Re-run a failed pipeline in place (transient errors: model/ffmpeg/etc.).
   const retry = useRetryShare(share?.id ?? '');
+  const skip = usePublishBestGuess(share?.id ?? '');
 
   // A multi-place post (e.g. a "best cafés" reel) publishes several pins; fall
   // back to the single `place` for older payloads.
@@ -306,18 +308,40 @@ function ShareProgress({
   // review-and-publish form (T-026). A review WITHOUT one (a fetch failure) has
   // nothing to edit, so it stays here with the failure copy + retry.
   const canReview = isReview && share != null && hasEditableExtraction(share);
+  // Confirm-before-publish (T-098): an uncertain but placeable review can be
+  // published as-is — the sharer doesn't have to revise. Best-guess goes live +
+  // gets flagged for an admin. Not a chore; a quick optional check.
+  const canSkip = isReview && !!share?.can_publish_best_guess;
   return (
     <View style={styles.result}>
       <View style={[styles.badge, isReview ? styles.badgeWarn : styles.badgeErr]}>
         <Ionicons name={isReview ? 'alert' : 'close'} size={26} color={isReview ? c.gold : c.danger} />
       </View>
-      <Text style={styles.resultTitle}>{isReview ? t('share.review.title') : t('share.failed.title')}</Text>
+      <Text style={styles.resultTitle}>
+        {isReview ? (canSkip ? t('share.confirm.title') : t('share.review.title')) : t('share.failed.title')}
+      </Text>
       {replay ? <Text style={styles.replayNote}>{t('share.duplicate.note')}</Text> : null}
-      {share?.failure?.message ? <Text style={styles.resultBody}>{share.failure.message}</Text> : null}
+      {canSkip ? (
+        <Text style={styles.resultBody}>{t('share.confirm.body')}</Text>
+      ) : share?.failure?.message ? (
+        <Text style={styles.resultBody}>{share.failure.message}</Text>
+      ) : null}
       {canReview ? (
         <Button
           title={t('shares.action.review')}
           onPress={() => router.push({ pathname: '/shares/[id]/review', params: { id: share.id } })}
+        />
+      ) : null}
+      {canSkip && share ? (
+        <Button
+          title={t('shares.action.publishAsIs')}
+          variant="secondary"
+          onPress={() =>
+            skip.mutate(undefined, {
+              onSuccess: () => router.push({ pathname: '/shares/[id]/status', params: { id: share.id } }),
+            })
+          }
+          loading={skip.isPending}
         />
       ) : null}
       {status === 'failed' && share ? (
