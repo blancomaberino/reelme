@@ -2339,7 +2339,7 @@
    "id": "T-090",
    "title": "ARCH/P1: mobile top-level ErrorBoundary + crash reporting",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-004"
    ],
@@ -2360,7 +2360,7 @@
     "Gates: mobile eslint + tsc + jest green; library version resolved via library-version-resolver"
    ],
    "agent": "executor",
-   "notes": "P1 reliability. Audit 2026-07-21: no ErrorBoundary and no crash reporter anywhere in app/ or src/ — a thrown render error unmounts to a blank screen, invisible to the team. UI -> /frontend-design."
+   "notes": "P1 reliability. Audit 2026-07-21: no ErrorBoundary and no crash reporter anywhere in app/ or src/ — a thrown render error unmounts to a blank screen, invisible to the team. UI -> /frontend-design. | 2026-07-21: ErrorBoundary + env-gated crash-reporting abstraction (Sentry SDK deferred to native rebuild, documented). Gates green (258). PR #129."
   },
   {
    "id": "T-091",
