@@ -2256,7 +2256,7 @@
    "id": "T-087",
    "title": "ARCH/P0: lock PlacePublisher::recompute() count-then-save (concurrent-publish counter/activation race)",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-024",
     "T-023"
@@ -2277,7 +2277,7 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P0 correctness. Audit 2026-07-21: PlacePublisher.php:29-63 reads count then saves with no row lock, unlike PlaceMerger which locks for exactly this reason. Self-correcting on next event but wrong until then."
+   "notes": "P0 correctness. Audit 2026-07-21: PlacePublisher.php:29-63 reads count then saves with no row lock, unlike PlaceMerger which locks for exactly this reason. Self-correcting on next event but wrong until then. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #120 open."
   },
   {
    "id": "T-088",
