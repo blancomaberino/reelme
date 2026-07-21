@@ -29,7 +29,28 @@ use Illuminate\Validation\ValidationException;
 
 class ShareController extends Controller
 {
-    private const RELATIONS = ['sourcePost.influencer', 'analysisRuns', 'stageMetrics', 'publishedPlaceSource.place', 'publishedPlaceSources.place'];
+    /**
+     * Eager-loads for a share response. The nested `place` selects its lat/lng
+     * inline (same expression as MapViewport / PlaceSummaryResource) so
+     * ShareResource reads hydrated coordinates instead of firing a per-place
+     * `Place::coordinates()` point query — the GET /shares N+1 (T-086).
+     *
+     * @return array<int|string, string|callable>
+     */
+    private static function relations(): array
+    {
+        $withCoords = fn ($query) => $query
+            ->select('places.*')
+            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng');
+
+        return [
+            'sourcePost.influencer',
+            'analysisRuns',
+            'stageMetrics',
+            'publishedPlaceSource.place' => $withCoords,
+            'publishedPlaceSources.place' => $withCoords,
+        ];
+    }
 
     public function __construct(
         private readonly UrlCanonicalizer $canonicalizer,
@@ -87,7 +108,7 @@ class ShareController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Share::with(self::RELATIONS)
+        $query = Share::with(self::relations())
             ->where('user_id', $request->user()->id)
             ->orderByDesc('id');
 
@@ -378,7 +399,7 @@ class ShareController extends Controller
 
     private function respondWithShare(Share $share): JsonResponse
     {
-        $share->load(self::RELATIONS);
+        $share->load(self::relations());
 
         return response()->json([
             'data' => new ShareResource($share),
