@@ -34,49 +34,74 @@ class PlaceEditor
         ?int $userId = null,
         ?string $note = null,
     ): ?PlaceEdit {
-        // Only curated fields are writable; a non-manual origin can never touch a
-        // human-locked field (manual override wins).
+        // Only curated fields are writable. Filter to the writable set before we
+        // take the lock so an all-noise patch never opens a transaction.
         $patch = array_intersect_key($patch, array_flip(Place::CURATED_FIELDS));
-        if ($origin !== PlaceEdit::ORIGIN_MANUAL) {
-            $patch = $place->withoutLockedFields($patch);
-        }
         if ($patch === []) {
             return null;
         }
 
-        // Capture before-values (cast) so the diff is over real, effective changes.
-        $before = [];
-        foreach (array_keys($patch) as $field) {
-            $before[$field] = $place->getAttribute($field);
-        }
-
-        $place->fill($patch);
-
-        $changes = [];
-        foreach ($patch as $field => $_) {
-            $to = $place->getAttribute($field);
-            if ($this->differs($before[$field], $to)) {
-                $changes[$field] = ['from' => $before[$field], 'to' => $to];
+        return DB::transaction(function () use ($place, $patch, $origin, $userId, $note): ?PlaceEdit {
+            // Lock + refetch the authoritative row so the locked_fields check, the
+            // diff, and the save all run against state that cannot change under us.
+            // This closes the enrichment-clobbers-manual-edit race (T-085): a manual
+            // PATCH that commits during enrichment's multi-second network I/O window
+            // is now visible here and wins, instead of being diffed against a stale
+            // `locked_fields = []` snapshot loaded before that I/O.
+            $locked = Place::query()->whereKey($place->getKey())->lockForUpdate()->first();
+            if ($locked === null) {
+                return null;
             }
-        }
-        if ($changes === []) {
-            return null;
-        }
 
-        // A human edit takes ownership of every field it changed.
-        if ($origin === PlaceEdit::ORIGIN_MANUAL) {
-            $place->lockFields(array_keys($changes));
-        }
+            // A non-manual origin can never touch a human-locked field (manual
+            // override wins) — evaluated against the just-locked, authoritative row.
+            if ($origin !== PlaceEdit::ORIGIN_MANUAL) {
+                $patch = $locked->withoutLockedFields($patch);
+            }
+            if ($patch === []) {
+                return null;
+            }
 
-        return DB::transaction(function () use ($place, $changes, $origin, $userId, $note): PlaceEdit {
-            $place->save();
+            // Capture before-values (cast) so the diff is over real, effective changes.
+            $before = [];
+            foreach (array_keys($patch) as $field) {
+                $before[$field] = $locked->getAttribute($field);
+            }
 
-            return $place->placeEdits()->create([
+            $locked->fill($patch);
+
+            $changes = [];
+            foreach ($patch as $field => $_) {
+                $to = $locked->getAttribute($field);
+                if ($this->differs($before[$field], $to)) {
+                    $changes[$field] = ['from' => $before[$field], 'to' => $to];
+                }
+            }
+            if ($changes === []) {
+                return null;
+            }
+
+            // A human edit takes ownership of every field it changed.
+            if ($origin === PlaceEdit::ORIGIN_MANUAL) {
+                $locked->lockFields(array_keys($changes));
+            }
+
+            $locked->save();
+
+            $edit = $locked->placeEdits()->create([
                 'user_id' => $userId,
                 'origin' => $origin,
                 'changes' => $changes,
                 'note' => $note,
             ]);
+
+            // Reflect the committed row back onto the caller's instance so any
+            // post-apply read (Filament form refresh, the enricher's `enriched_at`
+            // write) sees the authoritative state, not the pre-lock snapshot.
+            $place->setRawAttributes($locked->getAttributes());
+            $place->syncOriginal();
+
+            return $edit;
         });
     }
 
