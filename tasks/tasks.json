@@ -2203,7 +2203,7 @@
    "id": "T-085",
    "title": "ARCH/P0: PlaceEditor.apply() must lock+refetch before diffing locked_fields (enrichment-clobbers-manual-edit race)",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-084"
    ],
@@ -2224,13 +2224,13 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P0 correctness. Confirmed 2026-07-21 architecture audit: PlaceEditor.php:41,71 has no lockForUpdate/refresh in the txn. Directly undermines the T-084 'manual override always wins' guarantee. Small, scoped. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #118 open."
+   "notes": "P0 correctness. Confirmed 2026-07-21 architecture audit: PlaceEditor.php:41,71 has no lockForUpdate/refresh in the txn. Directly undermines the T-084 'manual override always wins' guarantee. Small, scoped. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #118 open. | MERGED to main (PR #118) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-086",
    "title": "ARCH/P0: eliminate GET /shares N+1 (Place::coordinates() per-place raw query in ShareResource)",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-016"
    ],
@@ -2250,13 +2250,13 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P0 performance/correctness. Confirmed 2026-07-21 audit: 25-75 extra synchronous round-trips per /shares page. Classic 'eager-loaded the relation but N+1'd on a derived value'. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #119 open."
+   "notes": "P0 performance/correctness. Confirmed 2026-07-21 audit: 25-75 extra synchronous round-trips per /shares page. Classic 'eager-loaded the relation but N+1'd on a derived value'. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #119 open. | MERGED to main (PR #119) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-087",
    "title": "ARCH/P0: lock PlacePublisher::recompute() count-then-save (concurrent-publish counter/activation race)",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-024",
     "T-023"
@@ -2277,13 +2277,13 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P0 correctness. Audit 2026-07-21: PlacePublisher.php:29-63 reads count then saves with no row lock, unlike PlaceMerger which locks for exactly this reason. Self-correcting on next event but wrong until then. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #120 open."
+   "notes": "P0 correctness. Audit 2026-07-21: PlacePublisher.php:29-63 reads count then saves with no row lock, unlike PlaceMerger which locks for exactly this reason. Self-correcting on next event but wrong until then. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #120 open. | MERGED to main (PR #120) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-088",
    "title": "ARCH/P0: 'My places' filter facets must reflect the full collection, not page 1 (silent 20-row cap)",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-034",
     "T-071"
@@ -2306,13 +2306,13 @@
     "Tests: API facets cover >20-item fixtures; mobile shows options for a country present only beyond page 1; eslint/tsc/jest green"
    ],
    "agent": "executor",
-   "notes": "P0 (silent correctness). Audit 2026-07-21: facetSource useMyPlaces never calls fetchNextPage, so facets are capped at limit:20 — worst for exactly the power users the feature targets. UI part -> /frontend-design. | 2026-07-21: implemented (API + mobile), gates green (API 830, mobile 255), /coderabbit approved, PR #122 open."
+   "notes": "P0 (silent correctness). Audit 2026-07-21: facetSource useMyPlaces never calls fetchNextPage, so facets are capped at limit:20 — worst for exactly the power users the feature targets. UI part -> /frontend-design. | 2026-07-21: implemented (API + mobile), gates green (API 830, mobile 255), /coderabbit approved, PR #122 open. | MERGED to main (PR #122) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-089",
    "title": "ARCH/P0: PlaceMerge unmerge() must restore place_list_items/hidden_places (admin-undo data loss)",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-035"
    ],
@@ -2333,13 +2333,13 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P0 data integrity. Self-documented gap at PlaceMerger.php:94-107 ('unmerge does NOT restore these ... follow-up'). Snapshot mechanism already exists; scoped extension. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #121 open."
+   "notes": "P0 data integrity. Self-documented gap at PlaceMerger.php:94-107 ('unmerge does NOT restore these ... follow-up'). Snapshot mechanism already exists; scoped extension. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #121 open. | MERGED to main (PR #121) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-090",
    "title": "ARCH/P1: mobile top-level ErrorBoundary + crash reporting",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-004"
    ],
@@ -2360,13 +2360,13 @@
     "Gates: mobile eslint + tsc + jest green; library version resolved via library-version-resolver"
    ],
    "agent": "executor",
-   "notes": "P1 reliability. Audit 2026-07-21: no ErrorBoundary and no crash reporter anywhere in app/ or src/ — a thrown render error unmounts to a blank screen, invisible to the team. UI -> /frontend-design. | 2026-07-21: ErrorBoundary + env-gated crash-reporting abstraction (Sentry SDK deferred to native rebuild, documented). Gates green (258). PR #129."
+   "notes": "P1 reliability. Audit 2026-07-21: no ErrorBoundary and no crash reporter anywhere in app/ or src/ — a thrown render error unmounts to a blank screen, invisible to the team. UI -> /frontend-design. | 2026-07-21: ErrorBoundary + env-gated crash-reporting abstraction (Sentry SDK deferred to native rebuild, documented). Gates green (258). PR #129. | MERGED to main (PR #129) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-091",
    "title": "ARCH/P1: wire Sentry (or equiv) on the API HTTP exception handler AND the queue-worker failed-job hook",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-002",
     "T-007"
@@ -2390,13 +2390,13 @@
     "Gates: composer lint + stan + test green; version resolved via library-version-resolver"
    ],
    "agent": "executor",
-   "notes": "P1 observability. Audit 2026-07-21: no APM in composer.json; multi-vendor async pipeline (yt-dlp/Whisper/OpenRouter/Google/Trustpilot) has many failure modes with no aggregation. Pulls the architecture-critical slice of M5 T-052 forward; T-052 remains for full alerting/dashboards. | 2026-07-21: env-gated ErrorReporter (HTTP handler + Queue::failing) with share_id/request_id; Sentry driver deferred to provisioning (documented). Gates green (828). PR #130."
+   "notes": "P1 observability. Audit 2026-07-21: no APM in composer.json; multi-vendor async pipeline (yt-dlp/Whisper/OpenRouter/Google/Trustpilot) has many failure modes with no aggregation. Pulls the architecture-critical slice of M5 T-052 forward; T-052 remains for full alerting/dashboards. | 2026-07-21: env-gated ErrorReporter (HTTP handler + Queue::failing) with share_id/request_id; Sentry driver deferred to provisioning (documented). Gates green (828). PR #130. | MERGED to main (PR #130) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-092",
    "title": "ARCH/P1: make request_id real — AssignRequestId middleware + log/job propagation",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-002"
    ],
@@ -2419,13 +2419,13 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P1 observability. Audit 2026-07-21: renderer + PlatformAccountController read attributes->get('request_id') but NOTHING sets it (no Middleware dir) — correlation is non-functional in an async pipeline. Prereq that makes T-091 useful. | 2026-07-21: implemented (AssignRequestId + Context + renderer + IngestShare log), gates green (829), /coderabbit approved, PR #123."
+   "notes": "P1 observability. Audit 2026-07-21: renderer + PlatformAccountController read attributes->get('request_id') but NOTHING sets it (no Middleware dir) — correlation is non-functional in an async pipeline. Prereq that makes T-091 useful. | 2026-07-21: implemented (AssignRequestId + Context + renderer + IngestShare log), gates green (829), /coderabbit approved, PR #123. | MERGED to main (PR #123) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-093",
    "title": "ARCH/P1: finish ShareStageMetric — record stage completion/failure/duration (not just a 'running' marker) + pipeline logs",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-016",
     "T-017"
@@ -2449,13 +2449,13 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P1 observability. Audit 2026-07-21: RecordsStageMetrics only ever creates status='running'; duration_ms/attempt are dead columns. Overlaps M5 T-052 (stage metrics) — this does the queryable-telemetry core now. | 2026-07-21: implemented (TracksStageMetric middleware + trait complete/fail + logs), gates green (829), /coderabbit approved, PR #124."
+   "notes": "P1 observability. Audit 2026-07-21: RecordsStageMetrics only ever creates status='running'; duration_ms/attempt are dead columns. Overlaps M5 T-052 (stage metrics) — this does the queryable-telemetry core now. | 2026-07-21: implemented (TracksStageMetric middleware + trait complete/fail + logs), gates green (829), /coderabbit approved, PR #124. | MERGED to main (PR #124) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-094",
    "title": "ARCH/P1: mobile consumes @reelmap/contracts generated types (kill hand-duplicated API shapes / close the un-diffed drift gap)",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-005",
     "T-004"
@@ -2479,13 +2479,13 @@
     "Gates: mobile eslint + tsc + jest green; contracts tests green"
    ],
    "agent": "executor",
-   "notes": "P1 contract safety. Flagged by 2 audit agents 2026-07-21: contracts drift is enforced schema<->generated-TS and schema<->API, but the types mobile actually codes against are a third un-diffed copy (0 imports of @reelmap/contracts). Overdue, not blocked. Relates to CI T-006. | 2026-07-21: PlaceSummary+UserProfile contract-derived + conformance test (drift fails tsc); PlaceDetail/PlaceSource deferred on schema gaps (reviews include). Gates green (255). PR #128."
+   "notes": "P1 contract safety. Flagged by 2 audit agents 2026-07-21: contracts drift is enforced schema<->generated-TS and schema<->API, but the types mobile actually codes against are a third un-diffed copy (0 imports of @reelmap/contracts). Overdue, not blocked. Relates to CI T-006. | 2026-07-21: PlaceSummary+UserProfile contract-derived + conformance test (drift fails tsc); PlaceDetail/PlaceSource deferred on schema gaps (reviews include). Gates green (255). PR #128. | MERGED to main (PR #128) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-095",
    "title": "ARCH/P1: split PlaceResolver (783 lines) into PlaceDedupMatcher + PlaceFactory + thin orchestrator; drop the duplicate hand-rolled Jaro-Winkler",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-023"
    ],
@@ -2506,13 +2506,13 @@
     "Gates: composer lint + stan + test green; record the split as an ADR in the plan"
    ],
    "agent": "executor",
-   "notes": "P1 maintainability. Audit 2026-07-21: 783-line god service mixing dedup tree + raw PostGIS SQL + hand-rolled Jaro-Winkler + place creation + locking. Largest single-file blast-radius risk in Services. Record deviations as ADR per CLAUDE.md. | 2026-07-21: implemented (PlaceDedupMatcher + PlaceFactory, JW retained per ADR-095), gates green (832), /coderabbit approved, PR #126."
+   "notes": "P1 maintainability. Audit 2026-07-21: 783-line god service mixing dedup tree + raw PostGIS SQL + hand-rolled Jaro-Winkler + place creation + locking. Largest single-file blast-radius risk in Services. Record deviations as ADR per CLAUDE.md. | 2026-07-21: implemented (PlaceDedupMatcher + PlaceFactory, JW retained per ADR-095), gates green (832), /coderabbit approved, PR #126. | MERGED to main (PR #126) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-096",
    "title": "ARCH/P1: decompose Place god model (787 lines) into PlaceAggregations; add a DISCOUNT_CARD_SQL<->PHP twin-drift test",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-023",
     "T-079",
@@ -2535,13 +2535,13 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P1 maintainability + latent-bug guard. Audit 2026-07-21: Place spans Scout indexing + tag/discount aggregation + geo + curation-locking; the SQL/PHP discount twin is kept in lockstep by comment discipline alone. Coordinate with T-095 (both in Services/Places). | 2026-07-21: implemented (PlaceAggregations + twin-drift test), gates green (828), /coderabbit approved, PR #127."
+   "notes": "P1 maintainability + latent-bug guard. Audit 2026-07-21: Place spans Scout indexing + tag/discount aggregation + geo + curation-locking; the SQL/PHP discount twin is kept in lockstep by comment discipline alone. Coordinate with T-095 (both in Services/Places). | 2026-07-21: implemented (PlaceAggregations + twin-drift test), gates green (828), /coderabbit approved, PR #127. | MERGED to main (PR #127) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   },
   {
    "id": "T-097",
    "title": "ARCH/P1: extract ShareController::update() merge/diff/correction engine into an ExtractionCorrector service",
    "phase": "ARCH",
-   "status": "in_progress",
+   "status": "done",
    "depends_on": [
     "T-024"
    ],
@@ -2562,7 +2562,7 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P1 testability/SRP. Audit 2026-07-21: ShareController (525 lines, largest in app) embeds a recursive JSON merge/diff engine untestable without the HTTP layer and unreusable by Filament reprocess. | 2026-07-21: implemented (ExtractionCorrector service), gates green (831), /coderabbit approved, PR #125."
+   "notes": "P1 testability/SRP. Audit 2026-07-21: ShareController (525 lines, largest in app) embeds a recursive JSON merge/diff engine untestable without the HTTP layer and unreusable by Filament reprocess. | 2026-07-21: implemented (ExtractionCorrector service), gates green (831), /coderabbit approved, PR #125. | MERGED to main (PR #125) 2026-07-21; merged main green: API 861 pest + lint + stan, mobile 260 jest + tsc + lint."
   }
  ]
 }
