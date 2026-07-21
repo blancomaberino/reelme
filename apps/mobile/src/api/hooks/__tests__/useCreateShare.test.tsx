@@ -31,7 +31,7 @@ it('POSTs the pasted link with shared_via and seeds the share cache', async () =
   });
 
   const { result } = renderHook(() => useCreateShare(), { wrapper });
-  let created: { id: string; status: string } | undefined;
+  let created: { id: string; status: string; idempotentReplay: boolean } | undefined;
   await act(async () => {
     created = await result.current.mutateAsync({ url: 'https://ig.com/reel/x', caption: '' });
   });
@@ -39,9 +39,37 @@ it('POSTs the pasted link with shared_via and seeds the share cache', async () =
   expect(sent).toEqual({ url: 'https://ig.com/reel/x', shared_via: 'paste_url' });
   // Empty caption is dropped (undefined), not sent as "".
   expect(sent).not.toHaveProperty('caption');
-  // Returns only the ack (id + status) — the stripped 202 body is NOT seeded
-  // into the detail cache (useShareStatus fetches the full state instead).
-  expect(created).toEqual({ id: '7', status: 'pending' });
+  // Returns only the ack (id + status + replay flag) — the stripped 202 body is
+  // NOT seeded into the detail cache (useShareStatus fetches the full state).
+  // No `meta` → idempotentReplay defaults false.
+  expect(created).toEqual({ id: '7', status: 'pending', idempotentReplay: false });
+});
+
+it('flags an idempotent replay from meta so the screen can note "already added"', async () => {
+  mock.onPost('/shares').reply(202, { data: { id: '7', status: 'published' }, meta: { idempotent_replay: true } });
+
+  const { result } = renderHook(() => useCreateShare(), { wrapper });
+  let created: { idempotentReplay: boolean } | undefined;
+  await act(async () => {
+    created = await result.current.mutateAsync({ url: 'https://ig.com/reel/x' });
+  });
+
+  expect(created).toMatchObject({ id: '7', status: 'published', idempotentReplay: true });
+});
+
+it('forwards an explicit sharedVia (share sheet) over the default', async () => {
+  let sent: Record<string, unknown> = {};
+  mock.onPost('/shares').reply((cfg) => {
+    sent = JSON.parse(cfg.data);
+    return [202, { data: { id: '9', status: 'pending' } }];
+  });
+
+  const { result } = renderHook(() => useCreateShare(), { wrapper });
+  await act(async () => {
+    await result.current.mutateAsync({ url: 'https://ig.com/reel/x', sharedVia: 'share_sheet' });
+  });
+
+  expect(sent).toMatchObject({ url: 'https://ig.com/reel/x', shared_via: 'share_sheet' });
 });
 
 it('sends a caption when no url is given', async () => {

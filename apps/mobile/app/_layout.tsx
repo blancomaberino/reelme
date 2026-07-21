@@ -9,9 +9,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { fetchMe } from '@/api/hooks/useMe';
+import { extractUrl } from '@/api/shares';
 import { clearToken, getToken } from '@/api/token';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
+import { useUiStore } from '@/stores/ui';
 
 // Keep the splash up until the token check resolves (no login/tab flash).
 SplashScreen.preventAutoHideAsync();
@@ -60,25 +62,29 @@ export default function RootLayout() {
 
 /**
  * When a link/text is shared into Reelmap from another app (e.g. Instagram),
- * route to the Share tab with the payload prefilled, then clear the intent so a
- * later navigation back doesn't re-fire it. Only authed viewers can ingest, so
- * unauthenticated shares still land on Share (which the auth gate guards).
+ * stage the payload and route to the ingest screen. The payload is staged in
+ * `useUiStore` *before* any auth redirect so an unauthenticated share is never
+ * lost: a guest is sent to sign-in (which shows a "sign in to add this place"
+ * banner) and the share resumes on the ingest screen post-login. Resetting the
+ * native intent after staging stops it re-firing on a later resume.
  */
 function ShareIntentRedirect() {
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
   // Wait until the auth gate resolves so the entry Redirect (index.tsx) has run
   // and the navigator is mounted — otherwise this replace fires before the tree
   // is ready and the entry redirect clobbers it.
-  const ready = useSessionStore((s) => s.status !== 'loading');
+  const status = useSessionStore((s) => s.status);
 
   useEffect(() => {
-    if (!hasShareIntent || !ready) return;
-    router.replace({
-      pathname: '/(main)/share',
-      params: { sharedUrl: shareIntent.webUrl ?? '', sharedText: shareIntent.text ?? '' },
-    });
+    if (!hasShareIntent || status === 'loading') return;
+    const text = shareIntent.text ?? '';
+    const url = shareIntent.webUrl ?? extractUrl(text) ?? '';
+    useUiStore.getState().setPendingShare({ url, text });
     resetShareIntent();
-  }, [hasShareIntent, shareIntent, resetShareIntent, ready]);
+    // Authed → straight to ingest; guest → sign-in, which reads the staged
+    // share for its banner and resumes after login.
+    router.replace(status === 'authed' ? '/(main)/share' : '/(auth)/login');
+  }, [hasShareIntent, shareIntent, resetShareIntent, status]);
 
   return null;
 }

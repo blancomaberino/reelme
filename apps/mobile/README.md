@@ -66,3 +66,30 @@ npx eas-cli build --profile development --platform android
 
 > The share sheet **cannot be tested on the iOS simulator** — use a physical
 > device dev build + the real Instagram app (T-025).
+
+## Share-intent ingest flow (T-025)
+
+Sharing a link/text into Reelmap from another app (Instagram, Safari…) is the
+core add-a-place gesture:
+
+- **Registration** — the `expo-share-intent` plugin in `app.config.ts` declares
+  the iOS activation rules (WebURL + Text, **no media rules** so Reelmap never
+  shows up in photo share sheets) and the Android `text/*` intent filter.
+  Changing these rules requires a **native rebuild** (and sometimes a device
+  reinstall for iOS to refresh the share-sheet cache).
+- **Capture** — `app/_layout.tsx`'s `ShareIntentRedirect` reads the payload
+  (extracting the first URL out of raw text via `extractUrl`), stages it in
+  `useUiStore.pendingShare` **before** any auth redirect, then routes to the
+  ingest screen (`app/(main)/share.tsx`). Cold start is handled by
+  `app/+native-intent.tsx`.
+- **Auth gate** — a share started while logged out is not lost: the guest lands
+  on sign-in with a banner, and the staged share resumes on the ingest screen
+  after login.
+- **Deep-link/CI entry** — the ingest screen also reads `sharedUrl`/`sharedText`
+  route params, so Maestro/CI can drive it via `reelmap://…` without the OS
+  share sheet.
+
+Duplicates are handled server-side as an **idempotent replay** (not a 409):
+re-sharing a post returns the existing share, surfaced as a friendly "already
+added" note. Uploading a screen recording to a private-post share is **not yet
+wired** — it needs API endpoints that don't exist yet (see ADR-087).

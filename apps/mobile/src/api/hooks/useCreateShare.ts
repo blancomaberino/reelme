@@ -13,12 +13,15 @@ import type { CreateShareInput, CreateShareResult } from '../shares';
 export function useCreateShare() {
   return useMutation({
     mutationFn: async (input: CreateShareInput): Promise<CreateShareResult> => {
-      const { data } = await api.post<{ data: CreateShareResult }>('/shares', {
+      const { data } = await api.post<{
+        data: { id: string; status: CreateShareResult['status'] };
+        meta?: { idempotent_replay?: boolean };
+      }>('/shares', {
         url: input.url || undefined,
         caption: input.caption || undefined,
-        shared_via: 'paste_url',
+        shared_via: input.sharedVia ?? 'paste_url',
       });
-      return data.data;
+      return { ...data.data, idempotentReplay: data.meta?.idempotent_replay === true };
     },
   });
 }

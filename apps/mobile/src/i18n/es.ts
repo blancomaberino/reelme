@@ -213,6 +213,9 @@ export const es: Record<MessageKey, string> = {
   'share.submit': 'Marcar',
   'share.needInput': 'Pegá un enlace o una descripción primero.',
   'share.submitError': 'No se pudo enviar. Reintentá.',
+  'share.platformDetected': 'Enlace de {{platform}} detectado',
+  'share.duplicate.note': 'Ya lo habías agregado.',
+  'share.retry': 'Reintentar',
   'share.processing': 'Procesando…',
   'share.stage.pending': 'En cola',
   'share.stage.fetching': 'Obteniendo la publicación',
@@ -262,6 +265,7 @@ export const es: Record<MessageKey, string> = {
   'auth.login.submit': 'Iniciar sesión',
   'auth.login.newHere': '¿Sos nuevo? ',
   'auth.login.createAccount': 'Crear una cuenta',
+  'auth.login.shareBanner': 'Iniciá sesión para agregar este lugar a tu mapa.',
 
   'auth.register.title': 'Creá tu cuenta',
   'auth.register.subtitle': 'Guardá los lugares detrás de cada video de comida que te gusta.',

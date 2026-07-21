@@ -52,6 +52,8 @@ export function useAuthFormStyles() {
         footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 8 },
         muted: { color: c.muted },
         link: { color: c.primary, fontWeight: '600' },
+        banner: { backgroundColor: c.primarySoft, borderRadius: 12, padding: 12 },
+        bannerText: { color: c.primary, fontSize: 14, fontWeight: '600', textAlign: 'center' },
       }),
     [c],
   );

@@ -213,6 +213,9 @@ export const en = {
   'share.submit': 'Pin it',
   'share.needInput': 'Paste a link or a caption first.',
   'share.submitError': 'Couldn’t submit. Please try again.',
+  'share.platformDetected': '{{platform}} link detected',
+  'share.duplicate.note': 'You already added this one.',
+  'share.retry': 'Try again',
   'share.processing': 'Working on it…',
   'share.stage.pending': 'Queued',
   'share.stage.fetching': 'Fetching the post',
@@ -262,6 +265,7 @@ export const en = {
   'auth.login.submit': 'Log in',
   'auth.login.newHere': 'New here? ',
   'auth.login.createAccount': 'Create an account',
+  'auth.login.shareBanner': 'Sign in to add this place to your map.',
 
   'auth.register.title': 'Create your account',
   'auth.register.subtitle': 'Save the places behind every food video you love.',

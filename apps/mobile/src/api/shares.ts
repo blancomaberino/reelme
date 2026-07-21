@@ -85,14 +85,60 @@ export type PendingVenue = {
 export type CreateShareInput = {
   url?: string;
   caption?: string;
+  /**
+   * How the share was initiated — the API records provenance and defaults it
+   * ('share_sheet' when a URL is present, else 'manual'). The composer sends
+   * 'paste_url'; the iOS/Android share sheet sends 'share_sheet'.
+   */
+  sharedVia?: 'paste_url' | 'share_sheet' | 'manual';
 };
 
 /**
  * POST /shares returns a stripped 202 acknowledgement (id + current status,
  * `place` always null) — NOT a full ShareResource. Only the id is used, to
  * start polling GET /shares/{id} for the real, complete state.
+ *
+ * `idempotentReplay` mirrors `meta.idempotent_replay`: the API never returns a
+ * 409 for a re-shared post — it replays the existing share (T-016). The screen
+ * uses this to show a friendly "you already added this one" note instead of a
+ * fresh "pinning…" flow.
  */
 export type CreateShareResult = {
   id: string;
   status: ShareStatus;
+  idempotentReplay: boolean;
 };
+
+/**
+ * Pull the first URL out of raw shared text. Instagram often shares a caption
+ * like "Check this out! https://www.instagram.com/reel/… 😍" as plain text
+ * rather than a clean URL, so the ingest flow extracts the link and treats the
+ * rest as the caption. Trailing punctuation is trimmed; canonicalization is the
+ * server's job (IngestShare), so this stays deliberately loose.
+ */
+export function extractUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s<>"']+/i);
+  return match ? match[0].replace(/[.,)\]}>'"]+$/, '') : null;
+}
+
+/** Platforms Reelmap ingests, parsed client-side from a URL's hostname. */
+export type SharePlatform = 'instagram' | 'tiktok' | 'x' | 'youtube';
+
+/**
+ * Best-effort platform badge from a pasted/shared URL's hostname. Purely a UI
+ * hint (the API re-derives the platform server-side from the resolved post);
+ * returns null for anything unrecognized so the badge simply hides.
+ */
+export function platformFromUrl(url: string): SharePlatform | null {
+  const match = url.trim().match(/^https?:\/\/([^/?#]+)/i);
+  // Drop any port, then match the registrable domain or a subdomain of it — a
+  // bare `endsWith('instagram.com')` would also match `notinstagram.com`.
+  const host = match?.[1]?.toLowerCase().replace(/:\d+$/, '');
+  if (!host) return null;
+  const isHost = (domain: string) => host === domain || host.endsWith(`.${domain}`);
+  if (isHost('instagram.com')) return 'instagram';
+  if (isHost('tiktok.com')) return 'tiktok';
+  if (isHost('x.com') || isHost('twitter.com')) return 'x';
+  if (isHost('youtube.com') || host === 'youtu.be') return 'youtube';
+  return null;
+}

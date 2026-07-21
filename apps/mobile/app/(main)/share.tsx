@@ -5,15 +5,32 @@ import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, V
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCreateShare } from '@/api/hooks/useCreateShare';
+import { useRetryShare } from '@/api/hooks/useRetryShare';
 import { useShares } from '@/api/hooks/useShares';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
-import { isTerminal, type ShareDetail, type ShareStatus } from '@/api/shares';
+import {
+  isTerminal,
+  platformFromUrl,
+  type ShareDetail,
+  type SharePlatform,
+  type ShareStatus,
+} from '@/api/shares';
 import { Button } from '@/components/button';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { PendingVenues } from '@/components/share/pending-venues';
 import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
+import { platformIcon } from '@/lib/format';
+import { useUiStore } from '@/stores/ui';
 import { fonts, type Palette, useColors } from '@/theme/colors';
+
+/** Brand-cased labels for the platform badge; the glyph reuses `platformIcon`. */
+const PLATFORM_LABEL: Record<SharePlatform, string> = {
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  x: 'X',
+  youtube: 'YouTube',
+};
 
 const STAGE_KEY: Partial<Record<ShareStatus, MessageKey>> = {
   pending: 'share.stage.pending',
@@ -30,12 +47,17 @@ export default function ShareScreen() {
   const [caption, setCaption] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
+  // True when the API replayed an existing share (re-shared post) — drives the
+  // friendly "you already added this one" note instead of a fresh-pin flow.
+  const [replay, setReplay] = useState(false);
 
   const create = useCreateShare();
   const { data: share } = useShareStatus(shareId);
 
+  const platform = useMemo(() => (url.trim() ? platformFromUrl(url) : null), [url]);
+
   const doSubmit = useCallback(
-    (rawUrl: string, rawCaption: string) => {
+    (rawUrl: string, rawCaption: string, via: 'paste_url' | 'share_sheet' = 'paste_url') => {
       const u = rawUrl.trim();
       const cap = rawCaption.trim();
       if (!u && !cap) {
@@ -45,9 +67,12 @@ export default function ShareScreen() {
       setError(null);
       Keyboard.dismiss();
       create.mutate(
-        { url: u, caption: cap },
+        { url: u, caption: cap, sharedVia: via },
         {
-          onSuccess: (s) => setShareId(s.id),
+          onSuccess: (s) => {
+            setShareId(s.id);
+            setReplay(s.idempotentReplay);
+          },
           onError: () => setError(t('share.submitError')),
         },
       );
@@ -59,19 +84,28 @@ export default function ShareScreen() {
 
   const reset = useCallback(() => {
     setShareId(null);
+    setReplay(false);
     setUrl('');
     setCaption('');
     setError(null);
   }, []);
 
-  // A link/text shared in from another app (Instagram, Safari…) via the iOS
-  // share sheet: prefill and auto-submit once. A non-URL payload goes to the
-  // caption; `handled` guards against re-firing on re-render / re-focus.
+  // A link/text shared in from another app (Instagram, Safari…) via the share
+  // sheet: prefill and auto-submit once. The payload is staged in `useUiStore`
+  // by the root ShareIntentRedirect so it survives the sign-in redirect; deep
+  // links (Maestro/CI) still pass it as route params, read as a fallback. A
+  // non-URL payload goes to the caption; `handled` guards re-firing on
+  // re-render / re-focus, and the staged share is cleared once consumed.
   const { sharedUrl, sharedText } = useLocalSearchParams<{ sharedUrl?: string; sharedText?: string }>();
+  const staged = useUiStore((s) => s.pendingShare);
   const handled = useRef('');
   useEffect(() => {
-    const u = (sharedUrl ?? '').trim();
-    const txt = (sharedText ?? '').trim();
+    // Store (share-sheet) and route params (deep-link/CI) are never both set at
+    // once, so this single fallback picks the right one; `handled` dedupes the
+    // extra run that clearing the store triggers.
+    const u = (staged?.url ?? sharedUrl ?? '').trim();
+    const txt = (staged?.text ?? sharedText ?? '').trim();
+    if (staged) useUiStore.getState().setPendingShare(null);
     const payload = u || txt;
     if (!payload || handled.current === payload) return;
     handled.current = payload;
@@ -80,8 +114,8 @@ export default function ShareScreen() {
     const finalCap = finalUrl ? '' : txt;
     setUrl(finalUrl);
     setCaption(finalCap);
-    doSubmit(finalUrl, finalCap);
-  }, [sharedUrl, sharedText, doSubmit]);
+    doSubmit(finalUrl, finalCap, 'share_sheet');
+  }, [staged, sharedUrl, sharedText, doSubmit]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -90,7 +124,7 @@ export default function ShareScreen() {
         <Text style={styles.subtitle}>{t('share.subtitle')}</Text>
 
         {shareId ? (
-          <ShareProgress share={share} status={share?.status} onReset={reset} c={c} styles={styles} t={t} />
+          <ShareProgress share={share} status={share?.status} onReset={reset} replay={replay} c={c} styles={styles} t={t} />
         ) : (
           <View style={styles.form}>
             <TextField
@@ -103,6 +137,17 @@ export default function ShareScreen() {
               autoCapitalize="none"
               returnKeyType="next"
             />
+            {platform ? (
+              <View
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={t('share.platformDetected', { platform: PLATFORM_LABEL[platform] })}
+                style={styles.platformBadge}
+              >
+                <Ionicons name={platformIcon(platform)} size={14} color={c.primary} />
+                <Text style={styles.platformBadgeText}>{PLATFORM_LABEL[platform]}</Text>
+              </View>
+            ) : null}
             <TextField
               label={t('share.captionLabel')}
               value={caption}
@@ -180,6 +225,7 @@ function ShareProgress({
   share,
   status,
   onReset,
+  replay,
   c,
   styles,
   t,
@@ -187,12 +233,15 @@ function ShareProgress({
   share: ShareDetail | undefined;
   status: ShareStatus | undefined;
   onReset: () => void;
+  replay: boolean;
   c: Palette;
   styles: Styles;
   t: (key: MessageKey, params?: Record<string, string | number>) => string;
 }) {
   // Add-to-list at share time (T-073): which published place the save sheet targets.
   const [saveFor, setSaveFor] = useState<string | null>(null);
+  // Re-run a failed pipeline in place (transient errors: model/ffmpeg/etc.).
+  const retry = useRetryShare(share?.id ?? '');
 
   // A multi-place post (e.g. a "best cafés" reel) publishes several pins; fall
   // back to the single `place` for older payloads.
@@ -233,6 +282,7 @@ function ShareProgress({
           <Ionicons name="checkmark" size={26} color={c.green} />
         </View>
         <Text style={styles.resultTitle}>{t('share.published.title')}</Text>
+        {replay ? <Text style={styles.replayNote}>{t('share.duplicate.note')}</Text> : null}
         {publishedPlaces.length === 1 ? (
           <>
             <Text style={styles.placeName}>{publishedPlaces[0].name}</Text>
@@ -297,7 +347,11 @@ function ShareProgress({
         <Ionicons name={isReview ? 'alert' : 'close'} size={26} color={isReview ? c.gold : c.danger} />
       </View>
       <Text style={styles.resultTitle}>{isReview ? t('share.review.title') : t('share.failed.title')}</Text>
+      {replay ? <Text style={styles.replayNote}>{t('share.duplicate.note')}</Text> : null}
       {share?.failure?.message ? <Text style={styles.resultBody}>{share.failure.message}</Text> : null}
+      {status === 'failed' && share ? (
+        <Button title={t('share.retry')} onPress={() => retry.mutate()} loading={retry.isPending} />
+      ) : null}
       <Pressable accessibilityRole="button" onPress={onReset} hitSlop={8}>
         <Text style={styles.link}>{t('share.another')}</Text>
       </Pressable>
@@ -314,6 +368,20 @@ const makeStyles = (c: Palette) =>
     title: { fontFamily: fonts.display, fontSize: 30, fontWeight: '800', letterSpacing: -0.5, color: c.text },
     subtitle: { fontSize: 15, color: c.muted, marginBottom: 16, lineHeight: 21 },
     form: { gap: 6 },
+    platformBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: c.primarySoft,
+      marginTop: -2,
+      marginBottom: 2,
+    },
+    platformBadgeText: { fontSize: 12, fontWeight: '700', color: c.primary },
+    replayNote: { fontSize: 14, color: c.muted, textAlign: 'center', marginTop: -4 },
     error: { color: c.danger, fontSize: 14, marginBottom: 4 },
     result: { alignItems: 'center', gap: 12, paddingVertical: 32 },
     resultTitle: { fontFamily: fonts.display, fontSize: 20, fontWeight: '700', color: c.text },

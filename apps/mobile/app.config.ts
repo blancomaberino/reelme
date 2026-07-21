@@ -62,6 +62,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           NSExtensionActivationSupportsWebPageWithMaxCount: 1,
           NSExtensionActivationSupportsText: true,
         },
+        // Android 12+ needs an explicit intent filter to appear in the share
+        // sheet; `text/*` catches the shared link/caption (Instagram et al.
+        // share the reel URL as text). No image/video rules in M1 — screen
+        // recordings go through the in-app picker, and media rules would make
+        // Reelmap show up in every photo share sheet.
+        androidIntentFilters: ['text/*'],
       },
     ],
   ],

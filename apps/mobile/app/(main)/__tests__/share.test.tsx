@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 
 import ShareScreen from '../share';
 import { api } from '@/api/client';
 import type { ShareDetail } from '@/api/shares';
+import { useUiStore } from '@/stores/ui';
 
 import { mockRouter } from '../../../jest.setup';
 
@@ -43,7 +44,10 @@ beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   mock = new AxiosMockAdapter(api);
   mockRouter.push.mockClear();
+  mockRouter.replace.mockClear();
   mockRouter.params = {};
+  // No share staged in the UI store unless a test opts in (auth-gate resume).
+  useUiStore.setState({ pendingShare: null });
   // Recent-shares list: default to empty so the section stays hidden unless a
   // test opts in.
   mock.onGet('/shares').reply(200, { data: [] });
@@ -108,7 +112,79 @@ it('auto-submits a link shared in from the iOS share sheet', async () => {
   render(<ShareScreen />, { wrapper: Providers });
 
   expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
-  expect(sent).toMatchObject({ url: 'https://instagram.com/reel/abc', shared_via: 'paste_url' });
+  expect(sent).toMatchObject({ url: 'https://instagram.com/reel/abc', shared_via: 'share_sheet' });
+});
+
+it('resumes a share staged in the UI store (unauthenticated share surviving login)', async () => {
+  // The root ShareIntentRedirect stages the payload before the sign-in redirect
+  // so it isn't lost to the auth gate; post-login the ingest screen consumes it.
+  useUiStore.setState({ pendingShare: { url: 'https://tiktok.com/@a/video/1', text: '' } });
+  let sent: Record<string, unknown> = {};
+  mock.onPost('/shares').reply((cfg) => {
+    sent = JSON.parse(cfg.data);
+    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
+  });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
+  expect(sent).toMatchObject({ url: 'https://tiktok.com/@a/video/1', shared_via: 'share_sheet' });
+  // The staged share is consumed exactly once (not left to re-fire on resume).
+  expect(useUiStore.getState().pendingShare).toBeNull();
+});
+
+it('shows a platform badge for a recognized pasted link', async () => {
+  render(<ShareScreen />, { wrapper: Providers });
+
+  // Nothing typed → no badge.
+  expect(screen.queryByText('Instagram')).not.toBeOnTheScreen();
+
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://www.instagram.com/reel/x/');
+  expect(await screen.findByText('Instagram')).toBeOnTheScreen();
+
+  // A different host re-derives the badge; an unrecognized one hides it.
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://youtu.be/abc');
+  expect(await screen.findByText('YouTube')).toBeOnTheScreen();
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://example.com/x');
+  expect(screen.queryByText('YouTube')).not.toBeOnTheScreen();
+});
+
+it('notes a re-shared post as already added (idempotent replay), not an error', async () => {
+  mock.onPost('/shares').reply(202, { data: { id: '1', status: 'published' }, meta: { idempotent_replay: true } });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+
+  expect(await screen.findByText('You already added this one.')).toBeOnTheScreen();
+  expect(screen.getByText('Clara Café')).toBeOnTheScreen();
+});
+
+it('offers Retry on a failed share and re-runs the pipeline', async () => {
+  mock.onPost('/shares').reply(201, { data: shareDetail({ id: '1', status: 'pending' }) });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({
+      id: '1',
+      status: 'failed',
+      failure: { code: 'ollama_unreachable', step: 'analyze', message: 'Analysis failed. Please try again.', manual_fallback: false },
+    }),
+  });
+  mock.onPost('/shares/1/retry').reply(202, {});
+
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+
+  expect(await screen.findByText('Analysis failed. Please try again.')).toBeOnTheScreen();
+  fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+
+  await waitFor(() => expect(mock.history.post.some((r) => r.url === '/shares/1/retry')).toBe(true));
 });
 
 it('lists recent shares with a status pill and taps a published one through', async () => {

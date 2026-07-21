@@ -8,6 +8,7 @@ import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
 import { useT } from '@/i18n';
 import { formErrors } from '@/lib/form-errors';
+import { useUiStore } from '@/stores/ui';
 
 export default function RegisterScreen() {
   const styles = useAuthFormStyles();
@@ -17,6 +18,9 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const register = useRegister();
+  // A first-time sharer has no account, so the share staged by the share-intent
+  // flow (T-025) must survive registration too — resume on the ingest screen.
+  const pendingShare = useUiStore((s) => s.pendingShare);
 
   const { fieldErrors, generalError } = formErrors(register.error);
 
@@ -24,7 +28,7 @@ export default function RegisterScreen() {
     register.mutate(
       { name: name.trim(), username: username.trim(), email: email.trim(), password },
       {
-        onSuccess: () => router.replace('/(main)/map'),
+        onSuccess: () => router.replace(pendingShare ? '/(main)/share' : '/(main)/map'),
         onError: () => setPassword(''),
       },
     );
@@ -32,6 +36,11 @@ export default function RegisterScreen() {
 
   return (
     <AuthScreenLayout title={t('auth.register.title')} subtitle={t('auth.register.subtitle')}>
+      {pendingShare ? (
+        <View style={styles.banner} accessibilityRole="alert">
+          <Text style={styles.bannerText}>{t('auth.login.shareBanner')}</Text>
+        </View>
+      ) : null}
       <TextField label={t('auth.field.name')} value={name} onChangeText={setName} autoCapitalize="words" error={fieldErrors.name} />
       <TextField label={t('auth.field.username')} value={username} onChangeText={setUsername} error={fieldErrors.username} />
       <TextField

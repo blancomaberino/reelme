@@ -1,16 +1,20 @@
 import { create } from 'zustand';
 
-// Transient UI flags. `pendingShareUrl` is used by the share-intent flow (T-025).
+// Transient UI flags. `pendingShare` carries a link/text shared into Reelmap
+// (T-025) across the auth gate: it's staged BEFORE any login redirect so an
+// unauthenticated share survives sign-in and resumes on the ingest screen.
+type PendingShare = { url: string; text: string };
+
 type UiState = {
   rateLimited: boolean;
-  pendingShareUrl: string | null;
+  pendingShare: PendingShare | null;
   setRateLimited: (value: boolean) => void;
-  setPendingShareUrl: (url: string | null) => void;
+  setPendingShare: (share: PendingShare | null) => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
   rateLimited: false,
-  pendingShareUrl: null,
+  pendingShare: null,
   setRateLimited: (rateLimited) => set({ rateLimited }),
-  setPendingShareUrl: (pendingShareUrl) => set({ pendingShareUrl }),
+  setPendingShare: (pendingShare) => set({ pendingShare }),
 }));
