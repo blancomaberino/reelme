@@ -118,6 +118,40 @@ it('revives a taken-down Google-verified place to pending, not straight to activ
     expect($place->fresh()->status)->toBe(PlaceStatus::Pending); // revived, but back in review — not auto-activated
 });
 
+it('does not clobber a concurrent activation when recomputing off a stale place (T-087 lock)', function () {
+    // A taken-down place (Removed) is re-shared by two influencers concurrently.
+    // Publisher A revives + activates it (enough corroboration) → Active in the DB.
+    // Publisher B holds an instance loaded while it was still Removed; with only its
+    // own single source, B's revival logic lands on Pending. Pre-fix B wrote that
+    // stale Pending back — downgrading A's Active. recompute() now reads the
+    // authoritative status under the row lock first, so A's activation survives.
+    $place = Place::factory()->create([
+        'status' => PlaceStatus::Removed,
+        'google_place_id' => 'ChIJconcurrent',
+        'google_rating_count' => 120,
+    ]);
+
+    // Publisher B's stale in-memory instance (loaded while still Removed).
+    $stale = Place::query()->findOrFail($place->id);
+    expect($stale->status)->toBe(PlaceStatus::Removed);
+
+    // A concurrent publish already revived + activated the place in the DB.
+    $place->forceFill(['status' => PlaceStatus::Active])->save();
+
+    // B's own share + a single published source — its revival alone lands on Pending.
+    $share = Share::factory()->create(['status' => ShareStatus::Analyzing, 'user_confirmed' => false]);
+    $source = PlaceSource::factory()->create([
+        'place_id' => $place->id, 'share_id' => $share->id, 'published_at' => now(),
+    ]);
+
+    app(PlacePublisher::class)->recompute($stale, $share, $source);
+
+    // Activation survived (status read from the locked row, not the pre-lock
+    // snapshot), counters recomputed under the lock from the committed source set.
+    expect($place->fresh()->status)->toBe(PlaceStatus::Active)
+        ->and($place->fresh()->shares_count)->toBe(1);
+});
+
 it('is idempotent across redelivery — publishing twice keeps counts stable', function () {
     bindGeocoder((new FakeGeocoder)->seed('Lanzhou Beef Noodle House', geoResult('ChIJidem2', 51.5, -0.13)));
     $share = analyzingShare();
