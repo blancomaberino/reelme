@@ -163,6 +163,12 @@ it('runs the full pipeline to a resolved place (sync queue + fakes)', function (
         ->and($share->published_place_source_id)->not->toBeNull()
         ->and($share->stageMetrics()->pluck('stage')->all())->toContain('ingest', 'fetch', 'extract', 'resolve', 'publish');
 
+    // T-093: every stage that ran through the worker closed its metric
+    // (running → completed) with a measured duration — not a bare "running".
+    $metrics = $share->stageMetrics()->get();
+    expect($metrics->pluck('status')->unique()->all())->toBe(['completed'])
+        ->and($metrics->every(fn ($m) => $m->duration_ms !== null))->toBeTrue();
+
     $place = Place::sole();
     expect($place->google_place_id)->toBe('ChIJpipeline')
         ->and($place->status)->toBe(PlaceStatus::Pending) // single unverified source stays pending

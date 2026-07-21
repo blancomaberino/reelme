@@ -48,6 +48,17 @@ abstract class PipelineStubJob implements ShouldQueue
         return ["share:{$this->shareId}", "stage:{$this->stage()}"];
     }
 
+    /**
+     * Close this job's stage metric on success/failure (T-093). Only fires when
+     * run through the queue worker; a direct ->handle() in a test bypasses it.
+     *
+     * @return array<int, object>
+     */
+    public function middleware(): array
+    {
+        return $this->stageMetricMiddleware();
+    }
+
     public function handle(): void
     {
         $share = Share::find($this->shareId);
