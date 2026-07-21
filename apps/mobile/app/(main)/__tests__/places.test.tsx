@@ -49,6 +49,9 @@ beforeEach(() => {
   mock = new AxiosMockAdapter(api);
   mock.onGet('/tags').reply(200, { data: [] });
   mock.onGet('/me/places/tags').reply(200, { data: [] });
+  // Country/type filter options come from a dedicated full-collection facet
+  // endpoint (T-088); default to empty and override per test that needs chips.
+  mock.onGet('/me/places/facets').reply(200, { data: { countries: [], types: [] } });
   mockRouter.push.mockClear();
   // My places requires auth.
   useSessionStore.setState({ user: null, status: 'authed' });
@@ -103,11 +106,12 @@ it('re-fetches with country filter when a facet chip is toggled', async () => {
   mock
     .onGet('/me/places', { params: { limit: 20, sort: 'recent', country: 'PT' } })
     .reply(200, page([place('1', { country_code: 'PT' })]));
+  mock.onGet('/me/places/facets').reply(200, { data: { countries: ['PT'], types: [] } });
 
   render(<MyPlacesScreen />, { wrapper: Providers });
   await screen.findByText('Place 1');
 
-  // The country facet lives in the filter sheet, derived from the loaded rows (PT).
+  // The country facet lives in the filter sheet, populated from the facet endpoint.
   fireEvent.press(screen.getByLabelText('Filters'));
   fireEvent.press(await screen.findByLabelText('PT'));
   await waitFor(() =>
@@ -115,12 +119,31 @@ it('re-fetches with country filter when a facet chip is toggled', async () => {
   );
 });
 
+it('offers a country facet present only BEYOND the first loaded page (T-088)', async () => {
+  // Page 1 (the only page the list renders up front) is all GB — the old
+  // page-1-derived facets would therefore never offer PT. The facet endpoint,
+  // computed over the FULL collection, still surfaces it.
+  const gb = Array.from({ length: 20 }, (_, i) => place(String(i), { country_code: 'GB' }));
+  mock.onGet('/me/places', { params: { limit: 20, sort: 'recent' } }).reply(200, page(gb, 'CUR'));
+  mock.onGet('/me/places/facets').reply(200, { data: { countries: ['GB', 'PT'], types: [] } });
+
+  render(<MyPlacesScreen />, { wrapper: Providers });
+  await screen.findByText('Place 0');
+
+  fireEvent.press(screen.getByLabelText('Filters'));
+  // PT is offered even though no PT row is on the loaded page.
+  expect(await screen.findByLabelText('PT')).toBeOnTheScreen();
+  expect(screen.getByLabelText('GB')).toBeOnTheScreen();
+});
+
 it('keeps all country facet chips after filtering, so you can switch directly (BUG G)', async () => {
-  // Unfiltered (facet source) has PT + AR; filtering to PT narrows the LIST only.
+  // The facet endpoint (full collection) offers PT + AR; filtering to PT narrows
+  // only the LIST, never the facet options (they don't depend on the filter).
   mock.onGet('/me/places', { params: { limit: 20, sort: 'recent' } })
     .reply(200, page([place('1', { country_code: 'PT' }), place('2', { country_code: 'AR' })]));
   mock.onGet('/me/places', { params: { limit: 20, sort: 'recent', country: 'PT' } })
     .reply(200, page([place('1', { country_code: 'PT' })]));
+  mock.onGet('/me/places/facets').reply(200, { data: { countries: ['AR', 'PT'], types: [] } });
 
   render(<MyPlacesScreen />, { wrapper: Providers });
   await screen.findByText('Place 1');
@@ -131,8 +154,7 @@ it('keeps all country facet chips after filtering, so you can switch directly (B
   expect(screen.getByLabelText('AR')).toBeOnTheScreen();
 
   fireEvent.press(screen.getByLabelText('PT'));
-  // After filtering to PT, the AR option must NOT vanish (facets come from the
-  // unfiltered set) — you can switch straight to AR.
+  // After filtering to PT, the AR option must NOT vanish — you can switch to AR.
   await waitFor(() => expect(screen.queryByText('Place 2')).toBeNull());
   expect(screen.getByLabelText('AR')).toBeOnTheScreen();
 });

@@ -137,6 +137,10 @@ Route::prefix('v1')->group(function () {
         // places, for the filter autocomplete. Registered before any {place}
         // route so the literal "tags" segment can never be read as a place.
         Route::get('/me/places/tags', [MePlacesController::class, 'tags'])->middleware('throttle:map');
+        // Country + type facets of my places (T-088): distinct values over the FULL
+        // collection so the filter chips aren't capped at the first loaded page.
+        // Literal segment registered before any {place} route (see "tags" above).
+        Route::get('/me/places/facets', [MePlacesController::class, 'facets'])->middleware('throttle:map');
         // Remove a place from my collection (soft-hide my shares + un-save).
         Route::delete('/me/places/{place}', [MePlacesController::class, 'destroy']);
 

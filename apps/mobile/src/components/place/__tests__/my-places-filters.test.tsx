@@ -5,7 +5,6 @@ import { type ReactNode, useState } from 'react';
 
 import { api } from '@/api/client';
 import type { MyPlacesFilters as Filters } from '@/api/keys';
-import type { PlaceSummary } from '@/api/places';
 import { MyPlacesFilters } from '@/components/place/my-places-filters';
 
 let mock: AxiosMockAdapter;
@@ -15,39 +14,31 @@ function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-/** A minimal my-places row; only country_code / category feed the facet chips. */
-function place(over: Partial<PlaceSummary>): PlaceSummary {
-  return {
-    id: 'p1',
-    name: 'Place',
-    slug: 'place',
-    status: 'active',
-    lat: 0,
-    lng: 0,
-    category: null,
-    price_range: null,
-    city: null,
-    country_code: 'AR',
-    source_count: 0,
-    rating: { google: { value: null, count: 0 } },
-    distance_m: null,
-    created_at: null,
-    ...over,
-  };
-}
-
 /** Drives MyPlacesFilters with real state so chips reflect the applied patch. */
-function Harness({ places, initial = { sort: 'recent' } }: { places: PlaceSummary[]; initial?: Filters }) {
+function Harness({
+  countries = COUNTRIES,
+  types = TYPES,
+  initial = { sort: 'recent' },
+}: {
+  countries?: string[];
+  types?: string[];
+  initial?: Filters;
+}) {
   const [filters, setFilters] = useState<Filters>(initial);
   return (
-    <MyPlacesFilters places={places} filters={filters} onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))} />
+    <MyPlacesFilters
+      countries={countries}
+      types={types}
+      filters={filters}
+      onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
+    />
   );
 }
 
-const PLACES = [
-  place({ id: 'a', country_code: 'AR', category: 'bakery' }),
-  place({ id: 'b', country_code: 'UY', category: 'american' }),
-];
+// The country/type options now come from the full-collection facet endpoint,
+// passed straight in as props (T-088) — no longer derived from loaded rows.
+const COUNTRIES = ['AR', 'UY'];
+const TYPES = ['bakery', 'american'];
 
 beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -61,7 +52,7 @@ afterEach(() => {
 });
 
 it('picks a country in the sheet and shows it as a removable chip', async () => {
-  render(<Harness places={PLACES} />, { wrapper: Providers });
+  render(<Harness />, { wrapper: Providers });
 
   // Country codes are hidden until the sheet opens.
   expect(screen.queryByText('UY')).toBeNull();
@@ -75,7 +66,7 @@ it('picks a country in the sheet and shows it as a removable chip', async () => 
 });
 
 it('toggles the sort order between recent and popular', async () => {
-  render(<Harness places={PLACES} />, { wrapper: Providers });
+  render(<Harness />, { wrapper: Providers });
   fireEvent.press(screen.getByLabelText('Filters'));
 
   // "Recent" starts selected; picking "Popular" flips the accessibility state.
@@ -86,7 +77,7 @@ it('toggles the sort order between recent and popular', async () => {
 });
 
 it('clear removes every applied facet at once', async () => {
-  render(<Harness places={PLACES} initial={{ sort: 'recent', country: 'AR', type: 'bakery' }} />, {
+  render(<Harness initial={{ sort: 'recent', country: 'AR', type: 'bakery' }} />, {
     wrapper: Providers,
   });
 
