@@ -8,8 +8,8 @@ use App\Filament\Resources\Places\PlaceResource;
 use App\Models\Place;
 use App\Models\PlaceMerge;
 use App\Services\Moderation\PlaceModerator;
+use App\Services\Places\PlaceDedupMatcher;
 use App\Services\Places\PlaceMerger;
-use App\Services\Places\PlaceResolver;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
@@ -23,7 +23,7 @@ use Throwable;
  * The dedup decision surface (T-035): approve a pending place as genuinely
  * new, merge it into a nearby candidate duplicate, hide spam, or undo a
  * wrong merge. Actions delegate to {@see PlaceMerger}; the candidate list
- * shares {@see PlaceResolver::candidatesFor()} with the pipeline dedup.
+ * shares {@see PlaceDedupMatcher::candidatesFor()} with the pipeline dedup.
  */
 class ViewPlace extends ViewRecord
 {
@@ -91,7 +91,7 @@ class ViewPlace extends ViewRecord
                 // UI, not authority — a tampered id must not merge arbitrary places.
                 $candidateIds = array_map(
                     fn (array $c) => $c['place_id'],
-                    app(PlaceResolver::class)->candidatesFor($record),
+                    app(PlaceDedupMatcher::class)->candidatesFor($record),
                 );
                 if (! in_array($target->id, $candidateIds, true)) {
                     Notification::make()->title('Not a candidate')->body('The target must come from the candidate list.')->danger()->send();
@@ -204,7 +204,7 @@ class ViewPlace extends ViewRecord
     private static function candidateOptions(Place $record): array
     {
         $options = [];
-        foreach (app(PlaceResolver::class)->candidatesFor($record) as $candidate) {
+        foreach (app(PlaceDedupMatcher::class)->candidatesFor($record) as $candidate) {
             $options[(int) $candidate['place_id']] = sprintf(
                 '%s — %.1f%% · %dm · %s',
                 $candidate['name'],
