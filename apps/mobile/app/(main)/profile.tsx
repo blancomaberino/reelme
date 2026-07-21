@@ -37,6 +37,16 @@ export default function ProfileScreen() {
         <VerifyEmailBanner />
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={t('profile.myShares')}
+          onPress={() => router.push('/shares')}
+          style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+        >
+          <Ionicons name="share-outline" size={20} color={c.text} />
+          <Text style={styles.settingsLabel}>{t('profile.myShares')}</Text>
+          <Ionicons name="chevron-forward" size={18} color={c.muted} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={t('profile.edit')}
           onPress={() => router.push('/profile/edit')}
           style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}

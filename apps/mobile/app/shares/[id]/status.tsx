@@ -10,6 +10,7 @@ import { hasEditableExtraction, isRetryable, isTerminal, type ShareDetail, type 
 import { Button } from '@/components/button';
 import { PendingVenues } from '@/components/share/pending-venues';
 import { type MessageKey, useT } from '@/i18n';
+import { safeBack } from '@/lib/nav';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 // The pipeline stages, in order, with the label shown for each stepper row. The
@@ -74,7 +75,7 @@ export default function StatusScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={() => router.back()} hitSlop={12}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={safeBack} hitSlop={12}>
           <Ionicons name="chevron-back" size={26} color={c.text} />
         </Pressable>
         <Text style={styles.headerTitle}>{t('shares.detail.title')}</Text>

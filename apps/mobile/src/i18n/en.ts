@@ -306,6 +306,8 @@ export const en = {
   'follow.following': 'Following',
 
   // Share status + extraction review (T-026)
+  'profile.myShares': 'My shares',
+  'shares.list.empty': 'Nothing shared yet.',
   'shares.detail.title': 'Your share',
   'shares.notFound': 'This share couldn’t be found.',
   'shares.step.pending': 'Queued',

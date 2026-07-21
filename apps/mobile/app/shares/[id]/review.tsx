@@ -23,6 +23,7 @@ import { EvidencePanel } from '@/components/share/review/evidence-panel';
 import { PinAdjuster } from '@/components/share/review/pin-adjuster';
 import { PriceSelect } from '@/components/share/review/price-select';
 import { type MessageKey, useT } from '@/i18n';
+import { safeBack } from '@/lib/nav';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 // App default center (matches the map screen) — the pin's starting point when the
@@ -182,7 +183,7 @@ function ReviewForm({ share, shareId }: { share: ShareDetail; shareId: string })
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={() => router.back()} hitSlop={12}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={safeBack} hitSlop={12}>
           <Ionicons name="chevron-back" size={26} color={c.text} />
         </Pressable>
         <Text style={styles.headerTitle}>{t('review.title')}</Text>

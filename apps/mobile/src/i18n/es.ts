@@ -306,6 +306,8 @@ export const es: Record<MessageKey, string> = {
   'follow.following': 'Siguiendo',
 
   // Estado del compartido + revisión de extracción (T-026)
+  'profile.myShares': 'Mis compartidos',
+  'shares.list.empty': 'Todavía no compartiste nada.',
   'shares.detail.title': 'Tu compartido',
   'shares.notFound': 'No se encontró este compartido.',
   'shares.step.pending': 'En cola',
