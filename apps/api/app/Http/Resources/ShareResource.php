@@ -132,13 +132,23 @@ class ShareResource extends JsonResource
             return null;
         }
 
-        $coords = $place->coordinates();
+        // Prefer the lat/lng the controller hydrated inline on the eager-loaded
+        // place (T-086) — avoids a per-place `Place::coordinates()` point query
+        // (the GET /shares N+1). Fall back to the point read only when a caller
+        // hands us a place without the selected coordinates.
+        $lat = $place->getAttribute('lat');
+        $lng = $place->getAttribute('lng');
+        if ($lat === null || $lng === null) {
+            $coords = $place->coordinates();
+            $lat = $coords['lat'];
+            $lng = $coords['lng'];
+        }
 
         return [
             'id' => (string) $place->id,
             'name' => $place->name,
-            'lat' => $coords['lat'],
-            'lng' => $coords['lng'],
+            'lat' => (float) $lat,
+            'lng' => (float) $lng,
         ];
     }
 
