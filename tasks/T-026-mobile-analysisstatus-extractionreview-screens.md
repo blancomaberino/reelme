@@ -68,3 +68,25 @@ Manual device steps (dev client + local API): share a URL that the seeded backen
 - `react-native-maps` on Android requires the dev-client build (Google Maps native module + API key from `app.config.ts`) — Expo Go will crash; same dev-client caveat as T-025.
 - The PATCH payload must be the **merged full extraction** (server validates against the whole schema with `additionalProperties: false`) — send every field, not a diff.
 - Poll interval respects battery/rate limits: 2.5 s × the 60/min default limiter is fine, but pause polling when the app backgrounds (`AppState`) to avoid burning the rate limit before the user returns.
+
+## Log
+
+### 2026-07-21 — Implemented (branch `feat/T-026-mobile-analysis-review`, status → in_progress)
+
+Built the two screens + the correction form on top of the mature inline `share.tsx` compose flow rather than replacing it. All mobile gates green: `expo lint`, `tsc --noEmit`, `jest` **270 → 271** (11 new, both screens + interactive editors), new-code coverage: hooks 100%, review components ~95%, screens ~82%.
+
+**Shipped**
+- `app/shares/[id]/status.tsx` — deep-linkable AnalysisStatus: vertical stepper (pending→fetching→analyzing→review/published), terminal handling (published success + View-on-map + PendingVenues; failure card), and the failure-reason table. Auto-`router.replace`s an *editable* review to the correction form.
+- `app/shares/[id]/review.tsx` — ExtractionReview correction form (loader parent + lazy-init form child, no setState-in-effect): editable name/category/cuisines/price/full-address/venue-handle, per-field confidence tints (`confidence.per_field`), evidence panel (caption/transcript quotes), pan-under-fixed-crosshair `PinAdjuster`, dedupe `CandidatePicker`, `DishEditor`, vibe/dietary chip multi-selects. Confirm → `PATCH /shares/:id {extraction(partial), place_candidate, action:'publish'}` → `router.replace` to status; Discard → `DELETE`. 422 → per-field errors via the T-010 `ValidationError` interceptor.
+- Components under `src/components/share/review/` (self-contained `makeStyles`, MERCADO design): `confidence-field`, `chip-select`, `price-select`, `dish-editor`, `evidence-panel`, `candidate-picker`, `pin-adjuster`.
+- Hooks `useUpdateShare` (PATCH, seeds+invalidates share/map/my-places) + `useDiscardShare` (DELETE). Narrowed `ShareDetail.analysis.extraction` from `Record<string,unknown>` → `ReelmapExtraction` (imported from `@reelmap/contracts`); added `isRetryable`/`hasEditableExtraction`/`ShareUpdatePayload`/`FailureCode` + `ExtractionPlace`.
+- Wire-ups: `share.tsx` review dead-end → "Review & publish" CTA (when `hasEditableExtraction`); recent-share rows for non-published shares → `/shares/[id]/status`. Routes registered in the root Stack. i18n keys (en+es) under `shares.*` / `review.*`.
+
+**Deviations from the spec (ADRs — spec NOT edited)**
+1. **Additive, not a rewrite** — kept the inline `share.tsx` compose→publish flow (mature, auto-opens the pin on clean publish) and added the dedicated `/status` + `/review` routes as the re-entry + correction surfaces. `/status` is what My-Shares rows / push (T-027) / Maestro deep-link into; the inline flow hands off to `/review` for the correction.
+2. **Real failure taxonomy** — the failure-reason table keys on the ACTUAL pipeline codes (`fetch_unavailable`, `fetch_auth_required`, `geocode_failed`, `media_too_large`, `ffmpeg_error`, `transcribe_error`, `cost_cap_exceeded`, `quota_exhausted`, `invalid_model_output`, `resolve_conflict`), **not** the spec's guessed names (`unsupported_url`/`private_post`/`not_a_restaurant`/`analysis_failed`/`quota_exceeded`), which don't exist. Unknown codes fall back to generic copy.
+3. **Partial correction, not full merged payload** — earlier note said "send every field". The API (T-097 `ExtractionCorrector`) deep-merges a PARTIAL and validates the *merged* result, so the form sends only the edited leaves for `places[0]` (+ `place_candidate`). Lists (cuisines/dishes/tags) replace wholesale so they're sent in full.
+4. **Untouched pin re-geocodes** — `place_candidate.lat/lng` is sent ONLY when the user actually pans the crosshair; an untouched pin is omitted so the backend re-geocodes the corrected address (better for `geocode_failed`). A picked candidate sends `place_candidate.place_id` and hides the pin adjuster.
+5. **Deferred, noted for follow-up:** (a) link-account action — no mobile link screen yet (T-015 follow-up), so private posts (`fetch_auth_required`) route to "Add by hand"; (b) keyframe thumbnails in the evidence panel — the share payload carries only `frame_refs` indexes, not asset URLs, so the API must expose keyframe media first; (c) influencer handle/platform shown as read-only "posted by" context (editable field is the venue `handle`, which drives placement); (d) vibe/dietary tags rendered as canonical English enum labels (title-cased) — discovery-side i18n is server-driven.
+
+**On merge:** flip T-026 → done in tasks.json. Device-verify: seed a `geocode_failed` review → stepper → auto-lands on the form → edit name, pan pin, Publish → status watches it publish → View on map. Then a bad-URL failure → correct failure copy + Retry.

@@ -1,6 +1,8 @@
 # Reelmap — Roadmap
 
 > How to read this file: phases are strictly ordered (M0 → M5). A phase is **done** when every task tagged with it in `tasks/tasks.json` has `status: "done"` and the exit criteria below pass. Agents: always work the lowest incomplete phase; within it, pick any task whose `depends_on` are all done.
+>
+> **PRIORITY OVERRIDE (owner request 2026-07-21):** the **[ARCH](#arch--architecture-hardening-highest-priority)** phase (architecture hardening, T-085–T-097) is the **current highest-priority phase** and is worked **before** any remaining M1/M3/M4/M5 backlog. Within ARCH, honor `depends_on`, then P0 before P1.
 
 ## Phase overview
 
@@ -12,6 +14,7 @@
 | M3 | Social | Public profiles, influencer identities & claiming, follows, notifications center | M2 |
 | M4 | Monetization | Restaurant claims & offers, QR redemptions with attribution, double-entry ledger, Stripe Connect payouts | M2 (M3 for influencer claiming) |
 | M5 | Hardening & Launch | Moderation, GDPR, observability, E2E tests, store submission, production deploy, GitHub Actions CI (scheduled last) | M1–M4 |
+| **ARCH** | **Architecture Hardening** | **Correctness/data-integrity fixes, observability, contract safety, god-object decomposition surfaced by the 2026-07-21 audit — worked next, ahead of remaining backlog** | **M0–M2 (all deps already done)** |
 
 ## M0 — Foundations
 
@@ -96,6 +99,53 @@ Scope: reports + moderation queue + DMCA flow; GDPR export/delete jobs + media r
 - Maestro E2E green in CI against staging; account deletion fully purges user data (verified by test).
 - Apps submitted to TestFlight + Play internal track; staging + production environments documented in runbooks.
 - GitHub Actions CI (T-006) green on `main`: api (Pint/PHPStan/Pest on PostGIS+Redis), mobile (eslint/tsc/jest), contracts (schema + drift). _Scheduled last per request; note the tension with "Maestro E2E green in CI" above, which assumes CI exists earlier — flagged for revisit._
+
+## ARCH — Architecture Hardening (highest priority)
+
+**Origin:** a seasoned-architect audit of the backend + frontend on **2026-07-21** (four parallel
+agents: API/service layer, domain/data/money, mobile, cross-cutting). 50 raw findings →
+13 prioritized tasks (**T-085–T-097**). This phase is worked **before** the remaining M1/M3/M4/M5
+backlog per owner request. All dependencies are already `done`, so every task is immediately
+workable. Each ships with meaningful tests + gates like any other task; deviations recorded as ADRs.
+
+**P0 — correctness & data integrity (do first)**
+- **T-085** `PlaceEditor.apply()` lock+refetch before diffing `locked_fields` — closes the
+  enrichment-clobbers-manual-edit race (confirmed against source; breaks the T-084 "override wins"
+  guarantee).
+- **T-086** Eliminate the `GET /shares` N+1 (`Place::coordinates()` per-place raw query) — confirmed.
+- **T-087** Lock `PlacePublisher::recompute()`'s count-then-save — concurrent-publish counter race.
+- **T-088** "My places" filter facets over the full collection, not page 1 (silent 20-row cap).
+- **T-089** `unmerge()` restores `place_list_items`/`hidden_places` — admin-undo data loss.
+
+**P1 — reliability, observability, contract safety**
+- **T-090** Mobile top-level `ErrorBoundary` + crash reporting (none today ⇒ blank-screen crashes).
+- **T-091** Sentry (or equiv) on the API HTTP handler + queue failed-job hook. *(pulls the core of
+  M5 T-052 forward)*
+- **T-092** Real `request_id` — `AssignRequestId` middleware + log/job propagation (nothing sets it today).
+- **T-093** Finish `ShareStageMetric`: completion/failure/duration, not just a `running` marker.
+- **T-094** Mobile consumes `@reelmap/contracts` instead of hand-duplicated API types (the one
+  un-diffed drift gap). *(relates to CI T-006)*
+
+**P1 — god-object decomposition**
+- **T-095** Split `PlaceResolver` (783 lines) → `PlaceDedupMatcher` + `PlaceFactory`; drop the
+  duplicate hand-rolled Jaro-Winkler.
+- **T-096** Decompose the `Place` god model (787 lines) → `PlaceAggregations`; add a
+  discount SQL↔PHP twin-drift test.
+- **T-097** Extract `ShareController::update()`'s ~150-line merge/diff engine → `ExtractionCorrector`.
+
+**Deferred from the audit (not in this phase):** consistency/cleanup items (Policies vs inline
+ownership checks, `PlatformAccountController` error-envelope dup, shared mobile Card/Row primitives,
+status-aware React Query retry, coverage gate + CI-gated Maestro, `ExtractionSchema`→injectable,
+`useSharePolling` dedup, `Place.$fillable` tightening, PHPStan 6→8/9, `source_posts.platform`
+unknown-value ADR). The **ledger/offers/redemptions** (M4) and **GDPR erasure** (M5 T-050) systems
+don't exist yet — the audit's guidance is to build them *with* `PlaceMerger`-grade locking/idempotency
+when they land.
+
+**Exit criteria**
+- All T-085–T-097 `done`; each with meaningful tests (happy + failure/edge) and green gates.
+- The two confirmed correctness defects (T-085 lock-race, T-086 N+1) have regression tests that
+  fail before the fix and pass after.
+- No behavioral regressions: contract drift green; API/mobile suites green.
 
 ## Dependency graph (phase level)
 
