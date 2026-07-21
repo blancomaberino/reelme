@@ -6,6 +6,7 @@ use App\Enums\ShareStatus;
 use App\Jobs\Pipeline;
 use App\Models\Place;
 use App\Models\Share;
+use App\Services\Places\PublishBestGuess;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -45,6 +46,11 @@ class ShareResource extends JsonResource
                 'extraction' => $run->result_json,
             ],
             'failure' => $this->failurePayload(),
+            // Confirm-before-publish (T-098): true when the sharer can skip the
+            // confirm and publish the best guess as-is (low_confidence / ambiguous);
+            // false for reviews that need a location first (geocode_failed).
+            'can_publish_best_guess' => $this->status === ShareStatus::Review
+                && in_array($this->review_reason, PublishBestGuess::PLACEABLE_REASONS, true),
             // `place` = the primary published pin (back-compat single-place clients);
             // `places` = EVERY published pin (a multi-place post resolves to several).
             'place' => $this->placePayload(),

@@ -18,3 +18,7 @@ Schedule::command('reelmap:google:refresh-stale')->daily()->onOneServer()->witho
 // T-082: keep cached Trustpilot summaries fresh within their own window.
 // A no-op unless the Trustpilot source is enabled + keyed.
 Schedule::command('reelmap:trustpilot:refresh-stale')->daily()->onOneServer()->withoutOverlapping();
+
+// T-098: publish the best guess for uncertain shares whose confirm step was
+// abandoned (shared + closed the app), so nothing dead-ends in review.
+Schedule::command('reelmap:reviews:publish-abandoned')->everyFiveMinutes()->onOneServer()->withoutOverlapping();

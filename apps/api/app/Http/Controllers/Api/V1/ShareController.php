@@ -18,6 +18,7 @@ use App\Models\Share;
 use App\Models\SourcePost;
 use App\Services\Ingestion\UrlCanonicalizer;
 use App\Services\Places\ExtractionCorrector;
+use App\Services\Places\PublishBestGuess;
 use App\Services\Places\ResolvePendingPlace;
 use App\Support\Contracts\ExtractionSchema;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -57,6 +58,7 @@ class ShareController extends Controller
         private readonly UrlCanonicalizer $canonicalizer,
         private readonly AdapterRegistry $registry,
         private readonly ExtractionCorrector $corrector,
+        private readonly PublishBestGuess $bestGuess,
     ) {}
 
     public function store(StoreShareRequest $request): JsonResponse
@@ -160,6 +162,25 @@ class ShareController extends Controller
         Bus::chain(Pipeline::chain($share->id, $stage))->dispatch();
 
         return $this->respondWithShare($share);
+    }
+
+    /**
+     * Skip the confirm step and publish the share's best guess (T-098). The place
+     * goes live immediately and is flagged for admin cleanup — the sharer's intent
+     * is "just add it, I don't want to revise". 409 when the review isn't
+     * best-guessable (e.g. geocode_failed has no location to publish).
+     */
+    public function publishBestGuess(Request $request, Share $share): JsonResponse
+    {
+        $this->authorize('update', $share);
+
+        abort_unless(
+            $this->bestGuess->publish($share),
+            409,
+            'This share cannot be published as-is from its current state.',
+        );
+
+        return $this->respondWithShare($share->refresh());
     }
 
     /**

@@ -51,6 +51,12 @@ class PlacesTable
                     ->label('Google')
                     ->boolean()
                     ->state(fn ($record): bool => $record->google_place_id !== null),
+                IconColumn::make('needs_admin_review')
+                    ->label('Needs review')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-flag')
+                    ->trueColor('warning')
+                    ->falseIcon('heroicon-o-minus'),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),
@@ -65,6 +71,13 @@ class PlacesTable
                 Filter::make('review_queue')
                     ->label('Review queue (pending)')
                     ->query(fn (Builder $query) => $query->where('status', PlaceStatus::Pending->value)),
+                // Confirm-before-publish (T-098): places published as a best guess
+                // (the sharer skipped/abandoned the confirm) — live on the map but
+                // flagged for an admin to verify and clear. The owner-facing chore
+                // became an admin queue.
+                Filter::make('needs_admin_review')
+                    ->label('Needs admin review')
+                    ->query(fn (Builder $query) => $query->where('needs_admin_review', true)),
                 SelectFilter::make('status')
                     ->options(PlaceStatus::class),
                 SelectFilter::make('country_code')
@@ -95,6 +108,18 @@ class PlacesTable
                         app(PlaceModerator::class)->restore([$record]);
                         Notification::make()->success()->title('Place restored to the review queue')->send();
                     }),
+                Action::make('markReviewed')
+                    ->label('Mark reviewed')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('gray')
+                    ->visible(fn (Place $record): bool => $record->needs_admin_review)
+                    ->action(function (Place $record): void {
+                        // Direct assignment — needs_admin_review is a system flag, not
+                        // in $fillable, so ->update() would silently no-op.
+                        $record->needs_admin_review = false;
+                        $record->save();
+                        Notification::make()->success()->title('Cleared from the review queue')->send();
+                    }),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
@@ -117,6 +142,15 @@ class PlacesTable
                         ->action(function (Collection $records): void {
                             app(PlaceModerator::class)->restore($records);
                             Notification::make()->success()->title("Restored {$records->count()} place(s)")->send();
+                        }),
+                    BulkAction::make('markReviewed')
+                        ->label('Mark reviewed')
+                        ->icon('heroicon-o-check-circle')
+                        ->color('gray')
+                        ->deselectRecordsAfterCompletion()
+                        ->action(function (Collection $records): void {
+                            $cleared = Place::whereKey($records->pluck('id'))->update(['needs_admin_review' => false]);
+                            Notification::make()->success()->title("Cleared {$cleared} place(s) from the review queue")->send();
                         }),
                 ]),
             ]);
