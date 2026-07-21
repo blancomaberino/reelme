@@ -1,13 +1,16 @@
-// Discovery-domain API types (places, sources, map, feed, search). Hand-written
-// to mirror the live API resources (PlaceResource, PlaceSummaryResource,
-// MapViewport, FeedItemResource, SearchService) exactly — see the matching
-// JSON Schemas in packages/contracts/schemas. Kept separate from the auth
-// types in ./types.ts.
+// Discovery-domain API types (places, sources, map, feed, search).
+//
+// Shapes that have a JSON Schema in packages/contracts are RE-EXPORTED from
+// @reelmap/contracts (T-094), so a renamed/removed API field breaks these at
+// typecheck time, not on-device: PlaceSummary here, UserProfile in ./profile.ts.
+// The remaining types (map/feed/search rows, and PlaceDetail — pending the
+// schema gaps in place.json, e.g. the ?include=reviews payload) stay hand-written
+// and mirror the live API resources; migrate them as their schemas gain the
+// missing fields (tracked with CI T-006).
+import type { PlaceSummary as ContractPlaceSummary } from '@reelmap/contracts';
 
-export type RatingBlock = {
-  value: number | null;
-  count: number;
-};
+/** Google/native rating pair — the contract's shared rating block. */
+export type RatingBlock = ContractPlaceSummary['rating']['google'];
 
 /** Attribution glyph on a source card / pin (SourcePost.influencer). */
 export type InfluencerSummary = {
@@ -36,31 +39,12 @@ export type UserSummary = {
 
 export type SocialPlatform = 'instagram' | 'x' | 'tiktok' | 'youtube';
 
-/** One row of GET /places, /search places, /me/places, and feed `place` (PlaceSummaryResource). */
-export type PlaceSummary = {
-  id: string;
-  name: string;
-  slug: string;
-  status: 'pending' | 'active';
-  lat: number;
-  lng: number;
-  category: string | null;
-  price_range: number | null;
-  city: string | null;
-  country_code: string;
-  /** Primary reel poster — present on the my-places / per-user lists (T-071). */
-  thumbnail_url?: string | null;
-  /**
-   * Viewer-relative provenance, present only on GET /me/places (T-071): how the
-   * place is "mine". `share_id` is my live share to soft-hide; `saved` whether
-   * it sits in one of my lists. Drives the "remove from my map" action.
-   */
-  mine?: { share_id: string | null; saved: boolean };
-  source_count: number;
-  rating: { google: RatingBlock };
-  distance_m: number | null;
-  created_at: string | null;
-};
+/**
+ * One row of GET /places, /search places, /me/places, and feed `place`
+ * (PlaceSummaryResource). Derived from the schema — the single source of truth
+ * shared with the API (T-094).
+ */
+export type PlaceSummary = ContractPlaceSummary;
 
 export type Dish = {
   name: string;
