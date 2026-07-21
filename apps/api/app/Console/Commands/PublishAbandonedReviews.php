@@ -40,7 +40,8 @@ class PublishAbandonedReviews extends Command
             ->where('status', ShareStatus::Review)
             // best-guessable reasons only — geocode_failed/no_place_extracted can't
             // be placed without human input, so they stay for admin/pin location.
-            ->whereIn('review_reason', ['low_confidence', 'ambiguous_place'])
+            // (canPublish() re-checks per row, incl. the multi-place ambiguous case.)
+            ->whereIn('review_reason', PublishBestGuess::PLACEABLE_REASONS)
             // idle past the grace window (updated_at moves on any edit, so an
             // actively-corrected share isn't swept out from under the sharer).
             ->where('updated_at', '<', $cutoff)

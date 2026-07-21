@@ -47,10 +47,10 @@ class ShareResource extends JsonResource
             ],
             'failure' => $this->failurePayload(),
             // Confirm-before-publish (T-098): true when the sharer can skip the
-            // confirm and publish the best guess as-is (low_confidence / ambiguous);
-            // false for reviews that need a location first (geocode_failed).
-            'can_publish_best_guess' => $this->status === ShareStatus::Review
-                && in_array($this->review_reason, PublishBestGuess::PLACEABLE_REASONS, true),
+            // confirm and publish the best guess as-is (low_confidence / single-place
+            // ambiguous with a candidate); false for reviews that need a location
+            // first (geocode_failed) or can't be best-guessed (multi-place ambiguous).
+            'can_publish_best_guess' => app(PublishBestGuess::class)->canPublish($this->resource),
             // `place` = the primary published pin (back-compat single-place clients);
             // `places` = EVERY published pin (a multi-place post resolves to several).
             'place' => $this->placePayload(),

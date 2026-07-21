@@ -31,8 +31,24 @@ class PublishBestGuess
     /** Whether this share is one the best-guess path can publish (vs. must be located). */
     public function canPublish(Share $share): bool
     {
-        return $share->status === ShareStatus::Review
-            && in_array($share->review_reason, self::PLACEABLE_REASONS, true);
+        if ($share->status !== ShareStatus::Review
+            || ! in_array($share->review_reason, self::PLACEABLE_REASONS, true)) {
+            return false;
+        }
+
+        // An ambiguous review is only best-guessable as a SINGLE-place pick:
+        // PlaceResolver applies review_meta_json['picked_place_id'] only when it
+        // resolves exactly one place, so a multi-place ambiguous would ignore the
+        // pick, re-park in review, and loop forever on the sweep. And there must be
+        // a candidate to attach to. Both cases stay for an admin instead.
+        if ($share->review_reason === 'ambiguous_place') {
+            $pending = is_array($share->review_meta_json) ? ($share->review_meta_json['pending'] ?? []) : [];
+
+            return (! is_array($pending) || count($pending) <= 1)
+                && $this->strongestCandidate($share) !== null;
+        }
+
+        return true;
     }
 
     /**
@@ -46,29 +62,24 @@ class PublishBestGuess
             return false;
         }
 
-        // Ambiguous match → the best guess is the strongest candidate; stash it as
-        // the picked place so the re-dispatched ResolvePlace attaches straight to
-        // it (bypassing the dedup that couldn't decide). No candidate to pick → not
-        // best-guessable, leave it for an admin.
-        if ($share->review_reason === 'ambiguous_place') {
-            $picked = $this->strongestCandidate($share);
-            if ($picked === null) {
-                return false;
-            }
-            $meta = is_array($share->review_meta_json) ? $share->review_meta_json : [];
-            $meta['picked_place_id'] = $picked;
-            $share->review_meta_json = $meta;
-        }
-
-        $share->flagged_uncertain = true;
-        $share->save();
-
-        // Only dispatch if we won the optimistic guard — a concurrent confirm/skip
-        // may already have advanced the row; dispatching regardless would enqueue a
-        // duplicate resolve→publish chain.
+        // Win the optimistic guard BEFORE persisting best-guess intent — a lost
+        // race (a concurrent confirm/skip already advanced the row) must not leave
+        // `flagged_uncertain` or a revived `review_meta_json` on the share, and must
+        // not dispatch a duplicate resolve→publish chain.
         if (! $share->transitionTo(ShareStatus::Analyzing)) {
             return false;
         }
+
+        $share->flagged_uncertain = true;
+        // Ambiguous match → stash the strongest candidate so the re-dispatched
+        // ResolvePlace attaches straight to it (bypassing the dedup that couldn't
+        // decide). canPublish() already guaranteed a candidate exists.
+        if ($share->review_reason === 'ambiguous_place') {
+            $meta = is_array($share->review_meta_json) ? $share->review_meta_json : [];
+            $meta['picked_place_id'] = $this->strongestCandidate($share);
+            $share->review_meta_json = $meta;
+        }
+        $share->save();
 
         Bus::chain(Pipeline::chain($share->id, 'resolve'))->dispatch();
 

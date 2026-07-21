@@ -30,7 +30,7 @@ return new class extends Migration
 
         Schema::table('places', function (Blueprint $table): void {
             $table->boolean('needs_admin_review')->default(false)->after('status');
-            // Partial-ish index — the admin queue only scans the flagged minority.
+            // Indexed for the admin queue's `WHERE needs_admin_review = true` scan.
             $table->index(['needs_admin_review'], 'places_needs_admin_review_index');
         });
     }

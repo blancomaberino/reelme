@@ -81,6 +81,27 @@ it('refuses to best-guess an ambiguous review with no candidates', function () {
     expect($share->refresh()->flagged_uncertain)->toBeFalse();
 });
 
+it('refuses to best-guess a multi-place ambiguous review (the pick would be ignored and loop)', function () {
+    Bus::fake();
+    $user = User::factory()->create();
+    Sanctum::actingAs($user);
+    $existing = Place::factory()->create(['status' => PlaceStatus::Active]);
+    // two unresolved venues → PlaceResolver won't apply picked_place_id (single-place
+    // only), so this must NOT be best-guessable (else it re-parks and loops forever).
+    $share = bestGuessReview($user, 'ambiguous_place', [
+        'pending' => [
+            ['index' => 0, 'name' => 'A', 'candidates' => [['place_id' => $existing->id, 'similarity' => 0.9]]],
+            ['index' => 1, 'name' => 'B', 'candidates' => []],
+        ],
+        'candidates' => [['place_id' => $existing->id, 'similarity' => 0.9]],
+    ]);
+
+    $this->postJson("/api/v1/shares/{$share->id}/publish-best-guess")->assertStatus(409);
+    $this->getJson("/api/v1/shares/{$share->id}")
+        ->assertOk()->assertJsonPath('data.can_publish_best_guess', false);
+    Bus::assertNothingDispatched();
+});
+
 it('forbids publishing another user’s share as-is', function () {
     Bus::fake();
     $owner = User::factory()->create();
@@ -107,6 +128,14 @@ it('exposes can_publish_best_guess on the share resource', function () {
 it('flags the place needs_admin_review for a best-guess publish, and clears it on confirm', function () {
     $place = Place::factory()->create(['status' => PlaceStatus::Pending, 'needs_admin_review' => false]);
 
+    // a plain confident publish (neither flagged nor confirmed) leaves it false
+    $confidentShare = Share::factory()->create(['flagged_uncertain' => false, 'user_confirmed' => false]);
+    $confidentSource = PlaceSource::factory()->create([
+        'place_id' => $place->id, 'share_id' => $confidentShare->id, 'published_at' => now(),
+    ]);
+    app(PlacePublisher::class)->recompute($place->fresh(), $confidentShare, $confidentSource);
+    expect($place->fresh()->needs_admin_review)->toBeFalse();
+
     // best-guess (skip/abandon) → flagged
     $guessShare = Share::factory()->create(['flagged_uncertain' => true, 'user_confirmed' => false]);
     $guessSource = PlaceSource::factory()->create([
@@ -124,21 +153,30 @@ it('flags the place needs_admin_review for a best-guess publish, and clears it o
     expect($place->fresh()->needs_admin_review)->toBeFalse();
 });
 
-it('sweeps abandoned low-confidence reviews but leaves fresh ones and geocode failures', function () {
+it('sweeps abandoned low-confidence and single-place ambiguous reviews, leaving fresh ones and non-placeable reasons', function () {
     Bus::fake();
     $user = User::factory()->create();
+    $existing = Place::factory()->create(['status' => PlaceStatus::Active]);
 
-    $abandoned = bestGuessReview($user, 'low_confidence');
-    $abandoned->forceFill(['updated_at' => now()->subMinutes(30)])->saveQuietly();
+    $lowConf = bestGuessReview($user, 'low_confidence');
+    $lowConf->forceFill(['updated_at' => now()->subMinutes(30)])->saveQuietly();
 
-    $fresh = bestGuessReview($user, 'low_confidence'); // updated_at = now
+    $ambiguous = bestGuessReview($user, 'ambiguous_place', [
+        'candidates' => [['place_id' => $existing->id, 'similarity' => 0.9]],
+    ]);
+    $ambiguous->forceFill(['updated_at' => now()->subMinutes(30)])->saveQuietly();
+
+    $fresh = bestGuessReview($user, 'low_confidence'); // updated_at = now → not idle
     $geocode = bestGuessReview($user, 'geocode_failed');
     $geocode->forceFill(['updated_at' => now()->subMinutes(30)])->saveQuietly();
 
     $this->artisan('reelmap:reviews:publish-abandoned')->assertSuccessful();
 
-    expect($abandoned->refresh()->status)->toBe(ShareStatus::Analyzing)
-        ->and($abandoned->flagged_uncertain)->toBeTrue()
+    // both placeable idle reviews published; the ambiguous one attached to its candidate
+    expect($lowConf->refresh()->status)->toBe(ShareStatus::Analyzing)
+        ->and($lowConf->flagged_uncertain)->toBeTrue()
+        ->and($ambiguous->refresh()->status)->toBe(ShareStatus::Analyzing)
+        ->and($ambiguous->review_meta_json['picked_place_id'])->toBe($existing->id)
         ->and($fresh->refresh()->status)->toBe(ShareStatus::Review)
         ->and($geocode->refresh()->status)->toBe(ShareStatus::Review);
 });

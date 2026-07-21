@@ -130,3 +130,18 @@ it('surfaces the needs-admin-review queue and clears the flag (T-098)', function
 
     expect($flagged->fresh()->needs_admin_review)->toBeFalse();
 });
+
+it('bulk-clears the needs-admin-review flag from several places (T-098)', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $a = Place::factory()->create(['status' => PlaceStatus::Active, 'needs_admin_review' => true]);
+    $b = Place::factory()->create(['status' => PlaceStatus::Active, 'needs_admin_review' => true]);
+    $keep = Place::factory()->create(['status' => PlaceStatus::Active, 'needs_admin_review' => true]);
+
+    Livewire::test(ListPlaces::class)
+        ->callTableBulkAction('markReviewed', [$a, $b]);
+
+    expect($a->fresh()->needs_admin_review)->toBeFalse()
+        ->and($b->fresh()->needs_admin_review)->toBeFalse()
+        ->and($keep->fresh()->needs_admin_review)->toBeTrue(); // unselected → untouched
+});

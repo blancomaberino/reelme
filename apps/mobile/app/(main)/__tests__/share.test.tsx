@@ -116,6 +116,25 @@ it('offers "Publish anyway" for an uncertain review and skips to the status scre
   expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/shares/[id]/status', params: { id: '1' } });
 });
 
+it('does not offer "Publish anyway" for a review that needs a location (can_publish_best_guess false)', async () => {
+  mock.onPost('/shares').reply(201, { data: shareDetail({ id: '1', status: 'pending' }) });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({
+      id: '1',
+      status: 'review',
+      can_publish_best_guess: false,
+      failure: { code: 'geocode_failed', step: 'resolve', message: 'Couldn’t place it', manual_fallback: true },
+    }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+
+  await screen.findByText('Couldn’t place it');
+  expect(screen.queryByText('Publish anyway')).toBeNull();
+});
+
 it('auto-submits a link shared in from the iOS share sheet', async () => {
   // The root ShareIntentRedirect routes here with sharedUrl set; the screen
   // should POST it without any tap and drive to the published result.
