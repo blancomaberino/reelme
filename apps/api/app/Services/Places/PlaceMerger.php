@@ -95,15 +95,24 @@ class PlaceMerger
             // follows the merge to the survivor instead of dangling on the
             // tombstone (T-071). Move where the survivor isn't already saved/hidden
             // by that owner (the unique constraint), then drop the redundant rest.
-            // NOTE: unmerge() does NOT restore these onto the resurrected loser
-            // (unlike place_sources) — a saved place stays on the survivor after an
-            // unmerge. Acceptable for now (admin-only, rare); a full snapshot/restore
-            // into the PlaceMerge record is a follow-up.
+            // Snapshot the loser's pre-merge rows so unmerge() restores them (T-089),
+            // mirroring the place_sources moved/dropped split: rows moved to the
+            // survivor are moved back by id, rows dropped as redundant are re-inserted.
+            $collectionSnapshot = [];
             foreach ([['place_list_items', 'place_list_id'], ['hidden_places', 'user_id']] as [$table, $ownerCol]) {
-                DB::table($table)->where('place_id', $loser->id)
-                    ->whereNotIn($ownerCol, fn ($q) => $q->select($ownerCol)->from($table)->where('place_id', $winner->id))
-                    ->update(['place_id' => $winner->id]);
-                DB::table($table)->where('place_id', $loser->id)->delete();
+                $loserRows = DB::table($table)->where('place_id', $loser->id)->orderBy('id')->get();
+                $winnerOwners = DB::table($table)->where('place_id', $winner->id)->pluck($ownerCol)->all();
+
+                $movedRows = $loserRows->whereNotIn($ownerCol, $winnerOwners)->values();
+                $droppedRows = $loserRows->whereIn($ownerCol, $winnerOwners)->values();
+
+                DB::table($table)->whereIn('id', $movedRows->pluck('id'))->update(['place_id' => $winner->id]);
+                DB::table($table)->where('place_id', $loser->id)->delete(); // the redundant leftovers
+
+                $collectionSnapshot[$table] = [
+                    'moved_ids' => $movedRows->pluck('id')->all(),
+                    'dropped_rows' => $droppedRows->map(fn ($row) => (array) $row)->all(),
+                ];
             }
 
             // Capture the loser's data, then tombstone it — releasing its unique
@@ -130,6 +139,7 @@ class PlaceMerger
                     'attributes' => collect($donor)->only(self::MUTATED_FIELDS)->all(),
                     'source_primary_flags' => $loserSources->pluck('is_primary', 'id')->all(),
                     'tag_pivots' => $loserPivots,
+                    'collections' => $collectionSnapshot,
                 ],
                 'target_tag_pivots' => $winnerPivots,
                 'target_backfilled_fields' => $backfilled,
@@ -210,6 +220,29 @@ class PlaceMerger
             DB::table('place_tag')->where('place_id', $loser->id)->delete();
             foreach ($this->pivotsWithLiveTags((array) ($snapshot['tag_pivots'] ?? [])) as $pivot) {
                 DB::table('place_tag')->insertOrIgnore($pivot);
+            }
+
+            // Restore the loser's personal-collection references (T-089): rows moved
+            // to the survivor move back by id (guarded to rows still on the winner —
+            // the owner may have un-saved since), rows dropped as redundant are
+            // re-inserted. Only the snapshotted rows are touched, so anything the
+            // owner saved/hid on the winner AFTER the merge stays on the winner. The
+            // table list is hardcoded (never read from the snapshot) — no injection.
+            $collections = (array) ($snapshot['collections'] ?? []);
+            foreach (['place_list_items', 'hidden_places'] as $table) {
+                $entry = (array) ($collections[$table] ?? []);
+
+                $movedIds = (array) ($entry['moved_ids'] ?? []);
+                if ($movedIds !== []) {
+                    DB::table($table)
+                        ->whereIn('id', $movedIds)
+                        ->where('place_id', $winner->id)
+                        ->update(['place_id' => $loser->id]);
+                }
+
+                foreach ((array) ($entry['dropped_rows'] ?? []) as $row) {
+                    DB::table($table)->insertOrIgnore((array) $row);
+                }
             }
 
             $this->ensurePrimary($winner);
