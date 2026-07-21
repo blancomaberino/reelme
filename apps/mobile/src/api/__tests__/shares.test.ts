@@ -28,7 +28,15 @@ describe('platformFromUrl', () => {
   it('returns null for unrecognized or malformed input', () => {
     expect(platformFromUrl('https://example.com/x')).toBeNull();
     expect(platformFromUrl('not a url')).toBeNull();
-    // Guards against a naive substring match granting a lookalike host.
+    // Guards against a naive suffix/substring match granting a lookalike host:
+    // a subdomain-appended host and a prefix-glued host must both be rejected.
     expect(platformFromUrl('https://instagram.com.evil.test/x')).toBeNull();
+    expect(platformFromUrl('https://notinstagram.com/x')).toBeNull();
+  });
+
+  it('handles www, other subdomains, and an explicit port', () => {
+    expect(platformFromUrl('https://instagram.com/reel/x')).toBe('instagram');
+    expect(platformFromUrl('https://m.youtube.com/watch?v=x')).toBe('youtube');
+    expect(platformFromUrl('https://instagram.com:443/reel/x')).toBe('instagram');
   });
 });

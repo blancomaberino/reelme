@@ -130,12 +130,15 @@ export type SharePlatform = 'instagram' | 'tiktok' | 'x' | 'youtube';
  * returns null for anything unrecognized so the badge simply hides.
  */
 export function platformFromUrl(url: string): SharePlatform | null {
-  const match = url.trim().match(/^https?:\/\/(?:www\.)?([^/?#]+)/i);
-  const host = match?.[1]?.toLowerCase();
+  const match = url.trim().match(/^https?:\/\/([^/?#]+)/i);
+  // Drop any port, then match the registrable domain or a subdomain of it — a
+  // bare `endsWith('instagram.com')` would also match `notinstagram.com`.
+  const host = match?.[1]?.toLowerCase().replace(/:\d+$/, '');
   if (!host) return null;
-  if (host.endsWith('instagram.com')) return 'instagram';
-  if (host.endsWith('tiktok.com')) return 'tiktok';
-  if (host === 'x.com' || host.endsWith('.x.com') || host.endsWith('twitter.com')) return 'x';
-  if (host.endsWith('youtube.com') || host === 'youtu.be') return 'youtube';
+  const isHost = (domain: string) => host === domain || host.endsWith(`.${domain}`);
+  if (isHost('instagram.com')) return 'instagram';
+  if (isHost('tiktok.com')) return 'tiktok';
+  if (isHost('x.com') || isHost('twitter.com')) return 'x';
+  if (isHost('youtube.com') || host === 'youtu.be') return 'youtube';
   return null;
 }

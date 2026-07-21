@@ -8,6 +8,7 @@ import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
 import { useT } from '@/i18n';
 import { formErrors } from '@/lib/form-errors';
+import { useUiStore } from '@/stores/ui';
 
 const RESEND_COOLDOWN = 60;
 
@@ -20,6 +21,8 @@ export default function VerifyEmailScreen() {
   const [cooldown, setCooldown] = useState(0);
   const verify = useVerifyEmail();
   const resend = useResendVerification();
+  // Resume a share staged before sign-up (T-025) once the account is confirmed.
+  const pendingShare = useUiStore((s) => s.pendingShare);
 
   const { fieldErrors, generalError } = formErrors(verify.error);
 
@@ -35,7 +38,7 @@ export default function VerifyEmailScreen() {
   function submit() {
     verify.mutate(
       { email: address, code: code.trim() },
-      { onSuccess: () => router.replace('/(main)/map') },
+      { onSuccess: () => router.replace(pendingShare ? '/(main)/share' : '/(main)/map') },
     );
   }
 

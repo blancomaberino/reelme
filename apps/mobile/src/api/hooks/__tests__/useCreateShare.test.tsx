@@ -69,7 +69,7 @@ it('forwards an explicit sharedVia (share sheet) over the default', async () => 
     await result.current.mutateAsync({ url: 'https://ig.com/reel/x', sharedVia: 'share_sheet' });
   });
 
-  expect(sent).toMatchObject({ shared_via: 'share_sheet' });
+  expect(sent).toMatchObject({ url: 'https://ig.com/reel/x', shared_via: 'share_sheet' });
 });
 
 it('sends a caption when no url is given', async () => {

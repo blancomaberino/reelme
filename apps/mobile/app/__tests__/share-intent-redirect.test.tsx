@@ -4,6 +4,7 @@ import AxiosMockAdapter from 'axios-mock-adapter';
 import RootLayout from '../_layout';
 import { api } from '@/api/client';
 import { clearToken, setToken } from '@/api/token';
+import { useSessionStore } from '@/stores/session';
 import { useUiStore } from '@/stores/ui';
 
 import { mockRouter } from '../../jest.setup';
@@ -23,6 +24,9 @@ beforeEach(() => {
   mock = new AxiosMockAdapter(api);
   mockRouter.replace.mockClear();
   useUiStore.setState({ pendingShare: null });
+  // Reset the auth gate to its real starting point so ShareIntentRedirect waits
+  // for the bootstrap instead of inheriting a prior test's resolved status.
+  useSessionStore.setState({ user: null, status: 'loading' });
   mockIntent = { webUrl: null, text: null };
 });
 afterEach(async () => {
@@ -48,5 +52,8 @@ it('extracts a URL from shared text and routes an authed user straight to ingest
   render(<RootLayout />);
 
   await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/(main)/share'));
-  expect(useUiStore.getState().pendingShare?.url).toBe('https://www.tiktok.com/@a/video/1');
+  expect(useUiStore.getState().pendingShare).toEqual({
+    url: 'https://www.tiktok.com/@a/video/1',
+    text: 'Best tacos! https://www.tiktok.com/@a/video/1 🌮',
+  });
 });

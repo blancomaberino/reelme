@@ -20,15 +20,16 @@ import { SaveToListSheet } from '@/components/place/save-to-list';
 import { PendingVenues } from '@/components/share/pending-venues';
 import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
+import { platformIcon } from '@/lib/format';
 import { useUiStore } from '@/stores/ui';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
-/** Brand names + Ionicons glyphs for the platform badge (client-side hint). */
-const PLATFORM_BADGE: Record<SharePlatform, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  instagram: { label: 'Instagram', icon: 'logo-instagram' },
-  tiktok: { label: 'TikTok', icon: 'logo-tiktok' },
-  x: { label: 'X', icon: 'logo-twitter' },
-  youtube: { label: 'YouTube', icon: 'logo-youtube' },
+/** Brand-cased labels for the platform badge; the glyph reuses `platformIcon`. */
+const PLATFORM_LABEL: Record<SharePlatform, string> = {
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  x: 'X',
+  youtube: 'YouTube',
 };
 
 const STAGE_KEY: Partial<Record<ShareStatus, MessageKey>> = {
@@ -99,6 +100,9 @@ export default function ShareScreen() {
   const staged = useUiStore((s) => s.pendingShare);
   const handled = useRef('');
   useEffect(() => {
+    // Store (share-sheet) and route params (deep-link/CI) are never both set at
+    // once, so this single fallback picks the right one; `handled` dedupes the
+    // extra run that clearing the store triggers.
     const u = (staged?.url ?? sharedUrl ?? '').trim();
     const txt = (staged?.text ?? sharedText ?? '').trim();
     if (staged) useUiStore.getState().setPendingShare(null);
@@ -135,12 +139,13 @@ export default function ShareScreen() {
             />
             {platform ? (
               <View
+                accessible
                 accessibilityRole="text"
-                accessibilityLabel={t('share.platformDetected', { platform: PLATFORM_BADGE[platform].label })}
+                accessibilityLabel={t('share.platformDetected', { platform: PLATFORM_LABEL[platform] })}
                 style={styles.platformBadge}
               >
-                <Ionicons name={PLATFORM_BADGE[platform].icon} size={14} color={c.primary} />
-                <Text style={styles.platformBadgeText}>{PLATFORM_BADGE[platform].label}</Text>
+                <Ionicons name={platformIcon(platform)} size={14} color={c.primary} />
+                <Text style={styles.platformBadgeText}>{PLATFORM_LABEL[platform]}</Text>
               </View>
             ) : null}
             <TextField
