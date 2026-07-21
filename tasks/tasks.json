@@ -2425,7 +2425,7 @@
    "id": "T-093",
    "title": "ARCH/P1: finish ShareStageMetric — record stage completion/failure/duration (not just a 'running' marker) + pipeline logs",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-016",
     "T-017"
@@ -2449,7 +2449,7 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P1 observability. Audit 2026-07-21: RecordsStageMetrics only ever creates status='running'; duration_ms/attempt are dead columns. Overlaps M5 T-052 (stage metrics) — this does the queryable-telemetry core now."
+   "notes": "P1 observability. Audit 2026-07-21: RecordsStageMetrics only ever creates status='running'; duration_ms/attempt are dead columns. Overlaps M5 T-052 (stage metrics) — this does the queryable-telemetry core now. | 2026-07-21: implemented (TracksStageMetric middleware + trait complete/fail + logs), gates green (829), /coderabbit approved, PR #124."
   },
   {
    "id": "T-094",
