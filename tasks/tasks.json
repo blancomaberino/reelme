@@ -2396,7 +2396,7 @@
    "id": "T-092",
    "title": "ARCH/P1: make request_id real — AssignRequestId middleware + log/job propagation",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-002"
    ],
@@ -2419,7 +2419,7 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P1 observability. Audit 2026-07-21: renderer + PlatformAccountController read attributes->get('request_id') but NOTHING sets it (no Middleware dir) — correlation is non-functional in an async pipeline. Prereq that makes T-091 useful."
+   "notes": "P1 observability. Audit 2026-07-21: renderer + PlatformAccountController read attributes->get('request_id') but NOTHING sets it (no Middleware dir) — correlation is non-functional in an async pipeline. Prereq that makes T-091 useful. | 2026-07-21: implemented (AssignRequestId + Context + renderer + IngestShare log), gates green (829), /coderabbit approved, PR #123."
   },
   {
    "id": "T-093",
