@@ -1,5 +1,7 @@
-// Hand-written for M0. TODO: switch to @reelmap/contracts once the API's JSON
-// resources are generated there (contracts only carries the extraction schema at M0).
+// Auth-domain types (GET /me, auth responses). Hand-written: there is no JSON
+// Schema for the auth payloads in packages/contracts yet, so these can't be
+// contract-derived like the discovery shapes in ./places.ts / ./profile.ts
+// (T-094). Add an `auth`/`me` schema to contracts to bring them under drift.
 
 export type Me = {
   id: string;

@@ -1,16 +1,12 @@
+import type { UserProfile } from '@reelmap/contracts';
+
 import type { FeedItem, InfluencerSummary, SharerSummary } from './places';
 
-/** Public profile shape (GET /users/{username}). */
-export type PublicProfile = {
-  id: string;
-  username: string;
-  name: string | null;
-  bio: string | null;
-  avatar_path: string | null;
-  is_influencer: boolean;
-  counters: { published_shares: number; followers: number; following: number };
-  created_at: string | null;
-};
+/**
+ * Public profile shape (GET /users/{username}) — derived from the schema
+ * (@reelmap/contracts UserProfile) so a field rename fails typecheck (T-094).
+ */
+export type PublicProfile = UserProfile;
 
 /** Viewer-relative follow state (meta.viewer on GET /users/{username}). */
 export type ProfileViewer = { following: boolean; follow_id: string | null };
