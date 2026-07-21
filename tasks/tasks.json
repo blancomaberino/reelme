@@ -2485,7 +2485,7 @@
    "id": "T-095",
    "title": "ARCH/P1: split PlaceResolver (783 lines) into PlaceDedupMatcher + PlaceFactory + thin orchestrator; drop the duplicate hand-rolled Jaro-Winkler",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-023"
    ],
@@ -2506,7 +2506,7 @@
     "Gates: composer lint + stan + test green; record the split as an ADR in the plan"
    ],
    "agent": "executor",
-   "notes": "P1 maintainability. Audit 2026-07-21: 783-line god service mixing dedup tree + raw PostGIS SQL + hand-rolled Jaro-Winkler + place creation + locking. Largest single-file blast-radius risk in Services. Record deviations as ADR per CLAUDE.md."
+   "notes": "P1 maintainability. Audit 2026-07-21: 783-line god service mixing dedup tree + raw PostGIS SQL + hand-rolled Jaro-Winkler + place creation + locking. Largest single-file blast-radius risk in Services. Record deviations as ADR per CLAUDE.md. | 2026-07-21: implemented (PlaceDedupMatcher + PlaceFactory, JW retained per ADR-095), gates green (832), /coderabbit approved, PR #126."
   },
   {
    "id": "T-096",
