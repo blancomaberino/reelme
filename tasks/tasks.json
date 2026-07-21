@@ -2230,7 +2230,7 @@
    "id": "T-086",
    "title": "ARCH/P0: eliminate GET /shares N+1 (Place::coordinates() per-place raw query in ShareResource)",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-016"
    ],
@@ -2250,7 +2250,7 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P0 performance/correctness. Confirmed 2026-07-21 audit: 25-75 extra synchronous round-trips per /shares page. Classic 'eager-loaded the relation but N+1'd on a derived value'."
+   "notes": "P0 performance/correctness. Confirmed 2026-07-21 audit: 25-75 extra synchronous round-trips per /shares page. Classic 'eager-loaded the relation but N+1'd on a derived value'. | 2026-07-21: implemented, gates green (826 tests), /coderabbit approved, PR #119 open."
   },
   {
    "id": "T-087",
