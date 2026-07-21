@@ -253,6 +253,55 @@ it('unmerges: sources, primary flags, attributes, counters and status all restor
         ->and($merge->fresh()->undone_at)->not->toBeNull();
 });
 
+it('unmerge restores the loser’s saved-list items and hides — moved and dropped-redundant (T-089)', function () {
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Winner']);
+    $loser = Place::factory()->active()->atPoint(51.5, -0.13)->create(['name' => 'Loser']);
+    PlaceSource::factory()->primary()->create(['place_id' => $winner->id]);
+    PlaceSource::factory()->primary()->create(['place_id' => $loser->id]);
+
+    // saver: had only the LOSER in their list → row MOVES to the winner on merge.
+    $saver = User::factory()->create();
+    $saverList = PlaceList::factory()->for($saver)->create();
+    $saverList->items()->create(['place_id' => $loser->id, 'position' => 1]);
+
+    // dupUser: had BOTH winner + loser saved/hidden → the loser rows are DROPPED
+    // as redundant on merge (winner already covers that owner).
+    $dupUser = User::factory()->create();
+    $dupList = PlaceList::factory()->for($dupUser)->create();
+    $dupList->items()->create(['place_id' => $winner->id, 'position' => 1]);
+    $dupList->items()->create(['place_id' => $loser->id, 'position' => 2]);
+    HiddenPlace::create(['user_id' => $dupUser->id, 'place_id' => $winner->id]);
+    HiddenPlace::create(['user_id' => $dupUser->id, 'place_id' => $loser->id]);
+
+    // hider: had only the LOSER hidden → hide MOVES to the winner on merge.
+    $hider = User::factory()->create();
+    HiddenPlace::create(['user_id' => $hider->id, 'place_id' => $loser->id]);
+
+    (new PlaceMerger)->merge($winner, $loser);
+    // Sanity: after merge the loser holds none of these rows.
+    $this->assertDatabaseMissing('place_list_items', ['place_id' => $loser->id]);
+    $this->assertDatabaseMissing('hidden_places', ['place_id' => $loser->id]);
+
+    (new PlaceMerger)->unmerge(PlaceMerge::sole());
+
+    // Moved rows return to the loser…
+    $this->assertDatabaseHas('place_list_items', ['place_list_id' => $saverList->id, 'place_id' => $loser->id]);
+    $this->assertDatabaseMissing('place_list_items', ['place_list_id' => $saverList->id, 'place_id' => $winner->id]);
+    $this->assertDatabaseHas('hidden_places', ['user_id' => $hider->id, 'place_id' => $loser->id]);
+    $this->assertDatabaseMissing('hidden_places', ['user_id' => $hider->id, 'place_id' => $winner->id]);
+
+    // …dropped-redundant rows are re-created on the loser, while the dupUser's
+    // own winner rows (which were never the loser's) stay on the winner.
+    $this->assertDatabaseHas('place_list_items', ['place_list_id' => $dupList->id, 'place_id' => $loser->id]);
+    $this->assertDatabaseHas('place_list_items', ['place_list_id' => $dupList->id, 'place_id' => $winner->id]);
+    $this->assertDatabaseHas('hidden_places', ['user_id' => $dupUser->id, 'place_id' => $loser->id]);
+    $this->assertDatabaseHas('hidden_places', ['user_id' => $dupUser->id, 'place_id' => $winner->id]);
+
+    // The saver's collection shows the resurrected loser again, not the survivor.
+    expect(Place::query()->publiclyVisible()->mine($saver)->pluck('name'))->toContain('Loser')
+        ->not->toContain('Winner');
+});
+
 it('unmerge keeps a winner backfill the admin has since changed', function () {
     $winner = Place::factory()->atPoint(51.5, -0.13)->create(['phone' => null]);
     $loser = Place::factory()->atPoint(51.5, -0.13)->create(['phone' => '+441111111111']);

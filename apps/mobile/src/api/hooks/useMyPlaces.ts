@@ -1,8 +1,11 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { api } from '../client';
 import { type MyPlacesFilters, queryKeys } from '../keys';
 import type { Paginated, PlaceSummary } from '../places';
+
+/** Distinct country + type facets of my collection (T-088). */
+export type MyPlacesFacets = { countries: string[]; types: string[] };
 
 async function fetchMyPlacesPage(filters: MyPlacesFilters, cursor: string | null): Promise<Paginated<PlaceSummary>> {
   const params: Record<string, string | number | string[]> = { limit: 20 };
@@ -31,6 +34,26 @@ export function useMyPlaces(filters: MyPlacesFilters, opts?: { enabled?: boolean
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.meta.pagination.next_cursor,
     staleTime: 30_000,
+    enabled: opts?.enabled ?? true,
+  });
+}
+
+async function fetchMyPlacesFacets(): Promise<MyPlacesFacets> {
+  const { data } = await api.get<{ data: MyPlacesFacets }>('/me/places/facets');
+  return data.data;
+}
+
+/**
+ * The country + type filter options for "my places" — distinct values over my
+ * FULL collection (T-088), so the chips aren't silently capped at the first
+ * loaded page the way deriving them from the paginated list was. Authed only;
+ * the caller gates `enabled` on the session.
+ */
+export function useMyPlacesFacets(opts?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.myPlacesFacets(),
+    queryFn: fetchMyPlacesFacets,
+    staleTime: 5 * 60_000,
     enabled: opts?.enabled ?? true,
   });
 }

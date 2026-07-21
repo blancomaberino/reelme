@@ -11,12 +11,17 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { fetchMe } from '@/api/hooks/useMe';
 import { extractUrl } from '@/api/shares';
 import { clearToken, getToken } from '@/api/token';
+import { ErrorBoundary } from '@/components/error-boundary';
+import { initCrashReporting } from '@/lib/crash-reporting';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
 import { useUiStore } from '@/stores/ui';
 
 // Keep the splash up until the token check resolves (no login/tab flash).
 SplashScreen.preventAutoHideAsync();
+
+// Wire crash reporting once, at module load — a no-op unless a DSN is configured.
+initCrashReporting();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,24 +39,26 @@ export default function RootLayout() {
         <GestureHandlerRootView style={styles.root}>
           <SafeAreaProvider>
             <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-              <AuthBootstrap />
-              <ShareIntentRedirect />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(main)" />
-                <Stack.Screen name="place/[slug]" />
-                <Stack.Screen name="tag/[slug]" />
-                <Stack.Screen name="settings" />
-                <Stack.Screen name="profile/edit" />
-                <Stack.Screen name="lists/index" />
-                <Stack.Screen name="lists/[id]" />
-                <Stack.Screen name="list/[slug]" />
-                <Stack.Screen name="users/[username]/index" />
-                <Stack.Screen name="users/[username]/followers" />
-                <Stack.Screen name="users/[username]/following" />
-                <Stack.Screen name="invite" />
-              </Stack>
+              <ErrorBoundary>
+                <AuthBootstrap />
+                <ShareIntentRedirect />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="index" />
+                  <Stack.Screen name="(auth)" />
+                  <Stack.Screen name="(main)" />
+                  <Stack.Screen name="place/[slug]" />
+                  <Stack.Screen name="tag/[slug]" />
+                  <Stack.Screen name="settings" />
+                  <Stack.Screen name="profile/edit" />
+                  <Stack.Screen name="lists/index" />
+                  <Stack.Screen name="lists/[id]" />
+                  <Stack.Screen name="list/[slug]" />
+                  <Stack.Screen name="users/[username]/index" />
+                  <Stack.Screen name="users/[username]/followers" />
+                  <Stack.Screen name="users/[username]/following" />
+                  <Stack.Screen name="invite" />
+                </Stack>
+              </ErrorBoundary>
             </ThemeProvider>
           </SafeAreaProvider>
         </GestureHandlerRootView>

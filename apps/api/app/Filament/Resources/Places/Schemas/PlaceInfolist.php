@@ -6,7 +6,7 @@ use App\Enums\PlaceStatus;
 use App\Enums\TagKind;
 use App\Filament\Resources\Places\PlaceResource;
 use App\Models\Place;
-use App\Services\Places\PlaceResolver;
+use App\Services\Places\PlaceDedupMatcher;
 use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -133,7 +133,7 @@ class PlaceInfolist
                         ViewEntry::make('candidates')
                             ->view('filament.places.candidates')
                             ->viewData(fn (Place $record): array => [
-                                'candidates' => app(PlaceResolver::class)->candidatesFor($record),
+                                'candidates' => app(PlaceDedupMatcher::class)->candidatesFor($record),
                             ]),
                     ])
                     ->visible(fn (Place $record): bool => in_array($record->status, [PlaceStatus::Pending, PlaceStatus::Active], true)),

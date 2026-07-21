@@ -27,6 +27,8 @@ class PlaceResolver
         private readonly Geocoder $geocoder,
         private readonly InstagramProfileLocator $profileLocator,
         private readonly GooglePlaceRefresher $googleRefresher,
+        private readonly PlaceDedupMatcher $matcher,
+        private readonly PlaceFactory $factory,
     ) {}
 
     /**
@@ -204,7 +206,7 @@ class PlaceResolver
         return Cache::lock($lockKey, (int) config('places.lock_seconds', 30))->block(5, function () use ($share, $run, $place, $name, $location) {
             $lat = (float) $location->lat;
             $lng = (float) $location->lng;
-            $matches = $this->fuzzyMatches($lat, $lng, $name);
+            $matches = $this->matcher->fuzzyMatches($lat, $lng, $name);
 
             if (count($matches) === 1) {
                 /** @var Place $existing */
@@ -217,7 +219,7 @@ class PlaceResolver
                 return ResolutionOutcome::ambiguous($matches);
             }
 
-            $created = $this->createFromProfile($name, $place, $location);
+            $created = $this->factory->createFromProfile($name, $place, $location);
 
             return ResolutionOutcome::created($created, $this->attach($created, $share, $run, $place));
         });
@@ -285,7 +287,7 @@ class PlaceResolver
         }
 
         // 2. Geo + name fuzzy scan.
-        $matches = $this->fuzzyMatches($geo->lat, $geo->lng, $name);
+        $matches = $this->matcher->fuzzyMatches($geo->lat, $geo->lng, $name);
 
         if (count($matches) === 1) {
             /** @var Place $existing */
@@ -308,171 +310,9 @@ class PlaceResolver
         }
 
         // 3. No match — create a new pending pin.
-        $created = $this->create($geo, $place);
+        $created = $this->factory->create($geo, $place);
 
         return ResolutionOutcome::created($created, $this->attach($created, $share, $run, $place));
-    }
-
-    /**
-     * Dedup matches at a point: the PostGIS candidate scan filtered to those
-     * within the dedup radius AND above the name-similarity threshold. Shared by
-     * the geocoded path and the IG-profile-coordinates fallback (T-075).
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function fuzzyMatches(float $lat, float $lng, string $name): array
-    {
-        $candidates = $this->scanCandidates($lat, $lng, Place::normalizeName($name));
-        $radius = (float) config('places.dedup.radius_meters', 75);
-        $threshold = (float) config('places.dedup.name_similarity_threshold', 0.85);
-
-        return array_values(array_filter(
-            $candidates,
-            fn (array $c) => $c['distance_m'] < $radius && $c['similarity'] >= $threshold,
-        ));
-    }
-
-    /**
-     * Duplicate candidates for an existing place — the same scan the pipeline
-     * dedup runs, exposed for the T-035 admin review queue so both surfaces
-     * agree on what "looks like a duplicate" means. Sorted best-first.
-     *
-     * @return list<array<string, mixed>>
-     */
-    public function candidatesFor(Place $place): array
-    {
-        ['lat' => $lat, 'lng' => $lng] = $place->coordinates();
-
-        $candidates = array_values(array_filter(
-            $this->scanCandidates($lat, $lng, $place->normalized_name),
-            fn (array $c) => $c['place_id'] !== $place->id,
-        ));
-
-        usort($candidates, fn (array $a, array $b) => $b['similarity'] <=> $a['similarity']);
-
-        return $candidates;
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function scanCandidates(float $lat, float $lng, string $normalized): array
-    {
-        $radius = (float) config('places.dedup.radius_meters', 75);
-
-        // Status literals mirror PlaceStatus::matchable() (pending, active) — so a
-        // `removed` tombstone is deliberately excluded from the fuzzy scan: reviving
-        // an orphaned place is exact-google_place_id-only (resolveLocked, step 1), so
-        // an unrelated near-name/near-point post can never resurrect the wrong pin.
-        $rows = DB::select(
-            'SELECT id, name, normalized_name, address_line1, city, region, country_code,
-                    status, shares_count,
-                    ST_Y(location::geometry) AS lat,
-                    ST_X(location::geometry) AS lng,
-                    ST_Distance(location, ST_MakePoint(?, ?)::geography) AS distance_m,
-                    similarity(normalized_name, ?) AS trigram_similarity
-             FROM places
-             WHERE status IN (\'pending\', \'active\')
-               AND merged_into_place_id IS NULL
-               AND ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
-            [$lng, $lat, $normalized, $lng, $lat, $radius]
-        );
-
-        return array_map(function ($row) use ($normalized) {
-            $similarity = max(
-                (float) $row->trigram_similarity,
-                $this->jaroWinkler($normalized, (string) $row->normalized_name),
-            );
-
-            return [
-                'place_id' => (int) $row->id,
-                'name' => (string) $row->name,
-                'distance_m' => round((float) $row->distance_m, 2),
-                'similarity' => round($similarity, 4),
-                'lat' => (float) $row->lat,
-                'lng' => (float) $row->lng,
-                'address' => $this->joinAddress([$row->address_line1, $row->city, $row->region, $row->country_code]),
-                'status' => (string) $row->status,
-                'shares_count' => (int) $row->shares_count,
-            ];
-        }, $rows);
-    }
-
-    /**
-     * @param  array<string, mixed>  $place
-     */
-    private function create(GeocodeResult $geo, array $place): Place
-    {
-        $components = $geo->addressComponents;
-        $address = is_array($place['address'] ?? null) ? $place['address'] : [];
-
-        // Fields sourced from the LLM extraction are untrusted — clamp/truncate to
-        // the column limits so a bad value parks the share via review, not a
-        // QueryException that burns all the job's retries as `resolve_conflict`.
-        $cuisines = is_array($place['cuisines'] ?? null) ? $place['cuisines'] : [];
-
-        $model = new Place([
-            'name' => $this->truncate($geo->canonicalName !== '' ? $geo->canonicalName : (string) ($place['name'] ?? 'Unknown'), 255),
-            'address_line1' => $this->truncate($this->component($components, 'route') ?? ($address['street'] ?? null), 255),
-            'city' => $this->truncate($this->component($components, 'locality') ?? ($address['city'] ?? null), 120),
-            'region' => $this->truncate($this->component($components, 'administrative_area_level_1') ?? ($address['region'] ?? null), 120),
-            'postal_code' => $this->truncate($this->component($components, 'postal_code') ?? ($address['postal_code'] ?? null), 24),
-            'country_code' => $this->countryCode($geo, $address),
-            'google_place_id' => $geo->googlePlaceId,
-            'cuisine_primary' => $this->truncate($cuisines[0] ?? null, 64),
-            'price_range' => $this->priceRange($place['price_range'] ?? null),
-            'phone' => $this->truncate($place['phone'] ?? null, 32),
-            'website' => $this->truncate($place['website'] ?? null, 2048),
-            'google_rating' => $geo->rating,
-            'google_rating_count' => $geo->ratingCount,
-            // NULL (not '[]') when no snippets came back — the ToS refresh
-            // sweep keys on whereNotNull and must not treat "rating, no
-            // snippets" as forever-stale cached content.
-            'google_reviews_json' => $geo->reviews !== [] ? $geo->reviews : null,
-            // ToS clock: cached Places review content must be refreshed or
-            // dropped ~30 days after capture (reelmap:google:refresh-stale).
-            'google_reviews_synced_at' => $geo->reviews !== [] ? now() : null,
-            'status' => PlaceStatus::Pending,
-        ]);
-        $model->setPoint($geo->lat, $geo->lng);
-        $model->save();
-        $model->refresh();
-
-        return $model;
-    }
-
-    /**
-     * Create a pending pin from an IG profile's raw business-address coordinates
-     * (T-075) — no google_place_id (the geocoder couldn't resolve it), so it lands
-     * for review/enrichment. Extraction fields are still clamped to the column
-     * limits (untrusted), with the profile's structured address preferred.
-     *
-     * @param  array<string, mixed>  $place
-     */
-    private function createFromProfile(string $name, array $place, ProfileLocation $location): Place
-    {
-        $address = is_array($place['address'] ?? null) ? $place['address'] : [];
-        $cuisines = is_array($place['cuisines'] ?? null) ? $place['cuisines'] : [];
-
-        $model = new Place([
-            'name' => $this->truncate($name, 255),
-            'address_line1' => $this->truncate($location->street ?? ($address['street'] ?? null), 255),
-            'city' => $this->truncate($location->city ?? ($address['city'] ?? null), 120),
-            'region' => $this->truncate($location->region ?? ($address['region'] ?? null), 120),
-            'postal_code' => $this->truncate($location->postalCode ?? ($address['postal_code'] ?? null), 24),
-            'country_code' => $this->countryFromAddress($address),
-            'google_place_id' => null,
-            'cuisine_primary' => $this->truncate($cuisines[0] ?? null, 64),
-            'price_range' => $this->priceRange($place['price_range'] ?? null),
-            'phone' => $this->truncate($place['phone'] ?? null, 32),
-            'website' => $this->truncate($place['website'] ?? null, 2048),
-            'status' => PlaceStatus::Pending,
-        ]);
-        $model->setPoint((float) $location->lat, (float) $location->lng);
-        $model->save();
-        $model->refresh();
-
-        return $model;
     }
 
     /**
@@ -633,151 +473,5 @@ class PlaceResolver
             lng: isset($geo['lng']) ? (float) $geo['lng'] : null,
             language: is_string($place['language'] ?? null) ? $place['language'] : null,
         );
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $components
-     */
-    private function component(array $components, string $type): ?string
-    {
-        foreach ($components as $component) {
-            if (in_array($type, $component['types'] ?? [], true)) {
-                $value = $component['long_name'] ?? $component['short_name'] ?? null;
-
-                return $value !== null ? (string) $value : null;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $address
-     */
-    /** Clamp an extracted price band to the 1–4 CHECK, else null. */
-    private function priceRange(mixed $value): ?int
-    {
-        if (! is_numeric($value)) {
-            return null;
-        }
-        $int = (int) $value;
-
-        return ($int >= 1 && $int <= 4) ? $int : null;
-    }
-
-    private function truncate(mixed $value, int $max): ?string
-    {
-        if (! is_scalar($value)) {
-            return null;
-        }
-        $trimmed = trim((string) $value);
-
-        return $trimmed === '' ? null : mb_substr($trimmed, 0, $max);
-    }
-
-    /**
-     * @param  array<string, mixed>  $address
-     */
-    private function countryCode(GeocodeResult $geo, array $address): string
-    {
-        foreach ($geo->addressComponents as $component) {
-            if (in_array('country', $component['types'] ?? [], true)) {
-                $short = strtoupper((string) ($component['short_name'] ?? ''));
-                if (strlen($short) === 2) {
-                    return $short;
-                }
-            }
-        }
-
-        return $this->countryFromAddress($address);
-    }
-
-    /**
-     * A 2-letter country code from the extraction address alone (no geocoder
-     * components), else the 'XX' unknown sentinel. Used by the IG-profile-coords
-     * path, which has no GeocodeResult.
-     *
-     * @param  array<string, mixed>  $address
-     */
-    private function countryFromAddress(array $address): string
-    {
-        $extraction = strtoupper(trim((string) ($address['country'] ?? '')));
-
-        return strlen($extraction) === 2 ? $extraction : 'XX';
-    }
-
-    /**
-     * @param  list<string|null>  $parts
-     */
-    private function joinAddress(array $parts): string
-    {
-        return implode(', ', array_filter(array_map(fn ($p) => trim((string) $p), $parts), fn ($p) => $p !== ''));
-    }
-
-    /** Jaro-Winkler similarity (0–1) on two normalized names. */
-    private function jaroWinkler(string $a, string $b): float
-    {
-        if ($a === $b) {
-            return 1.0;
-        }
-        if ($a === '' || $b === '') {
-            return 0.0;
-        }
-
-        $lenA = strlen($a);
-        $lenB = strlen($b);
-        $matchDistance = (int) max(0, floor(max($lenA, $lenB) / 2) - 1);
-
-        $aMatches = array_fill(0, $lenA, false);
-        $bMatches = array_fill(0, $lenB, false);
-        $matches = 0;
-
-        for ($i = 0; $i < $lenA; $i++) {
-            $start = max(0, $i - $matchDistance);
-            $end = min($i + $matchDistance + 1, $lenB);
-            for ($j = $start; $j < $end; $j++) {
-                if ($bMatches[$j] || $a[$i] !== $b[$j]) {
-                    continue;
-                }
-                $aMatches[$i] = true;
-                $bMatches[$j] = true;
-                $matches++;
-                break;
-            }
-        }
-
-        if ($matches === 0) {
-            return 0.0;
-        }
-
-        $transpositions = 0;
-        $k = 0;
-        for ($i = 0; $i < $lenA; $i++) {
-            if (! $aMatches[$i]) {
-                continue;
-            }
-            while (! $bMatches[$k]) {
-                $k++;
-            }
-            if ($a[$i] !== $b[$k]) {
-                $transpositions++;
-            }
-            $k++;
-        }
-        $transpositions = (int) ($transpositions / 2);
-
-        $jaro = (($matches / $lenA) + ($matches / $lenB) + (($matches - $transpositions) / $matches)) / 3;
-
-        // Winkler prefix boost (up to 4 leading chars, factor 0.1).
-        $prefix = 0;
-        $maxPrefix = min(4, $lenA, $lenB);
-        for ($i = 0; $i < $maxPrefix; $i++) {
-            if ($a[$i] !== $b[$i]) {
-                break;
-            }
-            $prefix++;
-        }
-
-        return $jaro + ($prefix * 0.1 * (1 - $jaro));
     }
 }

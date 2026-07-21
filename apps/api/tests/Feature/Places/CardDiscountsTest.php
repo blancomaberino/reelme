@@ -6,6 +6,7 @@ use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Models\User;
+use App\Services\Places\PlaceAggregations;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 
@@ -65,7 +66,7 @@ it('aggregates + dedupes discounts across sources, labelling by issuer/scheme/ha
         ]],
     ]);
 
-    $discounts = $place->load('sources')->aggregatedDiscounts();
+    $discounts = PlaceAggregations::discounts($place->load('sources'));
     $cards = array_column($discounts, 'card');
 
     expect($cards)->toContain('Santander')   // issuer preferred over scheme
@@ -81,7 +82,7 @@ it('agrees between the shown label and the filter for a handle stored with a lea
     // double-prepend: aggregation shows "@prex.uy" and ?card=@prex.uy matches it.
     $place = placeWithDiscounts([['handle' => '@prex.uy', 'terms' => '2x1', 'percent' => null]], 40.0, -3.0, 'Prex Bar');
 
-    expect($place->aggregatedDiscounts())->toBe([
+    expect(PlaceAggregations::discounts($place))->toBe([
         ['card' => '@prex.uy', 'terms' => '2x1', 'percent' => null],
     ]);
 
@@ -102,7 +103,7 @@ it('tolerates a non-array discounts value in a snapshot (filter + facet do not e
         'extraction_snapshot_json' => ['discounts' => 'nonsense'],
     ]);
 
-    expect($place->load('sources')->aggregatedDiscounts())->toBe([]);
+    expect(PlaceAggregations::discounts($place->load('sources')))->toBe([]);
     $this->getJson('/api/v1/places?card=visa')->assertOk();
     $this->getJson('/api/v1/places/payment-cards')->assertOk()->assertJsonPath('data', []);
 });
@@ -112,7 +113,7 @@ it('keeps filter + facet in lockstep with the shown chips for empty terms', func
     // shown chips — the filter and facet must not surface a card that has no chip.
     placeWithDiscounts([['issuer' => 'Ghost', 'terms' => '   ', 'percent' => null]], 40.0, -3.0, 'Ghost Bar');
 
-    expect(Place::where('name', 'Ghost Bar')->first()->load('sources')->aggregatedDiscounts())->toBe([]);
+    expect(PlaceAggregations::discounts(Place::where('name', 'Ghost Bar')->first()->load('sources')))->toBe([]);
     expect($this->getJson('/api/v1/places?card=ghost')->assertOk()->json('data'))->toBe([]);
     expect($this->getJson('/api/v1/places/payment-cards')->assertOk()->json('data'))->toBe([]);
 });
@@ -124,7 +125,7 @@ it('drops discounts with no card label or no terms', function () {
         ['issuer' => 'BROU', 'terms' => '15% off', 'percent' => 15],
     ]);
 
-    expect($place->aggregatedDiscounts())->toBe([
+    expect(PlaceAggregations::discounts($place))->toBe([
         ['card' => 'BROU', 'terms' => '15% off', 'percent' => 15],
     ]);
 });

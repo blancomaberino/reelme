@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Place;
 use App\Models\UserPlaceTag;
+use App\Services\Places\PlaceAggregations;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -63,7 +64,7 @@ class PlaceResource extends JsonResource
     public function toArray(Request $request): array
     {
         $coords = $this->coordinates();
-        $tags = $this->aggregatedTags();
+        $tags = PlaceAggregations::tags($this->resource);
 
         return [
             'id' => (string) $this->id,
@@ -114,7 +115,7 @@ class PlaceResource extends JsonResource
                 fn ($summary) => $summary->toArray(),
                 $this->reviewSummaries(),
             ),
-            'discounts' => $this->aggregatedDiscounts(),
+            'discounts' => PlaceAggregations::discounts($this->resource),
             'sources' => $this->when(
                 in_array('sources', $this->includes, true),
                 fn () => PlaceSourceResource::collection(

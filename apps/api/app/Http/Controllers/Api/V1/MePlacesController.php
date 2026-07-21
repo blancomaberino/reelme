@@ -103,6 +103,32 @@ class MePlacesController extends Controller
     }
 
     /**
+     * The country + type facets of my places — `GET /me/places/facets` (T-088).
+     * Distinct, non-null `country_code` and `cuisine_primary` over the SAME `mine`
+     * scope the list view applies, computed across the FULL collection (not a
+     * single loaded page), so the filter chips never omit a country/category the
+     * user demonstrably has. Mirrors {@see tags()}: facet and results can't disagree.
+     */
+    public function facets(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $distinct = fn (string $column): array => Place::query()
+            ->publiclyVisible()
+            ->mine($user)
+            ->whereNotNull("places.{$column}")
+            ->distinct()
+            ->orderBy("places.{$column}")
+            ->pluck("places.{$column}")
+            ->all();
+
+        return response()->json(['data' => [
+            'countries' => $distinct('country_code'),
+            'types' => $distinct('cuisine_primary'),
+        ]]);
+    }
+
+    /**
      * Remove a place from my collection (T-071/T-073). `mode=hide` (default) is a
      * reversible per-place soft-hide of the pin — it stays in any lists it's in,
      * and only the aggregate map/"my places" hide it; re-sharing or re-saving

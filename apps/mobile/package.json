@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.0",
+    "@reelmap/contracts": "*",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@react-navigation/native": "^7.1.6",
     "@shopify/flash-list": "2.0.2",

@@ -79,6 +79,35 @@ it('does not re-lock fields on an enrichment write', function () {
     expect($place->refresh()->lockedFields())->toBe([]);
 });
 
+it('does not let an in-flight enrichment clobber a field locked mid-run (T-085 race)', function () {
+    $place = Place::factory()->create(['phone' => '+34 600 000 000']);
+
+    // Enrichment loaded the place BEFORE its multi-second network I/O — its
+    // in-memory snapshot still shows `locked_fields = []`.
+    $staleFromEnrichment = Place::query()->findOrFail($place->id);
+    expect($staleFromEnrichment->lockedFields())->toBe([]);
+
+    // While enrichment is doing I/O, an admin PATCH commits, locking `phone`.
+    editor()->apply(
+        Place::query()->findOrFail($place->id),
+        ['phone' => '+1 555 MANUAL'],
+        PlaceEdit::ORIGIN_MANUAL,
+    );
+
+    // Enrichment now finishes and applies its merged patch against its stale model.
+    // The lock+refetch must observe the just-committed lock and refuse the write.
+    $edit = editor()->apply(
+        $staleFromEnrichment,
+        ['phone' => '+1 555 ENRICH'],
+        PlaceEdit::ORIGIN_ENRICHMENT,
+    );
+
+    $place->refresh();
+    expect($place->phone)->toBe('+1 555 MANUAL')            // manual override survived
+        ->and($place->isFieldLocked('phone'))->toBeTrue();  // lock↔value stay consistent
+    expect($edit)->toBeNull();                              // enrichment changed nothing
+});
+
 it('diffs array fields by content, not identity', function () {
     $place = Place::factory()->create(['opening_hours_json' => ['Mo 09:00–17:00']]);
 

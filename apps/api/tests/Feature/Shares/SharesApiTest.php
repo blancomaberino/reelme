@@ -11,6 +11,7 @@ use App\Models\Share;
 use App\Models\ShareStageMetric;
 use App\Models\User;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 
 it('creates a pending share and dispatches the pipeline (202)', function () {
@@ -130,6 +131,63 @@ it('lists only the caller’s shares', function () {
     $this->getJson('/api/v1/shares')
         ->assertOk()
         ->assertJsonCount(2, 'data');
+});
+
+it('lists multi-place shares without a per-place coordinate query (T-086 N+1)', function () {
+    $user = User::factory()->create();
+
+    // Two published shares, each fanning out to two published places (a
+    // multi-place post). The pre-fix path fired Place::coordinates() — an
+    // unconditional single-row point SELECT — once per place per share.
+    $seed = [
+        ['primary' => [51.50, -0.12], 'secondary' => [48.85, 2.35]],
+        ['primary' => [40.41, -3.70], 'secondary' => [41.39, 2.16]],
+    ];
+    $lastPrimary = null;
+    $lastSecondary = null;
+    foreach ($seed as $points) {
+        $share = Share::factory()->for($user)->published()->create();
+        $lastPrimary = Place::factory()->active()->atPoint(...$points['primary'])->create();
+        $lastSecondary = Place::factory()->active()->atPoint(...$points['secondary'])->create();
+
+        $primarySource = PlaceSource::factory()->create([
+            'share_id' => $share->id, 'place_id' => $lastPrimary->id,
+            'source_post_id' => $share->source_post_id,
+            'is_primary' => true, 'published_at' => now(),
+        ]);
+        PlaceSource::factory()->create([
+            'share_id' => $share->id, 'place_id' => $lastSecondary->id,
+            'source_post_id' => $share->source_post_id,
+            'is_primary' => false, 'published_at' => now(),
+        ]);
+        $share->forceFill(['published_place_source_id' => $primarySource->id])->save();
+    }
+
+    Sanctum::actingAs($user);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $res = $this->getJson('/api/v1/shares')->assertOk()->assertJsonCount(2, 'data');
+    $log = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    // The N+1 signature: coordinates() reads a single row by id. After the fix
+    // the eager-load selects lat/lng inline (WHERE places.id IN (...)), so not a
+    // single per-place point read remains.
+    $pointReads = collect($log)->filter(
+        fn (array $q): bool => str_contains($q['query'], 'FROM places WHERE id = ?')
+    );
+    expect($pointReads)->toHaveCount(0);
+
+    // Coordinates are byte-identical to the single-place point read they replace,
+    // and the primary still sorts first in `places[]`. `data.0` is the most-recent
+    // share (orderByDesc id) → the last seeded pair.
+    $data = $res->json('data.0');
+    expect($data['place']['lat'])->toBe($lastPrimary->coordinates()['lat'])
+        ->and($data['place']['lng'])->toBe($lastPrimary->coordinates()['lng'])
+        ->and($data['places'])->toHaveCount(2)
+        ->and($data['places'][0]['lat'])->toBe($lastPrimary->coordinates()['lat'])
+        ->and($data['places'][1]['lat'])->toBe($lastSecondary->coordinates()['lat']);
 });
 
 it('retries a failed share from its failed stage', function () {

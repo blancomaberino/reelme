@@ -37,6 +37,8 @@ export const queryKeys = {
   myPlacesAll: () => ['me', 'places'] as const,
   /** The discovery-tag facet of my places, for the filter autocomplete (ADR-084). */
   myPlacesTags: () => ['me', 'places', 'tags'] as const,
+  /** Country + type facets of my places over the FULL collection (T-088). */
+  myPlacesFacets: () => ['me', 'places', 'facets'] as const,
   /** Prefix covering every map viewport/filter entry — for invalidation. */
   mapAll: () => ['places', 'map'] as const,
   search: (q: string, types: string) => ['search', q, types] as const,
