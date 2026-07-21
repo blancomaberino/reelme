@@ -2366,7 +2366,7 @@
    "id": "T-091",
    "title": "ARCH/P1: wire Sentry (or equiv) on the API HTTP exception handler AND the queue-worker failed-job hook",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-002",
     "T-007"
@@ -2390,7 +2390,7 @@
     "Gates: composer lint + stan + test green; version resolved via library-version-resolver"
    ],
    "agent": "executor",
-   "notes": "P1 observability. Audit 2026-07-21: no APM in composer.json; multi-vendor async pipeline (yt-dlp/Whisper/OpenRouter/Google/Trustpilot) has many failure modes with no aggregation. Pulls the architecture-critical slice of M5 T-052 forward; T-052 remains for full alerting/dashboards."
+   "notes": "P1 observability. Audit 2026-07-21: no APM in composer.json; multi-vendor async pipeline (yt-dlp/Whisper/OpenRouter/Google/Trustpilot) has many failure modes with no aggregation. Pulls the architecture-critical slice of M5 T-052 forward; T-052 remains for full alerting/dashboards. | 2026-07-21: env-gated ErrorReporter (HTTP handler + Queue::failing) with share_id/request_id; Sentry driver deferred to provisioning (documented). Gates green (828). PR #130."
   },
   {
    "id": "T-092",
