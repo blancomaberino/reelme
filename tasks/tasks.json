@@ -2283,7 +2283,7 @@
    "id": "T-088",
    "title": "ARCH/P0: 'My places' filter facets must reflect the full collection, not page 1 (silent 20-row cap)",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-034",
     "T-071"
@@ -2306,7 +2306,7 @@
     "Tests: API facets cover >20-item fixtures; mobile shows options for a country present only beyond page 1; eslint/tsc/jest green"
    ],
    "agent": "executor",
-   "notes": "P0 (silent correctness). Audit 2026-07-21: facetSource useMyPlaces never calls fetchNextPage, so facets are capped at limit:20 — worst for exactly the power users the feature targets. UI part -> /frontend-design."
+   "notes": "P0 (silent correctness). Audit 2026-07-21: facetSource useMyPlaces never calls fetchNextPage, so facets are capped at limit:20 — worst for exactly the power users the feature targets. UI part -> /frontend-design. | 2026-07-21: implemented (API + mobile), gates green (API 830, mobile 255), /coderabbit approved, PR #122 open."
   },
   {
    "id": "T-089",
