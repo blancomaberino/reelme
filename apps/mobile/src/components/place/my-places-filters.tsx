@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 
 import { useMyPlacesTags } from '@/api/hooks/useTags';
 import type { MyPlacesFilters as Filters } from '@/api/keys';
-import type { PlaceSummary } from '@/api/places';
 import { FilterGroup, FilterSheet, OptionPill } from '@/components/filters/filter-sheet';
 import { type AppliedChip, FilterTriggerBar } from '@/components/filters/filter-trigger-bar';
 import { TagAutocomplete } from '@/components/filters/tag-autocomplete';
@@ -11,16 +10,13 @@ import { tagLabelForSlug } from '@/lib/tags';
 import { useFormat } from '@/lib/use-format';
 
 type Props = {
-  /** The loaded rows — country/type facets are derived from what's actually here. */
-  places: PlaceSummary[];
+  /** Distinct country codes over my FULL collection (T-088) — the country chips. */
+  countries: string[];
+  /** Distinct types (cuisine_primary) over my FULL collection — the type chips. */
+  types: string[];
   filters: Filters;
   onChange: (patch: Partial<Filters>) => void;
 };
-
-/** Distinct, sorted, non-null values of a field across the loaded places. */
-function distinct(places: PlaceSummary[], pick: (p: PlaceSummary) => string | null): string[] {
-  return [...new Set(places.map(pick).filter((v): v is string => !!v))].sort();
-}
 
 /** Active facet filters (country + type + tags); sort is always set, so excluded. */
 function facetCount(f: Filters): number {
@@ -34,7 +30,7 @@ function facetCount(f: Filters): number {
  * (only facets you actually have appear); an active value is always kept in view
  * so a server-filtered set that collapses to one value can still be cleared.
  */
-export function MyPlacesFilters({ places, filters, onChange }: Props) {
+export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, filters, onChange }: Props) {
   const t = useT();
   const fmt = useFormat();
   const [open, setOpen] = useState(false);
@@ -42,17 +38,19 @@ export function MyPlacesFilters({ places, filters, onChange }: Props) {
   const { data: myTags } = useMyPlacesTags();
   const tags = useMemo(() => myTags ?? [], [myTags]);
 
+  // Keep an active value visible even if it's momentarily absent from the facet
+  // set (e.g. a stale cache), so a server-filtered set can always be cleared.
   const countries = useMemo(() => {
-    const set = distinct(places, (p) => p.country_code);
+    const set = [...countryFacets];
     if (filters.country && !set.includes(filters.country)) set.unshift(filters.country);
     return set;
-  }, [places, filters.country]);
+  }, [countryFacets, filters.country]);
 
   const types = useMemo(() => {
-    const set = distinct(places, (p) => p.category);
+    const set = [...typeFacets];
     if (filters.type && !set.includes(filters.type)) set.unshift(filters.type);
     return set;
-  }, [places, filters.type]);
+  }, [typeFacets, filters.type]);
 
   const sort = filters.sort ?? 'recent';
   const activeTags = useMemo(() => filters.tags ?? [], [filters.tags]);

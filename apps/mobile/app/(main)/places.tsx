@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useMyPlaces } from '@/api/hooks/useMyPlaces';
+import { useMyPlaces, useMyPlacesFacets } from '@/api/hooks/useMyPlaces';
 import { useRemoveFromMap } from '@/api/hooks/useRemoveFromMap';
 import type { MyPlacesFilters as Filters } from '@/api/keys';
 import type { PlaceSummary } from '@/api/places';
@@ -37,14 +37,11 @@ export default function MyPlacesScreen() {
 
   const items = useMemo(() => data?.pages.flatMap((p) => p.data) ?? [], [data]);
 
-  // Facet chips derive from the UNFILTERED collection (only sort applied), so
-  // picking a country/type can't collapse the chip list to that one value and
-  // strand you from switching directly to another (BUG G).
-  const facetSource = useMyPlaces({ sort: filters.sort }, { enabled: authed });
-  const facetItems = useMemo(
-    () => facetSource.data?.pages.flatMap((p) => p.data) ?? [],
-    [facetSource.data],
-  );
+  // Country/type chip options come from a dedicated facet endpoint computed over
+  // my FULL collection (T-088) — not derived from the loaded page, which silently
+  // capped the options at the first 20 rows. It's also filter-independent, so
+  // picking a country/type can't collapse the chip list to that one value (BUG G).
+  const { data: facets } = useMyPlacesFacets({ enabled: authed });
 
   const onPressCard = useCallback((slug: string) => {
     router.push({ pathname: '/place/[slug]', params: { slug } });
@@ -95,7 +92,12 @@ export default function MyPlacesScreen() {
         // list area shows the spinner), so an open filter sheet isn't torn down
         // mid-selection.
         <>
-          <MyPlacesFilters places={facetItems.length ? facetItems : items} filters={filters} onChange={onChange} />
+          <MyPlacesFilters
+            countries={facets?.countries ?? []}
+            types={facets?.types ?? []}
+            filters={filters}
+            onChange={onChange}
+          />
           {isLoading ? (
             <View style={styles.center}>
               <ActivityIndicator color={c.primary} />
