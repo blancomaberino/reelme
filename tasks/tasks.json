@@ -2541,7 +2541,7 @@
    "id": "T-097",
    "title": "ARCH/P1: extract ShareController::update() merge/diff/correction engine into an ExtractionCorrector service",
    "phase": "ARCH",
-   "status": "pending",
+   "status": "in_progress",
    "depends_on": [
     "T-024"
    ],
@@ -2562,7 +2562,7 @@
     "Gates: composer lint + stan + test green"
    ],
    "agent": "executor",
-   "notes": "P1 testability/SRP. Audit 2026-07-21: ShareController (525 lines, largest in app) embeds a recursive JSON merge/diff engine untestable without the HTTP layer and unreusable by Filament reprocess."
+   "notes": "P1 testability/SRP. Audit 2026-07-21: ShareController (525 lines, largest in app) embeds a recursive JSON merge/diff engine untestable without the HTTP layer and unreusable by Filament reprocess. | 2026-07-21: implemented (ExtractionCorrector service), gates green (831), /coderabbit approved, PR #125."
   }
  ]
 }
