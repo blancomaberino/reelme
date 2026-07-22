@@ -64,4 +64,16 @@ return [
         'timeout' => (int) env('INSTAGRAM_GRAPH_TIMEOUT', 10),
     ],
 
+    // Expo push notifications (T-027). The public Expo push service — no key for
+    // unauthenticated sends; an optional access token tightens rate limits if the
+    // project enables "enhanced security" in Expo. Receipts are polled after a
+    // delay to catch DeviceNotRegistered and prune dead tokens.
+    'expo' => [
+        'base' => env('EXPO_PUSH_BASE', 'https://exp.host/--/api/v2/push'),
+        'access_token' => env('EXPO_ACCESS_TOKEN'),
+        'timeout' => (int) env('EXPO_PUSH_TIMEOUT', 15),
+        // Minutes to wait before fetching receipts (Expo advises ≥15m).
+        'receipt_delay_minutes' => (int) env('EXPO_RECEIPT_DELAY_MINUTES', 15),
+    ],
+
 ];

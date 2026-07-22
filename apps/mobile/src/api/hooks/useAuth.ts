@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Device from 'expo-device';
 
+import { unregisterPush } from '@/notifications/push';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
 
@@ -68,6 +69,10 @@ export function useLogout() {
   return useMutation({
     // Clear locally even if the network call fails (device may be offline).
     mutationFn: async () => {
+      // Unregister this device's push token FIRST — the DELETE is authed, so it
+      // must run before the token is revoked, else this install keeps receiving
+      // the previous user's pushes (T-027).
+      await unregisterPush();
       try {
         await api.post('/auth/logout');
       } catch {
