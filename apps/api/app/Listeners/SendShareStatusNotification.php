@@ -31,9 +31,14 @@ class SendShareStatusNotification
             return;
         }
 
-        // The sharer owns the share; loadMissing keeps the published-place lookup
-        // (used for the deep-link + copy) from N+1'ing when many fire at once.
-        $event->share->loadMissing('user', 'publishedPlaceSource.place');
+        // Eager-load the sharer (and, only for a published share, its place) so the
+        // queued notification — PHP-serialized whole into its job — carries them to
+        // the worker, where url()/placeName() read them without re-querying. Only
+        // SharePublished touches the place; review/failed would just pay an empty
+        // publishedPlaceSource query.
+        $event->share->loadMissing(
+            $event->to === ShareStatus::Published ? ['user', 'publishedPlaceSource.place'] : ['user'],
+        );
 
         $event->share->user?->notify($notification);
     }

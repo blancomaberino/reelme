@@ -18,6 +18,25 @@ class ExpoPushClient
     public const CHUNK = 100;
 
     /**
+     * True when an Expo send-ticket or delivery-receipt reports the token is dead
+     * (app uninstalled / token invalidated) → prune it. Guards `details` being a
+     * non-array: Expo always sends an object, but a malformed payload must not
+     * TypeError (the `?? null` only suppresses a *missing* key, not a scalar).
+     *
+     * @param  array<string, mixed>  $envelope
+     */
+    public static function isDeviceNotRegistered(array $envelope): bool
+    {
+        if (($envelope['status'] ?? null) !== 'error') {
+            return false;
+        }
+
+        $details = $envelope['details'] ?? null;
+
+        return is_array($details) && ($details['error'] ?? null) === 'DeviceNotRegistered';
+    }
+
+    /**
      * POST message chunks to /push/send. Returns tickets aligned 1:1 with the
      * flattened input order — each `['status' => 'ok'|'error', 'id' => ?, ...]`.
      * A failed HTTP batch contributes an `error`/`transport` ticket per message
@@ -31,7 +50,7 @@ class ExpoPushClient
         $tickets = [];
 
         foreach (array_chunk($messages, self::CHUNK) as $chunk) {
-            $response = $this->request()->post($this->url('send'), $chunk);
+            $response = $this->request()->post('/send', $chunk);
 
             if (! $response->successful()) {
                 foreach ($chunk as $_) {
@@ -73,7 +92,7 @@ class ExpoPushClient
         $receipts = [];
 
         foreach (array_chunk($ticketIds, self::CHUNK) as $chunk) {
-            $response = $this->request()->post($this->url('getReceipts'), ['ids' => $chunk]);
+            $response = $this->request()->post('/getReceipts', ['ids' => $chunk]);
 
             if (! $response->successful()) {
                 continue;
@@ -93,6 +112,7 @@ class ExpoPushClient
     {
         $request = Http::asJson()
             ->acceptJson()
+            ->baseUrl(rtrim((string) config('services.expo.base'), '/'))
             ->timeout((int) config('services.expo.timeout', 15));
 
         $token = config('services.expo.access_token');
@@ -101,10 +121,5 @@ class ExpoPushClient
         }
 
         return $request;
-    }
-
-    private function url(string $path): string
-    {
-        return rtrim((string) config('services.expo.base'), '/').'/'.$path;
     }
 }

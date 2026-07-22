@@ -72,6 +72,10 @@ abstract class ShareNotification extends Notification implements ShouldQueue
             'data' => [
                 'type' => $this->type(),
                 'url' => $this->url(),
+                // The id travels as data so the client invalidates ['shares', id]
+                // directly — including a `published` push, whose url is /place/…
+                // and carries no share id to parse out.
+                'share_id' => $this->share->id,
             ],
         ];
     }

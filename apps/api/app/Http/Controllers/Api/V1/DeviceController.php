@@ -54,6 +54,11 @@ class DeviceController extends Controller
      * the raw Expo token (logout convenience — the client rarely knows the id).
      * Idempotent: a missing/foreign token is a no-op 204 rather than a 404 so a
      * logout never fails on a token this user doesn't own.
+     *
+     * The `{device}` route segment uses Laravel's default `[^/]+`. Expo tokens are
+     * `ExponentPushToken[<url-safe>]` and never contain a `/`, so they always
+     * match (the client URL-encodes the `[]`); this relies on the invariant that
+     * only Expo tokens — not raw FCM/APNs tokens, which can contain `/` — are stored.
      */
     public function destroy(Request $request, string $device): JsonResponse
     {

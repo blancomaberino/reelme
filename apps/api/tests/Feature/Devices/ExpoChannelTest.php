@@ -70,8 +70,13 @@ it('prunes a token Expo rejects with DeviceNotRegistered in the send ticket', fu
 
     $this->assertDatabaseMissing('devices', ['expo_push_token' => 'tok-dead']);
     $this->assertDatabaseHas('devices', ['expo_push_token' => 'tok-ok']);
-    // The accepted ticket is queued for a later receipt sweep.
-    Bus::assertDispatched(CheckExpoReceipts::class, fn (CheckExpoReceipts $job) => true);
+    // The accepted ticket (and ONLY it — not the pruned token) is queued for the
+    // later receipt sweep, keyed receiptId => token.
+    Bus::assertDispatched(CheckExpoReceipts::class, function (CheckExpoReceipts $job) {
+        $map = (fn () => $this->ticketTokens)->call($job);
+
+        return $map === ['r-1' => 'tok-ok'];
+    });
 });
 
 it('does not call Expo when the user has no registered devices', function () {

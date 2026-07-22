@@ -4,7 +4,7 @@
 
 import type { Notification, NotificationResponse } from 'expo-notifications';
 
-export type NotificationData = { type?: string; url?: string };
+export type NotificationData = { type?: string; url?: string; share_id?: number | string };
 
 /** The `data` bag off a delivered notification, or null if malformed. */
 export function dataFromNotification(notification: Notification | null): NotificationData | null {
@@ -20,13 +20,15 @@ export function dataFromResponse(response: NotificationResponse | null): Notific
 /** An in-app path from a notification's data, or null unless it's an app route. */
 export function urlFromData(data: NotificationData | null): string | null {
   const url = data?.url;
-  return typeof url === 'string' && url.startsWith('/') ? url : null;
+  // Must be a leading-slash in-app path, but NOT a protocol-relative `//host`
+  // (which would resolve to another origin) — defense in depth on router.push.
+  return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : null;
 }
 
-/** The share id embedded in a `/shares/:id/...` deep-link, for cache invalidation. */
-export function shareIdFromUrl(url: string): string | null {
-  const match = /^\/shares\/([^/]+)/.exec(url);
-  return match ? match[1] : null;
+/** The share id from a notification's data (as a string for the query key). */
+export function shareIdFromData(data: NotificationData | null): string | null {
+  const id = data?.share_id;
+  return id === undefined || id === null || id === '' ? null : String(id);
 }
 
 /**

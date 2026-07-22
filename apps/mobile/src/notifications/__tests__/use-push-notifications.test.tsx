@@ -51,7 +51,8 @@ it('invalidates the share query when a share notification arrives in foreground'
   renderHook(() => usePushNotifications(), { wrapper });
 
   const onReceive = (Notifications.addNotificationReceivedListener as jest.Mock).mock.calls[0][0];
-  act(() => onReceive({ request: { content: { data: { url: '/shares/42/status' } } } }));
+  // Server sends a numeric share_id in the data bag; the key must be the string form.
+  act(() => onReceive({ request: { content: { data: { url: '/place/x', share_id: 42 } } } }));
 
   expect(spy).toHaveBeenCalledWith({ queryKey: ['shares', '42'] });
 });

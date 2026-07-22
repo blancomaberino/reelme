@@ -42,10 +42,14 @@ export function configureForegroundHandler(): void {
  */
 export async function setupAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync('default', {
-    name: 'Default',
-    importance: Notifications.AndroidImportance.MAX,
-  });
+  try {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.MAX,
+    });
+  } catch {
+    // best-effort: a channel-setup failure must not crash startup
+  }
 }
 
 function projectId(): string | undefined {
@@ -85,16 +89,19 @@ function defaultConfirm(): Promise<boolean> {
 export async function registerForPush(confirm: () => Promise<boolean> = defaultConfirm): Promise<void> {
   if (!Device.isDevice) return;
 
-  const { status, canAskAgain } = await Notifications.getPermissionsAsync();
-  let granted = status === 'granted';
-
-  if (!granted && canAskAgain) {
-    if (!(await confirm())) return; // user declined the soft pre-prompt
-    granted = (await Notifications.requestPermissionsAsync()).status === 'granted';
-  }
-  if (!granted) return;
-
+  // Whole flow is best-effort: a rejection from the permission APIs, the token
+  // fetch (the dev projectId gotcha), or the POST must never crash the app —
+  // the user keeps everything else, and the next authed launch retries.
   try {
+    const { status, canAskAgain } = await Notifications.getPermissionsAsync();
+    let granted = status === 'granted';
+
+    if (!granted && canAskAgain) {
+      if (!(await confirm())) return; // user declined the soft pre-prompt
+      granted = (await Notifications.requestPermissionsAsync()).status === 'granted';
+    }
+    if (!granted) return;
+
     const token = await currentToken();
     await api.post('/devices', {
       token,
@@ -103,9 +110,7 @@ export async function registerForPush(confirm: () => Promise<boolean> = defaultC
       app_version: Constants.expoConfig?.version ?? undefined,
     });
   } catch {
-    // Best-effort: a failed token fetch (dev projectId gotcha) or a network
-    // error must never crash the app — the user can still use everything else,
-    // and the next authed launch retries registration.
+    // best-effort — see above
   }
 }
 

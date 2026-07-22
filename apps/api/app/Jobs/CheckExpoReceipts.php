@@ -8,7 +8,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 
 /**
  * Deferred half of Expo's two-phase delivery (T-027): the send returns a ticket
@@ -22,7 +21,6 @@ class CheckExpoReceipts implements ShouldQueue
     use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
-    use SerializesModels;
 
     /**
      * @param  array<string, string>  $ticketTokens  ticketId => expo_push_token
@@ -42,9 +40,7 @@ class CheckExpoReceipts implements ShouldQueue
 
         $dead = [];
         foreach ($receipts as $ticketId => $receipt) {
-            if (($receipt['status'] ?? null) === 'error'
-                && ($receipt['details']['error'] ?? null) === 'DeviceNotRegistered'
-                && isset($this->ticketTokens[$ticketId])) {
+            if (isset($this->ticketTokens[$ticketId]) && ExpoPushClient::isDeviceNotRegistered($receipt)) {
                 $dead[] = $this->ticketTokens[$ticketId];
             }
         }

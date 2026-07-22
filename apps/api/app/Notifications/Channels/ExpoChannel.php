@@ -48,10 +48,9 @@ class ExpoChannel
                 continue;
             }
 
-            $status = $ticket['status'] ?? null;
-            if ($status === 'ok' && is_string($ticket['id'] ?? null)) {
+            if (($ticket['status'] ?? null) === 'ok' && is_string($ticket['id'] ?? null)) {
                 $accepted[$ticket['id']] = $token;
-            } elseif ($status === 'error' && ($ticket['details']['error'] ?? null) === 'DeviceNotRegistered') {
+            } elseif (ExpoPushClient::isDeviceNotRegistered($ticket)) {
                 $dead[] = $token;
             }
         }

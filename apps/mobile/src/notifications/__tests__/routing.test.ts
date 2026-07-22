@@ -4,7 +4,7 @@ import {
   dataFromNotification,
   dataFromResponse,
   isOnTargetRoute,
-  shareIdFromUrl,
+  shareIdFromData,
   urlFromData,
 } from '../routing';
 
@@ -31,15 +31,19 @@ describe('notification routing helpers', () => {
     expect(urlFromData({ url: '/shares/7/review' })).toBe('/shares/7/review');
     // Guard against a non-route payload becoming a router.push target.
     expect(urlFromData({ url: 'https://evil.example' })).toBeNull();
+    // Protocol-relative `//host` would resolve to another origin — reject it.
+    expect(urlFromData({ url: '//evil.example/path' })).toBeNull();
     expect(urlFromData({ url: '' })).toBeNull();
     expect(urlFromData({})).toBeNull();
     expect(urlFromData(null)).toBeNull();
   });
 
-  it('pulls the share id out of a /shares/:id deep-link', () => {
-    expect(shareIdFromUrl('/shares/42/status')).toBe('42');
-    expect(shareIdFromUrl('/shares/42/review')).toBe('42');
-    expect(shareIdFromUrl('/place/tortoni')).toBeNull();
+  it('reads the share id from the data bag as a string (query-key shape)', () => {
+    // Numeric id from the server must become a string to match ['shares', id].
+    expect(shareIdFromData({ share_id: 42 })).toBe('42');
+    expect(shareIdFromData({ share_id: '42' })).toBe('42');
+    expect(shareIdFromData({ url: '/place/tortoni' })).toBeNull();
+    expect(shareIdFromData(null)).toBeNull();
   });
 
   it('suppresses a foreground banner only on the exact target route', () => {

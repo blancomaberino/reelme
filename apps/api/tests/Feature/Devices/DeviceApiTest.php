@@ -97,6 +97,19 @@ it('deletes a device by raw token (logout convenience) scoped to the caller', fu
     $this->assertDatabaseHas('devices', ['id' => $other->id]);
 });
 
+it('deletes by a real bracketed Expo token survived through URL-encoding', function () {
+    $user = User::factory()->create();
+    $token = 'ExponentPushToken[abcDEF1234567890xyzQ]';
+    Device::factory()->for($user)->create(['expo_push_token' => $token]);
+    Sanctum::actingAs($user);
+
+    // The `[` / `]` must survive route matching + decoding — the one input shape
+    // that could break the {device} segment (client sends it percent-encoded).
+    $this->deleteJson('/api/v1/devices/'.rawurlencode($token))->assertNoContent();
+
+    $this->assertDatabaseMissing('devices', ['expo_push_token' => $token]);
+});
+
 it('is a no-op (204) when deleting a token the caller does not own', function () {
     $user = User::factory()->create();
     Sanctum::actingAs($user);

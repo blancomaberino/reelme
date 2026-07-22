@@ -13,7 +13,7 @@ import {
   setCurrentPath,
   setupAndroidChannel,
 } from './push';
-import { dataFromNotification, dataFromResponse, shareIdFromUrl, urlFromData } from './routing';
+import { dataFromNotification, dataFromResponse, shareIdFromData, urlFromData } from './routing';
 
 // The deep-link is a validated in-app path (urlFromData enforces a leading `/`)
 // resolved at runtime, so it can't be a compile-time typed-route literal.
@@ -49,14 +49,18 @@ export function usePushNotifications(): void {
 
     let active = true;
     void (async () => {
-      const response = await Notifications.getLastNotificationResponseAsync();
-      if (!active) return;
-      const url = urlFromData(dataFromResponse(response));
-      if (!url) return;
-      if (useSessionStore.getState().status === 'authed') {
-        pushUrl(url);
-      } else {
-        useUiStore.getState().setPendingNotificationUrl(url);
+      try {
+        const response = await Notifications.getLastNotificationResponseAsync();
+        if (!active) return;
+        const url = urlFromData(dataFromResponse(response));
+        if (!url) return;
+        if (useSessionStore.getState().status === 'authed') {
+          pushUrl(url);
+        } else {
+          useUiStore.getState().setPendingNotificationUrl(url);
+        }
+      } catch {
+        // best-effort: a failed cold-start read must not crash startup
       }
     })();
 
@@ -69,8 +73,9 @@ export function usePushNotifications(): void {
   // updates instantly (the banner itself is handled by the handler above).
   useEffect(() => {
     const sub = Notifications.addNotificationReceivedListener((notification) => {
-      const url = urlFromData(dataFromNotification(notification));
-      const id = url ? shareIdFromUrl(url) : null;
+      // The id rides in `data` for every share push (incl. `published`, whose url
+      // is /place/… and has no id to parse) so an open share screen live-updates.
+      const id = shareIdFromData(dataFromNotification(notification));
       if (id) void qc.invalidateQueries({ queryKey: queryKeys.share(id) });
     });
     return () => sub.remove();
