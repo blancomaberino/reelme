@@ -47,16 +47,16 @@ class MediaUploadController extends Controller
         // than buffering the whole body into memory, reading at most max+1 bytes so
         // an over-cap body is rejected without slurping all of it.
         $buffer = fopen('php://temp', 'r+b');
-        $copied = stream_copy_to_stream($request->getContent(asResource: true), $buffer, $max > 0 ? $max + 1 : -1);
 
-        if ($max > 0 && $copied > $max) {
+        try {
+            $copied = stream_copy_to_stream($request->getContent(asResource: true), $buffer, $max > 0 ? $max + 1 : -1);
+            abort_if($max > 0 && $copied > $max, 413);
+
+            rewind($buffer);
+            Storage::disk($disk)->writeStream($path, $buffer);
+        } finally {
             fclose($buffer);
-            abort(413);
         }
-
-        rewind($buffer);
-        Storage::disk($disk)->writeStream($path, $buffer);
-        fclose($buffer);
 
         return response()->noContent();
     }

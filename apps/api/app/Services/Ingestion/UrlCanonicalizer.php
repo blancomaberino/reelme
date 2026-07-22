@@ -119,8 +119,10 @@ class UrlCanonicalizer
      * We validate the FULL record set and reject on the first private hit (rather
      * than filtering to the public subset), so a host that resolves to a mix of
      * public and private addresses is refused outright — the stricter, safer call
-     * for a redirect target we don't trust. The single pinned address is the first
-     * record; IPv6 is wrapped in brackets, the form cURL's --resolve expects.
+     * for a redirect target we don't trust. IPv6-literal hosts are unwrapped from
+     * their URL brackets so they validate too. The single pinned address is the
+     * first record; an IPv6 address is wrapped in brackets in the returned entry,
+     * the form cURL's --resolve expects.
      */
     private function pinnedIp(string $url): ?string
     {
@@ -130,7 +132,10 @@ class UrlCanonicalizer
             return null;
         }
 
-        $host = strtolower($parts['host'] ?? '');
+        // parse_url keeps the brackets on an IPv6 literal ("[::1]"); strip them so
+        // the address validates and resolves like any other host (otherwise every
+        // IPv6-literal target reads as an unresolvable name and is blanket-refused).
+        $host = strtolower(trim((string) ($parts['host'] ?? ''), '[]'));
         if ($host === '' || in_array($host, ['localhost', 'metadata.google.internal'], true)) {
             return null;
         }
