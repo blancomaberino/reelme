@@ -34,7 +34,8 @@ it('refuses a redirect to an IPv6 loopback', function () {
 
     $result = app(UrlCanonicalizer::class)->canonicalize('https://t.co/abc');
 
-    expect($result->url)->not->toContain('::1');
+    // Refused → expansion stops at the original shortlink, never the ::1 target.
+    expect($result->url)->toBe('https://t.co/abc');
 });
 
 it('expands a shortlink into a public IPv6 target and pins it', function () {

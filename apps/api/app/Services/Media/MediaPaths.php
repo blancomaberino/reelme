@@ -12,9 +12,10 @@ final class MediaPaths
     public static function original(string $shareId, string $sha256, string $ext): string
     {
         // $ext is the only user-influenceable segment here (siblings use fixed
-        // extensions). Strip everything but [a-z0-9] so a caller that ever derives
-        // it from a filename/mime can't smuggle a path separator into the key.
-        $ext = preg_replace('/[^a-z0-9]+/i', '', ltrim($ext, '.')) ?? '';
+        // extensions). Lower-case then strip everything but [a-z0-9] so the key is
+        // case-stable and a caller that ever derives it from a filename/mime can't
+        // smuggle a path separator into it.
+        $ext = preg_replace('/[^a-z0-9]+/', '', strtolower(ltrim($ext, '.'))) ?? '';
 
         return "media/{$shareId}/original/{$sha256}.{$ext}";
     }
