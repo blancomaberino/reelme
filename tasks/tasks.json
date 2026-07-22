@@ -2568,7 +2568,7 @@
       "id": "T-098",
       "title": "Confirm-before-publish for uncertain shares + admin-owned cleanup",
       "phase": "M3",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-026",
         "T-072"

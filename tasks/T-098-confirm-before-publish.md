@@ -47,3 +47,7 @@ Built across backend + Filament admin + mobile + the reelmap:// deep-link guard.
 **`/coderabbit` caught 2 real bugs (fixed):** (1) a **multi-place ambiguous** best-guess set `picked_place_id` but PlaceResolver only applies it single-place → the pick was ignored, the share re-parked, and the 5-min sweep would loop on it FOREVER → `canPublish()` now refuses multi-place ambiguous (and no-candidate) reviews; (2) the share was mutated + saved BEFORE the optimistic transition guard → a lost race persisted `flagged_uncertain` + a revived `review_meta_json` → now persists only after winning the guard. `ShareResource.can_publish_best_guess` uses `PublishBestGuess::canPublish` (single source of truth). `/security-review` clean.
 
 **Gates:** API Pint + PHPStan L6 + **Pest 872**; mobile expo lint + tsc + **jest 286**. CI green (API 2m21s + Mobile 1m10s). Branch `feat/T-098-confirm-before-publish`, commits `9bb8da1` (backend+admin) + `e437d10` (mobile+guard) + `210a164` (review fixes). On merge: flip T-098 → done.
+
+### 2026-07-21 — MERGED to main (PR #132, squash `4fbcdda`) — status → done
+
+Owner said "Merge the PR." CI green (API + Mobile), `/coderabbit`-approved. Branch deleted, main synced. **Follow-up left as a note (not a task yet): a SHARE-level admin queue for `no_place_extracted` / `place_hidden` reviews — those have no place, so the place-level `needs_admin_review` queue doesn't surface them.**
