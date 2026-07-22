@@ -657,7 +657,7 @@
       "id": "T-027",
       "title": "Devices + push notifications (analysis done / review needed)",
       "phase": "M1",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-016",
         "T-010"
