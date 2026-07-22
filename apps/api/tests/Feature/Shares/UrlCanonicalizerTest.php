@@ -25,6 +25,18 @@ it('refuses a redirect to loopback', function () {
     expect($result->url)->not->toContain('127.0.0.1');
 });
 
+it('refuses a redirect to an IPv6 loopback', function () {
+    // Literal IPv6 target (no DNS → network-free). The pin path must treat the
+    // reserved ::1 address as private and refuse to expand into it.
+    Http::fake([
+        'https://t.co/*' => Http::response('', 301, ['Location' => 'http://[::1]:6379/']),
+    ]);
+
+    $result = app(UrlCanonicalizer::class)->canonicalize('https://t.co/abc');
+
+    expect($result->url)->not->toContain('::1');
+});
+
 it('strips tracking params and extracts the platform post id (no network)', function () {
     $result = app(UrlCanonicalizer::class)
         ->canonicalize('https://www.instagram.com/reel/ABC123/?igsh=xyz&utm_source=ig');

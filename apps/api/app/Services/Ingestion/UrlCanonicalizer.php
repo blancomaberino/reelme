@@ -110,11 +110,17 @@ class UrlCanonicalizer
     }
 
     /**
-     * Resolve $url's host, reject it if ANY resolved IP is private/reserved, and
-     * return a cURL --resolve entry ("host:port:ip") that pins a connection to a
-     * vetted IP. Null means "do not connect" (non-http, denylisted, unresolvable,
-     * or private). Pinning is what makes the check rebinding-proof: validation and
-     * connection then use the same address.
+     * Resolve $url's host, reject it if ANY resolved IP (all A + AAAA records) is
+     * private/reserved, and return a cURL --resolve entry ("host:port:ip") pinning
+     * a connection to a vetted IP. Null means "do not connect" (non-http,
+     * denylisted, unresolvable, or private). Pinning is what makes the check
+     * rebinding-proof: validation and connection then use the same address.
+     *
+     * We validate the FULL record set and reject on the first private hit (rather
+     * than filtering to the public subset), so a host that resolves to a mix of
+     * public and private addresses is refused outright — the stricter, safer call
+     * for a redirect target we don't trust. The single pinned address is the first
+     * record; IPv6 is wrapped in brackets, the form cURL's --resolve expects.
      */
     private function pinnedIp(string $url): ?string
     {
@@ -144,8 +150,9 @@ class UrlCanonicalizer
         }
 
         $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
+        $pinned = str_contains($ips[0], ':') ? "[{$ips[0]}]" : $ips[0];
 
-        return "{$host}:{$port}:{$ips[0]}";
+        return "{$host}:{$port}:{$pinned}";
     }
 
     /**
