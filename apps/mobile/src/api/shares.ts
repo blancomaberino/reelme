@@ -100,6 +100,12 @@ export type ShareDetail = {
     extraction: ReelmapExtraction | null;
   } | null;
   failure: ShareFailure | null;
+  /**
+   * True when an uncertain review can be published as-is (best guess) without
+   * being located first — low confidence / ambiguous match (T-098). Drives the
+   * "Publish anyway" skip; false for geocode_failed (needs a pin/address first).
+   */
+  can_publish_best_guess: boolean;
   /** The primary published pin (back-compat; first of `places`). */
   place: SharePlace | null;
   /** Every published pin — a multi-place post (e.g. a "best cafés" reel) resolves to several. */

@@ -111,3 +111,37 @@ it('forbids a non-admin from reaching the moderation panel', function () {
 
     $this->get('/admin/shares')->assertForbidden();
 });
+
+it('surfaces the needs-admin-review queue and clears the flag (T-098)', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $flagged = Place::factory()->create(['status' => PlaceStatus::Active, 'needs_admin_review' => true]);
+    $clean = Place::factory()->create(['status' => PlaceStatus::Active, 'needs_admin_review' => false]);
+
+    // the queue filter isolates the flagged best-guess places
+    Livewire::test(ListPlaces::class)
+        ->filterTable('needs_admin_review')
+        ->assertCanSeeTableRecords([$flagged])
+        ->assertCanNotSeeTableRecords([$clean]);
+
+    // an admin clears one → it leaves the queue
+    Livewire::test(ListPlaces::class)
+        ->callTableAction('markReviewed', $flagged);
+
+    expect($flagged->fresh()->needs_admin_review)->toBeFalse();
+});
+
+it('bulk-clears the needs-admin-review flag from several places (T-098)', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $a = Place::factory()->create(['status' => PlaceStatus::Active, 'needs_admin_review' => true]);
+    $b = Place::factory()->create(['status' => PlaceStatus::Active, 'needs_admin_review' => true]);
+    $keep = Place::factory()->create(['status' => PlaceStatus::Active, 'needs_admin_review' => true]);
+
+    Livewire::test(ListPlaces::class)
+        ->callTableBulkAction('markReviewed', [$a, $b]);
+
+    expect($a->fresh()->needs_admin_review)->toBeFalse()
+        ->and($b->fresh()->needs_admin_review)->toBeFalse()
+        ->and($keep->fresh()->needs_admin_review)->toBeTrue(); // unselected → untouched
+});

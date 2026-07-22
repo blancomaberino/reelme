@@ -57,3 +57,19 @@ it('extracts a URL from shared text and routes an authed user straight to ingest
     text: 'Best tacos! https://www.tiktok.com/@a/video/1 🌮',
   });
 });
+
+it('ignores an in-app reelmap:// deep link instead of hijacking it to the composer (T-098)', async () => {
+  await setToken('tok_1');
+  mock.onGet('/me').reply(200, { data: { user: { id: '1', name: 'Ada', username: 'ada', email: 'a@example.com' } } });
+  // expo-share-intent captures scheme opens (e.g. a push-notification target);
+  // it must NOT be treated as a shared post.
+  mockIntent = { webUrl: 'reelmap://shares/1/status', text: '' };
+
+  render(<RootLayout />);
+
+  // no share staged, and never bounced to the composer/sign-in
+  await waitFor(() => expect(useSessionStore.getState().status).not.toBe('loading'));
+  expect(useUiStore.getState().pendingShare).toBeNull();
+  expect(mockRouter.replace).not.toHaveBeenCalledWith('/(main)/share');
+  expect(mockRouter.replace).not.toHaveBeenCalledWith('/(auth)/login');
+});

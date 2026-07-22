@@ -154,6 +154,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/shares/{share}', [ShareController::class, 'show']);
         Route::patch('/shares/{share}', [ShareController::class, 'update']);
         Route::post('/shares/{share}/retry', [ShareController::class, 'retry']);
+        Route::post('/shares/{share}/publish-best-guess', [ShareController::class, 'publishBestGuess']);
         // Resolve/dismiss a still-pending venue on a partially-published multi-place
         // share (T-071) — {index} is the stable extraction index in pending[].
         Route::post('/shares/{share}/pending/{index}/resolve', [ShareController::class, 'resolvePending'])->whereNumber('index');

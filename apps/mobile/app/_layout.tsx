@@ -89,6 +89,16 @@ function ShareIntentRedirect() {
     if (!hasShareIntent || status === 'loading') return;
     const text = shareIntent.text ?? '';
     const url = shareIntent.webUrl ?? extractUrl(text) ?? '';
+    // An incoming `reelmap://` scheme URL is an in-app deep link (a push
+    // notification target like /shares/:id/status, a shared-list link), NOT a
+    // shared post — expo-share-intent captures every scheme open. Ignore it so
+    // expo-router routes it normally instead of bouncing the user to the composer
+    // (T-098). Check the raw intent fields (extractUrl only pulls http(s) links).
+    const scheme = /^reelmap:\/\//i;
+    if (scheme.test(shareIntent.webUrl ?? '') || scheme.test(text)) {
+      resetShareIntent();
+      return;
+    }
     useUiStore.getState().setPendingShare({ url, text });
     resetShareIntent();
     // Authed → straight to ingest; guest → sign-in, which reads the staged

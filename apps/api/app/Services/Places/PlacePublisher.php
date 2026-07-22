@@ -83,6 +83,13 @@ class PlacePublisher
                 $place->status = PlaceStatus::Active;
             }
 
+            // Confirm-before-publish (T-098): a best-guess publish (skip/abandon)
+            // flags the place for the admin queue; a user-confirmed publish clears
+            // it (the sharer resolved it). A plain confident publish leaves it at
+            // the default false. Kept in sync every publish so a later confident/
+            // confirmed source lifts the flag off a place an earlier guess set.
+            $place->needs_admin_review = $share->flagged_uncertain && ! $share->user_confirmed;
+
             $this->rollCounters($place, $sourceCount);
         });
     }

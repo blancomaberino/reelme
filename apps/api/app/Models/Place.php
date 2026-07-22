@@ -113,6 +113,7 @@ class Place extends Model
     {
         return [
             'status' => PlaceStatus::class,
+            'needs_admin_review' => 'boolean',
             'opening_hours_json' => 'array',
             'locked_fields' => 'array',
             'enriched_at' => 'datetime',

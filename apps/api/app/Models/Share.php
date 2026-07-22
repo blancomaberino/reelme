@@ -47,6 +47,7 @@ class Share extends Model
             'review_meta_json' => 'array',
             'corrected_extraction_json' => 'array',
             'user_confirmed' => 'boolean',
+            'flagged_uncertain' => 'boolean',
             'published_at' => 'datetime',
         ];
     }
