@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Events\ShareStatusChanged;
+use App\Listeners\SendShareStatusNotification;
 use App\Models\Influencer;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -39,6 +41,10 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(SocialiteWasCalled::class, function (SocialiteWasCalled $event): void {
             $event->extendSocialite('instagram', InstagramProvider::class);
         });
+
+        // Push/DB notifications on pipeline outcomes (T-027). No EventServiceProvider
+        // here either, so register the listener explicitly.
+        Event::listen(ShareStatusChanged::class, SendShareStatusNotification::class);
 
         // Auth endpoints: 5/min per IP (03-api-design §1). The 429 renders through
         // ApiExceptionRenderer as a rate_limited error envelope with Retry-After.

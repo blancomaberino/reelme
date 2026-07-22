@@ -27,7 +27,29 @@ jest.mock('expo-secure-store', () => {
   };
 });
 
-jest.mock('expo-device', () => ({ deviceName: 'jest-device' }));
+// `isDevice: true` so push registration runs in tests (a simulator reports false).
+jest.mock('expo-device', () => ({ deviceName: 'jest-device', isDevice: true }));
+
+// expo-constants: supply the EAS projectId + version the push token registration
+// reads (jest-expo's default has no expoConfig).
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { expoConfig: { version: '1.0.0', extra: { eas: { projectId: 'jest-project' } } } },
+}));
+
+// expo-notifications is native — provide the surface T-027 touches. Permission is
+// granted by default; individual tests override these for the denied/skip paths.
+jest.mock('expo-notifications', () => ({
+  setNotificationHandler: jest.fn(),
+  setNotificationChannelAsync: jest.fn(async () => {}),
+  getPermissionsAsync: jest.fn(async () => ({ status: 'granted', canAskAgain: true })),
+  requestPermissionsAsync: jest.fn(async () => ({ status: 'granted', canAskAgain: true })),
+  getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[jest]' })),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  AndroidImportance: { MAX: 5 },
+}));
 
 // No native splash module in jest — the auth gate awaits these.
 jest.mock('expo-splash-screen', () => ({
@@ -50,6 +72,8 @@ export const mockRouter = {
   tabNames: [] as string[],
   // Params returned by useLocalSearchParams — set in a test's beforeEach.
   params: {} as Record<string, string>,
+  // Current path returned by usePathname — set in a test's beforeEach.
+  pathname: '' as string,
 };
 jest.mock('expo-router', () => {
   const React = require('react');
@@ -57,6 +81,7 @@ jest.mock('expo-router', () => {
     router: mockRouter,
     useRouter: () => mockRouter,
     useSegments: () => [],
+    usePathname: () => mockRouter.pathname,
     useLocalSearchParams: () => mockRouter.params,
     Link: ({ children }: { children: React.ReactNode }) => children,
     Redirect: ({ href }: { href: string }) => {

@@ -13,6 +13,7 @@ import { extractUrl } from '@/api/shares';
 import { clearToken, getToken } from '@/api/token';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { initCrashReporting } from '@/lib/crash-reporting';
+import { usePushNotifications } from '@/notifications/use-push-notifications';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
 import { useUiStore } from '@/stores/ui';
@@ -42,6 +43,7 @@ export default function RootLayout() {
               <ErrorBoundary>
                 <AuthBootstrap />
                 <ShareIntentRedirect />
+                <PushBridge />
                 <Stack screenOptions={{ headerShown: false }}>
                   <Stack.Screen name="index" />
                   <Stack.Screen name="(auth)" />
@@ -106,6 +108,16 @@ function ShareIntentRedirect() {
     router.replace(status === 'authed' ? '/(main)/share' : '/(auth)/login');
   }, [hasShareIntent, shareIntent, resetShareIntent, status]);
 
+  return null;
+}
+
+/**
+ * Push-notification wiring (T-027) — lives inside the providers so it can use the
+ * QueryClient (foreground live-update) and the router (tap → deep-link). Renders
+ * nothing; all effects live in the hook.
+ */
+function PushBridge() {
+  usePushNotifications();
   return null;
 }
 

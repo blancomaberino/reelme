@@ -120,6 +120,28 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     }
 
     /**
+     * Registered Expo push targets (T-027). Cascade-deleted with the user.
+     *
+     * @return HasMany<Device, $this>
+     */
+    public function devices(): HasMany
+    {
+        return $this->hasMany(Device::class);
+    }
+
+    /**
+     * Expo-channel routing: every one of the user's registered push tokens.
+     * A user with no devices simply receives no push (the DB notification still
+     * lands for the M3 notification center).
+     *
+     * @return list<string>
+     */
+    public function routeNotificationForExpo(): array
+    {
+        return $this->devices()->pluck('expo_push_token')->all();
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

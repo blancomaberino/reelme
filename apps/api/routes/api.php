@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Auth\PasswordResetController;
 use App\Http\Controllers\Api\V1\Auth\RefreshController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
+use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\FeedController;
 use App\Http\Controllers\Api\V1\FeedDismissalController;
 use App\Http\Controllers\Api\V1\FollowController;
@@ -119,6 +120,14 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::patch('/me', [MeController::class, 'update']);
+
+        // Expo push-token registration (T-027). {device} is the numeric id OR the
+        // raw token (logout convenience). Light write throttle like the other
+        // small write surfaces.
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::post('/devices', [DeviceController::class, 'store']);
+            Route::delete('/devices/{device}', [DeviceController::class, 'destroy']);
+        });
 
         // Linked platform accounts (T-015): list / start-link / unlink. The
         // unauthenticated OAuth callback is registered publicly above. A light
