@@ -1410,7 +1410,7 @@
       "id": "T-057",
       "title": "M1 review follow-up: ingestion/media hardening",
       "phase": "M1",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-016",
         "T-009"
