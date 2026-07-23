@@ -1,10 +1,13 @@
 <?php
 
+use App\Http\Controllers\MediaUploadController;
 use App\Services\Media\MediaPaths;
 use App\Services\Media\MediaUrlService;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 // --- Config ---
 
@@ -25,6 +28,15 @@ it('builds canonical media paths', function () {
         ->and(MediaPaths::frame('shr_1', 0, 1200))->toBe('media/shr_1/frames/frame_0_1200.jpg')
         ->and(MediaPaths::thumbnail('shr_1'))->toBe('media/shr_1/thumb.jpg')
         ->and(MediaPaths::audio('shr_1'))->toBe('media/shr_1/audio.wav');
+});
+
+it('strips separators and junk from the original extension', function () {
+    // A caller that derived $ext from a filename/mime must not be able to inject a
+    // path separator (or anything but [a-z0-9]) into the object key.
+    expect(MediaPaths::original('shr_1', 'abc', 'mp4/../../etc/passwd'))
+        ->toBe('media/shr_1/original/abc.mp4etcpasswd')
+        ->and(MediaPaths::original('shr_1', 'abc', '.MOV'))->toBe('media/shr_1/original/abc.mov')
+        ->and(MediaPaths::original('shr_1', 'abc', 'jpg?x=1'))->toBe('media/shr_1/original/abc.jpgx1');
 });
 
 // --- Storage round-trip (no network) ---
@@ -78,9 +90,71 @@ it('stores a file via the signed local upload route', function () {
 
     $signed = app(MediaUrlService::class)->temporaryUploadUrl('media/shr_1/original/clip.mp4', 'local_media');
 
-    $this->call('PUT', $signed['url'], content: 'video-bytes')->assertNoContent();
+    $this->call('PUT', $signed['url'], content: 'video-bytes', server: ['CONTENT_LENGTH' => '11'])
+        ->assertNoContent();
 
     Storage::disk('local_media')->assertExists('media/shr_1/original/clip.mp4');
+    expect(Storage::disk('local_media')->get('media/shr_1/original/clip.mp4'))->toBe('video-bytes');
+});
+
+it('rejects a local upload with no Content-Length (411)', function () {
+    Storage::fake('local_media');
+
+    $signed = app(MediaUrlService::class)->temporaryUploadUrl('media/shr_1/original/clip.mp4', 'local_media');
+
+    // No CONTENT_LENGTH server param → the length is absent → refused.
+    $this->call('PUT', $signed['url'], content: 'video-bytes')->assertStatus(411);
+
+    Storage::disk('local_media')->assertMissing('media/shr_1/original/clip.mp4');
+});
+
+it('refuses a non-numeric Content-Length at the controller (411)', function () {
+    // Laravel's ValidatePostSize middleware 413s a non-numeric Content-Length
+    // before a real request reaches the controller, so exercise the controller's
+    // own belt-and-suspenders guard directly.
+    Storage::fake('local_media');
+
+    $request = Request::create(
+        '/media/upload?disk=local_media&path=media/shr_1/original/clip.mp4',
+        'PUT',
+        server: ['CONTENT_LENGTH' => 'not-a-number'],
+        content: 'video-bytes',
+    );
+
+    try {
+        app(MediaUploadController::class)($request);
+        $this->fail('expected the controller to abort with 411');
+    } catch (HttpException $e) {
+        expect($e->getStatusCode())->toBe(411);
+    }
+
+    Storage::disk('local_media')->assertMissing('media/shr_1/original/clip.mp4');
+});
+
+it('rejects a local upload whose declared length exceeds the cap (413)', function () {
+    config(['media.max_upload_bytes' => 8]);
+    Storage::fake('local_media');
+
+    $signed = app(MediaUrlService::class)->temporaryUploadUrl('media/shr_1/original/clip.mp4', 'local_media');
+
+    $this->call('PUT', $signed['url'], content: 'video-bytes', server: ['CONTENT_LENGTH' => '11'])
+        ->assertStatus(413);
+
+    Storage::disk('local_media')->assertMissing('media/shr_1/original/clip.mp4');
+});
+
+it('caps the bytes written even when Content-Length under-reports the body (413)', function () {
+    // The header-only check was bypassable: a client can declare a small length and
+    // stream a larger body. The stream cap on the received bytes must catch it.
+    config(['media.max_upload_bytes' => 4]);
+    Storage::fake('local_media');
+
+    $signed = app(MediaUrlService::class)->temporaryUploadUrl('media/shr_1/original/clip.mp4', 'local_media');
+
+    $this->call('PUT', $signed['url'], content: 'video-bytes', server: ['CONTENT_LENGTH' => '4'])
+        ->assertStatus(413);
+
+    Storage::disk('local_media')->assertMissing('media/shr_1/original/clip.mp4');
 });
 
 it('rejects the local upload route without a valid signature', function () {
