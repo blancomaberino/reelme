@@ -65,12 +65,19 @@ function useFakeVideoChain(string $fixture = 'sample.mp4'): void
 }
 
 /**
- * Bind a TranscriptionManager whose primary driver is a FakeTranscriber — no
- * whisper binary, deterministic transcript. Pass null to simulate both engines
- * failing (the job degrades to an empty transcript, never fails the share).
+ * Bind a TranscriptionManager whose only active driver is a FakeTranscriber — no
+ * whisper binary, deterministic transcript. Pass `throws: true` to make that sole
+ * driver fail, exercising the both-drivers-fail degrade path (the job stores an
+ * empty transcript, never fails the share).
+ *
+ * The hosted fallback is disabled explicitly so `throws: true` is deterministic
+ * regardless of the ambient env — otherwise the manager could fall through to the
+ * real HostedTranscriber if a hosted key happened to be configured.
  */
 function bindFakeTranscription(?TranscriptionResult $result = null, bool $throws = false): void
 {
+    config()->set('transcription.hosted.enabled', false);
+
     $primary = new FakeTranscriber(
         result: $result ?? new TranscriptionResult(
             language: 'en',

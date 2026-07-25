@@ -36,9 +36,14 @@ use Laravel\Sanctum\Sanctum;
 | Pins the terminal outcome of each broken stage. Three distinct buckets the
 | product treats very differently:
 |   • HARD FAILURE  → status=failed  + failure_reason  (retryable, user notified)
-|   • REVIEW PARK   → status=review  + review_reason   (recoverable by a human)
+|   • REVIEW PARK   → status=review  (recoverable by a human)
 |   • GRACEFUL      → the stage degrades and the pipeline continues (not a stop)
 |   • USER DISCARD  → status=rejected + failure_reason=user_discarded
+|
+| Note the review-park reason lives in different columns by stage: the fetch
+| stage routes it through Share::transitionTo(Review, reason) → failure_reason,
+| while extract/resolve set review_reason explicitly. Each test asserts the
+| column its stage actually writes.
 |
 | Failures are asserted on the persisted share state, and — where a stage fails
 | by throwing — via the job's failed() hook directly (04 gotcha: sync throws
