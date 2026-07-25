@@ -8,6 +8,7 @@ use App\Models\Share;
 use App\Models\User;
 use App\Services\Geo\FakeGeocoder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
@@ -33,6 +34,7 @@ beforeEach(function () {
     config()->set('ai.openrouter.url', 'https://openrouter.test/api/v1');
     config()->set('ai.openrouter.api_key', 'sk-test');
     config()->set('ai.openrouter.default_model', 'google/gemini-2.0-flash-001');
+    Cache::flush(); // the Ollama health probe caches per-URL — keep tests independent
     Http::preventStrayRequests();
 });
 

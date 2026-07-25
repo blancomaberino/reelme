@@ -83,14 +83,16 @@ it('fails media_too_large when the download exceeds the byte cap', function () {
 
     (new DownloadMedia($share->id))->handle(app(AdapterRegistry::class), app(FfmpegRunner::class));
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Failed)
-        ->and($share->fresh()->failure_reason)->toBe('media_too_large');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Failed)
+        ->and($share->failure_reason)->toBe('media_too_large');
 });
 
 it('fails ffmpeg_error when media preparation throws', function () {
     $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
     $path = "originals/{$share->id}/video.mp4";
-    Storage::disk('local_media_originals')->put($path, file_get_contents(base_path('tests/Fixtures/media/sample.mp4')));
+    // ffprobe is mocked to throw, so the bytes are never processed — a stub is enough.
+    Storage::disk('local_media_originals')->put($path, 'stub-video-bytes');
     MediaAsset::create([
         'source_post_id' => $share->sourcePost->id,
         'kind' => MediaKind::Video,
@@ -112,8 +114,9 @@ it('fails ffmpeg_error when media preparation throws', function () {
         $job->failed($e);
     }
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Failed)
-        ->and($share->fresh()->failure_reason)->toBe('ffmpeg_error');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Failed)
+        ->and($share->failure_reason)->toBe('ffmpeg_error');
 });
 
 it('fails invalid_model_output when both engines produce unusable output', function () {
@@ -131,8 +134,9 @@ it('fails invalid_model_output when both engines produce unusable output', funct
         $job->failed($e);
     }
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Failed)
-        ->and($share->fresh()->failure_reason)->toBe('invalid_model_output');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Failed)
+        ->and($share->failure_reason)->toBe('invalid_model_output');
 });
 
 it('fails cost_cap_exceeded when the cheapest model still exceeds the per-run cap', function () {
@@ -143,8 +147,9 @@ it('fails cost_cap_exceeded when the cheapest model still exceeds the per-run ca
 
     (new ExtractPlaceData($share->id))->handle();
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Failed)
-        ->and($share->fresh()->failure_reason)->toBe('cost_cap_exceeded');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Failed)
+        ->and($share->failure_reason)->toBe('cost_cap_exceeded');
 });
 
 it('fails quota_exhausted when the daily budget is spent and local cannot serve', function () {
@@ -154,8 +159,9 @@ it('fails quota_exhausted when the daily budget is spent and local cannot serve'
 
     (new ExtractPlaceData($share->id))->handle();
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Failed)
-        ->and($share->fresh()->failure_reason)->toBe('quota_exhausted');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Failed)
+        ->and($share->failure_reason)->toBe('quota_exhausted');
 });
 
 /*
@@ -176,8 +182,9 @@ it('parks fetch_unavailable in review when the adapter chain is exhausted', func
 
     (new FetchSourcePost($share->id))->handle(app(AdapterRegistry::class));
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Review)
-        ->and($share->fresh()->failure_reason)->toBe('fetch_unavailable');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Review)
+        ->and($share->failure_reason)->toBe('fetch_unavailable');
 });
 
 it('parks fetch_auth_required in review for a private post with no linked account', function () {
@@ -193,8 +200,9 @@ it('parks fetch_auth_required in review for a private post with no linked accoun
 
     (new FetchSourcePost($share->id))->handle(app(AdapterRegistry::class));
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Review)
-        ->and($share->fresh()->failure_reason)->toBe('fetch_auth_required');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Review)
+        ->and($share->failure_reason)->toBe('fetch_auth_required');
 });
 
 it('parks no_place_extracted in review when the model names no venue', function () {
@@ -209,8 +217,9 @@ it('parks no_place_extracted in review when the model names no venue', function 
 
     (new ExtractPlaceData($share->id))->handle();
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Review)
-        ->and($share->fresh()->review_reason)->toBe('no_place_extracted');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Review)
+        ->and($share->review_reason)->toBe('no_place_extracted');
 });
 
 it('parks ambiguous_place in review when several places match', function () {
@@ -247,7 +256,8 @@ it('does not fail on silent audio — it stores an empty transcript and continue
     (new TranscribeAudio($share->id))->handle(app(TranscriptionManager::class));
 
     $t = $share->sourcePost->fresh()->transcript_json;
-    expect($share->fresh()->status)->toBe(ShareStatus::Fetching) // still in flight, not failed
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Fetching) // still in flight, not failed
         ->and($t['text'])->toBe('')
         ->and($t['empty'])->toBeTrue();
 });
@@ -270,7 +280,8 @@ it('does not fail when the transcriber throws — it degrades to an empty transc
 
     (new TranscribeAudio($share->id))->handle(app(TranscriptionManager::class));
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Fetching)
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Fetching)
         ->and($share->sourcePost->fresh()->transcript_json['text'])->toBe('');
 });
 
@@ -287,6 +298,7 @@ it('rejects a share the user discards from review with user_discarded', function
 
     $this->deleteJson("/api/v1/shares/{$share->id}")->assertOk();
 
-    expect($share->fresh()->status)->toBe(ShareStatus::Rejected)
-        ->and($share->fresh()->failure_reason)->toBe('user_discarded');
+    $share->refresh();
+    expect($share->status)->toBe(ShareStatus::Rejected)
+        ->and($share->failure_reason)->toBe('user_discarded');
 });

@@ -50,7 +50,10 @@ class FakePipelineVideoAdapter implements SourceAdapter
 
     public function fetchMedia(SourcePostData $post, ?LinkedAccount $account): MediaFetchResult
     {
-        $tmp = (string) tempnam(sys_get_temp_dir(), 'pipevid_').'.mp4';
+        // Copy into the tempnam path itself (no extension suffix, which would
+        // orphan the empty file tempnam already created); ffprobe/ffmpeg detect
+        // the format from content, and DownloadMedia unlinks this path after ingest.
+        $tmp = (string) tempnam(sys_get_temp_dir(), 'pipevid_');
         copy(base_path("tests/Fixtures/media/{$this->fixture}"), $tmp);
 
         return new MediaFetchResult([

@@ -8,6 +8,7 @@ use App\Models\Share;
 use App\Models\User;
 use App\Services\Geo\FakeGeocoder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
@@ -30,6 +31,7 @@ beforeEach(function () {
     Storage::fake('local_media_originals');
     config()->set('ai.ollama.url', 'http://ollama.test:11434');
     config()->set('ai.min_publish_confidence', 0.75);
+    Cache::flush(); // the Ollama health probe caches per-URL — keep tests independent
     Http::preventStrayRequests();
 });
 

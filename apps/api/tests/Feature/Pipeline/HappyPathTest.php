@@ -13,6 +13,7 @@ use App\Models\Share;
 use App\Models\User;
 use App\Services\Geo\FakeGeocoder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -34,6 +35,7 @@ beforeEach(function () {
     Storage::fake('local_media');
     Storage::fake('local_media_originals');
     config()->set('ai.ollama.url', 'http://ollama.test:11434');
+    Cache::flush(); // the Ollama health probe caches per-URL — keep tests independent
     Http::preventStrayRequests();
 });
 
@@ -115,28 +117,11 @@ it('drives a video share pending → published with full provenance and a real g
         ->assertOk()
         ->assertJsonPath('data.status', 'published')
         ->assertJsonPath('data.place.name', 'Lanzhou Beef Noodle House');
-});
 
-it('records every stage metric as completed with a measured duration', function () {
-    Sanctum::actingAs(User::factory()->create());
-    useFakeVideoChain();
-    bindFakeTranscription();
-    Http::fake([
-        '*/api/tags' => Http::response(['models' => []]),
-        '*/api/chat' => Http::response(pipelineOllamaChat(pipelineExtractionJson())),
-    ]);
-    bindGeocoder((new FakeGeocoder)->seed(
-        'Lanzhou Beef Noodle House',
-        geoResult('ChIJmetrics', 51.5117, -0.1300),
-    ));
-
-    $this->postJson('/api/v1/shares', ['url' => 'https://www.instagram.com/reel/METRICS/'])
-        ->assertStatus(202);
-
-    $share = Share::latest('id')->first();
+    // Every stage of the chain ran through the worker and closed its metric
+    // (running → completed) with a measured duration (T-093). Asserted on the
+    // same drive rather than a second full-ffmpeg run.
     $metrics = $share->stageMetrics()->get();
-
-    // Every stage of the chain ran through the worker (T-093).
     expect($metrics->pluck('stage')->all())
         ->toContain('ingest', 'fetch', 'download', 'prepare_media', 'transcribe', 'extract', 'resolve', 'publish')
         ->and($metrics->pluck('status')->unique()->all())->toBe(['completed'])
