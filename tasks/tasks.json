@@ -683,7 +683,7 @@
       "id": "T-028",
       "title": "M1 integration test: full pipeline with fakes + failure taxonomy",
       "phase": "M1",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-024",
         "T-013",
