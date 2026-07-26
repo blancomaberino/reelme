@@ -2592,6 +2592,39 @@
       ],
       "agent": "executor",
       "notes": "Owner reframe (2026-07-21): review is not a user chore. Decisions via AskUserQuestion: (1) skip → publish best-guess + flag admin; (2) confirm only when uncertain. T-026 screens are the reusable foundation (form/pin/candidate/confidence/evidence). Also fold the reelmap:// deep-link guard (ShareIntentRedirect ignore internal app-route intents) here or with T-027."
+    },
+    {
+      "id": "T-099",
+      "title": "Business photo gallery: collect multiple business-owned images + gallery UI",
+      "phase": "M2",
+      "status": "pending",
+      "depends_on": [
+        "T-084"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/Places/Enrichment/",
+        "apps/api/app/Services/Geo/",
+        "apps/api/database/migrations/",
+        "apps/api/app/Http/Resources/PlaceResource.php",
+        "packages/contracts/place.json",
+        "apps/mobile/app/place/[slug].tsx",
+        "apps/mobile/src/components/place/",
+        "apps/api/public/demo.html"
+      ],
+      "spec_refs": [
+        "tasks/T-099-business-photo-gallery.md"
+      ],
+      "acceptance": [
+        "Enrichment collects multiple business images (all schema.org website images + Google Places photos), deduped by URL and capped at the configured max",
+        "Business-first ordering: website (owned) images first, then Google photos whose attribution matches the business, then remaining Google photos as fill (owner decision: best-effort, not strict)",
+        "places.gallery_json holds {url,source,attribution}; image_url derives from the first gallery entry when not human-locked; a T-084 manual lock survives re-enrichment",
+        "Place API/contract exposes gallery[]; contracts drift gate green; image_url/thumbnail_url kept for back-compat",
+        "Mobile place detail shows a swipeable gallery with page indicators when gallery.length>1 (single hero otherwise); web demo shows a carousel when >1",
+        "No server-side photo-byte fetching (URLs only); website image URLs SSRF-guarded via PublicUrlGuard; no Google API key logged or persisted in gallery_json"
+      ],
+      "agent": "executor",
+      "notes": "PRIORITY OVERRIDE (owner request 2026-07-26): do NEXT, ahead of the remaining M1 test tasks (T-056/T-058). Extends T-084's BusinessEnrichmentSource seam from one image to many + adds a gallery. Owner decisions via AskUserQuestion: (1) prioritize/do-next; (2) Google fallback = best-effort business-first then fill (legacy Places API exposes only html_attributions/uploader, no owner flag — website/schema.org images are the definitively-owned source; ADR: new Places API v1 authorAttributions would improve owner detection). Full context in tasks/T-099-business-photo-gallery.md."
     }
   ]
 }
