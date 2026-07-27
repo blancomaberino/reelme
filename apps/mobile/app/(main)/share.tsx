@@ -222,7 +222,7 @@ function ShareProgress({
     const places = share?.places?.length ? share.places : share?.place ? [share.place] : [];
     if (places.length === 1 && (share?.pending_place_count ?? 0) === 0) {
       navigatedRef.current = true;
-      router.push({ pathname: '/place/[slug]', params: { slug: places[0].id, justAdded: '1' } });
+      router.push({ pathname: '/place/[slug]', params: { slug: places[0].id } });
     }
   }, [status, share]);
 
@@ -251,7 +251,7 @@ function ShareProgress({
             <Text style={styles.placeName}>{publishedPlaces[0].name}</Text>
             <Button
               title={t('place.view')}
-              onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: publishedPlaces[0].id, justAdded: '1' } })}
+              onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: publishedPlaces[0].id } })}
             />
             <Pressable
               accessibilityRole="button"
@@ -272,7 +272,7 @@ function ShareProgress({
                 <View key={p.id} style={styles.placeRow}>
                   <Pressable
                     accessibilityRole="button"
-                    onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: p.id, justAdded: '1' } })}
+                    onPress={() => router.push({ pathname: '/place/[slug]', params: { slug: p.id } })}
                     style={styles.placeRowMain}
                   >
                     <Text style={styles.placeRowName} numberOfLines={1}>

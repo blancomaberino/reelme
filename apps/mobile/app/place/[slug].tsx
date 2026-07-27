@@ -25,14 +25,12 @@ import { useSessionStore } from '@/stores/session';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 export default function PlaceDetailScreen() {
-  // `justAdded` is set when we auto-open a place straight after sharing it — its
-  // gallery is still being enriched, so poll until it lands (see usePlace).
-  const { slug, justAdded } = useLocalSearchParams<{ slug: string; justAdded?: string }>();
+  const { slug } = useLocalSearchParams<{ slug: string }>();
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const { data: place, isLoading, isError, refetch } = usePlace(slug ?? '', {
-    pollForGallery: justAdded === '1',
-  });
+  // usePlace polls while the gallery is empty (a just-shared place enriches
+  // async), so the carousel fills in on its own — no route flag needed.
+  const { data: place, isLoading, isError, refetch } = usePlace(slug ?? '');
   const authed = useSessionStore((s) => s.status === 'authed');
   const [saveOpen, setSaveOpen] = useState(false);
 
