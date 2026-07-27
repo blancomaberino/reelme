@@ -31,20 +31,19 @@ export function galleryPollInterval(data: PlaceDetail | undefined, dataUpdateCou
  * thumbnail URLs is the Thumbnail's onError → placeholder fallback (staleTime
  * alone can't guarantee a fresh URL for an already-mounted screen).
  *
- * @param opts.pollForGallery  For a JUST-ADDED place: the business photo gallery
- *   (T-099) is populated asynchronously by the EnrichPlace job a few seconds
- *   AFTER publish, so the place first opens with an empty gallery. When set, poll
- *   for a bounded window until the gallery lands (then stop), so the carousel
- *   appears without a manual refresh. Off for normal navigation.
+ * A place opened right after sharing it has an EMPTY gallery — the business photo
+ * gallery (T-099) is populated asynchronously by the EnrichPlace job a few
+ * seconds after publish. So whenever the gallery is empty we poll for a short
+ * bounded window (see {@link galleryPollInterval}) until it lands, then stop, so
+ * the carousel appears without a manual refresh. A place that already has a
+ * gallery — or has none after enrichment — never polls past the small cap.
  */
-export function usePlace(slug: string, opts?: { pollForGallery?: boolean }) {
+export function usePlace(slug: string) {
   return useQuery({
     queryKey: queryKeys.place(slug),
     queryFn: () => fetchPlace(slug),
     staleTime: 60_000,
     enabled: slug.length > 0,
-    refetchInterval: opts?.pollForGallery
-      ? (query) => galleryPollInterval(query.state.data, query.state.dataUpdateCount)
-      : false,
+    refetchInterval: (query) => galleryPollInterval(query.state.data, query.state.dataUpdateCount),
   });
 }
