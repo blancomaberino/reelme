@@ -88,3 +88,39 @@ it('is gated off by config', function () {
     expect(app(WebsiteBusinessSource::class)->enrich($place))->toBe([]);
     Http::assertNothingSent();
 });
+
+it('collects every schema.org image into the gallery (string, list, ImageObject), deduped', function () {
+    // schema.org `image` is commonly a list mixing plain URLs and ImageObjects;
+    // all are business-owned, so all become gallery entries (T-099). The first
+    // stays as `image_url` (single-hero back-compat); non-http and dups drop.
+    $html = '<script type="application/ld+json">'.json_encode([
+        '@type' => 'Restaurant',
+        'image' => [
+            'https://cdn.example/1.jpg',
+            'https://cdn.example/1.jpg', // exact dup
+            ['@type' => 'ImageObject', 'url' => 'https://cdn.example/2.jpg'],
+            'ftp://cdn.example/skip.jpg', // non-http → dropped
+        ],
+    ], JSON_THROW_ON_ERROR).'</script>';
+
+    $patch = scrapeSite($html);
+
+    expect($patch['image_url'])->toBe('https://cdn.example/1.jpg')
+        ->and($patch['gallery_json'])->toBe([
+            ['url' => 'https://cdn.example/1.jpg', 'source' => 'website', 'attribution' => null],
+            ['url' => 'https://cdn.example/2.jpg', 'source' => 'website', 'attribution' => null],
+        ]);
+});
+
+it('emits a single-entry gallery for a lone schema.org image', function () {
+    $html = '<script type="application/ld+json">'.json_encode([
+        '@type' => 'Restaurant', 'image' => 'https://cdn.example/only.jpg',
+    ], JSON_THROW_ON_ERROR).'</script>';
+
+    $patch = scrapeSite($html);
+
+    expect($patch['image_url'])->toBe('https://cdn.example/only.jpg')
+        ->and($patch['gallery_json'])->toBe([
+            ['url' => 'https://cdn.example/only.jpg', 'source' => 'website', 'attribution' => null],
+        ]);
+});

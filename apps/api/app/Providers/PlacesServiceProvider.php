@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Places\Enrichment\BusinessEnricher;
 use App\Services\Places\Enrichment\BusinessEnrichmentSource;
+use App\Services\Places\Enrichment\GalleryBuilder;
 use App\Services\Places\Enrichment\Sources\GoogleBusinessSource;
 use App\Services\Places\Enrichment\Sources\ReviewsBusinessSource;
 use App\Services\Places\Enrichment\Sources\WebsiteBusinessSource;
@@ -30,6 +31,7 @@ class PlacesServiceProvider extends ServiceProvider
                     $this->app->make(ReviewsBusinessSource::class),
                 ],
                 editor: $this->app->make(PlaceEditor::class),
+                gallery: $this->app->make(GalleryBuilder::class),
             );
         });
     }

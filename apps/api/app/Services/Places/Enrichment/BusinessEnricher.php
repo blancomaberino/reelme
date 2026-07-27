@@ -26,17 +26,30 @@ class BusinessEnricher
     public function __construct(
         private readonly array $sources,
         private readonly PlaceEditor $editor,
+        private readonly GalleryBuilder $gallery,
     ) {}
 
     public function enrich(Place $place, ?int $userId = null): BusinessEnrichmentResult
     {
         /** @var array<string, mixed> $merged */
         $merged = [];
+        /** @var list<array<string, mixed>> $galleryContributions */
+        $galleryContributions = [];
         $statuses = [];
 
         foreach ($this->sources as $source) {
             try {
                 $patch = $source->enrich($place);
+
+                // `gallery_json` is UNION-merged across sources (ordering/dedup/cap
+                // applied once at the end), not first-non-empty-wins like the
+                // scalar fields — else the first source's gallery would block the
+                // rest. Pull it out before the per-field merge below.
+                if (is_array($patch['gallery_json'] ?? null)) {
+                    $galleryContributions = array_merge($galleryContributions, array_values($patch['gallery_json']));
+                }
+                unset($patch['gallery_json']);
+
                 foreach ($patch as $field => $value) {
                     if (! array_key_exists($field, $merged) && $value !== null && $value !== '' && $value !== []) {
                         $merged[$field] = $value;
@@ -46,6 +59,36 @@ class BusinessEnricher
             } catch (Throwable $e) {
                 report($e);
                 $statuses[] = ['source' => $source->id(), 'status' => 'failed', 'fields' => []];
+            }
+        }
+
+        // Build the ordered gallery (website-owned → business-attributed Google →
+        // fill → reel fallback) and derive the hero from its first entry. Both go
+        // through PlaceEditor below, so a human-locked gallery/hero still wins.
+        if ((bool) config('places.enrich.gallery.enabled', true)) {
+            // The reel thumbnail is a last-resort ONLY when the place has no gallery
+            // yet — otherwise a run where every source failed transiently would
+            // otherwise downgrade an existing [w1,w2,w3] gallery to [reel].
+            $reelFallback = empty($place->gallery_json) ? $place->thumbnail_url : null;
+            // A lone-locked hero must stay gallery[0] (else the carousel's first
+            // image diverges from the manually-pinned image_url).
+            $pinnedHero = $place->isFieldLocked('image_url') ? $place->image_url : null;
+
+            $gallery = $this->gallery->build($place, $galleryContributions, $reelFallback, $pinnedHero);
+
+            // Only write when a real business photo was found, or the place had no
+            // gallery yet (first population) — never clobber an existing gallery
+            // with a reel-only fallback from a failed run. Reel always sorts last,
+            // so a non-reel gallery[0] means a real photo was found.
+            $hasReal = $gallery !== [] && $gallery[0]['source'] !== 'reel';
+            if ($gallery !== [] && ($hasReal || empty($place->gallery_json))) {
+                // NOTE: the image_url ↔ gallery[0] mirror is derived from this
+                // pre-lock snapshot; PlaceEditor re-fetches under lockForUpdate
+                // (T-085). If a manual image_url lock commits during this run's I/O
+                // window, the hero and gallery[0] can briefly diverge — cosmetic,
+                // and the next enrichment (seeing the lock) re-pins them.
+                $merged['gallery_json'] = $gallery;
+                $merged['image_url'] = $gallery[0]['url'];
             }
         }
 

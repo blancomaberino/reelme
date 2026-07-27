@@ -13,6 +13,7 @@ final readonly class BusinessDetails
 {
     /**
      * @param  array<int|string, mixed>|null  $openingHours
+     * @param  list<array{url: string, attribution: ?string}>  $images  Google Places photos (T-099), owner-attribution ranking left to the enricher. Resolved, key-free URLs only.
      */
     public function __construct(
         public ?string $phone = null,
@@ -20,6 +21,7 @@ final readonly class BusinessDetails
         public ?array $openingHours = null,
         public ?float $rating = null,
         public ?int $ratingCount = null,
+        public array $images = [],
     ) {}
 
     /**
@@ -49,6 +51,7 @@ final readonly class BusinessDetails
             'opening_hours' => $this->openingHours,
             'rating' => $this->rating,
             'rating_count' => $this->ratingCount,
+            'images' => $this->images,
         ];
     }
 
@@ -63,6 +66,7 @@ final readonly class BusinessDetails
             openingHours: $data['opening_hours'] ?? null,
             rating: isset($data['rating']) ? (float) $data['rating'] : null,
             ratingCount: isset($data['rating_count']) ? (int) $data['rating_count'] : null,
+            images: is_array($data['images'] ?? null) ? $data['images'] : [],
         );
     }
 }

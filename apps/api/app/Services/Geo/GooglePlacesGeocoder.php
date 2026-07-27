@@ -25,7 +25,11 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
     // Wider mask for the on-demand enrich action ONLY (T-084) — pulls the extra
     // contact/hours fields the pipeline never needs, so this SKU is paid only
     // when an admin explicitly enriches a place. Cached separately, 30 days.
-    private const BUSINESS_FIELDS = 'international_phone_number,formatted_phone_number,website,opening_hours,rating,user_ratings_total';
+    // `photos` (T-099) is fetched in the SAME Details call, but RESOLVING each
+    // photo to a key-free URL is a separate (billed) Places Photo request — bounded
+    // by `enrich.google.max_photos` and cached with this DTO. Never added to
+    // DETAILS_FIELDS (the billing-sensitive pipeline mask).
+    private const BUSINESS_FIELDS = 'international_phone_number,formatted_phone_number,website,opening_hours,rating,user_ratings_total,photos';
 
     private const CACHE_DAYS = 30;
 
@@ -96,7 +100,109 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
             openingHours: is_array($weekdayText) && $weekdayText !== [] ? array_values($weekdayText) : null,
             rating: isset($result['rating']) ? (float) $result['rating'] : null,
             ratingCount: isset($result['user_ratings_total']) ? (int) $result['user_ratings_total'] : null,
+            images: $this->photos($result['photos'] ?? null),
         );
+    }
+
+    /**
+     * Resolve a Google Place Details `photos[]` set to key-free, client-loadable
+     * image URLs (T-099). Each entry's `photo_reference` is turned into a Places
+     * Photo request whose 302 redirect target (a `googleusercontent` URL carrying
+     * NO API key) is what we store — the key never lands in `gallery_json` or a
+     * log. Best-effort and bounded: a photo that won't resolve is dropped, and we
+     * resolve at most the gallery cap so we don't burn calls we'd discard.
+     *
+     * @return list<array{url: string, attribution: ?string}>
+     */
+    private function photos(mixed $photos): array
+    {
+        if (! is_array($photos)) {
+            return [];
+        }
+
+        $maxWidth = max(1, (int) config('places.enrich.google.photo_maxwidth', 1024));
+        // Bound the number of (billed) Photo resolutions — website images usually
+        // outrank these in the gallery, so resolving the full set wastes calls.
+        $limit = max(1, min(
+            (int) config('places.enrich.google.max_photos', 6),
+            (int) config('places.enrich.gallery.max_images', 8),
+        ));
+
+        $images = [];
+        foreach (array_slice($photos, 0, $limit) as $photo) {
+            if (! is_array($photo) || ! is_string($photo['photo_reference'] ?? null) || $photo['photo_reference'] === '') {
+                continue;
+            }
+
+            $url = $this->resolvePhotoUrl($photo['photo_reference'], $maxWidth);
+            if ($url === null) {
+                continue;
+            }
+
+            $images[] = ['url' => $url, 'attribution' => $this->firstAttribution($photo['html_attributions'] ?? null)];
+        }
+
+        return $images;
+    }
+
+    /**
+     * Follow (without fetching bytes) a Places Photo request to its redirect
+     * target. `allow_redirects` is off so we read the `Location` header rather
+     * than downloading the image; we keep only a public http(s) URL that carries
+     * no `key=` (defence-in-depth so an API key never reaches a stored/served
+     * field). Any transient/odd response drops the photo — enrichment is
+     * best-effort.
+     */
+    private function resolvePhotoUrl(string $photoReference, int $maxWidth): ?string
+    {
+        try {
+            $response = Http::baseUrl(self::BASE_URL)
+                ->timeout(10)
+                ->withOptions(['allow_redirects' => false])
+                ->get('/photo', [
+                    'maxwidth' => $maxWidth,
+                    'photo_reference' => $photoReference,
+                    'key' => $this->apiKey(),
+                ]);
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        $status = $response->status();
+        if ($status < 300 || $status >= 400) {
+            return null; // Google always 302s a valid photo; anything else → drop it.
+        }
+
+        $location = trim((string) $response->header('Location'));
+
+        // Keep only a public http(s) URL that carries no `key` query param (defence
+        // in depth so an API key never reaches a stored/served field). Anchor the
+        // param so an innocuous "…monkey=…" doesn't drop a valid photo.
+        return preg_match('#^https?://#i', $location) === 1 && preg_match('/[?&]key=/i', $location) !== 1
+            ? $location
+            : null;
+    }
+
+    /** First `html_attributions` entry as plain text (tags stripped), or null. */
+    private function firstAttribution(mixed $attributions): ?string
+    {
+        if (! is_array($attributions)) {
+            return null;
+        }
+
+        foreach ($attributions as $attribution) {
+            if (! is_string($attribution)) {
+                continue;
+            }
+            // html_attributions wrap the name in an <a>; strip the tag and decode
+            // entities (Google HTML-encodes e.g. "Joe&#39;s") to plain text.
+            $text = trim(html_entity_decode(strip_tags($attribution), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($text !== '') {
+                return mb_substr($text, 0, 255);
+            }
+        }
+
+        return null;
     }
 
     private function lookup(string $name, GeoHints $hints): ?GeocodeResult

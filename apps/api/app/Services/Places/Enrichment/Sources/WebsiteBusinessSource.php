@@ -91,10 +91,16 @@ class WebsiteBusinessSource implements BusinessEnrichmentSource
             return [];
         }
 
+        // All schema.org images are business-owned (T-099) → the gallery's
+        // highest-priority entries; the first also stays as `image_url` so the
+        // single-photo hero/marker is unchanged when the gallery is off.
+        $images = $this->images($node['image'] ?? null);
+
         return array_filter([
             'phone' => $this->str($node['telephone'] ?? null, 32),
             'cuisine_primary' => $this->str($this->first($node['servesCuisine'] ?? null), 120),
-            'image_url' => $this->httpUrl($this->first($node['image'] ?? null)),
+            'image_url' => $images[0]['url'] ?? null,
+            'gallery_json' => $images,
             'opening_hours_json' => $this->openingHours($node),
             'address_line1' => $this->str($this->addressPart($node, 'streetAddress'), 255),
             'city' => $this->str($this->addressPart($node, 'addressLocality'), 255),
@@ -244,6 +250,33 @@ class WebsiteBusinessSource implements BusinessEnrichmentSource
         }
 
         return is_array($address) ? ($address[$key] ?? null) : null;
+    }
+
+    /**
+     * Every business-owned image from a schema.org `image` node, as gallery
+     * entries tagged `website`. The node may be a single URL, an `ImageObject`
+     * (`.url`), or a list of either — each URL must be http(s) (SSRF is already
+     * bounded: the page came from a PublicUrlGuard-vetted host, no redirects).
+     * Deduped preserving order.
+     *
+     * @return list<array{url: string, source: string, attribution: null}>
+     */
+    private function images(mixed $node): array
+    {
+        $candidates = is_array($node) && array_is_list($node) ? $node : [$node];
+
+        $images = [];
+        $seen = [];
+        foreach ($candidates as $candidate) {
+            $url = $this->httpUrl($this->first($candidate));
+            if ($url === null || isset($seen[$url])) {
+                continue;
+            }
+            $seen[$url] = true;
+            $images[] = ['url' => $url, 'source' => 'website', 'attribution' => null];
+        }
+
+        return $images;
     }
 
     /** First element of a value that may be a scalar, a list, or an object with url/name. */

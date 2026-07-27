@@ -11,6 +11,7 @@ import { MiniMap } from '@/components/place/mini-map';
 import { ReviewComposer } from '@/components/place/review-composer';
 import { MenuSheet } from '@/components/place/menu-sheet';
 import { MyTags } from '@/components/place/my-tags';
+import { PlaceGallery } from '@/components/place/place-gallery';
 import { ReviewSources } from '@/components/place/review-sources';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { SourceCard } from '@/components/place/source-card';
@@ -95,6 +96,9 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
     const s = place.sources?.find((x) => x.is_primary) ?? place.sources?.[0];
     return s?.source_post?.thumbnail_url ?? null;
   }, [place.image_url, place.sources]);
+  // A place with more than one business photo (T-099) shows a swipeable gallery
+  // in place of the single hero; one or zero photos keeps the hero.
+  const gallery = place.gallery ?? [];
   const appReviews = place.reviews ?? [];
   const googleReviews = place.google_reviews ?? [];
   // The viewer's own review (prefills the composer); listed rows exclude it.
@@ -111,8 +115,13 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      {/* Hero picture from the shared reel (full-bleed) */}
-      {heroUri ? <Thumbnail uri={heroUri} style={styles.hero} testID="place-hero" /> : null}
+      {/* Business photos: a swipeable gallery when there's more than one (T-099),
+          else the single hero (curated image → reel poster). */}
+      {gallery.length > 1 ? (
+        <PlaceGallery images={gallery} testID="place-gallery" />
+      ) : heroUri ? (
+        <Thumbnail uri={heroUri} style={styles.hero} testID="place-hero" />
+      ) : null}
 
       {/* Header block */}
       <View style={styles.block}>
