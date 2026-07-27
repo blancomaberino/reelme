@@ -1383,7 +1383,7 @@
       "id": "T-056",
       "title": "M1 review follow-up: ingestion pipeline failure/retry test coverage",
       "phase": "M1",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-016"
       ],
@@ -2597,7 +2597,7 @@
       "id": "T-099",
       "title": "Business photo gallery: collect multiple business-owned images + gallery UI",
       "phase": "M2",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-084"
       ],
