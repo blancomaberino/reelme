@@ -77,7 +77,7 @@ it('submits a link, shows the published pin, and navigates to the place', async 
   expect(screen.getByText('Clara Café')).toBeOnTheScreen();
 
   // T-076: a single clean publish auto-opens the place detail (no manual tap).
-  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '9' } });
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '9', justAdded: '1' } });
 });
 
 it('fetches the real state when POST replays an already-published share (no false "failed")', async () => {
@@ -295,7 +295,7 @@ it('does NOT auto-open a detail for a multi-place publish — it lists them to t
 
   // Tapping one still routes through to its detail.
   fireEvent.press(screen.getByText('Bar Tabaré'));
-  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '10' } });
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '10', justAdded: '1' } });
 });
 
 it('does NOT auto-open when a single publish still has venues in review (T-076)', async () => {
@@ -320,5 +320,5 @@ it('does NOT auto-open when a single publish still has venues in review (T-076)'
 
   // The explicit "View place" button is still available to open it.
   fireEvent.press(screen.getByRole('button', { name: 'View place' }));
-  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '9' } });
+  expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '9', justAdded: '1' } });
 });
