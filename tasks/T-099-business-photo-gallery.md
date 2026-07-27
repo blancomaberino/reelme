@@ -46,6 +46,61 @@ cd ../.. && npm run --workspace @reelmap/contracts build && cd apps/mobile && np
 ```
 Expected: enrichment produces a multi-image `gallery_json` with the documented ordering; the gallery renders on device (verify on the place detail) and in `demo.html`; all gates green.
 
+## Log
+
+**2026-07-27 — IMPLEMENTED (branch `feat/T-099-business-photo-gallery`).** Owner
+priority-override task (do-next), started after shipping T-056. All 7 steps done;
+backend + mobile + web demo + tests. Gates green: API Pint(540)+PHPStan L6+**Pest
+932**; mobile tsc+eslint+**jest 306**; contracts drift clean. Verified the demo
+carousel end-to-end in Chrome (seeded a 3-photo gallery → swipe + attribution
+pill + count badge render; seed reverted).
+
+- **Data model:** migration `2026_07_27_000000_add_gallery_to_places` adds
+  `gallery_json` jsonb default `[]`; `Place` gets it in `$fillable`, `CURATED_FIELDS`
+  (lockable), and an `'array'` cast.
+- **Seam emits many images:** `BusinessDetails` carries `images:
+  list<{url,attribution}>` (round-tripped for the 30-day cache).
+  `WebsiteBusinessSource` collects ALL schema.org `image` entries (string | list |
+  ImageObject), deduped, tagged `website` (first also stays `image_url` for
+  back-compat). `GoogleBusinessSource` maps `$details->images` to `google`-tagged
+  entries.
+- **Google photos (key-free):** `GooglePlacesGeocoder` BUSINESS_FIELDS += `photos`
+  (rides the same Details call, NOT the pipeline DETAILS_FIELDS). **ADR /
+  decide-and-document:** each `photo_reference` is resolved by reading the Places
+  Photo 302 `Location` header (`allow_redirects=false`) → a key-free
+  `googleusercontent` URL is stored; we NEVER fetch image bytes, and a resolved
+  URL still containing `key=` or a non-3xx response is dropped. Chose this over a
+  keyed proxy (no open-proxy key/billing-abuse surface, no new route; URL rot
+  self-heals on re-enrichment). `html_attributions` → tag-stripped, entity-decoded
+  text. **Legacy Places API has no owner flag → business match is a name/domain
+  heuristic; ADR note: new Places API v1 `authorAttributions` would improve owner
+  detection.**
+- **Merge policy** (`GalleryBuilder`, new): stable rank website(0) →
+  business-attributed-Google(1, attribution folded-contains place name OR website
+  domain label) → other-Google(2) → reel(3); dedup by normalized URL; cap
+  `enrich.gallery.max_images` (8); reel fallback = `place->thumbnail_url` so a
+  crawl-less place keeps ≥1. `BusinessEnricher` UNION-merges `gallery_json` across
+  sources (pulled out of the per-field first-non-empty-wins), derives
+  `image_url = gallery[0]`; both go through `PlaceEditor` so a locked
+  gallery/hero survives. Gated by `enrich.gallery.enabled` (off ⇒ single-image
+  T-084 behaviour).
+- **API/contract:** `PlaceResource.gallery` (normalized, defends malformed rows);
+  `place.json` gains a required `gallery` array of `{url, source(enum), attribution}`;
+  TS regenerated (drift green).
+- **Mobile:** `PlaceGallery` (paged FlatList, terracotta page dots, Google
+  photo-credit scrim, reuses `Thumbnail` for graceful fallback, matches the 190px
+  hero card); `[slug].tsx` shows it when `gallery.length > 1`, else the single
+  hero. `PlaceGalleryImage` type added to `src/api/places.ts` (still hand-defined,
+  not contract-derived).
+- **Web demo:** CSS scroll-snap carousel + count badge + credit pill when
+  `gallery.length > 1`; `::after` texture suppressed over real photos; keeps the
+  existing `cssUrl()`/`safeUrl()`/`esc()` escaping.
+
+**KEY:** `UrlCanonicalizer`-style network concern — `pinnedIp`/SSRF is unchanged;
+website images still run through `PublicUrlGuard`. **DEFERRED:** admin gallery
+reorder/curation UI in Filament (out of scope); new-Places-API-v1 migration for
+reliable owner photos (ADR). **ON MERGE:** flip tasks.json T-099 → done.
+
 ## Gotchas
 
 - **Legacy Places API has no owner flag.** `html_attributions` names the *uploader*, not "the business." The name/domain match is a heuristic — document it, and note in an ADR that migrating `GoogleBusinessSource` to the **new Places API v1** (`photos[].authorAttributions`) would let us identify owner photos more reliably. Do not claim strict business-only for Google.

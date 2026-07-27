@@ -2597,7 +2597,7 @@
       "id": "T-099",
       "title": "Business photo gallery: collect multiple business-owned images + gallery UI",
       "phase": "M2",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-084"
       ],
