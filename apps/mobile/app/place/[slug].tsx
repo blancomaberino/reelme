@@ -25,10 +25,14 @@ import { useSessionStore } from '@/stores/session';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 export default function PlaceDetailScreen() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  // `justAdded` is set when we auto-open a place straight after sharing it — its
+  // gallery is still being enriched, so poll until it lands (see usePlace).
+  const { slug, justAdded } = useLocalSearchParams<{ slug: string; justAdded?: string }>();
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const { data: place, isLoading, isError, refetch } = usePlace(slug ?? '');
+  const { data: place, isLoading, isError, refetch } = usePlace(slug ?? '', {
+    pollForGallery: justAdded === '1',
+  });
   const authed = useSessionStore((s) => s.status === 'authed');
   const [saveOpen, setSaveOpen] = useState(false);
 
