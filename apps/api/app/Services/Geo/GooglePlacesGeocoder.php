@@ -163,7 +163,11 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
 
     private function findPlaceId(string $name, GeoHints $hints): ?string
     {
-        $input = implode(' ', array_filter([$name, $hints->city, $hints->country]));
+        // Include the STREET in the text query — it's usually the strongest
+        // disambiguator, and without it a bare (often @handle-derived) name with no
+        // city/country degrades to a fuzzy global match on Google's side (e.g.
+        // "claaracafe" → the unrelated "Carabele"). street → city → country order.
+        $input = implode(' ', array_filter([$name, $hints->street, $hints->city, $hints->country]));
 
         $query = array_filter([
             'input' => $input,
@@ -319,13 +323,18 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
 
     private function cacheKey(string $name, GeoHints $hints): string
     {
-        $triple = implode('|', [
+        // Key on the same signals the query uses (incl. street) so two places that
+        // share a name+city but sit on different streets don't collide on one
+        // cached result — and so the fixed street-aware query doesn't read a stale
+        // entry cached under the old street-less key.
+        $signals = implode('|', [
             $this->normalize($name),
+            $this->normalize((string) $hints->street),
             $this->normalize((string) $hints->city),
             $this->normalize((string) $hints->country),
         ]);
 
-        return 'geocode:'.sha1($triple);
+        return 'geocode:'.sha1($signals);
     }
 
     /** Lowercase, unaccented, whitespace-collapsed so lookalike queries share a key. */

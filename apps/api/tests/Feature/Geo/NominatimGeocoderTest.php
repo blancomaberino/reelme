@@ -88,3 +88,11 @@ it('binds Nominatim as the keyless default when no Google key is configured', fu
     app()->forgetInstance(Geocoder::class);
     expect(app(Geocoder::class))->toBeInstanceOf(GooglePlacesGeocoder::class);
 });
+
+it('includes the street in the search query so a bare name is not fuzzy-matched', function () {
+    Http::fake(['*/search*' => Http::response(nominatimRow())]);
+
+    (new NominatimGeocoder)->findPlace('claaracafe', new GeoHints(street: 'C. Joaquin de Salterain 1490'));
+
+    Http::assertSent(fn (Request $r) => str_contains(urldecode($r->url()), 'claaracafe, C. Joaquin de Salterain 1490'));
+});

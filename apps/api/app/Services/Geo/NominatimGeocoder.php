@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Http;
  * the pipeline resolves real place names without a Google Places key (demo / dev).
  * Maps Nominatim results onto the same GeocodeResult contract as the Google
  * adapter; a transient network error surfaces as GeocodeFailed (retryable), a
- * genuine miss returns null. Results cache 30 days keyed by (name, city, country).
+ * genuine miss returns null. Results cache 30 days keyed by the query string
+ * (name, street, city, region, country).
  */
 class NominatimGeocoder implements Geocoder
 {
@@ -126,8 +127,12 @@ class NominatimGeocoder implements Geocoder
 
     private function query(string $name, GeoHints $hints): string
     {
+        // Street first after the name — the strongest disambiguator, and without
+        // it a bare (@handle-derived) name with no city/country fuzzy-matches the
+        // wrong place. The cache key is md5(query), so this keys on street too.
         return implode(', ', array_filter([
             trim($name),
+            $hints->street,
             $hints->city,
             $hints->region,
             $hints->country,
