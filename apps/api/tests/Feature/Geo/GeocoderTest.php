@@ -257,3 +257,39 @@ it('FakeGeocoder returns seeded results and records calls, null otherwise', func
         ->and($fake->calls)->toHaveCount(2)
         ->and($fake->calls[0]['name'])->toBe('Seeded Spot');
 });
+
+it('includes the street in the find-place query so a bare name is not fuzzy-matched', function () {
+    // Regression: a caption with an @handle name + a street but no city/country
+    // used to query the bare handle, which Google fuzzy-matched to a different
+    // business ("claaracafe" → "Carabele"). The street must reach the query.
+    Http::fake([
+        '*/findplacefromtext/json*' => Http::response(placesFixture('findplace.json')),
+        '*/details/json*' => Http::response(placesFixture('details.json')),
+    ]);
+
+    geocoder()->findPlace('claaracafe', new GeoHints(street: 'C. Joaquin de Salterain 1490'));
+
+    Http::assertSent(function (Request $request) {
+        if (! str_contains($request->url(), '/findplacefromtext/json')) {
+            return false;
+        }
+        $input = (string) $request['input'];
+
+        return str_contains($input, 'claaracafe') && str_contains($input, 'C. Joaquin de Salterain 1490');
+    });
+});
+
+it('keys the geocode cache by street so same-name different-street places do not collide', function () {
+    Http::fake([
+        '*/findplacefromtext/json*' => Http::response(placesFixture('findplace.json')),
+        '*/details/json*' => Http::response(placesFixture('details.json')),
+    ]);
+
+    // Same name + city, different street → two distinct lookups (2 find-place +
+    // 2 details = 4 requests). A street-blind cache key would collapse the second
+    // into a cache hit (2 requests) and serve the first place for the second address.
+    geocoder()->findPlace('Cafe', new GeoHints(street: 'Rua A 100', city: 'Montevideo'));
+    geocoder()->findPlace('Cafe', new GeoHints(street: 'Rua B 200', city: 'Montevideo'));
+
+    Http::assertSentCount(4);
+});
