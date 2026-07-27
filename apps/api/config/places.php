@@ -61,13 +61,22 @@ return [
     ],
 
     /*
-    | "Enrich as business" (T-084): the on-demand action that populates a place's
-    | curated fields from external sources, independent of any share. Each source
-    | is individually gated and failure-isolated; a locked (human-set) field is
-    | never overwritten. The Google source uses a WIDER Places field mask than the
-    | pipeline (extra billed SKU) — hence opt-in and admin-triggered only.
+    | Enrich a place's curated fields + photo gallery from external sources
+    | (T-084/T-099). Runs automatically on a place's FIRST publish (`auto` below)
+    | and on demand via the Filament "Enrich as business" action. Each source is
+    | individually gated and failure-isolated; a locked (human-set) field is never
+    | overwritten. The Google source uses a WIDER Places field mask than the
+    | pipeline (extra billed SKU), so `auto` bills that SKU once per new place —
+    | disable it (or the Google source) to keep enrichment admin-triggered only.
     */
     'enrich' => [
+        // Auto-enrich a place the FIRST time it is published (T-099 follow-up):
+        // the publish stage queues an EnrichPlace job so a shared place shows its
+        // business data + photo gallery without waiting for a manual admin action.
+        // Guarded on `enriched_at` so a re-share never re-bills external sources;
+        // the Filament "Enrich as business" action can always re-run on demand.
+        // Off in the test env (external calls); admins can disable per env.
+        'auto' => (bool) env('PLACES_ENRICH_AUTO', true),
         'google' => [
             'enabled' => (bool) env('PLACES_ENRICH_GOOGLE_ENABLED', true),
             // Max width (px) requested for a Google Places Photo (T-099). The photo

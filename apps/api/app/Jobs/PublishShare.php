@@ -133,6 +133,14 @@ class PublishShare extends PipelineStubJob
         }
 
         app(PlacePublisher::class)->recompute($place, $share, $source);
+
+        // Auto-enrich a newly-added place once (T-099 follow-up): a shared place
+        // should show its business data + photo gallery without a manual admin
+        // step. Queued (external HTTP — never on the publish path) and guarded on
+        // `enriched_at` so a re-share doesn't re-bill the external sources.
+        if ((bool) config('places.enrich.auto', true) && $place->enriched_at === null) {
+            EnrichPlace::dispatch($place->id);
+        }
     }
 
     public function failed(Throwable $e): void
