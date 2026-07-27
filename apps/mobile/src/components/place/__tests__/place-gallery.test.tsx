@@ -18,9 +18,10 @@ it('shows a photo-credit caption for each attributed image (Google photos)', () 
     />,
   );
 
-  // Each attributed slide renders its credit; the owned website image has none.
-  expect(screen.getByText('Alpha Diner')).toBeOnTheScreen();
-  expect(screen.getByText('Beta Cafe')).toBeOnTheScreen();
+  // Each attributed slide credits it as a Google review; the owned website image
+  // has no credit.
+  expect(screen.getByText('Google review · Alpha Diner')).toBeOnTheScreen();
+  expect(screen.getByText('Google review · Beta Cafe')).toBeOnTheScreen();
 });
 
 it('renders no photo credits when no image carries attribution', () => {

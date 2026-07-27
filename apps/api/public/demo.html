@@ -375,7 +375,7 @@ const I18N = {
     'toast.hidden.title': 'Ocultado', 'toast.hidden.body': 'Quitado de tu feed.',
     'toast.hideFail': 'No se pudo ocultar', 'toast.published': '¡Publicado!', 'toast.onMap': 'está en el mapa.',
     'toast.error': 'Algo salió mal',
-    'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.hours': 'HORARIO', 'place.googleMaps': 'Ver en Google Maps', 'place.dishesUpdated': 'Menú actualizado el', 'place.sources': 'VIDEOS DE ORIGEN', 'place.discounts': 'DESCUENTOS CON TARJETA',
+    'place.tags': 'ETIQUETAS', 'place.dishes': 'PLATOS VISTOS', 'place.hours': 'HORARIO', 'place.googleMaps': 'Ver en Google Maps', 'place.galleryCredit': 'Reseña de Google', 'place.dishesUpdated': 'Menú actualizado el', 'place.sources': 'VIDEOS DE ORIGEN', 'place.discounts': 'DESCUENTOS CON TARJETA',
     'place.reviews': 'RESEÑAS', 'place.fromGoogle': 'DE GOOGLE', 'place.watch': 'Ver original ↗',
     'place.readOnGoogle': 'Ver todas las reseñas en Google',
     'reviewSrc.title': 'RESEÑAS EN LA WEB', 'reviewSrc.native': 'Reelmap', 'reviewSrc.google': 'Google', 'reviewSrc.trustpilot': 'Trustpilot', 'reviewSrc.read': 'Ver en', 'reviewSrc.reviews': 'reseñas',
@@ -419,7 +419,7 @@ const I18N = {
     'toast.hidden.title': 'Hidden', 'toast.hidden.body': 'Removed from your feed.',
     'toast.hideFail': 'Couldn’t hide', 'toast.published': 'Published!', 'toast.onMap': 'is on the map.',
     'toast.error': 'Something went wrong',
-    'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.hours': 'HOURS', 'place.googleMaps': 'View on Google Maps', 'place.dishesUpdated': 'Menu updated', 'place.sources': 'SOURCE VIDEOS', 'place.discounts': 'CARD DISCOUNTS',
+    'place.tags': 'TAGS', 'place.dishes': 'DISHES SEEN', 'place.hours': 'HOURS', 'place.googleMaps': 'View on Google Maps', 'place.galleryCredit': 'Google review', 'place.dishesUpdated': 'Menu updated', 'place.sources': 'SOURCE VIDEOS', 'place.discounts': 'CARD DISCOUNTS',
     'place.reviews': 'REVIEWS', 'place.fromGoogle': 'FROM GOOGLE', 'place.watch': 'Watch original ↗',
     'place.readOnGoogle': 'Read all reviews on Google',
     'reviewSrc.title': 'RATINGS ACROSS THE WEB', 'reviewSrc.native': 'Reelmap', 'reviewSrc.google': 'Google', 'reviewSrc.trustpilot': 'Trustpilot', 'reviewSrc.read': 'Read on', 'reviewSrc.reviews': 'reviews',
@@ -842,7 +842,7 @@ function renderPlace(p) {
         <span class="gallery-count">◈ ${gallery.length}</span>
         <div class="gallery-track">
           ${gallery.map(im => `<div class="gallery-slide" style="background-image:url('${cssUrl(im.url)}')">${
-            im.attribution ? `<span class="gallery-credit">◆ ${esc(im.attribution)}</span>` : ""
+            im.attribution ? `<span class="gallery-credit">${t("place.galleryCredit")} · ${esc(im.attribution)}</span>` : ""
           }</div>`).join("")}
         </div>
       </div>`

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import type { PlaceGalleryImage } from '@/api/places';
+import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
 
 import { Thumbnail } from './thumbnail';
@@ -40,6 +41,7 @@ const SCROLL_PADDING = 20;
  * rot between enrichments). The caller renders the single hero for length ≤ 1.
  */
 export function PlaceGallery({ images, testID }: Props) {
+  const t = useT();
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
   const { width: screenWidth } = useWindowDimensions();
@@ -77,9 +79,9 @@ export function PlaceGallery({ images, testID }: Props) {
             <Thumbnail uri={item.url} style={[styles.image, { width }]} />
             {item.attribution ? (
               <View style={styles.credit}>
-                <Ionicons name="camera-outline" size={11} color="#FFFFFF" />
+                <Ionicons name="logo-google" size={11} color="#FFFFFF" />
                 <Text style={styles.creditText} numberOfLines={1}>
-                  {item.attribution}
+                  {t('place.galleryCredit', { name: item.attribution })}
                 </Text>
               </View>
             ) : null}
