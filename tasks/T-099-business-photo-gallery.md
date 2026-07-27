@@ -70,8 +70,12 @@ pill + count badge render; seed reverted).
   Photo 302 `Location` header (`allow_redirects=false`) → a key-free
   `googleusercontent` URL is stored; we NEVER fetch image bytes, and a resolved
   URL still containing `key=` or a non-3xx response is dropped. Chose this over a
-  keyed proxy (no open-proxy key/billing-abuse surface, no new route; URL rot
-  self-heals on re-enrichment). `html_attributions` → tag-stripped, entity-decoded
+  keyed proxy (no open-proxy key/billing-abuse surface, no new route). URL rot
+  recovers when the 30-day `businessDetails` cache expires/flushes — the resolved
+  URLs are cached with the DTO, not re-resolved on every enrich; legacy
+  `lh3.googleusercontent.com` URLs are long-lived and both clients degrade to the
+  placeholder on load failure. Google resolution is bounded by
+  `enrich.google.max_photos` (default 6). `html_attributions` → tag-stripped, entity-decoded
   text. **Legacy Places API has no owner flag → business match is a name/domain
   heuristic; ADR note: new Places API v1 `authorAttributions` would improve owner
   detection.**
@@ -95,6 +99,21 @@ pill + count badge render; seed reverted).
 - **Web demo:** CSS scroll-snap carousel + count badge + credit pill when
   `gallery.length > 1`; `::after` texture suppressed over real photos; keeps the
   existing `cssUrl()`/`safeUrl()`/`esc()` escaping.
+
+**`/coderabbit` review fixes (3 parallel agents + `/security-review`):** applied 6
+findings — (A1) fold the website-domain needle so hyphenated domains match; (A2)
+gate the reel fallback on an empty existing gallery + require a real photo to
+write, so a transient all-source failure never downgrades a stored gallery/hero;
+(A3) pin a lone-locked hero as `gallery[0]` so the carousel's first image can't
+diverge from the manually-locked `image_url`; normalize-URL keeps path case
+(host-only lowercasing); (B2) bound Google photo resolution by
+`enrich.google.max_photos` + honest mask comment; (B3) clamp `source` to the enum
+and re-validate the url scheme at the resource (contract boundary); (B4) anchor
+the `key=` drop-guard (`[?&]key=`). `/security-review`: no findings (API key never
+reaches a stored/served/logged value — verified). +8 fix tests. Skipped NITs
+(justified): short-needle attribution false-positive (ordering-only), RN
+active-dot desync after rotation (rare, self-corrects), SCROLL_PADDING const dup
+(self-corrects via onLayout).
 
 **KEY:** `UrlCanonicalizer`-style network concern — `pinnedIp`/SSRF is unchanged;
 website images still run through `PublicUrlGuard`. **DEFERRED:** admin gallery
