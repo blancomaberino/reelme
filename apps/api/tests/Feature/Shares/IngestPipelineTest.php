@@ -1,6 +1,8 @@
 <?php
 
 use App\Adapters\AdapterRegistry;
+use App\Adapters\Exceptions\FetchFailed;
+use App\Adapters\Exceptions\PostUnavailable;
 use App\Adapters\InstagramAdapter;
 use App\Adapters\InstagramGraphAdapter;
 use App\Enums\FetchStatus;
@@ -20,6 +22,45 @@ use App\Services\Geo\GeocodeResult;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
+use Tests\Support\FakeInstagramAdapter;
+use Tests\Support\ThrowingAdapter;
+
+/**
+ * Bind a single-adapter chain whose adapter always throws $error, so
+ * FetchSourcePost's failure branches (release / advance) can be driven with a
+ * real class-string the registry resolves — no network. When $then is given the
+ * chain is [ThrowingAdapter, FakeInstagramAdapter], so an advance lands on a
+ * success.
+ */
+function fakeThrowingInstagramChain(Throwable $error, bool $then = false): void
+{
+    app()->instance(ThrowingAdapter::class, new ThrowingAdapter($error));
+
+    $chain = [ThrowingAdapter::class];
+    if ($then) {
+        $chain[] = FakeInstagramAdapter::class; // a later adapter the chain can advance to
+    }
+    config(['ingestion.chains.instagram' => $chain]);
+    app()->forgetInstance(AdapterRegistry::class);
+}
+
+/** A share sitting at `fetching` with its source_post ready to fetch. */
+function fetchingInstagramShare(string $url = 'https://www.instagram.com/reel/OK/'): Share
+{
+    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
+    $share->sourcePost->update([
+        'platform' => Platform::Instagram,
+        'url' => $url,
+        // Null the factory's *optional* (sometimes-null) caption so a
+        // "no metadata was persisted" assertion is deterministic — persist()
+        // would overwrite this on a successful fetch.
+        'caption' => null,
+        'fetch_status' => FetchStatus::Pending,
+        'fetched_at' => null,
+    ]);
+
+    return $share;
+}
 
 // useFakeInstagram() lives in tests/Helpers/PipelineHelpers.php (loaded via
 // Pest.php) so sibling suites can use it under --parallel.
@@ -37,12 +78,7 @@ it('IngestShare moves pending → fetching and dispatches the chain', function (
 it('FetchSourcePost persists metadata from the adapter and advances', function () {
     useFakeInstagram();
 
-    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
-    $share->sourcePost->update([
-        'platform' => Platform::Instagram,
-        'url' => 'https://www.instagram.com/reel/OK/',
-        'fetch_status' => FetchStatus::Pending,
-    ]);
+    $share = fetchingInstagramShare('https://www.instagram.com/reel/OK/');
 
     (new FetchSourcePost($share->id))->handle(app(AdapterRegistry::class));
 
@@ -58,12 +94,7 @@ it('parks the share in review when the chain needs manual fallback', function ()
     config(['ingestion.chains.instagram' => []]);
     app()->forgetInstance(AdapterRegistry::class);
 
-    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
-    $share->sourcePost->update([
-        'platform' => Platform::Instagram,
-        'url' => 'https://www.instagram.com/reel/NOPAY/',
-        'fetch_status' => FetchStatus::Pending,
-    ]);
+    $share = fetchingInstagramShare('https://www.instagram.com/reel/NOPAY/');
 
     (new FetchSourcePost($share->id))->handle(app(AdapterRegistry::class));
 
@@ -81,12 +112,7 @@ it('parks a private post as fetch_auth_required when the sharer has no linked ac
     app()->forgetInstance(AdapterRegistry::class);
     Http::fake(['*instagram.com/api/v1/oembed*' => Http::response('', 401)]);
 
-    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
-    $share->sourcePost->update([
-        'platform' => Platform::Instagram,
-        'url' => 'https://www.instagram.com/reel/PRIVX/',
-        'fetch_status' => FetchStatus::Pending,
-    ]);
+    $share = fetchingInstagramShare('https://www.instagram.com/reel/PRIVX/');
 
     (new FetchSourcePost($share->id))->handle(app(AdapterRegistry::class));
 
@@ -110,12 +136,7 @@ it('fetches a private post via the linked account when oEmbed is blocked (T-015)
         ]]]),
     ]);
 
-    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
-    $share->sourcePost->update([
-        'platform' => Platform::Instagram,
-        'url' => 'https://www.instagram.com/reel/PRIVX/',
-        'fetch_status' => FetchStatus::Pending,
-    ]);
+    $share = fetchingInstagramShare('https://www.instagram.com/reel/PRIVX/');
     // The sharer linked their Instagram account — its token authorizes the fetch.
     PlatformAccount::factory()->create([
         'user_id' => $share->user_id,
@@ -173,4 +194,79 @@ it('runs the full pipeline to a resolved place (sync queue + fakes)', function (
     expect($place->google_place_id)->toBe('ChIJpipeline')
         ->and($place->status)->toBe(PlaceStatus::Pending) // single unverified source stays pending
         ->and(PlaceSource::where('share_id', $share->id)->where('place_id', $place->id)->exists())->toBeTrue();
+});
+
+// --- FetchSourcePost off-nominal paths (T-056) ---
+
+it('releases the job (rate-limit back-off) without changing state on a Retry-After', function () {
+    // A 429/rate-limited adapter throws FetchFailed with a Retry-After; the job
+    // must release itself for that many seconds and NOT touch the share/post.
+    fakeThrowingInstagramChain(new FetchFailed('rate limited', retryAfter: 42));
+    $share = fetchingInstagramShare('https://www.instagram.com/reel/RL/');
+
+    $job = (new FetchSourcePost($share->id))->withFakeQueueInteractions();
+    $job->handle(app(AdapterRegistry::class));
+
+    $job->assertReleased(delay: 42);
+
+    // No state change: the post is still unfetched (persist() would have set
+    // fetch_status/fetched_at/caption) and the share is still fetching.
+    $post = $share->sourcePost->fresh();
+    expect($post->fetch_status)->toBe(FetchStatus::Pending)
+        ->and($post->fetched_at)->toBeNull()
+        ->and($post->caption)->toBeNull()
+        ->and($share->fresh()->status)->toBe(ShareStatus::Fetching)
+        ->and($share->fresh()->failure_reason)->toBeNull();
+});
+
+it('advances to the next adapter when a FetchFailed carries no Retry-After', function () {
+    // First adapter fails transiently (no Retry-After) → the chain advances and
+    // the second (fake Instagram) succeeds, persisting its metadata.
+    fakeThrowingInstagramChain(new FetchFailed('temporary blip'), then: true);
+    $share = fetchingInstagramShare('https://www.instagram.com/reel/ADV/');
+
+    $job = (new FetchSourcePost($share->id))->withFakeQueueInteractions();
+    $job->handle(app(AdapterRegistry::class));
+
+    $job->assertNotReleased();
+    $post = $share->sourcePost->fresh();
+    expect($post->fetch_status)->toBe(FetchStatus::Fetched)
+        ->and($post->caption)->toBe('best noodles in lisbon')
+        ->and($post->influencer->handle)->toBe('noodle.hunter');
+});
+
+it('advances past a PostUnavailable to a later adapter that succeeds', function () {
+    // A permanent-unavailable adapter (deleted/public-blocked, no auth needed)
+    // advances the chain rather than parking; a later adapter still resolves it.
+    fakeThrowingInstagramChain(new PostUnavailable('deleted'), then: true);
+    $share = fetchingInstagramShare('https://www.instagram.com/reel/GONE/');
+
+    (new FetchSourcePost($share->id))->handle(app(AdapterRegistry::class));
+
+    expect($share->sourcePost->fresh()->fetch_status)->toBe(FetchStatus::Fetched)
+        ->and($share->fresh()->status)->toBe(ShareStatus::Fetching); // untouched — DownloadMedia runs next
+});
+
+// --- FailsShareOnError terminal hook (T-056) ---
+
+it('fails the share with a taxonomy reason when the job permanently fails', function () {
+    $share = Share::factory()->create(['status' => ShareStatus::Fetching]);
+
+    (new FetchSourcePost($share->id))->failed(new Exception('boom'));
+
+    $share = $share->fresh();
+    expect($share->status)->toBe(ShareStatus::Failed)
+        ->and($share->failure_reason)->toBe('fetch_unavailable');
+});
+
+it('is a no-op in failed() when the share is already terminal', function () {
+    // A published share can no longer transition to failed; failed() must not
+    // throw and must leave the share untouched.
+    $share = Share::factory()->create(['status' => ShareStatus::Published]);
+
+    (new FetchSourcePost($share->id))->failed(new Exception('late failure'));
+
+    $share = $share->fresh();
+    expect($share->status)->toBe(ShareStatus::Published)
+        ->and($share->failure_reason)->toBeNull();
 });

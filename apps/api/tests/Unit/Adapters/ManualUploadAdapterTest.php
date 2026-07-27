@@ -81,3 +81,24 @@ it('returns the uploaded screen recording as media', function () {
         ->and($result->media[0]->mime)->toBe('video/mp4')
         ->and($result->media[0]->url)->toContain('rec.mp4');
 });
+
+it('returns an empty result when fetchMedia finds no source_post', function () {
+    // fetchMedia is called with metadata for a URL that has no persisted post —
+    // there is nothing to hand back, so the result carries no media (not a throw).
+    $data = new SourcePostData(platform: Platform::Instagram, externalId: 'X', url: 'https://never/seen');
+
+    $result = manualAdapter()->fetchMedia($data, null);
+
+    expect($result->media)->toBe([]);
+});
+
+it('returns an empty result when the post has no screen recording', function () {
+    // The post exists (e.g. metadata was pasted) but no screen_recording asset
+    // was uploaded yet — fetchMedia yields an empty MediaFetchResult.
+    SourcePost::factory()->create(['url' => 'https://insta/reel/NOREC']);
+    $data = new SourcePostData(platform: Platform::Instagram, externalId: 'X', url: 'https://insta/reel/NOREC');
+
+    $result = manualAdapter()->fetchMedia($data, null);
+
+    expect($result->media)->toBe([]);
+});
