@@ -6,7 +6,7 @@
 #   ./scripts/dev.sh start          Boot backend + Metro only for iOS (fast; after a first build)
 #   ./scripts/dev.sh android        Boot backend + build & launch on a connected Android device
 #   ./scripts/dev.sh android-start  Boot backend + Metro only for Android (fast; after a first build)
-#   ./scripts/dev.sh backend        Boot backend services + queue worker, nothing else
+#   ./scripts/dev.sh backend        Boot backend services + a FRESH queue worker (re-run after code changes to reload it)
 #   ./scripts/dev.sh stop           Stop the backend stack
 #
 # Backend runs in Docker (Postgres/PostGIS, Redis, Meilisearch, Mailpit, PHP 8.4).
@@ -71,14 +71,20 @@ boot_backend() {
   ensure_yt_dlp
 
   # The queue worker drives the share/analysis pipeline AND sends the queued
-  # emails (verification, invites). Start one if none is already running.
-  if docker exec "$CONTAINER" sh -lc 'ps ax 2>/dev/null | grep -q "[q]ueue:work"'; then
-    log "Queue worker already running."
-  else
-    log "Starting the queue worker…"
-    docker exec -d "$CONTAINER" sh -lc \
-      'php artisan queue:work redis --queue=ingest,fetch,media,transcribe,analyze,resolve,publish,notifications,default --sleep=1 --tries=2 --timeout=600 >> storage/logs/worker.log 2>&1'
-  fi
+  # emails (verification, invites). It boots the Laravel app ONCE and holds the
+  # code in memory, so a worker left running from a previous branch/edit keeps
+  # executing STALE pipeline/job code (a top cause of "the fix didn't work").
+  # Always cycle it — stop any running worker, then start a fresh one on the
+  # current code. (A bare `queue:restart` would just stop this unsupervised
+  # worker without respawning it, so we kill + start instead.)
+  log "Starting a fresh queue worker…"
+  # `[q]ueue:work` (a regex that matches "queue:work") keeps pkill from matching
+  # its OWN wrapper shell — whose command line literally contains "[q]ueue:work",
+  # which the regex does not match — so it kills only the real worker. The `|| true`
+  # keeps a no-match (or a self-terminated shell) from tripping `set -e`.
+  docker exec "$CONTAINER" sh -lc 'pkill -f "[q]ueue:work" 2>/dev/null; sleep 1' || true
+  docker exec -d "$CONTAINER" sh -lc \
+    'php artisan queue:work redis --queue=ingest,fetch,media,transcribe,analyze,resolve,publish,notifications,default --sleep=1 --tries=2 --timeout=600 >> storage/logs/worker.log 2>&1'
 
   printf '\n  API health : %s/api/v1/health\n  Mailpit    : http://localhost:8025\n' "$API_URL"
 }
@@ -97,8 +103,12 @@ lan_ip() { ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/n
 launch_ios() {
   use_node; cd "$MOBILE_DIR"
   if [ "${1:-}" = start ]; then
-    log "Starting Metro (press i to open iOS). API: $API_URL"
-    EXPO_PUBLIC_API_URL="$API_URL" npx expo start --dev-client
+    # --clear wipes Metro's transform cache on startup. Git preserves file mtimes
+    # across a branch switch, so Metro can otherwise serve a STALE (or broken
+    # half-applied) transform of a changed file — a crash the app's ErrorBoundary
+    # silently swallows. Costs a one-time cache rebuild; Fast Refresh stays fast.
+    log "Starting Metro with a clean cache (press i to open iOS). API: $API_URL"
+    EXPO_PUBLIC_API_URL="$API_URL" npx expo start --dev-client --clear
   else
     log "Building & launching the iOS app (first run ~2-3 min). API: $API_URL"
     EXPO_PUBLIC_API_URL="$API_URL" npx expo run:ios
@@ -113,7 +123,9 @@ launch_android() {
   [ -n "${GOOGLE_MAPS_ANDROID_KEY:-}" ] || echo "  (heads up: GOOGLE_MAPS_ANDROID_KEY is unset — the map screen will be blank on Android)"
   use_node; cd "$MOBILE_DIR"
   if [ "${1:-}" = start ]; then
-    EXPO_PUBLIC_API_URL="$url" npx expo start --dev-client
+    # --clear: fresh Metro cache (see the iOS note) so a branch switch can't leave
+    # the device running a stale JS bundle.
+    EXPO_PUBLIC_API_URL="$url" npx expo start --dev-client --clear
   else
     log "Building & launching on the Android device (needs a device connected — check with: adb devices)."
     EXPO_PUBLIC_API_URL="$url" npx expo run:android --device
