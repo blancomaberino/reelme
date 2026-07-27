@@ -87,6 +87,10 @@ class PlaceResource extends JsonResource
             // is what the map marker prefers.
             'image_url' => $this->image_url,
             'thumbnail_url' => $this->thumbnail_url,
+            // Ordered business gallery (T-099): owned website images first, then
+            // business-attributed Google photos, then fill. `image_url` is
+            // gallery[0]; the client shows a carousel only when length > 1.
+            'gallery' => $this->galleryForResource(),
             'cuisines' => $tags['cuisines'],
             'vibe_tags' => $tags['vibe_tags'],
             'dietary_tags' => $tags['dietary_tags'],
@@ -148,5 +152,36 @@ class PlaceResource extends JsonResource
         );
 
         return implode(', ', array_map(fn ($p) => trim((string) $p), $parts));
+    }
+
+    /**
+     * The stored gallery normalized to the contract shape (T-099): a list of
+     * `{ url, source, attribution }`. Defends against a legacy/malformed
+     * `gallery_json` (non-list, missing keys) so the contract stays valid.
+     *
+     * @return list<array{url: string, source: string, attribution: ?string}>
+     */
+    private function galleryForResource(): array
+    {
+        $out = [];
+        /** @var array<int, mixed> $entries — a legacy/malformed row may hold non-array items */
+        $entries = (array) $this->gallery_json;
+        foreach ($entries as $entry) {
+            // Keep only contract-valid rows: an http(s) url and an enum source
+            // (a hand-edited/legacy value could otherwise fail schema validation).
+            if (! is_array($entry) || ! is_string($entry['url'] ?? null) || preg_match('#^https?://#i', $entry['url']) !== 1) {
+                continue;
+            }
+            $source = is_string($entry['source'] ?? null) && in_array($entry['source'], ['website', 'google', 'reel'], true)
+                ? $entry['source']
+                : 'website';
+            $out[] = [
+                'url' => $entry['url'],
+                'source' => $source,
+                'attribution' => is_string($entry['attribution'] ?? null) && $entry['attribution'] !== '' ? $entry['attribution'] : null,
+            ];
+        }
+
+        return $out;
     }
 }

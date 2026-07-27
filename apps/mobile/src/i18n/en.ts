@@ -44,6 +44,7 @@ export const en = {
   'place.directions': 'Directions',
   'place.share': 'Share',
   'place.shareMessage': '{{name}} on Reelmap',
+  'place.galleryCredit': 'Google review · {{name}}',
   'place.dishes': 'Dishes',
   'place.dishesUpdated': 'Menu updated {{date}}',
   'place.dishesCount': '{{count}} items',

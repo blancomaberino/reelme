@@ -39,6 +39,7 @@ use Laravel\Scout\Searchable;
  * @property int|null $merged_into_place_id
  * @property string|null $image_url
  * @property string|null $thumbnail_url
+ * @property array<int, array<string, mixed>>|null $gallery_json
  * @property array<int, string>|null $locked_fields
  * @property Carbon|null $enriched_at
  * @property int $shares_count
@@ -87,7 +88,7 @@ class Place extends Model
         'name', 'slug', 'address_line1', 'address_line2', 'city', 'region',
         'postal_code', 'country_code', 'google_place_id', 'cuisine_primary',
         'price_range', 'phone', 'website', 'image_url', 'thumbnail_url',
-        'opening_hours_json', 'locked_fields', 'enriched_at', 'status',
+        'gallery_json', 'opening_hours_json', 'locked_fields', 'enriched_at', 'status',
         'merged_into_place_id', 'shares_count', 'avg_extraction_confidence',
         'normalized_name', 'google_rating', 'google_rating_count', 'google_reviews_json',
         'google_reviews_synced_at',
@@ -103,7 +104,7 @@ class Place extends Model
     public const CURATED_FIELDS = [
         'name', 'address_line1', 'address_line2', 'city', 'region', 'postal_code',
         'country_code', 'cuisine_primary', 'price_range', 'phone', 'website',
-        'image_url', 'thumbnail_url', 'opening_hours_json',
+        'image_url', 'thumbnail_url', 'gallery_json', 'opening_hours_json',
     ];
 
     /**
@@ -115,6 +116,7 @@ class Place extends Model
             'status' => PlaceStatus::class,
             'needs_admin_review' => 'boolean',
             'opening_hours_json' => 'array',
+            'gallery_json' => 'array',
             'locked_fields' => 'array',
             'enriched_at' => 'datetime',
             'price_range' => 'integer',

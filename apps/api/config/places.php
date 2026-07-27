@@ -61,15 +61,46 @@ return [
     ],
 
     /*
-    | "Enrich as business" (T-084): the on-demand action that populates a place's
-    | curated fields from external sources, independent of any share. Each source
-    | is individually gated and failure-isolated; a locked (human-set) field is
-    | never overwritten. The Google source uses a WIDER Places field mask than the
-    | pipeline (extra billed SKU) — hence opt-in and admin-triggered only.
+    | Enrich a place's curated fields + photo gallery from external sources
+    | (T-084/T-099). Runs automatically on a place's FIRST publish (`auto` below)
+    | and on demand via the Filament "Enrich as business" action. Each source is
+    | individually gated and failure-isolated; a locked (human-set) field is never
+    | overwritten. The Google source uses a WIDER Places field mask than the
+    | pipeline (extra billed SKU), so `auto` bills that SKU once per new place —
+    | disable it (or the Google source) to keep enrichment admin-triggered only.
     */
     'enrich' => [
+        // Auto-enrich a place the FIRST time it is published (T-099 follow-up):
+        // the publish stage queues an EnrichPlace job so a shared place shows its
+        // business data + photo gallery without waiting for a manual admin action.
+        // Guarded on `enriched_at` so a re-share never re-bills external sources;
+        // the Filament "Enrich as business" action can always re-run on demand.
+        // Off in the test env (external calls); admins can disable per env.
+        'auto' => (bool) env('PLACES_ENRICH_AUTO', true),
         'google' => [
             'enabled' => (bool) env('PLACES_ENRICH_GOOGLE_ENABLED', true),
+            // Max width (px) requested for a Google Places Photo (T-099). The photo
+            // is part of the same Details call (added to the wider BUSINESS_FIELDS
+            // mask, NOT the pipeline's billing-sensitive DETAILS_FIELDS). NOTE: the
+            // repo uses the LEGACY Places API — `photos[].html_attributions` names
+            // the UPLOADER, not "the owner", so business ownership is a name/domain
+            // heuristic (ADR: the new Places API v1 `authorAttributions` would let
+            // us identify owner photos more reliably).
+            'photo_maxwidth' => (int) env('PLACES_ENRICH_GOOGLE_PHOTO_MAXWIDTH', 1024),
+            // How many Google photos to RESOLVE per enrich. Each resolution is a
+            // separate (billed) Places Photo request, and website-owned images
+            // usually outrank Google in the gallery, so keep this modest — a few
+            // fill photos, not the whole set.
+            'max_photos' => (int) env('PLACES_ENRICH_GOOGLE_MAX_PHOTOS', 6),
+        ],
+        // Multi-photo gallery (T-099): collect business-owned images across the
+        // sources into an ordered `gallery_json`. Website (schema.org) images are
+        // definitively owned → ranked first; Google photos are best-effort,
+        // business-attributed first then filled. Disabled ⇒ the single-image T-084
+        // behaviour (hero/marker from a lone `image_url`).
+        'gallery' => [
+            'enabled' => (bool) env('PLACES_ENRICH_GALLERY_ENABLED', true),
+            'max_images' => (int) env('PLACES_ENRICH_GALLERY_MAX_IMAGES', 8),
         ],
         'website' => [
             'enabled' => (bool) env('PLACES_ENRICH_WEBSITE_ENABLED', true),

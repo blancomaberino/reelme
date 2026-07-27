@@ -132,3 +132,109 @@ it('treats a private/SSRF website as a failed source without throwing', function
     expect($website['status'])->toBe('failed');
     Http::assertNothingSent(); // never left the SSRF guard
 });
+
+function twoImageJsonLd(): string
+{
+    $ld = json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'Restaurant',
+        'name' => "Joe's",
+        'image' => ['https://cdn.example.com/w1.jpg', 'https://cdn.example.com/w2.jpg'],
+    ], JSON_THROW_ON_ERROR);
+
+    return '<html><head><script type="application/ld+json">'.$ld.'</script></head></html>';
+}
+
+it('merges website and Google photos into one ordered gallery and derives the hero (T-099)', function () {
+    $place = Place::factory()->withGooglePlaceId('gp_g')->create([
+        'name' => "Joe's", 'website' => 'https://joes.example.com', 'image_url' => null,
+    ]);
+
+    bindGeocoder((new FakeGeocoder)->seedBusinessDetails('gp_g', new BusinessDetails(
+        images: [
+            ['url' => 'https://g/owned.jpg', 'attribution' => "Joe's"],  // attributed to the business
+            ['url' => 'https://g/other.jpg', 'attribution' => 'A Tourist'],
+        ],
+    )));
+    Http::fake(['*' => Http::response(twoImageJsonLd())]);
+
+    app(BusinessEnricher::class)->enrich($place);
+    $place->refresh();
+
+    expect(array_column($place->gallery_json, 'url'))->toBe([
+        'https://cdn.example.com/w1.jpg', // owned website images first
+        'https://cdn.example.com/w2.jpg',
+        'https://g/owned.jpg',            // then business-attributed Google
+        'https://g/other.jpg',            // then the rest
+    ])->and(array_column($place->gallery_json, 'source'))->toBe(['website', 'website', 'google', 'google'])
+        ->and($place->image_url)->toBe('https://cdn.example.com/w1.jpg'); // hero = gallery[0]
+});
+
+it('falls back to a single image_url and no gallery when the gallery is disabled', function () {
+    config(['places.enrich.gallery.enabled' => false]);
+    $place = Place::factory()->create(['website' => 'https://joes.example.com', 'image_url' => null]);
+    Http::fake(['*' => Http::response(twoImageJsonLd())]);
+
+    app(BusinessEnricher::class)->enrich($place);
+    $place->refresh();
+
+    expect($place->image_url)->toBe('https://cdn.example.com/w1.jpg') // single-hero back-compat
+        ->and($place->gallery_json)->toBe([]); // column default, never written
+});
+
+it('keeps a hand-locked gallery and hero through re-enrichment', function () {
+    $manual = [['url' => 'https://manual/pic.jpg', 'source' => 'website', 'attribution' => null]];
+    $place = Place::factory()->create([
+        'website' => 'https://joes.example.com',
+        'gallery_json' => $manual,
+        'image_url' => 'https://manual/pic.jpg',
+    ]);
+    $place->lockFields(['gallery_json', 'image_url']);
+    $place->save();
+
+    Http::fake(['*' => Http::response(twoImageJsonLd())]);
+    app(BusinessEnricher::class)->enrich($place);
+    $place->refresh();
+
+    expect($place->gallery_json)->toBe($manual) // manual curation survives enrichment
+        ->and($place->image_url)->toBe('https://manual/pic.jpg');
+});
+
+it('does not downgrade an existing gallery when every source fails transiently', function () {
+    $existing = [
+        ['url' => 'https://cdn.example.com/w1.jpg', 'source' => 'website', 'attribution' => null],
+        ['url' => 'https://cdn.example.com/w2.jpg', 'source' => 'website', 'attribution' => null],
+    ];
+    $place = Place::factory()->create([
+        'website' => 'https://joes.example.com',
+        'gallery_json' => $existing,
+        'image_url' => 'https://cdn.example.com/w1.jpg',
+        'thumbnail_url' => 'https://cdn.example/reel.jpg', // a reel fallback exists…
+    ]);
+
+    // The website scrape 5xxs (throws → no contribution); no Google source.
+    Http::fake(['*' => Http::response('upstream boom', 500)]);
+    app(BusinessEnricher::class)->enrich($place);
+    $place->refresh();
+
+    // …but a failed run must NOT collapse the stored gallery/hero to the reel.
+    expect($place->gallery_json)->toBe($existing)
+        ->and($place->image_url)->toBe('https://cdn.example.com/w1.jpg');
+});
+
+it('keeps a lone-locked hero as gallery[0] through re-enrichment', function () {
+    $place = Place::factory()->create([
+        'name' => "Joe's", 'website' => 'https://joes.example.com',
+        'image_url' => 'https://manual/hero.jpg',
+    ]);
+    $place->lockFields(['image_url']); // only the hero is locked, NOT the gallery
+    $place->save();
+
+    Http::fake(['*' => Http::response(twoImageJsonLd())]);
+    app(BusinessEnricher::class)->enrich($place);
+    $place->refresh();
+
+    // The locked hero survives AND stays the carousel's first image.
+    expect($place->image_url)->toBe('https://manual/hero.jpg')
+        ->and($place->gallery_json[0]['url'])->toBe('https://manual/hero.jpg');
+});

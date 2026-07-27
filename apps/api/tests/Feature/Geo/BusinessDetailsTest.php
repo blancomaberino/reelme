@@ -74,3 +74,50 @@ it('returns null on a NOT_FOUND place', function () {
 
     expect((new GooglePlacesGeocoder)->businessDetails('gp_missing'))->toBeNull();
 });
+
+it('resolves Google photos into a key-free gallery with attribution (T-099)', function () {
+    // Photos ride the same Details call; each photo_reference is resolved to its
+    // 302 redirect target (a key-free googleusercontent URL) — we read the
+    // Location header, never the image bytes. html_attributions → plain text.
+    Http::fake([
+        '*/details/json*' => Http::response(['status' => 'OK', 'result' => [
+            'website' => 'https://joes.example.com/',
+            'photos' => [
+                ['photo_reference' => 'ref1', 'html_attributions' => ['<a href="https://x/y">Joe&#39;s Diner</a>']],
+                ['photo_reference' => 'ref2', 'html_attributions' => []],
+            ],
+        ]]),
+        '*/place/photo*' => Http::sequence()
+            ->push('', 302, ['Location' => 'https://lh3.googleusercontent.com/p1'])
+            ->push('', 302, ['Location' => 'https://lh3.googleusercontent.com/p2']),
+    ]);
+
+    $details = (new GooglePlacesGeocoder)->businessDetails('gp_photos');
+
+    expect($details->images)->toBe([
+        ['url' => 'https://lh3.googleusercontent.com/p1', 'attribution' => "Joe's Diner"],
+        ['url' => 'https://lh3.googleusercontent.com/p2', 'attribution' => null],
+    ]);
+
+    // The wider mask now requests photos; the request never carries a stray key.
+    Http::assertSent(fn (Request $r): bool => str_contains($r->url(), 'details/json') && str_contains($r->url(), 'photos'));
+    Http::assertSent(fn (Request $r): bool => str_contains($r->url(), '/place/photo') && str_contains($r->url(), 'photo_reference=ref1'));
+});
+
+it('drops a Google photo whose redirect target carries a key or is not a redirect', function () {
+    // Defence-in-depth: an API key must never reach a stored/served URL, and a
+    // non-3xx photo response has no clean target — both are dropped, best-effort.
+    Http::fake([
+        '*/details/json*' => Http::response(['status' => 'OK', 'result' => ['photos' => [
+            ['photo_reference' => 'ref1'],
+            ['photo_reference' => 'ref2'],
+        ]]]),
+        '*/place/photo*' => Http::sequence()
+            ->push('', 302, ['Location' => 'https://evil.example/i?key=SECRET']) // still keyed → drop
+            ->push('', 200), // not a redirect → drop
+    ]);
+
+    $details = (new GooglePlacesGeocoder)->businessDetails('gp_badphotos');
+
+    expect($details->images)->toBe([]);
+});

@@ -41,6 +41,46 @@ it('exposes image_url and thumbnail_url on the place detail', function () {
         ->assertJsonPath('data.thumbnail_url', 'https://cdn.example/marker.jpg');
 });
 
+it('exposes the business gallery on the place detail (T-099)', function () {
+    $gallery = [
+        ['url' => 'https://cdn.example/a.jpg', 'source' => 'website', 'attribution' => null],
+        ['url' => 'https://cdn.example/b.jpg', 'source' => 'google', 'attribution' => "Joe's Diner"],
+    ];
+    $place = Place::factory()->active()->atPoint(51.51, -0.13)->create([
+        'image_url' => 'https://cdn.example/a.jpg',
+        'gallery_json' => $gallery,
+    ]);
+
+    $this->getJson("/api/v1/places/{$place->slug}")
+        ->assertOk()
+        ->assertJsonPath('data.gallery', $gallery);
+});
+
+it('exposes an empty gallery when a place has none', function () {
+    $place = Place::factory()->active()->atPoint(51.51, -0.13)->create();
+
+    $this->getJson("/api/v1/places/{$place->slug}")
+        ->assertOk()
+        ->assertJsonPath('data.gallery', []);
+});
+
+it('drops contract-invalid gallery rows (non-http url, unknown source) from the API', function () {
+    $place = Place::factory()->active()->atPoint(51.51, -0.13)->create([
+        'gallery_json' => [
+            ['url' => 'https://ok.example/a.jpg', 'source' => 'website', 'attribution' => null],
+            ['url' => 'ftp://bad.example/b.jpg', 'source' => 'website', 'attribution' => null], // non-http → dropped
+            ['url' => 'https://ok.example/c.jpg', 'source' => 'weird', 'attribution' => null],   // bad source → clamped
+        ],
+    ]);
+
+    $this->getJson("/api/v1/places/{$place->slug}")
+        ->assertOk()
+        ->assertJsonPath('data.gallery', [
+            ['url' => 'https://ok.example/a.jpg', 'source' => 'website', 'attribution' => null],
+            ['url' => 'https://ok.example/c.jpg', 'source' => 'website', 'attribution' => null],
+        ]);
+});
+
 /** An active place with a primary source whose reel carries an oEmbed poster. */
 function pictePlaceWithPoster(float $lat, float $lng, string $name, string $poster): Place
 {

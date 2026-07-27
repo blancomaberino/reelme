@@ -38,6 +38,25 @@ class GoogleBusinessSource implements BusinessEnrichmentSource
             return [];
         }
 
-        return $this->geocoder->businessDetails($placeId)?->toPlacePatch() ?? [];
+        $details = $this->geocoder->businessDetails($placeId);
+        if ($details === null) {
+            return [];
+        }
+
+        $patch = $details->toPlacePatch();
+
+        // Google photos ride along as gallery entries tagged `google` (T-099); the
+        // enricher ranks/dedups/caps them against the website-owned images. The
+        // ownership signal is only the photo's attribution, so ranking (business
+        // name/domain match) is the enricher's job, not ours.
+        $gallery = array_map(
+            fn (array $image): array => ['url' => $image['url'], 'source' => 'google', 'attribution' => $image['attribution'] ?? null],
+            $details->images,
+        );
+        if ($gallery !== []) {
+            $patch['gallery_json'] = $gallery;
+        }
+
+        return $patch;
     }
 }

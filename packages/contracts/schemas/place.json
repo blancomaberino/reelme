@@ -10,7 +10,7 @@
     "city", "country_code", "address", "google_place_id", "opening_hours",
     "phone", "website", "cuisines", "vibe_tags", "dietary_tags", "dishes",
     "dishes_updated_at", "dishes_language", "source_count", "rating", "google_reviews",
-    "review_sources", "discounts", "image_url", "thumbnail_url"
+    "review_sources", "discounts", "image_url", "thumbnail_url", "gallery"
   ],
   "properties": {
     "id": { "type": "string" },
@@ -30,6 +30,20 @@
     "website": { "type": ["string", "null"] },
     "image_url": { "type": ["string", "null"], "description": "Curated business photo (T-084); the detail hero, else the client falls back to the reel poster." },
     "thumbnail_url": { "type": ["string", "null"], "description": "Curated marker photo (T-084); the map marker prefers it, falling back to image_url then the reel poster." },
+    "gallery": {
+      "type": "array",
+      "description": "Ordered business photo gallery (T-099): owned website (schema.org) images first, then business-attributed Google photos, then fill. image_url mirrors gallery[0]. The client shows a carousel only when length > 1.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["url", "source", "attribution"],
+        "properties": {
+          "url": { "type": "string", "description": "Client-loadable http(s) image URL (no API key)." },
+          "source": { "type": "string", "enum": ["website", "google", "reel"], "description": "Where the photo came from: the business's own website, Google Places, or the reel-derived thumbnail (last-resort)." },
+          "attribution": { "type": ["string", "null"], "description": "Uploader/attribution text (Google html_attributions, tags stripped); null for owned website images." }
+        }
+      }
+    },
     "cuisines": { "type": "array", "items": { "type": "string" } },
     "vibe_tags": { "type": "array", "items": { "type": "string" } },
     "dietary_tags": { "type": "array", "items": { "type": "string" } },

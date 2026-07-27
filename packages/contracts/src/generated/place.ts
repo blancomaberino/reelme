@@ -29,6 +29,23 @@ export interface PlaceDetail {
    * Curated marker photo (T-084); the map marker prefers it, falling back to image_url then the reel poster.
    */
   thumbnail_url: string | null;
+  /**
+   * Ordered business photo gallery (T-099): owned website (schema.org) images first, then business-attributed Google photos, then fill. image_url mirrors gallery[0]. The client shows a carousel only when length > 1.
+   */
+  gallery: {
+    /**
+     * Client-loadable http(s) image URL (no API key).
+     */
+    url: string;
+    /**
+     * Where the photo came from: the business's own website, Google Places, or the reel-derived thumbnail (last-resort).
+     */
+    source: 'website' | 'google' | 'reel';
+    /**
+     * Uploader/attribution text (Google html_attributions, tags stripped); null for owned website images.
+     */
+    attribution: string | null;
+  }[];
   cuisines: string[];
   vibe_tags: string[];
   dietary_tags: string[];

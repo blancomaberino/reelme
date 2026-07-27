@@ -150,6 +150,13 @@ export type PlaceDetail = {
   // (else we fall back to the reel poster); the thumbnail is the marker photo.
   image_url: string | null;
   thumbnail_url: string | null;
+  /**
+   * Ordered business photo gallery (T-099): owned website images first, then
+   * business-attributed Google photos, then fill. `image_url` mirrors
+   * `gallery[0]`; the detail shows a swipeable carousel only when length > 1.
+   * Optional here so older cached payloads still type.
+   */
+  gallery?: PlaceGalleryImage[];
   cuisines: string[];
   vibe_tags: string[];
   dietary_tags: string[];
@@ -177,6 +184,14 @@ export type PlaceDetail = {
    * absent for guests, and never carries another user's labels.
    */
   my_tags?: MyPlaceTag[];
+};
+
+/** One image in a place's business gallery (T-099). */
+export type PlaceGalleryImage = {
+  url: string;
+  source: 'website' | 'google' | 'reel';
+  /** Uploader/attribution text (Google photos); null for owned website images. */
+  attribution: string | null;
 };
 
 /** A private, owner-only label the viewer pinned to a place (T-064). */
