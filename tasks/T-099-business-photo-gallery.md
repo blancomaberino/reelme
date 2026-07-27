@@ -115,6 +115,26 @@ reaches a stored/served/logged value — verified). +8 fix tests. Skipped NITs
 active-dot desync after rotation (rare, self-corrects), SCROLL_PADDING const dup
 (self-corrects via onLayout).
 
+**⭐ AUTO-ENRICH ON FIRST PUBLISH (owner follow-up, 2026-07-27):** the gallery (and
+T-084's `image_url`/hours/phone) only ever populated via the manual Filament
+"Enrich as business" action → a freshly-shared place showed no gallery. Owner:
+"#2 should automatically run when a place is added, then re-run on enrich." Added
+a queued **`EnrichPlace`** job (`ShouldQueue` + `ShouldBeUnique` per place so a
+multi-source publish / concurrent re-share bills the external sources once;
+`tries=1`, best-effort — `BusinessEnricher` never throws; guards on `enriched_at`
+unless `force`). **`PublishShare::activateAndCount` dispatches it** per
+newly-published place when `config('places.enrich.auto')` && `enriched_at===null`
+— queued (external HTTP NEVER on the publish path). Config `places.enrich.auto`
+(default true; **OFF in the test env via `PLACES_ENRICH_AUTO=false` in phpunit.xml**,
+like `MEDIA_VERIFY_IMAGE_HOST`, so every existing pipeline test is unaffected —
+new `AutoEnrichTest` flips it on). Filament action stays synchronous (admin
+re-run). Review fixes: ShouldBeUnique (async double-billing race), a
+re-publish-to-enriched-place no-dispatch test, corrected the stale "admin-triggered
+only" config doc. NOTE: auto-enrich fires for **Pending** places too (they're
+map/detail-visible per T-072, so they deserve a gallery). Pest 939→**946** (7 new).
+**Existing places (added pre-feature) don't retro-enrich** — run the Filament
+action or a backfill. [[reelmap-progress]]
+
 **KEY:** `UrlCanonicalizer`-style network concern — `pinnedIp`/SSRF is unchanged;
 website images still run through `PublicUrlGuard`. **DEFERRED:** admin gallery
 reorder/curation UI in Filament (out of scope); new-Places-API-v1 migration for
