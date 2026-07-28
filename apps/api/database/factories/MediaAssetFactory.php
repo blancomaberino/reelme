@@ -23,7 +23,10 @@ class MediaAssetFactory extends Factory
             'source_post_id' => SourcePost::factory(),
             'kind' => MediaKind::Video,
             'storage_path' => 'media/'.fake()->uuid().'/original/'.hash('sha256', fake()->uuid()).'.mp4',
-            'disk' => 's3',
+            // Match the resolved media disk (local_media in dev/test) rather than
+            // hardcoding 's3'; the pipeline always sets this explicitly, but the
+            // fixture default should track config, not a prod-only literal.
+            'disk' => config('media.disk'),
             'mime' => 'video/mp4',
             'bytes' => fake()->numberBetween(100_000, 50_000_000),
             'sha256' => hash('sha256', fake()->unique()->uuid()),

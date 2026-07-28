@@ -98,6 +98,14 @@ return [
 
     'waits' => [
         'redis:default' => 60,
+        // The pipeline supervisors run long jobs (see the supervisor timeouts
+        // below), so a genuine backlog only shows once waits approach the job's
+        // own runtime. Alert per queue rather than leaving them uncovered.
+        'redis:media' => 900,
+        'redis:transcribe' => 900,
+        'redis:analyze' => 600,
+        'redis:resolve' => 600,
+        'redis:publish' => 600,
     ],
 
     /*
