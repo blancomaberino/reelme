@@ -43,7 +43,7 @@ it('injects the posting account and ships the v9 poster-exclusion rule', functio
     $text = promptText($req);
 
     // The prompt version bumped, so drift is recorded on the analysis run.
-    expect($req->promptVersion)->toBe('extraction.v11');
+    expect($req->promptVersion)->toBe('extraction.v12');
 
     // The account is surfaced to the model — handle AND the informative display name.
     expect($text)->toContain('POSTED BY:')
@@ -84,6 +84,20 @@ it('ships the v9 price-alignment + cuisine-nationality guardrails', function () 
         // Cuisine nationality must match location/@handle, not dish style.
         ->toContain('NATIONALITY/country cuisine')
         ->toContain('is not "argentinian"');
+});
+
+it('ships the v12 dish-name-quality rule: a lone descriptor is not a dish', function () {
+    // Regression for the @re_comiendo___ / Kraken (Piriápolis) reel: the reel had
+    // no transcript and the caption named no dishes, so a small vision model read
+    // three lone descriptor words off a menu frame — "agridulce", "fuego",
+    // "reducción" — and emitted them as dishes. A dish name must be a complete,
+    // orderable item; a bare adjective/technique/sauce word must be omitted.
+    $sys = promptFor('caption', null)->systemPrompt;
+
+    expect($sys)
+        ->toContain('DISH NAMES')
+        ->toContain('COMPLETE, orderable menu item')
+        ->toContain('is a DESCRIPTOR, not a dish');
 });
 
 it('omits a redundant display name equal to the handle', function () {
