@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\FeedController;
 use App\Http\Controllers\Api\V1\FeedDismissalController;
 use App\Http\Controllers\Api\V1\FollowController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\InfluencerClaimController;
 use App\Http\Controllers\Api\V1\InfluencerController;
 use App\Http\Controllers\Api\V1\InviteController;
 use App\Http\Controllers\Api\V1\MapController;
@@ -173,6 +174,15 @@ Route::prefix('v1')->group(function () {
         // Invite friends to Reelmap by email (T-069). Abuse-sensitive (sends
         // mail) → 10 requests/hour, ≤20 addresses each.
         Route::post('/invites', [InviteController::class, 'store'])->middleware('throttle:10,60');
+
+        // Influencer identity claiming (T-038, 06 §5.1): OAuth handle match or
+        // code-in-bio. GET resumes an in-progress claim; POST starts/advances it.
+        // A light write throttle matches the other write surfaces; the bio-verify
+        // action additionally self-limits its remote profile fetch in-controller.
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::get('/influencers/{influencer}/claim', [InfluencerClaimController::class, 'show']);
+            Route::post('/influencers/{influencer}/claim', [InfluencerClaimController::class, 'store']);
+        });
 
         // Follows (T-037, 03 §2.10): follow users or influencers; counters +
         // NewFollower notification handled transactionally in the controller.

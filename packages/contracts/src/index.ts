@@ -10,3 +10,4 @@ export type { PlaceSummary } from './generated/place-summary';
 export type { PlaceSource } from './generated/place-source';
 export type { UserProfile } from './generated/user-profile';
 export type { InfluencerProfile } from './generated/influencer-profile';
+export type { InfluencerClaim } from './generated/influencer-claim';
