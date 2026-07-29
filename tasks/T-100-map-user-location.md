@@ -48,3 +48,36 @@ branch from `main`, `/frontend-design` for any UI work, `/coderabbit` before the
   simplify/efficiency cleanups. Gates: eslint ✓ tsc ✓ jest 70 suites / 369 tests ✓;
   gitleaks + semgrep clean; 97.9% stmts / 98.7% branch over the new modules
   (fallback chain 100%). Approval receipt recorded. **PR not yet opened.**
+- **2026-07-29 (device verification)** — Owner flagged that the task was reported
+  done without ever running the app. Correct call: it crashed immediately. Three
+  further defects, none of which the 369-test suite could see, because
+  `jest.setup.ts` mocks every native module:
+  1. **My bug** — `expo-location` resolves its native module at IMPORT time, so a
+     top-level `import` threw during module evaluation and took the whole map
+     screen down. Every try/catch in `location.ts` was dead code. Now a memoized
+     lazy `require`, so a binary without the module degrades as documented.
+  2. **Version skew** — `expo install expo-location` gave 57.0.7 (registry
+     recommendation for SDK 57) but the project pins expo@57.0.4 /
+     expo-modules-core@57.0.3, whose `bundledNativeModules.json` wants ~57.0.2.
+     57.0.7 referenced an ExpoModulesCore symbol 57.0.3 doesn't export → dyld
+     abort before any JS. Exact-pinned 57.0.2. **`expo install --check` reports 17
+     outdated packages; that skew is the root cause and needs its own task.**
+  3. **My bug** — persistence was gated on `details.isGesture`, which is
+     Android-only (iOS `AIRMapManager.m` sends `region` alone) and optionally
+     typed, so it typechecked and silently never persisted on iOS. Replaced with
+     an explicit interaction flag (`onPanDrag` + a single `moveMap()` helper all
+     programmatic moves route through). The mount settle goes through neither —
+     load-bearing, because persisting it let the saved rung beat the location rung
+     forever and pinned the map to the fallback city.
+  Verified on iPhone 16 Pro Max / iOS 18.1 with simulated Barcelona and a keychain
+  reset between runs: clean slate opens on Barcelona with the blue dot; pan → quit
+  → relaunch reopens on the panned viewport. 376 tests green; coverage 98.2% stmts
+  / 98.8% branch over the new modules. Approval receipt re-recorded at 1cad142.
+  **PR still not opened.**
+
+## Lesson
+
+Green tests + a config grep are not evidence a mobile change works. Native-module
+additions invalidate the installed dev client, and jest mocks hide every native
+failure. Run it on the simulator before calling a task done.
+
