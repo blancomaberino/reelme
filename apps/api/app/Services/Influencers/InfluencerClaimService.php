@@ -168,29 +168,7 @@ class InfluencerClaimService
      */
     public function approve(InfluencerClaim $claim, User $admin): void
     {
-        $transferred = DB::transaction(function () use ($claim, $admin): bool {
-            /** @var Influencer $influencer */
-            $influencer = Influencer::whereKey($claim->influencer_id)->lockForUpdate()->firstOrFail();
-            $previousId = $influencer->claimed_by_user_id;
-
-            if ($previousId !== null && $previousId !== $claim->user_id) {
-                InfluencerClaim::query()
-                    ->where('influencer_id', $influencer->id)
-                    ->where('user_id', $previousId)
-                    ->update(['status' => ClaimStatus::Rejected, 'reason' => 'admin_override', 'reviewed_by_user_id' => $admin->id, 'updated_at' => now()]);
-                $this->demoteIfOrphaned($previousId, $influencer->id);
-            }
-
-            $influencer->forceFill(['claimed_by_user_id' => $claim->user_id, 'claimed_at' => now()])->save();
-            User::whereKey($claim->user_id)->update(['is_influencer' => true]);
-
-            $claim->forceFill(['status' => ClaimStatus::Verified, 'reason' => null, 'token' => null, 'reviewed_by_user_id' => $admin->id])->save();
-            $this->rejectCompetingClaims($influencer, $claim->user, $admin->id);
-
-            // Ownership actually moved only when the identity wasn't already this
-            // user's — approving a claim they already own is a no-op re-approve.
-            return $previousId !== $claim->user_id;
-        });
+        $transferred = DB::transaction(fn (): bool => $this->applyApproval($claim, $admin));
 
         // After commit + only on a real transfer, so the M4 escrow listener neither
         // races the transaction nor double-releases on a no-op re-approve.
@@ -200,28 +178,69 @@ class InfluencerClaimService
     }
 
     /**
-     * Admin manual assignment (Filament): bind an identity to a user directly,
-     * no OAuth/bio proof. Records a `method = admin` claim and runs it through the
-     * same approve() path, so an already-claimed identity is reassigned (previous
-     * owner demoted) exactly as an override would be.
+     * Admin manual assignment (Filament): bind an identity to a user directly, no
+     * OAuth/bio proof — the interim tool until Instagram OAuth is live. Runs the
+     * row upsert AND the approval in ONE transaction (the event fires after commit),
+     * so a displaced/verified claim is never left half-updated if anything throws.
      */
     public function assignByAdmin(Influencer $influencer, User $user, User $admin): InfluencerClaim
     {
-        $claim = InfluencerClaim::updateOrCreate(
-            ['influencer_id' => $influencer->id, 'user_id' => $user->id],
-            [
-                'method' => ClaimMethod::Admin,
-                'status' => ClaimStatus::Pending,
-                'token' => null,
-                'reason' => null,
-                'expires_at' => null,
-                'reviewed_by_user_id' => null,
-            ],
-        );
+        $result = DB::transaction(function () use ($influencer, $user, $admin) {
+            $claim = InfluencerClaim::firstOrNew(['influencer_id' => $influencer->id, 'user_id' => $user->id]);
 
-        $this->approve($claim, $admin);
+            // Stamp method=admin ONLY on a brand-new row — re-assigning to the user
+            // who already holds a genuine oauth/bio_code claim must not rewrite that
+            // row's audit method. An existing row (incl. a sticky admin-rejected one)
+            // is intentionally overridden: the admin is explicitly vouching, and
+            // applyApproval() flips it to verified below.
+            if (! $claim->exists) {
+                $claim->method = ClaimMethod::Admin;
+                $claim->status = ClaimStatus::Pending;
+                $claim->save();
+            }
 
-        return $claim->refresh();
+            $transferred = $this->applyApproval($claim, $admin);
+
+            return ['claim' => $claim, 'transferred' => $transferred];
+        });
+
+        if ($result['transferred']) {
+            InfluencerClaimed::dispatch($influencer->refresh(), $user);
+        }
+
+        return $result['claim']->refresh();
+    }
+
+    /**
+     * The transactional core shared by approve() and assignByAdmin(): reassign
+     * ownership, demote a displaced previous owner, mark the claim verified, and
+     * auto-reject competitors. MUST run inside a DB::transaction — the caller owns
+     * the after-commit InfluencerClaimed dispatch.
+     *
+     * @return bool whether ownership actually moved (→ the caller fires the event)
+     */
+    private function applyApproval(InfluencerClaim $claim, User $admin): bool
+    {
+        /** @var Influencer $influencer */
+        $influencer = Influencer::whereKey($claim->influencer_id)->lockForUpdate()->firstOrFail();
+        $previousId = $influencer->claimed_by_user_id;
+
+        if ($previousId !== null && $previousId !== $claim->user_id) {
+            InfluencerClaim::query()
+                ->where('influencer_id', $influencer->id)
+                ->where('user_id', $previousId)
+                ->update(['status' => ClaimStatus::Rejected, 'reason' => 'admin_override', 'reviewed_by_user_id' => $admin->id, 'updated_at' => now()]);
+            $this->demoteIfOrphaned($previousId, $influencer->id);
+        }
+
+        $influencer->forceFill(['claimed_by_user_id' => $claim->user_id, 'claimed_at' => now()])->save();
+        User::whereKey($claim->user_id)->update(['is_influencer' => true]);
+
+        $claim->forceFill(['status' => ClaimStatus::Verified, 'reason' => null, 'token' => null, 'reviewed_by_user_id' => $admin->id])->save();
+        $this->rejectCompetingClaims($influencer, $claim->user, $admin->id);
+
+        // Ownership actually moved only when the identity wasn't already this user's.
+        return $previousId !== $claim->user_id;
     }
 
     /** Admin reject: mark the claim rejected and notify the claimant. */
