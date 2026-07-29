@@ -199,6 +199,31 @@ class InfluencerClaimService
         }
     }
 
+    /**
+     * Admin manual assignment (Filament): bind an identity to a user directly,
+     * no OAuth/bio proof. Records a `method = admin` claim and runs it through the
+     * same approve() path, so an already-claimed identity is reassigned (previous
+     * owner demoted) exactly as an override would be.
+     */
+    public function assignByAdmin(Influencer $influencer, User $user, User $admin): InfluencerClaim
+    {
+        $claim = InfluencerClaim::updateOrCreate(
+            ['influencer_id' => $influencer->id, 'user_id' => $user->id],
+            [
+                'method' => ClaimMethod::Admin,
+                'status' => ClaimStatus::Pending,
+                'token' => null,
+                'reason' => null,
+                'expires_at' => null,
+                'reviewed_by_user_id' => null,
+            ],
+        );
+
+        $this->approve($claim, $admin);
+
+        return $claim->refresh();
+    }
+
     /** Admin reject: mark the claim rejected and notify the claimant. */
     public function reject(InfluencerClaim $claim, User $admin): void
     {

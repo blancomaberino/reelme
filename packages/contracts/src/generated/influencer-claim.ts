@@ -9,7 +9,7 @@ export interface InfluencerClaim {
   id: string;
   influencer_id: string;
   status: 'pending' | 'verified' | 'rejected';
-  method: 'oauth' | 'bio_code';
+  method: 'oauth' | 'bio_code' | 'admin';
   token: string | null;
   expires_at: string | null;
 }

@@ -1,11 +1,14 @@
 <?php
 
+use App\Enums\ClaimMethod;
 use App\Enums\ClaimStatus;
+use App\Events\InfluencerClaimed;
 use App\Filament\Resources\InfluencerClaims\Pages\ListInfluencerClaims;
 use App\Models\Influencer;
 use App\Models\InfluencerClaim;
 use App\Models\User;
 use App\Notifications\InfluencerClaimRejected;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
@@ -102,6 +105,67 @@ it('surfaces only disputed identities under the disputed filter', function () {
         ->filterTable('disputed')
         ->assertCanSeeTableRecords([$claimA, $claimB])
         ->assertCanNotSeeTableRecords([$solo]);
+});
+
+it('lets an admin manually assign an unclaimed identity to a user', function () {
+    Event::fake([InfluencerClaimed::class]);
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
+
+    $influencer = Influencer::factory()->create();
+    $user = User::factory()->create();
+
+    Livewire::test(ListInfluencerClaims::class)
+        ->callAction('assign', data: [
+            'influencer_id' => $influencer->id,
+            'user_id' => $user->id,
+        ])
+        ->assertHasNoActionErrors();
+
+    $claim = InfluencerClaim::where('influencer_id', $influencer->id)->where('user_id', $user->id)->firstOrFail();
+    expect($influencer->fresh()->claimed_by_user_id)->toBe($user->id)
+        ->and($user->fresh()->is_influencer)->toBeTrue()
+        ->and($claim->status)->toBe(ClaimStatus::Verified)
+        ->and($claim->method)->toBe(ClaimMethod::Admin)
+        ->and($claim->reviewed_by_user_id)->toBe($admin->id);
+    Event::assertDispatched(InfluencerClaimed::class, fn ($e) => $e->influencer->id === $influencer->id && $e->user->id === $user->id);
+});
+
+it('reassigns via the assign action when the identity is already claimed', function () {
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
+
+    $previous = User::factory()->create();
+    $influencer = Influencer::factory()->create();
+    $influencer->forceFill(['claimed_by_user_id' => $previous->id, 'claimed_at' => now()])->save();
+    User::whereKey($previous->id)->update(['is_influencer' => true]);
+    InfluencerClaim::factory()->verified()->create(['influencer_id' => $influencer->id, 'user_id' => $previous->id]);
+
+    $newOwner = User::factory()->create();
+
+    Livewire::test(ListInfluencerClaims::class)
+        ->callAction('assign', data: ['influencer_id' => $influencer->id, 'user_id' => $newOwner->id]);
+
+    expect($influencer->fresh()->claimed_by_user_id)->toBe($newOwner->id)
+        ->and($newOwner->fresh()->is_influencer)->toBeTrue()
+        ->and($previous->fresh()->is_influencer)->toBeFalse()
+        ->and(InfluencerClaim::where('user_id', $previous->id)->first()->status)->toBe(ClaimStatus::Rejected);
+});
+
+it('is idempotent when assigning an identity to its current owner (no re-fire)', function () {
+    Event::fake([InfluencerClaimed::class]);
+    $this->actingAs(User::factory()->admin()->create());
+
+    $owner = User::factory()->create();
+    $influencer = Influencer::factory()->create();
+    $influencer->forceFill(['claimed_by_user_id' => $owner->id, 'claimed_at' => now()])->save();
+
+    Livewire::test(ListInfluencerClaims::class)
+        ->callAction('assign', data: ['influencer_id' => $influencer->id, 'user_id' => $owner->id]);
+
+    expect($influencer->fresh()->claimed_by_user_id)->toBe($owner->id);
+    // Ownership didn't move, so the M4 escrow event must not re-fire.
+    Event::assertNotDispatched(InfluencerClaimed::class);
 });
 
 it('forbids a non-admin from the claims panel', function () {

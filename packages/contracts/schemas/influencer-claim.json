@@ -10,7 +10,7 @@
     "id": { "type": "string" },
     "influencer_id": { "type": "string" },
     "status": { "type": "string", "enum": ["pending", "verified", "rejected"] },
-    "method": { "type": "string", "enum": ["oauth", "bio_code"] },
+    "method": { "type": "string", "enum": ["oauth", "bio_code", "admin"] },
     "token": { "type": ["string", "null"] },
     "expires_at": { "type": ["string", "null"] }
   }
