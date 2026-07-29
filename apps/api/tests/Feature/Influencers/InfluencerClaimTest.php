@@ -146,6 +146,50 @@ it('409s when the influencer is already claimed by another user and never overwr
     expect($influencer->fresh()->claimed_by_user_id)->toBe($owner->id);
 });
 
+it('blocks re-claiming after a moderator rejected the claim (sticky rejection)', function () {
+    [$influencer, $user] = claimSetup('chef.tester');
+    InfluencerClaim::factory()->create([
+        'influencer_id' => $influencer->id,
+        'user_id' => $user->id,
+        'status' => ClaimStatus::Rejected,
+        'reason' => 'rejected_by_admin',
+        'reviewed_by_user_id' => User::factory()->admin()->create()->id,
+        'token' => null,
+    ]);
+    PlatformAccount::factory()->for($user)->create(['platform' => Platform::Instagram, 'handle' => 'chef.tester']);
+
+    // OAuth path blocked...
+    $this->postJson("/api/v1/influencers/{$influencer->id}/claim", ['method' => 'oauth'])
+        ->assertStatus(403)
+        ->assertJsonPath('error.details.reason', 'claim_rejected');
+
+    // ...and the bio-code issue can't quietly reset the rejected row to pending.
+    $this->postJson("/api/v1/influencers/{$influencer->id}/claim", ['method' => 'bio_code'])
+        ->assertStatus(403)
+        ->assertJsonPath('error.details.reason', 'claim_rejected');
+
+    expect($influencer->fresh()->claimed_by_user_id)->toBeNull()
+        ->and(InfluencerClaim::where('user_id', $user->id)->first()->status)->toBe(ClaimStatus::Rejected);
+});
+
+it('still allows re-claiming after an automatic (non-admin) rejection', function () {
+    [$influencer, $user] = claimSetup();
+    // A losing claim auto-rejected when someone else won — reviewed_by is null, so
+    // it is NOT a moderator decision and must not permanently block the user.
+    InfluencerClaim::factory()->create([
+        'influencer_id' => $influencer->id,
+        'user_id' => $user->id,
+        'status' => ClaimStatus::Rejected,
+        'reason' => 'claimed_by_other',
+        'reviewed_by_user_id' => null,
+        'token' => null,
+    ]);
+
+    $this->postJson("/api/v1/influencers/{$influencer->id}/claim", ['method' => 'bio_code'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'pending');
+});
+
 it('is idempotent when re-claiming an influencer you already own', function () {
     Event::fake([InfluencerClaimed::class]);
     [$influencer, $user] = claimSetup();
@@ -169,6 +213,16 @@ it('auto-rejects competing pending claims when someone wins the identity', funct
 
     expect($losing->fresh()->status)->toBe(ClaimStatus::Rejected)
         ->and($losing->fresh()->reason)->toBe('claimed_by_other');
+});
+
+it('replaces the pending token on re-request without duplicating the claim row', function () {
+    [$influencer, $user] = claimSetup();
+
+    $first = $this->postJson("/api/v1/influencers/{$influencer->id}/claim", ['method' => 'bio_code'])->json('data.token');
+    $second = $this->postJson("/api/v1/influencers/{$influencer->id}/claim", ['method' => 'bio_code'])->json('data.token');
+
+    expect($second)->not->toBe($first)
+        ->and(InfluencerClaim::where('influencer_id', $influencer->id)->where('user_id', $user->id)->count())->toBe(1);
 });
 
 it('resumes an in-progress claim via GET', function () {

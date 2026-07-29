@@ -11,7 +11,8 @@ use Livewire\Livewire;
 
 it('lets an admin reject a pending claim and notifies the claimant', function () {
     Notification::fake();
-    $this->actingAs(User::factory()->admin()->create());
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
 
     $claimant = User::factory()->create();
     $claim = InfluencerClaim::factory()->create(['user_id' => $claimant->id]);
@@ -20,12 +21,20 @@ it('lets an admin reject a pending claim and notifies the claimant', function ()
         ->callTableAction('reject', $claim);
 
     expect($claim->fresh()->status)->toBe(ClaimStatus::Rejected)
-        ->and($claim->fresh()->reason)->toBe('rejected_by_admin');
-    Notification::assertSentTo($claimant, InfluencerClaimRejected::class);
+        ->and($claim->fresh()->reason)->toBe('rejected_by_admin')
+        ->and($claim->fresh()->reviewed_by_user_id)->toBe($admin->id);
+    Notification::assertSentTo($claimant, InfluencerClaimRejected::class, function (InfluencerClaimRejected $n) use ($claim) {
+        $payload = $n->toDatabase($claim->user);
+
+        return $payload['type'] === 'influencer.claim_rejected'
+            && $payload['influencer_handle'] === $claim->influencer->handle
+            && $payload['url'] === '/influencers/'.$claim->influencer_id;
+    });
 });
 
 it('lets an admin override a claimed identity, moving the link to the new claimant', function () {
-    $this->actingAs(User::factory()->admin()->create());
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
 
     $previous = User::factory()->create();
     $influencer = Influencer::factory()->create();
@@ -41,10 +50,21 @@ it('lets an admin override a claimed identity, moving the link to the new claima
 
     expect($influencer->fresh()->claimed_by_user_id)->toBe($newClaimant->id)
         ->and($newClaimant->fresh()->is_influencer)->toBeTrue()
+        ->and($pending->fresh()->reviewed_by_user_id)->toBe($admin->id)
         // Previous owner is demoted (they hold no other identity) and their claim rejected.
         ->and($previous->fresh()->is_influencer)->toBeFalse()
         ->and(InfluencerClaim::where('user_id', $previous->id)->first()->status)->toBe(ClaimStatus::Rejected)
         ->and($pending->fresh()->status)->toBe(ClaimStatus::Verified);
+});
+
+it('hides approve and reject actions for an already-resolved claim', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $verified = InfluencerClaim::factory()->verified()->create();
+
+    Livewire::test(ListInfluencerClaims::class)
+        ->assertTableActionHidden('approve', $verified)
+        ->assertTableActionHidden('reject', $verified);
 });
 
 it('keeps the previous owner an influencer if they still hold another identity', function () {

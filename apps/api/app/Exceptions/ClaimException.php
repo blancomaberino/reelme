@@ -9,8 +9,8 @@ use Exception;
  * A recoverable failure in the influencer claiming flow (T-038). Carries the
  * canonical error `code`, HTTP status, and a machine-readable `details.reason`
  * so the mobile flow can branch (retry vs. switch method vs. contact support).
- * Mapped by ApiExceptionRenderer to the standard error envelope; the Filament
- * admin path catches it and surfaces the message as a notification instead.
+ * Thrown from the API claim paths and mapped by ApiExceptionRenderer to the
+ * standard error envelope (status + code + details.reason).
  */
 class ClaimException extends Exception
 {
@@ -52,6 +52,17 @@ class ClaimException extends Exception
             'This influencer has already been claimed by another account. Contact support if this is you.',
             409,
             ['reason' => 'claimed_by_other'],
+        );
+    }
+
+    /** A moderator rejected this user's claim — re-claiming is blocked until appeal. */
+    public static function rejected(): self
+    {
+        return new self(
+            'forbidden',
+            'A moderator rejected your claim to this identity. Contact support to appeal.',
+            403,
+            ['reason' => 'claim_rejected'],
         );
     }
 

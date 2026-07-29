@@ -11,6 +11,7 @@ use App\Models\InfluencerClaim;
 use App\Models\PlatformAccount;
 use App\Models\User;
 use App\Notifications\InfluencerClaimRejected;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -37,6 +38,8 @@ class InfluencerClaimService
      */
     public function claimViaOAuth(Influencer $influencer, User $user): InfluencerClaim
     {
+        $this->assertNotAdminRejected($influencer, $user);
+
         $linked = PlatformAccount::query()
             ->where('user_id', $user->id)
             ->where('platform', $influencer->platform)
@@ -56,17 +59,27 @@ class InfluencerClaimService
      */
     public function issueBioCode(Influencer $influencer, User $user): InfluencerClaim
     {
-        return InfluencerClaim::updateOrCreate(
-            ['influencer_id' => $influencer->id, 'user_id' => $user->id],
-            [
-                'method' => ClaimMethod::BioCode,
-                'status' => ClaimStatus::Pending,
-                'token' => $this->generateToken(),
-                'reason' => null,
-                'expires_at' => now()->addHours(self::TOKEN_TTL_HOURS),
-                'reviewed_by_user_id' => null,
-            ],
-        );
+        $this->assertNotAdminRejected($influencer, $user);
+
+        $key = ['influencer_id' => $influencer->id, 'user_id' => $user->id];
+        $values = [
+            'method' => ClaimMethod::BioCode,
+            'status' => ClaimStatus::Pending,
+            'token' => $this->generateToken(),
+            'reason' => null,
+            'expires_at' => now()->addHours(self::TOKEN_TTL_HOURS),
+            'reviewed_by_user_id' => null,
+        ];
+
+        try {
+            return InfluencerClaim::updateOrCreate($key, $values);
+        } catch (UniqueConstraintViolationException) {
+            // Two concurrent "request a code" calls for the same (influencer, user)
+            // can both miss updateOrCreate's SELECT and race the INSERT against the
+            // unique(influencer_id, user_id) constraint. The row now exists — update
+            // it instead of surfacing a 500.
+            return tap(InfluencerClaim::where($key)->firstOrFail(), fn (InfluencerClaim $c) => $c->update($values));
+        }
     }
 
     /**
@@ -112,7 +125,7 @@ class InfluencerClaimService
      */
     public function verify(Influencer $influencer, User $user, ClaimMethod $method): InfluencerClaim
     {
-        return DB::transaction(function () use ($influencer, $user, $method) {
+        $result = DB::transaction(function () use ($influencer, $user, $method) {
             $claimed = DB::table('influencers')
                 ->where('id', $influencer->id)
                 ->whereNull('claimed_by_user_id')
@@ -135,12 +148,17 @@ class InfluencerClaimService
             $claim = $this->recordVerified($influencer, $user, $method);
             $this->rejectCompetingClaims($influencer, $user);
 
-            if ($claimed !== 0) {
-                InfluencerClaimed::dispatch($influencer->refresh(), $user);
-            }
-
-            return $claim;
+            return ['claim' => $claim, 'fresh' => $claimed !== 0];
         });
+
+        // Dispatch AFTER commit: the M4 escrow-release listener must never run
+        // against an uncommitted claim, and must never fire on an idempotent
+        // re-claim (no fresh ownership change → no money to release).
+        if ($result['fresh']) {
+            InfluencerClaimed::dispatch($influencer->refresh(), $user);
+        }
+
+        return $result['claim'];
     }
 
     /**
@@ -150,7 +168,7 @@ class InfluencerClaimService
      */
     public function approve(InfluencerClaim $claim, User $admin): void
     {
-        DB::transaction(function () use ($claim, $admin) {
+        $transferred = DB::transaction(function () use ($claim, $admin): bool {
             /** @var Influencer $influencer */
             $influencer = Influencer::whereKey($claim->influencer_id)->lockForUpdate()->firstOrFail();
             $previousId = $influencer->claimed_by_user_id;
@@ -169,10 +187,16 @@ class InfluencerClaimService
             $claim->forceFill(['status' => ClaimStatus::Verified, 'reason' => null, 'token' => null, 'reviewed_by_user_id' => $admin->id])->save();
             $this->rejectCompetingClaims($influencer, $claim->user, $admin->id);
 
-            /** @var User $user */
-            $user = User::findOrFail($claim->user_id);
-            InfluencerClaimed::dispatch($influencer->refresh(), $user);
+            // Ownership actually moved only when the identity wasn't already this
+            // user's — approving a claim they already own is a no-op re-approve.
+            return $previousId !== $claim->user_id;
         });
+
+        // After commit + only on a real transfer, so the M4 escrow listener neither
+        // races the transaction nor double-releases on a no-op re-approve.
+        if ($transferred) {
+            InfluencerClaimed::dispatch(Influencer::findOrFail($claim->influencer_id), User::findOrFail($claim->user_id));
+        }
     }
 
     /** Admin reject: mark the claim rejected and notify the claimant. */
@@ -193,6 +217,26 @@ class InfluencerClaimService
             ['influencer_id' => $influencer->id, 'user_id' => $user->id],
             ['method' => $method, 'status' => ClaimStatus::Verified, 'token' => null, 'reason' => null, 'expires_at' => null],
         );
+    }
+
+    /**
+     * A moderator's rejection is sticky: once an admin rejected this user's claim
+     * (a Rejected row with reviewed_by_user_id set — as opposed to the auto-reject
+     * of losing claims, which leaves it null), block them from silently re-issuing
+     * a code and re-winning the identity. Appeals go through support.
+     */
+    private function assertNotAdminRejected(Influencer $influencer, User $user): void
+    {
+        $adminRejected = InfluencerClaim::query()
+            ->where('influencer_id', $influencer->id)
+            ->where('user_id', $user->id)
+            ->where('status', ClaimStatus::Rejected)
+            ->whereNotNull('reviewed_by_user_id')
+            ->exists();
+
+        if ($adminRejected) {
+            throw ClaimException::rejected();
+        }
     }
 
     /** Auto-reject every other pending claim on this identity once someone wins it. */

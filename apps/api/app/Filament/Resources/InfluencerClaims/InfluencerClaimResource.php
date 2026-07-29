@@ -26,7 +26,10 @@ class InfluencerClaimResource extends Resource
 
     protected static string|\UnitEnum|null $navigationGroup = 'Users & Access';
 
-    protected static ?string $recordTitleAttribute = 'token';
+    // No $recordTitleAttribute on purpose: the only per-row string is `token`, a
+    // pending bio-code secret that's nulled on verify — titling records by it
+    // would surface live tokens in Filament's global search. Claims are reached
+    // through the list + filters, not global search (mirrors ShareResource).
 
     public static function table(Table $table): Table
     {

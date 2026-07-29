@@ -8,7 +8,6 @@ use App\Models\Influencer;
 use App\Models\InfluencerClaim;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
 
 /**
  * @extends Factory<InfluencerClaim>
@@ -27,7 +26,8 @@ class InfluencerClaimFactory extends Factory
             'user_id' => User::factory(),
             'method' => ClaimMethod::BioCode,
             'status' => ClaimStatus::Pending,
-            'token' => 'reelmap-verify-'.Str::lower(Str::random(8)),
+            // Same RFC 4648 lower-base32 charset the service issues (no 0/1/8/9).
+            'token' => 'reelmap-verify-'.fake()->regexify('[a-z2-7]{8}'),
             'reason' => null,
             'expires_at' => now()->addHours(72),
             'reviewed_by_user_id' => null,

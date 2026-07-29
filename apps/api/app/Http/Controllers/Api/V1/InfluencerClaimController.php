@@ -62,21 +62,21 @@ class InfluencerClaimController extends Controller
         // 200; an identity owned by someone else is always a 409 (never reassigned
         // outside the Filament admin-override path).
         if ($influencer->claimed_by_user_id === $user->id) {
-            return $this->respond($this->existingClaim($influencer, $user), 200);
+            return $this->respond($this->existingClaim($influencer, $user));
         }
         if ($influencer->claimed_by_user_id !== null) {
             throw ClaimException::conflict();
         }
 
         if ($validated['method'] === ClaimMethod::Oauth->value) {
-            return $this->respond($this->claims->claimViaOAuth($influencer, $user), 200);
+            return $this->respond($this->claims->claimViaOAuth($influencer, $user));
         }
 
         // bio_code: no action → issue a token; action=verify → check the bio.
         if (($validated['action'] ?? null) === 'verify') {
             $this->throttleVerify($user);
 
-            return $this->respond($this->claims->verifyBioCode($influencer, $user), 200);
+            return $this->respond($this->claims->verifyBioCode($influencer, $user));
         }
 
         $claim = $this->claims->issueBioCode($influencer, $user);
@@ -97,12 +97,12 @@ class InfluencerClaimController extends Controller
             ->firstOr(fn () => $this->claims->verify($influencer, $user, ClaimMethod::Oauth));
     }
 
-    private function respond(InfluencerClaim $claim, int $status): JsonResponse
+    private function respond(InfluencerClaim $claim): JsonResponse
     {
         return response()->json([
             'data' => new InfluencerClaimResource($claim),
             'meta' => (object) [],
-        ], $status);
+        ]);
     }
 
     /** Cap bio-verify attempts (each triggers a remote profile fetch). */
@@ -110,7 +110,9 @@ class InfluencerClaimController extends Controller
     {
         $key = 'influencer-claim-verify:'.$user->id;
         if (RateLimiter::tooManyAttempts($key, self::VERIFY_MAX_PER_MINUTE)) {
-            abort(429, 'Too many verification attempts. Wait a minute and try again.');
+            abort(429, 'Too many verification attempts. Wait a minute and try again.', [
+                'Retry-After' => (string) RateLimiter::availableIn($key),
+            ]);
         }
         RateLimiter::hit($key, 60);
     }
