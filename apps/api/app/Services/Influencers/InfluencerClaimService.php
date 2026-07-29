@@ -305,6 +305,10 @@ class InfluencerClaimService
             ->where('user_id', $user->id)
             ->where('status', ClaimStatus::Rejected)
             ->whereNotNull('reviewed_by_user_id')
+            // A release (soft unclaim, grants nobody) is NOT a denial of this user's
+            // claim — the freed identity is re-claimable by anyone, the former owner
+            // included. Only an explicit reject/override stays sticky.
+            ->where('reason', '!=', 'released_by_admin')
             ->exists();
 
         if ($adminRejected) {

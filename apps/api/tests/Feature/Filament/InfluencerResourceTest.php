@@ -125,6 +125,7 @@ it('overrides a prior sticky rejection when an admin assigns from the row', func
 });
 
 it('releases a claimed identity from the row and demotes the orphaned owner', function () {
+    Event::fake([InfluencerClaimed::class]);
     $admin = User::factory()->admin()->create();
     $this->actingAs($admin);
 
@@ -142,6 +143,8 @@ it('releases a claimed identity from the row and demotes the orphaned owner', fu
         ->and($owner->fresh()->is_influencer)->toBeFalse()
         ->and($claim->fresh()->status)->toBe(ClaimStatus::Rejected)
         ->and($claim->fresh()->reason)->toBe('released_by_admin');
+    // Release grants ownership to nobody → the M4 escrow event must not fire.
+    Event::assertNotDispatched(InfluencerClaimed::class);
 });
 
 it('keeps the owner an influencer on release when they hold another identity', function () {

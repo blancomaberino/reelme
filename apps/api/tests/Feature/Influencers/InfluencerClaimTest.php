@@ -172,6 +172,24 @@ it('blocks re-claiming after a moderator rejected the claim (sticky rejection)',
         ->and(InfluencerClaim::where('user_id', $user->id)->first()->status)->toBe(ClaimStatus::Rejected);
 });
 
+it('still allows re-claiming after an admin RELEASE (soft unclaim, not a denial)', function () {
+    [$influencer, $user] = claimSetup();
+    // The user's claim was closed by a release, not a rejection — the freed
+    // identity must be re-claimable by them.
+    InfluencerClaim::factory()->create([
+        'influencer_id' => $influencer->id,
+        'user_id' => $user->id,
+        'status' => ClaimStatus::Rejected,
+        'reason' => 'released_by_admin',
+        'reviewed_by_user_id' => User::factory()->admin()->create()->id,
+        'token' => null,
+    ]);
+
+    $this->postJson("/api/v1/influencers/{$influencer->id}/claim", ['method' => 'bio_code'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'pending');
+});
+
 it('still allows re-claiming after an automatic (non-admin) rejection', function () {
     [$influencer, $user] = claimSetup();
     // A losing claim auto-rejected when someone else won — reviewed_by is null, so

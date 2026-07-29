@@ -46,6 +46,9 @@ class InfluencersTable
                     ->label('Pending claims')
                     ->badge()
                     ->color('warning')
+                    // withCount yields 0 (never null), so blank a 0 to fall through
+                    // to the placeholder — only surface the badge when there ARE some.
+                    ->formatStateUsing(fn (int $state): ?int => $state ?: null)
                     ->placeholder('—')
                     ->toggleable(),
                 TextColumn::make('created_at')
