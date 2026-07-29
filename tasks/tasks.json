@@ -1,5 +1,5 @@
 {
-  "$schema_note": "Task graph for Reelmap. An agent picks the lowest incomplete phase, then any task whose depends_on are all status=done. Each task has a companion file tasks/<id>-*.md with full context. Update status here (single source of truth): pending | in_progress | done | blocked. PRIORITY OVERRIDE (owner request 2026-07-21): the ARCH phase (architecture hardening, T-085+) is the current highest-priority phase and is worked BEFORE any remaining M1/M3/M4/M5 backlog. Within ARCH, honor depends_on then P0>P1 ordering noted per task. See ROADMAP.md#arch.",
+  "$schema_note": "Task graph for Reelmap. An agent picks the lowest incomplete phase, then any task whose depends_on are all status=done. Each task has a companion file tasks/<id>-*.md with full context. Update status here (single source of truth): pending | in_progress | done | blocked. PRIORITY OVERRIDE (owner request 2026-07-21): the ARCH phase (architecture hardening, T-085+) is the current highest-priority phase and is worked BEFORE any remaining M1/M3/M4/M5 backlog. Within ARCH, honor depends_on then P0>P1 ordering noted per task. See ROADMAP.md#arch. AUDIT WAVE 2 (2026-07-29): T-100..T-109 filed from the architecture/UX audit and appended to ARCH. Order within the wave: T-100, T-101, T-102, T-103 first (user-visible defects + the contract drift gap), then T-104..T-109 (foundation cleanup). T-106 must land before the M4 monetization tasks touch Place.",
   "project": "reelmap",
   "version": 1,
   "estimate_scale": {
@@ -2626,6 +2626,299 @@
       ],
       "agent": "executor",
       "notes": "PRIORITY OVERRIDE (owner request 2026-07-26): do NEXT, ahead of the remaining M1 test tasks (T-056/T-058). Extends T-084's BusinessEnrichmentSource seam from one image to many + adds a gallery. Owner decisions via AskUserQuestion: (1) prioritize/do-next; (2) Google fallback = best-effort business-first then fill (legacy Places API exposes only html_attributions/uploader, no owner flag — website/schema.org images are the definitively-owned source; ADR: new Places API v1 authorAttributions would improve owner detection). Full context in tasks/T-099-business-photo-gallery.md."
+    },
+    {
+      "id": "T-100",
+      "title": "Map: user location, permissions, persisted viewport (kill the hardcoded Montevideo default)",
+      "phase": "ARCH",
+      "status": "in_progress",
+      "depends_on": [
+        "T-032"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/(main)/map.tsx",
+        "apps/mobile/app.config.ts",
+        "apps/mobile/package.json",
+        "apps/mobile/src/stores/map.ts",
+        "apps/mobile/src/lib/geo.ts"
+      ],
+      "spec_refs": [
+        "tasks/T-100-map-user-location.md"
+      ],
+      "acceptance": [
+        "expo-location installed; NSLocationWhenInUseUsageDescription (iOS) + ACCESS_COARSE/FINE_LOCATION (Android) declared in app.config.ts with user-facing copy in both locales",
+        "First map open requests when-in-use permission once; on grant the map centers on the user, on deny/error it falls back to the last persisted viewport, then DEFAULT_REGION",
+        "Last settled viewport persists across cold start (SecureStore, same pattern as settings store); a deep-linked lat/lng param still wins over both",
+        "A 'locate me' control sits in the existing zoom stack and re-centers on the user; 'reset view' recenters on the user when permission is granted, DEFAULT_REGION otherwise",
+        "showsUserLocation actually renders the blue dot on a device (it is inert today - no Info.plist key)",
+        "Permission denial is non-blocking: no modal dead-end, map stays fully usable, and the locate control shows a one-time hint pointing at OS settings",
+        "Tests: unit tests for the fallback chain (granted / denied / no persisted viewport / deep-link param) and a persisted-viewport rehydrate test"
+      ],
+      "agent": "executor",
+      "notes": "Audit finding B1 (2026-07-29, highest-impact UX defect). DEFAULT_REGION in map.tsx:28 is hardcoded to Montevideo (-34.9,-56.16); showsUserLocation is set at map.tsx:257 but there is no expo-location dependency and no Info.plist/Android permission, so the prop is silently inert on iOS. Every user outside Uruguay cold-starts into the wrong hemisphere, and 'reset view' sends them back there."
+    },
+    {
+      "id": "T-101",
+      "title": "Accessibility: WCAG AA palette contrast, Dynamic Type, screen-reader status announcements",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-060"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/src/theme/colors.ts",
+        "apps/mobile/src/theme/__tests__/",
+        "apps/mobile/app/shares/[id]/status.tsx",
+        "apps/mobile/src/components/"
+      ],
+      "spec_refs": [
+        "tasks/T-101-accessibility-contrast-dynamic-type.md"
+      ],
+      "acceptance": [
+        "Every foreground/background token pair used for text meets WCAG AA (4.5:1 normal, 3:1 large) in BOTH light and dark schemes",
+        "A jest test computes relative luminance for the documented token pairs and fails the build on regression - the palette cannot silently drift back",
+        "onPrimary-on-primary (every CTA label) passes: primary darkened for text-bearing fills, with a distinct darker pressed shade retained",
+        "muted / placeholder / gold / green darkened to pass; the MERCADO art direction is preserved (small L* moves, reviewed against design/reelmap-design-v1, not a re-brand)",
+        "Layouts with fixed heights around text (stepper nodes, badges, chips, buttons) survive iOS Larger Text at the largest non-accessibility size without clipping - verified on simulator",
+        "Share status changes are announced to screen readers (accessibilityLiveRegion on the terminal block + announceForAccessibility on transition)",
+        "Interactive controls missing accessibilityHint where the label alone is ambiguous get one (only 1 hint exists across the whole app today)"
+      ],
+      "agent": "executor",
+      "notes": "Audit findings B3/B4/B8 (2026-07-29). Measured light-scheme contrast: muted #938776 on background = 3.1:1 (124 uses), placeholder = 2.7:1, gold = 3.3:1, primary-as-link = 3.5:1, green = 3.8:1, and white onPrimary on primary #CF5C34 = 4.0:1 - the primary button's own label fails AA. Candidate fix: primary #B84D28 for text-bearing fills gives 5.1:1 (verify with a contrast checker before committing hex values). ~230 fixed fontSize declarations and zero font-scale handling app-wide. App Store accessibility review risk; cost grows with every new screen."
+    },
+    {
+      "id": "T-102",
+      "title": "Contracts: share / feed-item / place-list schemas + conformance tests (close the pipeline drift gap)",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-094"
+      ],
+      "estimate": "M",
+      "paths": [
+        "packages/contracts/schemas/",
+        "packages/contracts/src/generated/",
+        "apps/api/tests/Feature/Shares/",
+        "apps/mobile/src/api/shares.ts",
+        "apps/mobile/src/api/__tests__/contract-conformance.test.ts"
+      ],
+      "spec_refs": [
+        "tasks/T-102-contracts-share-feed-list.md"
+      ],
+      "acceptance": [
+        "share.json, feed-item.json and place-list.json exist in packages/contracts/schemas and generate TS types alongside the existing six",
+        "API contract tests validate ShareResource (all statuses: pending/fetching/analyzing/review/published/failed/rejected, plus failure taxonomy, stage metrics, pending venues, multi-place), FeedItemResource and PlaceListResource via ApiSchema::validate()",
+        "Mobile ShareDetail / FeedItem / PlaceList types are pinned to the generated contract types by compile-time assertions in contract-conformance.test.ts - a renamed or removed API field breaks typecheck",
+        "The 12 hand-written types in src/api/shares.ts and 5 in src/api/lists.ts are either derived from contracts or explicitly documented as client-only view models",
+        "Gates green: composer lint + stan + test; npm run lint + tsc --noEmit + test"
+      ],
+      "agent": "executor",
+      "notes": "Audit finding A3 (2026-07-29). ADR-006 declares contracts the single source of truth, but the 7 schemas cover only the read-only discovery surface. ShareResource is the most complex payload in the system (222 lines) and its mobile counterpart is 12 hand-written types with nothing pinning them together - exactly where drift hurts most. T-094 pinned PlaceSummary/UserProfile/extraction; this finishes the job."
+    },
+    {
+      "id": "T-103",
+      "title": "Offline resilience: NetInfo + query-cache persistence + offline indicator",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-032",
+        "T-071"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/_layout.tsx",
+        "apps/mobile/src/api/client.ts",
+        "apps/mobile/src/stores/ui.ts",
+        "apps/mobile/package.json"
+      ],
+      "spec_refs": [
+        "tasks/T-103-offline-resilience.md"
+      ],
+      "acceptance": [
+        "onlineManager is wired to NetInfo and focusManager to AppState, so react-query pauses/resumes correctly instead of burning retries offline",
+        "The query cache persists (24h maxAge) and rehydrates on cold start; scope is at minimum the 'mine' map and previously-opened place details",
+        "Cold-starting with no network shows the user's own saved places from cache, not an empty map and a spinner",
+        "An offline banner is visible while disconnected, reusing the existing useUiStore.rateLimited banner pattern; it clears on reconnect",
+        "A failed fetch is distinguishable from an empty result in the UI (offline / error / genuinely-empty are three different states, each with copy in both locales)",
+        "Mutations attempted offline fail with a clear message rather than a silent retry loop; no stale write is replayed unexpectedly",
+        "Tests cover: offline cold start serves cache, reconnect refetches, offline mutation surfaces its error"
+      ],
+      "agent": "executor",
+      "notes": "Audit finding B2 (2026-07-29). No NetInfo, no onlineManager/focusManager, no persistQueryClient anywhere - react-query is memory-only with staleTime 60s / retry 2. The subway-and-roaming case is precisely the 'where was that restaurant I saved?' moment the product exists for. Scope the persisted cache deliberately: do not persist other users' profiles or the public feed."
+    },
+    {
+      "id": "T-104",
+      "title": "Design tokens (space/radius/type) + ScreenHeader + Button variants",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-060",
+        "T-101"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/src/theme/",
+        "apps/mobile/src/components/button.tsx",
+        "apps/mobile/src/components/screen-header.tsx",
+        "apps/mobile/app/",
+        "apps/mobile/.eslintrc.js"
+      ],
+      "spec_refs": [
+        "tasks/T-104-design-tokens-shell.md"
+      ],
+      "acceptance": [
+        "src/theme exports space (4/8/12/16/24/32/48), radius (sm/md/lg/pill) and type (caption/body/bodyLg/title/display/hero) scales alongside the existing palette",
+        "A single <ScreenHeader title back right?> component replaces the hand-rolled back header in all 15 screens that copy it today; the 5 drifted headerTitle style definitions collapse to one",
+        "Button gains danger / ghost / link variants, a size prop and an icon slot; screens that hand-roll a Pressable CTA (e.g. status.tsx styles.link) migrate to it",
+        "An eslint rule bans raw numeric fontSize / borderRadius / padding in NEW files so the drift field cannot regrow; existing files migrate opportunistically, not big-bang",
+        "No visual regression: the migrated screens are diffed against before/after screenshots and any intentional change is called out",
+        "Uses /frontend-design per CLAUDE.md"
+      ],
+      "agent": "executor",
+      "notes": "Audit findings B5/B6/B9 (2026-07-29). Today src/theme/colors.ts IS the design system. Spacing drift: 12 (111x), 8 (84x), 10 (50x), 16 (47x), 6 (39x), 4 (38x), 14 (30x) plus one-offs at 3/5/7/9/13. Radius: 12/999/14/16 plus 2/3/4/6/8/9/10/22/28/40/44. Type: 20 distinct sizes including 17/19/21/27. 15 screens duplicate the back header. Button has 2 variants and 1 size, so only 13 of 29 screens import it. Sequenced after T-101 so tokens are defined against the corrected palette."
+    },
+    {
+      "id": "T-105",
+      "title": "API: ApiResponse envelope helper + generic KeysetPaginator",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-030",
+        "T-071"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Http/ApiResponse.php",
+        "apps/api/app/Support/KeysetCursor.php",
+        "apps/api/app/Http/Controllers/Api/V1/",
+        "apps/api/tests/Feature/"
+      ],
+      "spec_refs": [
+        "tasks/T-105-api-response-keyset-paginator.md"
+      ],
+      "acceptance": [
+        "An ApiResponse helper owns the {data, meta} envelope (item / collection / keyset / noContent) and replaces the ~20 hand-written 'meta' => (object) [] literals",
+        "A generic KeysetPaginator owns the limit+1 -> hasMore -> encode-cursor pattern; PaginatesPlaces delegates to it rather than reimplementing it",
+        "All 9 next_cursor call sites (ReviewController, PlaceController x2, ProfileController x2, FollowController, TagController, FeedController, ShareController) use the shared path",
+        "Byte-identical responses: existing feature + contract tests pass unchanged, no client-visible diff",
+        "Gates green: composer lint + stan + test"
+      ],
+      "agent": "executor",
+      "notes": "Audit finding A1 (2026-07-29). The envelope and keyset pagination are reimplemented 9 times in 4 different flavors; PaginatesPlaces solved it for places only. Pure cleanup, roughly -150 lines, and it makes the envelope shape enforceable in one place (which T-102's contract tests then pin)."
+    },
+    {
+      "id": "T-106",
+      "title": "Place model decomposition wave 2: field-locking, Scout, geo and scopes out of the model",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-096"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Models/Place.php",
+        "apps/api/app/Models/Concerns/",
+        "apps/api/app/Models/Builders/PlaceQueryBuilder.php",
+        "apps/api/tests/"
+      ],
+      "spec_refs": [
+        "tasks/T-106-place-god-model-wave-2.md"
+      ],
+      "acceptance": [
+        "Field-locking (lockedFields / isFieldLocked / lockFields / withoutLockedFields) extracted to a Concerns\\LocksFields trait or collaborator",
+        "Scout projection (toSearchableArray / shouldBeSearchable / makeAllSearchableUsing) extracted to Concerns\\SearchesAsPlace",
+        "PostGIS I/O (setPoint / coordinates / normalizeName) extracted to Concerns\\HasGeoPoint",
+        "The 6 query scopes move to a PlaceQueryBuilder returned from newEloquentBuilder(); call sites keep the same fluent API",
+        "Place drops below ~350 lines and owns persistence + relationships only",
+        "No behavior change: PlaceResource / PlaceSummaryResource output byte-identical, contract tests + search tests green",
+        "Gates green: composer lint + stan + test"
+      ],
+      "agent": "executor",
+      "notes": "Audit finding A2 (2026-07-29). T-096 already took Place from 787 to 636 lines by extracting PlaceAggregations - this is the remaining half, not a duplicate. Place still carries five unrelated concerns and has 203 edges in the knowledge graph (the single highest), so its blast radius is the whole app. Do this BEFORE M4 monetization (T-042/T-043) adds offers and redemptions to the model."
+    },
+    {
+      "id": "T-107",
+      "title": "Filament: pipeline-health dashboard (stage timings, failure mix, queue depth)",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-093"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Filament/Widgets/",
+        "apps/api/app/Providers/Filament/AdminPanelProvider.php",
+        "apps/api/tests/Feature/Filament/"
+      ],
+      "spec_refs": [
+        "tasks/T-107-filament-pipeline-health.md"
+      ],
+      "acceptance": [
+        "The admin landing page answers 'is the pipeline healthy right now?' at a glance: shares by status, failure-code mix, per-stage p50/p95 duration, queue depth/oldest job",
+        "All figures come from data already recorded (share_stage_metrics, analysis_runs, shares.failure_reason) - no new collection",
+        "Widgets are time-window filterable (last hour / 24h / 7d) and cheap enough to load without timing out on a large table (indexed, aggregate queries, no N+1)",
+        "Tests assert the aggregates against seeded fixtures, including the empty-data case",
+        "Gates green: composer lint + stan + test"
+      ],
+      "agent": "executor",
+      "notes": "Audit finding B10 (2026-07-29). Filament has 8 resources across 40 files and ZERO widgets - an operator diagnoses pipeline health by eyeballing the Shares table. T-093 finished stage-completion metrics, so the data is already on disk and unread. T-051/T-052 (M5) cover the AI-cost and Sentry slices; the pipeline-health slice is in no open task. Deliberately scoped S: read-only widgets, no alerting (that stays T-052)."
+    },
+    {
+      "id": "T-108",
+      "title": "Skeleton loaders for place detail + my-places (replace spinner-first loading)",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-104"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/src/components/skeleton.tsx",
+        "apps/mobile/app/place/[slug].tsx",
+        "apps/mobile/app/(main)/places.tsx"
+      ],
+      "spec_refs": [
+        "tasks/T-108-skeleton-loaders.md"
+      ],
+      "acceptance": [
+        "A reusable Skeleton primitive (respecting the token scales and both color schemes) replaces the bare ActivityIndicator on place detail and the my-places list",
+        "Skeleton geometry matches the real layout closely enough that content does not visibly jump on load",
+        "The skeleton respects reduce-motion: no shimmer animation when the OS setting is on",
+        "Loading, empty and error remain three visually distinct states on both screens",
+        "Uses /frontend-design per CLAUDE.md"
+      ],
+      "agent": "executor",
+      "notes": "Audit finding B7 (2026-07-29). ActivityIndicator appears in 18 files; exactly 1 skeleton exists. Place detail and my-places have known stable layouts, so they are the highest-value candidates. A spinner makes a 400ms fetch feel slower than a skeleton makes an 800ms one."
+    },
+    {
+      "id": "T-109",
+      "title": "Extract SourcePostResolver out of ShareController",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [
+        "T-097"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Services/Ingestion/SourcePostResolver.php",
+        "apps/api/app/Http/Controllers/Api/V1/ShareController.php",
+        "apps/api/tests/Unit/Ingestion/"
+      ],
+      "spec_refs": [
+        "tasks/T-109-extract-source-post-resolver.md"
+      ],
+      "acceptance": [
+        "Services\\Ingestion\\SourcePostResolver owns the three-branch resolution (manual caption / URL / pure manual) and returns a ResolvedSource DTO",
+        "ShareController::store keeps auth, the dedup/TOCTOU guard, the transaction and response shaping only",
+        "Unit tests cover each branch directly, including the platform-enablement rejection, the >2048-char canonical URL guard, and the unknown-host placeholder-platform path (today only reachable end-to-end)",
+        "The documented data-model gap (TODO(T-024/ADR): nullable platform / 'unknown') is either fixed here or recorded as an ADR in the plan repo",
+        "No behavior change: existing share ingest feature tests pass unchanged",
+        "Gates green: composer lint + stan + test"
+      ],
+      "agent": "executor",
+      "notes": "Audit finding A4 (2026-07-29). resolveSourcePost() is ~70 lines of domain logic in the HTTP layer, untestable except through a request. T-097 did the same extraction for the correction/merge engine (ExtractionCorrector) and is the pattern to follow."
     }
   ]
 }
