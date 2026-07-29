@@ -18,10 +18,21 @@ class MakeAdmin extends Command
     public function handle(): int
     {
         $email = (string) $this->argument('email');
-        $user = User::where('email', $email)->first();
+
+        // Look past the SoftDeletes scope so a banned (soft-deleted) user is
+        // detected and refused explicitly, rather than silently reading as
+        // "No user found" — promoting a banned account to admin (or quietly
+        // restoring it) is never what an operator intends. (T-058)
+        $user = User::withTrashed()->where('email', $email)->first();
 
         if (! $user) {
             $this->error("No user found with email [{$email}].");
+
+            return self::FAILURE;
+        }
+
+        if ($user->trashed()) {
+            $this->error("[{$email}] is banned (soft-deleted); restore the user before promoting.");
 
             return self::FAILURE;
         }

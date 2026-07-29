@@ -42,11 +42,20 @@ class AnalysisRunFactory extends Factory
         ]);
     }
 
+    /**
+     * A completed OpenRouter run. Coherent standalone — a run that incurred
+     * cost has run to completion, so this sets a Succeeded status and timestamps
+     * alongside the engine/model/cost. Compose with `->failed()` to model a
+     * failed-but-billed run (keeps the cost, overrides status/timestamps).
+     */
     public function openrouter(): static
     {
         return $this->state(fn () => [
             'engine' => AnalysisEngine::OpenRouter,
             'model' => 'anthropic/claude-sonnet',
+            'status' => AnalysisStatus::Succeeded,
+            'started_at' => now()->subSeconds(15),
+            'finished_at' => now(),
             'cost_usd' => (string) fake()->randomFloat(6, 0.001, 0.05),
         ]);
     }

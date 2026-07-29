@@ -23,3 +23,14 @@ it('is idempotent for an existing admin', function () {
         ->expectsOutputToContain('already an admin')
         ->assertExitCode(0);
 });
+
+it('refuses a banned (soft-deleted) user with an explicit message', function () {
+    $user = User::factory()->create(['email' => 'banned@example.com', 'is_admin' => false]);
+    $user->delete();
+
+    $this->artisan('app:make-admin', ['email' => 'banned@example.com'])
+        ->expectsOutputToContain('banned')
+        ->assertExitCode(1);
+
+    expect($user->fresh()->is_admin)->toBeFalse();
+});
