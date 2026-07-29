@@ -8,6 +8,7 @@ Guidance for any agent (or human) working in this repository. These rules are **
 2. **Before opening any PR**, run **`/coderabbit`** — it orchestrates the full pre-PR pass (quality gates → **`/simplify`** → **`/security-review`** → a grounded line-by-line review) and records the approval the PR gate requires. Fix every 🔴/🟡 it surfaces before the PR goes up.
 3. **Any UI/frontend work uses the `/frontend-design` skill** — mobile screens, Filament customizations, any web UI.
 4. **Every change ships with meaningful tests + coverage + E2E.** No trivial or placeholder tests.
+5. **Finish every task with a completion summary** — see [Task completion report](#task-completion-report). Whenever you finish working on a task, end with: what task, what it's about, and how to manually test it (admin dashboard or simulator).
 
 ## Agent orchestration (teams vs subagents)
 
@@ -37,6 +38,19 @@ Agent Teams is enabled on this machine (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
   3. **Open the PR** (`gh pr create`) with: summary, the `T-###` task id, and test evidence (what you tested and the results). Wait for CI green + review before merge.
 
   > `/coderabbit`, its scripts, and the gate hook are a **local, user-level** setup under `~/.claude` — they cover Claude Code sessions on this machine, not CI or PRs opened from the GitHub UI. (There is currently no server-side CI gate; add GitHub branch protection + a required status check when the project gains collaborators.)
+
+## Task completion report
+
+**Whenever you finish working on a task, end your reply with a short completion summary.** This is mandatory — it's how the owner knows what shipped and how to verify it by hand. Give it every time you wrap a task (whether the work merged, is awaiting merge, or is a WIP hand-off), not only at PR time. Format:
+
+> **✅ Task:** `T-###` — <title>
+> **What it is:** 1–2 sentences on what changed and why (the user-facing / operator-facing effect, not the file list).
+> **How to test it manually:**
+> - **Admin dashboard (Filament, http://localhost:8080/admin):** the exact click-path — which resource/page, what to enter, what you should see. Use this for anything with an admin/moderation/data surface.
+> - **Simulator / device (Expo dev client):** the exact in-app steps — which screen, what to tap/share, what should appear. Use this for any mobile-facing flow. Note when a step needs the queue worker running (`./scripts/dev.sh backend`), a physical device (share sheet, push tokens), or seeded data.
+> - **Backend-only / no UI surface:** give the concrete artisan/tinker/`curl http://localhost:8080/api/v1/…` command and the expected result (e.g. a Mailpit email at http://localhost:8025, a DB row, a 200 body).
+
+Pick whichever surface(s) actually exercise the change — don't invent an admin path for a mobile-only feature or vice-versa. If a change genuinely has no manual surface (pure refactor, config, test-only), say so explicitly and give the command that demonstrates it still works (the relevant gate, a migration check, etc.) instead of pretending there's a click-path.
 
 ## Testing standards (enforced)
 
