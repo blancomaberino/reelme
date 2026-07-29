@@ -35,3 +35,17 @@ batch them whenever the M1 area is next touched.
 
 - Items 1–4 applied; item 5 resolved with an explicit, documented decision.
 - Gates stay green (Pint, PHPStan, Pest).
+
+## Log
+
+**✅ DONE — merged to main 2026-07-28 (squash `e059ef2`, PR #144).** All five items shipped as one API-only commit; no behavioral risk.
+
+1. Redundant `media_assets.sha256` index dropped in a follow-up migration (`2026_07_28_000000_drop_redundant_sha256_index_on_media_assets`) — the composite `unique(sha256, source_post_id)` already covers sha256-leftmost lookups. Applied to dev DB (plain `migrate`); verified the single index is gone and the composite unique remains.
+2. `MediaAssetFactory` disk default → `config('media.disk')` (resolves to `local_media` in dev/test) instead of the prod-only `'s3'` literal.
+3. `AnalysisRunFactory::openrouter()` now sets a coherent `Succeeded` status + timestamps (was a "queued run that already cost money" when used standalone). Documented that composing with `->failed()` models a failed-but-billed run. Only standalone caller (`PipelineResourcesTest`) stays green.
+4. Horizon `LongWaitDetected` thresholds added for the pipeline supervisors — `redis:media`/`redis:transcribe` 900s, `redis:analyze`/`redis:resolve`/`redis:publish` 600s (matching the supervisor timeouts); previously only `redis:default` had wait alerting.
+5. **DECISION (item 5):** `MakeAdmin` uses `withTrashed()` to find the user and **refuses a soft-deleted (banned) user** with an explicit `"is banned (soft-deleted); restore the user before promoting."` message + exit 1 — chosen over silent restore-then-promote, since promoting a banned account is never intended. +1 test (`MakeAdminCommandTest`).
+
+**Gates:** Pint 544 · PHPStan L6 clean · Pest **962 passed** (1 new). `/coderabbit`: grounding clean, `/security-review` no findings, `/simplify` code already clean. Manually verified on dev (banned-user refusal, index gone, `config('horizon.waits')`).
+
+**Milestone:** M1 phase is now COMPLETE — zero pending M1 tasks remaining.

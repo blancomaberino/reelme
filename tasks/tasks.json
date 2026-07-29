@@ -1436,7 +1436,7 @@
       "id": "T-058",
       "title": "M1 review follow-up: fixture & config polish",
       "phase": "M1",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-016"
       ],
