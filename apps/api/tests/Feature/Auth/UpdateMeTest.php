@@ -56,6 +56,29 @@ it('rejects an invalid birthdate and a duplicate username', function () {
     $this->patchJson('/api/v1/me', ['username' => $user->username])->assertOk();
 });
 
+it('toggles profile visibility and rejects a non-boolean value', function () {
+    $user = User::factory()->create(['is_public' => true]);
+    Sanctum::actingAs($user);
+
+    // Go private.
+    $this->patchJson('/api/v1/me', ['is_public' => false])
+        ->assertOk()
+        ->assertJsonPath('data.user.is_public', false);
+    expect($user->refresh()->is_public)->toBeFalse();
+
+    // Back to public.
+    $this->patchJson('/api/v1/me', ['is_public' => true])
+        ->assertOk()
+        ->assertJsonPath('data.user.is_public', true);
+    expect($user->refresh()->is_public)->toBeTrue();
+
+    // A non-boolean is rejected — visibility stays whatever it was.
+    $this->patchJson('/api/v1/me', ['is_public' => 'nope'])
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.is_public', fn ($v) => is_array($v));
+    expect($user->refresh()->is_public)->toBeTrue();
+});
+
 it('requires authentication', function () {
     $this->patchJson('/api/v1/me', ['name' => 'x'])->assertStatus(401);
 });

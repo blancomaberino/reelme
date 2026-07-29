@@ -70,6 +70,9 @@ it('prefills from the session, edits fields + tags, and PATCHes /me', async () =
   fireEvent.press(screen.getAllByLabelText('Add')[0]);
   expect(screen.getByText('coffee')).toBeOnTheScreen();
 
+  // Flip the profile to private before saving.
+  fireEvent.press(screen.getByRole('radio', { name: 'Private' }));
+
   fireEvent.press(screen.getByRole('button', { name: 'Save' }));
 
   await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
@@ -77,9 +80,29 @@ it('prefills from the session, edits fields + tags, and PATCHes /me', async () =
     name: 'Marcelo',
     birthdate: '1990-05-20',
     favorite_topics: ['ramen', 'coffee'],
+    is_public: false,
   });
   // Session mirrors the fresh user.
   expect(useSessionStore.getState().user?.name).toBe('Marcelo');
+});
+
+it('prefills visibility from the session (public by default) and keeps it on save', async () => {
+  let sent: Record<string, unknown> = {};
+  mock.onPatch('/me').reply((cfg) => {
+    sent = JSON.parse(cfg.data);
+    return [200, { data: { user: ME } }];
+  });
+
+  render(<EditProfileScreen />, { wrapper: Providers });
+
+  // ME.is_public is true → the Public option is selected.
+  expect(screen.getByRole('radio', { name: 'Public' }).props.accessibilityState?.selected).toBe(true);
+  expect(screen.getByRole('radio', { name: 'Private' }).props.accessibilityState?.selected).toBe(false);
+
+  fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+
+  await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+  expect(sent).toMatchObject({ is_public: true });
 });
 
 it('removes a tag chip when tapped', async () => {

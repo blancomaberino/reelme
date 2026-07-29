@@ -13,6 +13,8 @@ export type UpdateMeInput = {
   birthdate?: string | null;
   favorite_topics?: string[];
   favorite_foods?: string[];
+  /** Profile visibility: false makes the profile + its maps/lists 404 to others. */
+  is_public?: boolean;
 };
 
 /**
