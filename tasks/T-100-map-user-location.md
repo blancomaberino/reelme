@@ -32,3 +32,19 @@ branch from `main`, `/frontend-design` for any UI work, `/coderabbit` before the
 ## Log
 
 - **2026-07-29** — Filed from the codebase audit.
+- **2026-07-29** — Implemented on `feat/T-100-map-user-location` (2 commits). All
+  acceptance criteria met. `expo-location@~57.0.7` added; permission copy in es
+  (base Info.plist) + en (`en.lproj/InfoPlist.strings`), both **verified by
+  running `expo prebuild -p ios`** and grepping the generated plist — the key was
+  genuinely absent before. Also suppressed expo-location's generic
+  always/background/motion plist defaults (`false` deletes the key) so the
+  declared permission surface is exactly when-in-use.
+  Opening viewport resolves through one chain in `src/lib/initial-region.ts`
+  (param → saved → device → DEFAULT_REGION); rungs 1-2 are synchronous off a
+  viewport store hydrated at boot, so only a true first launch shows a loading
+  state. `/coderabbit` pass found and fixed: viewport surviving sign-out (coarse
+  location leak on a shared device), missing double-tap guard on locate, an
+  over-tight MIN_DELTA that would drop a max-pinch-zoom viewport, plus
+  simplify/efficiency cleanups. Gates: eslint ✓ tsc ✓ jest 70 suites / 369 tests ✓;
+  gitleaks + semgrep clean; 97.9% stmts / 98.7% branch over the new modules
+  (fallback chain 100%). Approval receipt recorded. **PR not yet opened.**
