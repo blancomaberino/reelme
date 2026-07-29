@@ -38,14 +38,56 @@ describe('permission helpers', () => {
     expect(await getLocationPermission()).toEqual({ state: 'undetermined', canAskAgain: true });
   });
 
-  it('treats a missing native module as permanently denied', async () => {
-    // Expo Go without the dev client, or web — there is nothing to prompt, so
-    // callers must take the fallback path silently rather than crash.
-    perms.mockRejectedValueOnce(new Error('Cannot find native module'));
+  it('treats a throwing permission call as permanently denied', async () => {
+    perms.mockRejectedValueOnce(new Error('boom'));
     expect(await getLocationPermission()).toEqual({ state: 'denied', canAskAgain: false });
 
-    requestPerms.mockRejectedValueOnce(new Error('Cannot find native module'));
+    requestPerms.mockRejectedValueOnce(new Error('boom'));
     expect(await requestLocationPermission()).toEqual({ state: 'denied', canAskAgain: false });
+  });
+});
+
+describe('missing native module', () => {
+  // The real-world failure this guard exists for: a dev client whose native
+  // binary predates the expo-location dependency (also Expo Go, also web).
+  // expo-location resolves its native module at IMPORT time, so a top-level
+  // import would throw and take the whole map screen down — which is exactly
+  // what happened on device before this was made lazy.
+  beforeEach(() => {
+    jest.resetModules();
+    jest.doMock('expo-location', () => {
+      throw new Error("Cannot find native module 'ExpoLocation'");
+    });
+  });
+
+  afterEach(() => {
+    jest.dontMock('expo-location');
+    jest.resetModules();
+  });
+
+  function freshModule(): typeof import('../location') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('../location') as typeof import('../location');
+    mod.__resetLocationModule();
+    return mod;
+  }
+
+  it('loads without throwing even though expo-location does', () => {
+    // If this throws, the map screen white-screens on a stale dev client.
+    expect(() => freshModule()).not.toThrow();
+  });
+
+  it('reports permission as denied-and-unaskable rather than crashing', async () => {
+    const { getLocationPermission: get, requestLocationPermission: req } = freshModule();
+
+    expect(await get()).toEqual({ state: 'denied', canAskAgain: false });
+    expect(await req()).toEqual({ state: 'denied', canAskAgain: false });
+  });
+
+  it('reports no user region rather than crashing', async () => {
+    const { getUserRegion: get } = freshModule();
+
+    expect(await get()).toBeNull();
   });
 });
 

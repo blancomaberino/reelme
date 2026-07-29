@@ -2,10 +2,38 @@
 // expo-location lives here so the screens deal in plain `Region`s and a tiny
 // three-state permission enum — and so the whole surface is mockable in one
 // place. No react-native-maps import (same rule as `geo.ts`).
-import * as Location from 'expo-location';
 import { Linking } from 'react-native';
 
 import type { Region } from './geo';
+
+type LocationModule = typeof import('expo-location');
+
+let cachedModule: LocationModule | null | undefined;
+
+/**
+ * `expo-location` resolves its native module AT IMPORT TIME, so a top-level
+ * `import` throws outright — killing the whole screen — whenever the binary
+ * lacks it: a dev client built before the dependency was added, Expo Go, or web.
+ * Requiring it lazily turns that into a null we can fall back from, which is the
+ * degradation every function below already documents. Resolved once and cached
+ * (including the failure, as `null`) so a miss costs one try/catch, not one per
+ * call.
+ */
+function locationModule(): LocationModule | null {
+  if (cachedModule !== undefined) return cachedModule;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    cachedModule = require('expo-location') as LocationModule;
+  } catch {
+    cachedModule = null;
+  }
+  return cachedModule;
+}
+
+/** Test seam: drop the memoized module so a suite can re-exercise the miss. */
+export function __resetLocationModule(): void {
+  cachedModule = undefined;
+}
 
 /**
  * How tight a viewport we open at when centring on the user. ~2km across —
@@ -31,14 +59,21 @@ export type PermissionState = 'granted' | 'denied' | 'undetermined';
  */
 export type PermissionOutcome = { state: PermissionState; canAskAgain: boolean };
 
-function toOutcome(response: {
-  status: Location.PermissionStatus;
-  canAskAgain: boolean;
-}): PermissionOutcome {
+/**
+ * No native module → denied AND permanently unaskable, so callers take their
+ * fallback path silently instead of offering a prompt that can never appear.
+ */
+const UNAVAILABLE: PermissionOutcome = { state: 'denied', canAskAgain: false };
+
+/**
+ * Compared as strings rather than against `Location.PermissionStatus`: the enum
+ * lives in the module we may not have, and these are its literal values.
+ */
+function toOutcome(response: { status: string; canAskAgain: boolean }): PermissionOutcome {
   const state: PermissionState =
-    response.status === Location.PermissionStatus.GRANTED
+    response.status === 'granted'
       ? 'granted'
-      : response.status === Location.PermissionStatus.DENIED
+      : response.status === 'denied'
         ? 'denied'
         : 'undetermined';
   return { state, canAskAgain: response.canAskAgain };
@@ -46,21 +81,23 @@ function toOutcome(response: {
 
 /** Current permission WITHOUT prompting — safe to call on mount. */
 export async function getLocationPermission(): Promise<PermissionOutcome> {
+  const m = locationModule();
+  if (!m) return UNAVAILABLE;
   try {
-    return toOutcome(await Location.getForegroundPermissionsAsync());
+    return toOutcome(await m.getForegroundPermissionsAsync());
   } catch {
-    // No native module (Expo Go without the dev client, web) — treat as denied
-    // and permanently unaskable so callers take the fallback path silently.
-    return { state: 'denied', canAskAgain: false };
+    return UNAVAILABLE;
   }
 }
 
 /** Prompt for when-in-use permission. A no-op re-prompt if already decided. */
 export async function requestLocationPermission(): Promise<PermissionOutcome> {
+  const m = locationModule();
+  if (!m) return UNAVAILABLE;
   try {
-    return toOutcome(await Location.requestForegroundPermissionsAsync());
+    return toOutcome(await m.requestForegroundPermissionsAsync());
   } catch {
-    return { state: 'denied', canAskAgain: false };
+    return UNAVAILABLE;
   }
 }
 
@@ -73,8 +110,11 @@ export async function requestLocationPermission(): Promise<PermissionOutcome> {
  * Assumes permission is already granted — callers own the prompt.
  */
 export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise<Region | null> {
+  const m = locationModule();
+  if (!m) return null;
+
   try {
-    const last = await Location.getLastKnownPositionAsync();
+    const last = await m.getLastKnownPositionAsync();
     if (last) return toRegion(last.coords);
   } catch {
     // Fall through to a fresh fix.
@@ -82,7 +122,7 @@ export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise
 
   try {
     const fresh = await withTimeout(
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      m.getCurrentPositionAsync({ accuracy: m.Accuracy.Balanced }),
       timeoutMs,
     );
     return fresh ? toRegion(fresh.coords) : null;
