@@ -4,6 +4,7 @@ import * as Device from 'expo-device';
 import { unregisterPush } from '@/notifications/push';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
+import { useViewportStore } from '@/stores/viewport';
 
 import { api } from '../client';
 import { queryKeys } from '../keys';
@@ -85,6 +86,10 @@ export function useLogout() {
       // Drop any authed-only map scope (following/mine) so the now-guest map
       // doesn't send a filter that 401s (T-039).
       useMapStore.getState().clearFilters();
+      // Forget the remembered viewport (T-100) — it is coarse location data, so
+      // the next person to sign in on this device must not open on the previous
+      // user's last map position.
+      await useViewportStore.getState().clear();
       qc.clear();
     },
   });

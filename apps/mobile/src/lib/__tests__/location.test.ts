@@ -108,11 +108,9 @@ describe('openLocationSettings', () => {
 
   it('swallows a rejection rather than surfacing an unhandled error', async () => {
     const openSettings = jest.spyOn(Linking, 'openSettings').mockRejectedValue(new Error('nope'));
-    const openUrl = jest.spyOn(Linking, 'openURL').mockRejectedValue(new Error('nope'));
 
     await expect(openLocationSettings()).resolves.toBeUndefined();
 
     openSettings.mockRestore();
-    openUrl.mockRestore();
   });
 });

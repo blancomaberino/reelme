@@ -59,6 +59,16 @@ it('rejects an absurd zoom (delta outside the sane band)', async () => {
   expect(await loadSavedViewport()).toBeNull();
 });
 
+it('restores a legitimately deep zoom (the guard must not reject max pinch-zoom)', async () => {
+  // Native max zoom lands around 5e-5; an over-eager floor would silently drop
+  // the saved viewport for anyone who pinched all the way in.
+  const deep = { latitude: 51.5, longitude: -0.12, latitudeDelta: 5e-5, longitudeDelta: 5e-5 };
+  saveViewport(deep);
+  await Promise.resolve();
+
+  expect(await loadSavedViewport()).toEqual(deep);
+});
+
 it('refuses to persist an invalid region', () => {
   saveViewport({ ...REGION, latitude: NaN });
 

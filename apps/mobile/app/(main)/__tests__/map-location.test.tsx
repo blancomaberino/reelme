@@ -167,6 +167,23 @@ describe('locate control', () => {
     );
   });
 
+  it('ignores a double-tap rather than firing two GPS requests', async () => {
+    // Hold the fix open so the button is still in flight for the second tap.
+    let release: (v: unknown) => void = () => {};
+    lastKnown.mockReturnValue(new Promise((r) => (release = r)) as never);
+    render(<MapScreen />);
+
+    const button = screen.getByLabelText('Center on my location');
+    fireEvent.press(button);
+    fireEvent.press(button);
+
+    await act(async () => {
+      release({ coords: FIX });
+    });
+
+    expect(lastKnown).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the Settings hint when permission is permanently blocked', async () => {
     perms.mockResolvedValue(deniedBlocked);
     requestPerms.mockResolvedValue(deniedBlocked);

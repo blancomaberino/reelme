@@ -8,8 +8,13 @@ import type { Region } from './geo';
 
 const VIEWPORT_KEY = 'map_viewport';
 
-/** Deltas outside this range are corrupt/absurd — reject rather than restore. */
-const MIN_DELTA = 1e-4;
+/**
+ * Deltas outside this range are corrupt/absurd — reject rather than restore.
+ * The floor is deliberately far below the tightest viewport a pinch can reach
+ * (max native zoom is ~5e-5 latitudeDelta): this guard exists to catch a zero
+ * or a garbage value, not to second-guess a legitimately deep zoom.
+ */
+const MIN_DELTA = 1e-9;
 const MAX_DELTA = 180;
 
 function isValidRegion(value: unknown): value is Region {

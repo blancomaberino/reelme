@@ -55,28 +55,31 @@ const DETAIL_BAND = 13;
  */
 export default function MapScreen() {
   const params = useLocalSearchParams<{ lat?: string; lng?: string; list?: string; listName?: string }>();
-  const saved = useViewportStore((s) => s.saved);
+
+  // Resolved ONCE and then sticky. Deliberately not derived from a subscribed
+  // `saved` — the store's `saved` changes on every map settle, and re-deriving
+  // off it would re-render this wrapper (and hand MapCanvas a fresh `initial`)
+  // on every pan, for a value the uncontrolled MapView read at mount and will
+  // never read again.
+  const [resolved, setResolved] = useState<InitialRegion | null>(() => {
+    const { saved, hydrated } = useViewportStore.getState();
+    return syncInitialRegion({ lat: params.lat, lng: params.lng, saved, hydrated });
+  });
+  // Subscribe to the hydration flip only — one re-render, not one per pan.
   const hydrated = useViewportStore((s) => s.hydrated);
 
-  // Derived in render, not stored: a deep-link param or a hydrated saved
-  // viewport is knowable immediately, and hydration landing later must promote
-  // us out of the loading state without an extra render pass.
-  const sync = syncInitialRegion({ lat: params.lat, lng: params.lng, saved, hydrated });
-  const [located, setLocated] = useState<InitialRegion | null>(null);
-  const resolved = sync ?? located;
-
-  const needsFix = sync === null && located === null && hydrated;
   useEffect(() => {
-    if (!needsFix) return;
+    if (resolved || !hydrated) return;
 
     let active = true;
+    const { saved } = useViewportStore.getState();
     void resolveInitialRegion({ lat: params.lat, lng: params.lng, saved }).then((next) => {
-      if (active) setLocated(next);
+      if (active) setResolved(next);
     });
     return () => {
       active = false;
     };
-  }, [needsFix, params.lat, params.lng, saved]);
+  }, [resolved, hydrated, params.lat, params.lng]);
 
   if (!resolved) return <LocatingState />;
 
@@ -87,15 +90,29 @@ export default function MapScreen() {
 function LocatingState() {
   const c = useColors();
   const t = useT();
-  const styles = useMemo(() => makeStyles(c), [c]);
+  // Its own two-rule sheet — building the map's full stylesheet for a spinner
+  // would be ~25 wasted StyleSheet entries.
+  const styles = useMemo(() => makeLocatingStyles(c), [c]);
 
   return (
-    <View style={[styles.container, styles.locatingCenter]}>
+    <View style={styles.root}>
       <ActivityIndicator color={c.primary} />
-      <Text style={styles.locatingText}>{t('map.locating')}</Text>
+      <Text style={styles.label}>{t('map.locating')}</Text>
     </View>
   );
 }
+
+const makeLocatingStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: c.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+    },
+    label: { fontSize: 15, color: c.ink2 },
+  });
 
 function MapCanvas({
   initial,
@@ -488,7 +505,10 @@ function MapCanvas({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('map.locateLabel')}
-            accessibilityState={{ busy: locating }}
+            accessibilityState={{ busy: locating, disabled: locating }}
+            // Disabled while in flight: a double-tap would otherwise fire two
+            // permission prompts / GPS requests for one intent.
+            disabled={locating}
             onPress={() => void locate()}
             style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
           >
@@ -628,8 +648,6 @@ const makeStyles = (c: Palette) =>
       borderRadius: 999,
     },
     listBannerText: { color: c.onPrimary, fontSize: 13, fontWeight: '700', flexShrink: 1 },
-    locatingCenter: { alignItems: 'center', justifyContent: 'center', gap: 12 },
-    locatingText: { fontSize: 15, color: c.ink2 },
     locateHint: {
       flexDirection: 'row',
       alignItems: 'flex-start',

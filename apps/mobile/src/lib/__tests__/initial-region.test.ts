@@ -23,7 +23,8 @@ const SAVED = { latitude: 51.5, longitude: -0.12, latitudeDelta: 0.05, longitude
 const FIX_LAT = 40.4168;
 const FIX_LNG = -3.7038;
 
-/** eslint-disable-next-line @typescript-eslint/no-explicit-any -- narrow test helpers */
+// `as never` satisfies the mock's full LocationPermissionResponse type without
+// restating fields these tests don't exercise.
 const granted = { status: Location.PermissionStatus.GRANTED, canAskAgain: true } as never;
 const undetermined = { status: Location.PermissionStatus.UNDETERMINED, canAskAgain: true } as never;
 const deniedAskable = { status: Location.PermissionStatus.DENIED, canAskAgain: true } as never;

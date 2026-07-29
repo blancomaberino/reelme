@@ -44,6 +44,21 @@ it('remembers a viewport in memory and on disk', async () => {
   expect(await SecureStore.getItemAsync('map_viewport')).toEqual(JSON.stringify(REGION));
 });
 
+it('forgets the viewport in memory and on disk when cleared', async () => {
+  useViewportStore.getState().remember(REGION);
+  await Promise.resolve();
+
+  await useViewportStore.getState().clear();
+
+  // A viewport is coarse location data — sign-out must leave nothing behind for
+  // the next person to sign in on a shared device.
+  expect(useViewportStore.getState().saved).toBeNull();
+  expect(await SecureStore.getItemAsync('map_viewport')).toBeNull();
+  // Still hydrated: we have looked, there is simply nothing saved. Flipping this
+  // back to false would hang the map screen's loading gate.
+  expect(useViewportStore.getState().hydrated).toBe(true);
+});
+
 it('survives an unreadable store by reporting nothing saved', async () => {
   jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('keychain unavailable'));
 

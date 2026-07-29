@@ -3,7 +3,7 @@
 // three-state permission enum — and so the whole surface is mockable in one
 // place. No react-native-maps import (same rule as `geo.ts`).
 import * as Location from 'expo-location';
-import { Linking, Platform } from 'react-native';
+import { Linking } from 'react-native';
 
 import type { Region } from './geo';
 
@@ -121,21 +121,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 
 /**
  * Open this app's OS settings page, where a permanently-denied permission can
- * be re-granted. iOS has a dedicated app-settings URL; `openSettings()` covers
- * both platforms in modern RN, so this is really just a swallow-the-rejection
- * wrapper (matches `openExternal` in `linking.ts`).
+ * be re-granted. `openSettings()` is cross-platform, so this is just the
+ * swallow-the-rejection wrapper (same shape as `openExternal` in `linking.ts`)
+ * — the hint text still tells the user where to go if the jump fails.
  */
 export async function openLocationSettings(): Promise<void> {
   try {
     await Linking.openSettings();
   } catch {
-    // Nothing actionable — on the platforms we ship (iOS/Android) this resolves.
-    if (Platform.OS === 'ios') {
-      try {
-        await Linking.openURL('app-settings:');
-      } catch {
-        // Give up silently; the hint text still tells the user where to go.
-      }
-    }
+    // Nothing actionable for the user beyond the tap doing nothing.
   }
 }
