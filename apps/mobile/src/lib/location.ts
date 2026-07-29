@@ -1,0 +1,141 @@
+// Device-location access for the map (T-100). Everything the app knows about
+// expo-location lives here so the screens deal in plain `Region`s and a tiny
+// three-state permission enum — and so the whole surface is mockable in one
+// place. No react-native-maps import (same rule as `geo.ts`).
+import * as Location from 'expo-location';
+import { Linking, Platform } from 'react-native';
+
+import type { Region } from './geo';
+
+/**
+ * How tight a viewport we open at when centring on the user. ~2km across —
+ * close enough to read street context, wide enough that a handful of nearby
+ * pins are already in frame.
+ */
+export const USER_REGION_DELTA = 0.02;
+
+/**
+ * A GPS fix can take a long time (cold start, indoors, tunnel). We are only
+ * ever using it to *frame the map*, so cap the wait and fall back rather than
+ * leave the user staring at a spinner. Callers that already have something to
+ * show should pass a shorter budget.
+ */
+const FIX_TIMEOUT_MS = 5_000;
+
+export type PermissionState = 'granted' | 'denied' | 'undetermined';
+
+/**
+ * Whether the OS will still show a prompt. `denied` + `canAskAgain: false` is
+ * the "you must go to Settings" state — the only case where deep-linking to the
+ * OS settings page is the honest next step.
+ */
+export type PermissionOutcome = { state: PermissionState; canAskAgain: boolean };
+
+function toOutcome(response: {
+  status: Location.PermissionStatus;
+  canAskAgain: boolean;
+}): PermissionOutcome {
+  const state: PermissionState =
+    response.status === Location.PermissionStatus.GRANTED
+      ? 'granted'
+      : response.status === Location.PermissionStatus.DENIED
+        ? 'denied'
+        : 'undetermined';
+  return { state, canAskAgain: response.canAskAgain };
+}
+
+/** Current permission WITHOUT prompting — safe to call on mount. */
+export async function getLocationPermission(): Promise<PermissionOutcome> {
+  try {
+    return toOutcome(await Location.getForegroundPermissionsAsync());
+  } catch {
+    // No native module (Expo Go without the dev client, web) — treat as denied
+    // and permanently unaskable so callers take the fallback path silently.
+    return { state: 'denied', canAskAgain: false };
+  }
+}
+
+/** Prompt for when-in-use permission. A no-op re-prompt if already decided. */
+export async function requestLocationPermission(): Promise<PermissionOutcome> {
+  try {
+    return toOutcome(await Location.requestForegroundPermissionsAsync());
+  } catch {
+    return { state: 'denied', canAskAgain: false };
+  }
+}
+
+/**
+ * The user's position as a map region, or null if unavailable. Tries the OS's
+ * cached last-known fix first (returns instantly, usually good enough to frame
+ * a city-level viewport) before paying for a fresh one, and gives up after
+ * `timeoutMs` so a hanging GPS never blocks the map.
+ *
+ * Assumes permission is already granted — callers own the prompt.
+ */
+export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise<Region | null> {
+  try {
+    const last = await Location.getLastKnownPositionAsync();
+    if (last) return toRegion(last.coords);
+  } catch {
+    // Fall through to a fresh fix.
+  }
+
+  try {
+    const fresh = await withTimeout(
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      timeoutMs,
+    );
+    return fresh ? toRegion(fresh.coords) : null;
+  } catch {
+    return null;
+  }
+}
+
+function toRegion(coords: { latitude: number; longitude: number }): Region | null {
+  // A bogus fix (NaN from a flaky provider) would centre the map on nowhere —
+  // treat it as "no fix" rather than propagating it into the viewport.
+  if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) return null;
+  return {
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    latitudeDelta: USER_REGION_DELTA,
+    longitudeDelta: USER_REGION_DELTA,
+  };
+}
+
+/** Resolve to null instead of hanging forever. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+  });
+}
+
+/**
+ * Open this app's OS settings page, where a permanently-denied permission can
+ * be re-granted. iOS has a dedicated app-settings URL; `openSettings()` covers
+ * both platforms in modern RN, so this is really just a swallow-the-rejection
+ * wrapper (matches `openExternal` in `linking.ts`).
+ */
+export async function openLocationSettings(): Promise<void> {
+  try {
+    await Linking.openSettings();
+  } catch {
+    // Nothing actionable — on the platforms we ship (iOS/Android) this resolves.
+    if (Platform.OS === 'ios') {
+      try {
+        await Linking.openURL('app-settings:');
+      } catch {
+        // Give up silently; the hint text still tells the user where to go.
+      }
+    }
+  }
+}

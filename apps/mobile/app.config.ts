@@ -36,6 +36,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     predictiveBackGestureEnabled: false,
   },
   web: { output: 'static', favicon: './assets/images/favicon.png' },
+  // Localized permission prompts. The base strings below are Spanish (the app's
+  // default locale, 05-mobile-app §1); an English-locale device gets these
+  // overrides instead. Expo writes them to InfoPlist.strings per language.
+  locales: {
+    en: {
+      NSLocationWhenInUseUsageDescription:
+        'Reelmap uses your location to open the map where you are and show places nearby.',
+    },
+  },
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
     // EAS project @mindastic/reelmap. Set manually because eas-cli 20.5's config
@@ -52,6 +61,29 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     'expo-secure-store',
     'expo-notifications',
+    // Foreground location (T-100): centres the map on the user on first launch
+    // and powers the "locate me" control. WHEN-IN-USE only — Reelmap never
+    // tracks in the background, so both background flags stay off (they also
+    // trigger extra App Store review questions we have no reason to answer).
+    // The plugin writes NSLocationWhenInUseUsageDescription plus the Android
+    // ACCESS_COARSE/FINE_LOCATION permissions; `locales.en` above localizes it.
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'Reelmap usa tu ubicación para abrir el mapa donde estás y mostrarte lugares cerca.',
+        isIosBackgroundLocationEnabled: false,
+        isAndroidBackgroundLocationEnabled: false,
+        // `false` DELETES the key (see @expo/config-plugins applyPermissions) —
+        // without this the plugin writes its generic defaults for all four
+        // permissions, declaring always/background location and motion that we
+        // never request. Keep the declared surface to exactly what we use, so
+        // App Store review has nothing extra to ask about.
+        locationAlwaysAndWhenInUsePermission: false,
+        locationAlwaysPermission: false,
+        motionUsagePermission: false,
+      },
+    ],
     // Share extension (T-025): receive links/text shared from other apps (e.g.
     // Instagram) into Reelmap. iOS app group defaults to group.<bundleId>.
     [

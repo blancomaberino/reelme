@@ -18,19 +18,19 @@ import { QuickShareModal } from '@/components/map/quick-share';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
+import {
+  DEFAULT_REGION,
+  type InitialRegion,
+  locateUser,
+  resolveInitialRegion,
+  syncInitialRegion,
+} from '@/lib/initial-region';
+import { openLocationSettings } from '@/lib/location';
 import { useT } from '@/i18n';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
+import { useViewportStore } from '@/stores/viewport';
 import { type Palette, useColors } from '@/theme/colors';
-
-// Default viewport (Montevideo — where the seed/demo data lives) until the user
-// pans. A place-detail "open in map" push overrides it via lat/lng params.
-const DEFAULT_REGION: Region = {
-  latitude: -34.9,
-  longitude: -56.16,
-  latitudeDelta: 0.15,
-  longitudeDelta: 0.15,
-};
 
 // Client-side supercluster kicks in once the server stops clustering (§4.1).
 const CLIENT_CLUSTER_BAND = 15;
@@ -42,13 +42,74 @@ const CLIENT_CLUSTER_BAND = 15;
 // singletons.
 const DETAIL_BAND = 13;
 
+/**
+ * Resolves WHERE the map opens before mounting the canvas (T-100).
+ *
+ * The MapView is uncontrolled — it reads `initialRegion` exactly once — so the
+ * opening viewport has to be known at first render. A deep-linked lat/lng or a
+ * remembered viewport is available synchronously, so those (the overwhelmingly
+ * common cases) paint with no loading state at all. Only a true first launch,
+ * where we ask the OS for permission and wait on a fix, shows the interim state
+ * — and there, "finding your location" is a far better answer than flashing a
+ * city the user has no connection to.
+ */
 export default function MapScreen() {
+  const params = useLocalSearchParams<{ lat?: string; lng?: string; list?: string; listName?: string }>();
+  const saved = useViewportStore((s) => s.saved);
+  const hydrated = useViewportStore((s) => s.hydrated);
+
+  // Derived in render, not stored: a deep-link param or a hydrated saved
+  // viewport is knowable immediately, and hydration landing later must promote
+  // us out of the loading state without an extra render pass.
+  const sync = syncInitialRegion({ lat: params.lat, lng: params.lng, saved, hydrated });
+  const [located, setLocated] = useState<InitialRegion | null>(null);
+  const resolved = sync ?? located;
+
+  const needsFix = sync === null && located === null && hydrated;
+  useEffect(() => {
+    if (!needsFix) return;
+
+    let active = true;
+    void resolveInitialRegion({ lat: params.lat, lng: params.lng, saved }).then((next) => {
+      if (active) setLocated(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [needsFix, params.lat, params.lng, saved]);
+
+  if (!resolved) return <LocatingState />;
+
+  return <MapCanvas initial={resolved} params={params} />;
+}
+
+/** Interim state while a first-launch location fix resolves. */
+function LocatingState() {
   const c = useColors();
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const params = useLocalSearchParams<{ lat?: string; lng?: string; list?: string; listName?: string }>();
+
+  return (
+    <View style={[styles.container, styles.locatingCenter]}>
+      <ActivityIndicator color={c.primary} />
+      <Text style={styles.locatingText}>{t('map.locating')}</Text>
+    </View>
+  );
+}
+
+function MapCanvas({
+  initial,
+  params,
+}: {
+  initial: InitialRegion;
+  params: { lat?: string; lng?: string; list?: string; listName?: string };
+}) {
+  const c = useColors();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(c), [c]);
   const setList = useMapStore((s) => s.setList);
   const activeList = useMapStore((s) => s.filters.list);
+  const remember = useViewportStore((s) => s.remember);
 
   // "View on map" from a list deep-links here with ?list=&listName= — apply it
   // as the map's list filter once (then it lives in the map store).
@@ -56,17 +117,15 @@ export default function MapScreen() {
     if (params.list && params.listName) setList({ id: params.list, name: params.listName });
   }, [params.list, params.listName, setList]);
 
-  const initialRegion = useMemo<Region>(() => {
-    const lat = Number(params.lat);
-    const lng = Number(params.lng);
-    // Both params must be present AND finite — `Number('')` is 0, which would
-    // otherwise center an lat-only push on longitude 0 (the Gulf of Guinea).
-    const bothPresent = (params.lat ?? '') !== '' && (params.lng ?? '') !== '';
-    if (bothPresent && Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { latitude: lat, longitude: lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
-    }
-    return DEFAULT_REGION;
-  }, [params.lat, params.lng]);
+  const initialRegion = initial.region;
+  // A permanently-denied permission surfaced during first-launch resolution —
+  // show the "enable it in Settings" hint once, unprompted, since the map is
+  // silently framed on a fallback the user didn't choose.
+  const [locateHint, setLocateHint] = useState(initial.permissionBlocked);
+  const [locating, setLocating] = useState(false);
+  // The last position we successfully resolved for this session — lets "reset
+  // view" return to the user rather than to the seed city.
+  const userRegionRef = useRef<Region | null>(initial.source === 'user' ? initial.region : null);
 
   const mapRef = useRef<MapView>(null);
   // Latest settled region — drives the zoom buttons (the map is uncontrolled).
@@ -129,11 +188,20 @@ export default function MapScreen() {
     [activeList, removeFromList, select, t],
   );
 
-  const onRegionChangeComplete = useCallback((region: Region) => {
-    regionRef.current = region;
-    if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => setQueryRegion(region), 400);
-  }, []);
+  const onRegionChangeComplete = useCallback(
+    (region: Region) => {
+      regionRef.current = region;
+      if (debounce.current) clearTimeout(debounce.current);
+      debounce.current = setTimeout(() => {
+        setQueryRegion(region);
+        // Remember where the user settled so the next cold start opens here
+        // (T-100). Shares the fetch debounce — one write per settle, not per
+        // gesture frame.
+        remember(region);
+      }, 400);
+    },
+    [remember],
+  );
 
   // On-screen zoom controls (Apple Maps has none): factor 0.5 zooms in, 2 out.
   // Deltas are clamped so the map can't zoom past street level or out past the
@@ -147,13 +215,47 @@ export default function MapScreen() {
     mapRef.current?.animateToRegion(next, 220);
   }, []);
 
-  // Reset control: after panning/zooming off, jump back to the default city view.
+  // Reset control: after panning/zooming off, jump back to "home". Home is the
+  // user's own position when we have one this session, and only otherwise the
+  // seed city — pre-T-100 this always sent everyone to Montevideo.
   // Like any pan, animating settles the region → the debounced refetch runs, so
   // the pin/cluster set repopulates for the reset viewport (no special-casing).
   const resetView = useCallback(() => {
-    regionRef.current = DEFAULT_REGION;
-    mapRef.current?.animateToRegion(DEFAULT_REGION, 350);
+    const target = userRegionRef.current ?? DEFAULT_REGION;
+    regionRef.current = target;
+    mapRef.current?.animateToRegion(target, 350);
   }, []);
+
+  /**
+   * "Locate me". Prompts on first tap, flies to the user on success, and
+   * explains itself on every failure — a permanently-denied permission offers
+   * the Settings deep link, a missing fix says so and stays tappable. Never a
+   * silent no-op.
+   */
+  const locate = useCallback(async () => {
+    setLocating(true);
+    try {
+      const result = await locateUser();
+      if (result.ok) {
+        userRegionRef.current = result.region;
+        regionRef.current = result.region;
+        mapRef.current?.animateToRegion(result.region, 350);
+        setLocateHint(false);
+        return;
+      }
+      if (result.reason === 'blocked') {
+        setLocateHint(true);
+        return;
+      }
+      if (result.reason === 'unavailable') {
+        Alert.alert(t('map.location.unavailable'));
+      }
+      // 'denied' with canAskAgain — the user dismissed the OS prompt. They know
+      // what they did; re-explaining it would be nagging.
+    } finally {
+      setLocating(false);
+    }
+  }, [t]);
 
   // Band + bbox for the *rendered* frame (from queryRegion, so it tracks fetches).
   const band = zoomBand(zoomFromRegion(queryRegion));
@@ -351,11 +453,52 @@ export default function MapScreen() {
             <Text style={styles.zoomChipText}>{t('map.zoomIn')}</Text>
           </View>
         ) : null}
+
+        {/* Location is permanently denied — the only fix is the OS settings
+            page, so say so once and offer the jump. Dismissible: the map is
+            fully usable without it. */}
+        {locateHint ? (
+          <View style={styles.locateHint}>
+            <View style={styles.locateHintBody}>
+              <Text style={styles.locateHintTitle}>{t('map.location.blocked.title')}</Text>
+              <Text style={styles.locateHintText}>{t('map.location.blocked.message')}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void openLocationSettings()}
+                hitSlop={8}
+              >
+                <Text style={styles.locateHintCta}>{t('map.location.blocked.cta')}</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+              onPress={() => setLocateHint(false)}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={18} color={c.muted} />
+            </Pressable>
+          </View>
+        ) : null}
       </SafeAreaView>
 
       {/* Zoom controls (bottom-right) — Apple Maps has none of its own. */}
       <SafeAreaView edges={['bottom']} style={styles.zoomControls} pointerEvents="box-none">
         <View style={styles.zoomStack}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('map.locateLabel')}
+            accessibilityState={{ busy: locating }}
+            onPress={() => void locate()}
+            style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
+          >
+            {locating ? (
+              <ActivityIndicator size="small" color={c.primary} />
+            ) : (
+              <Ionicons name="locate" size={20} color={c.text} />
+            )}
+          </Pressable>
+          <View style={styles.zoomDivider} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('map.resetViewLabel')}
@@ -485,6 +628,29 @@ const makeStyles = (c: Palette) =>
       borderRadius: 999,
     },
     listBannerText: { color: c.onPrimary, fontSize: 13, fontWeight: '700', flexShrink: 1 },
+    locatingCenter: { alignItems: 'center', justifyContent: 'center', gap: 12 },
+    locatingText: { fontSize: 15, color: c.ink2 },
+    locateHint: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      marginTop: 8,
+      marginHorizontal: 12,
+      padding: 14,
+      borderRadius: 14,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      shadowColor: '#000',
+      shadowOpacity: 0.12,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    locateHintBody: { flex: 1, gap: 4 },
+    locateHintTitle: { fontSize: 15, fontWeight: '700', color: c.text },
+    locateHintText: { fontSize: 13, color: c.ink2, lineHeight: 18 },
+    locateHintCta: { fontSize: 14, fontWeight: '700', color: c.primary, marginTop: 4 },
     zoomControls: { position: 'absolute', right: 0, bottom: 0, padding: 16, alignItems: 'flex-end' },
     zoomStack: {
       backgroundColor: c.surface,

@@ -51,6 +51,18 @@ jest.mock('expo-notifications', () => ({
   AndroidImportance: { MAX: 5 },
 }));
 
+// expo-location is native (T-100). Default: permission granted, a fix available
+// — so the map's happy path is the default. Tests override these per case for
+// the denied / blocked / no-fix rungs of the fallback chain.
+jest.mock('expo-location', () => ({
+  PermissionStatus: { GRANTED: 'granted', DENIED: 'denied', UNDETERMINED: 'undetermined' },
+  Accuracy: { Balanced: 3 },
+  getForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted', canAskAgain: true })),
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted', canAskAgain: true })),
+  getLastKnownPositionAsync: jest.fn(async () => null),
+  getCurrentPositionAsync: jest.fn(async () => ({ coords: { latitude: 40.4168, longitude: -3.7038 } })),
+}));
+
 // No native splash module in jest — the auth gate awaits these.
 jest.mock('expo-splash-screen', () => ({
   preventAutoHideAsync: jest.fn(async () => {}),
