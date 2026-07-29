@@ -243,6 +243,35 @@ class InfluencerClaimService
         return $previousId !== $claim->user_id;
     }
 
+    /**
+     * Admin release: unclaim an identity entirely (no new owner). Clears the link,
+     * demotes the previous owner's is_influencer when they hold no other identity,
+     * and closes their verified claim as `released_by_admin`. No InfluencerClaimed
+     * event — releasing grants ownership to nobody.
+     */
+    public function releaseByAdmin(Influencer $influencer, User $admin): void
+    {
+        DB::transaction(function () use ($influencer, $admin) {
+            /** @var Influencer $locked */
+            $locked = Influencer::whereKey($influencer->id)->lockForUpdate()->firstOrFail();
+            $ownerId = $locked->claimed_by_user_id;
+            if ($ownerId === null) {
+                return;
+            }
+
+            $locked->forceFill(['claimed_by_user_id' => null, 'claimed_at' => null])->save();
+            $this->demoteIfOrphaned($ownerId, $locked->id);
+
+            InfluencerClaim::query()
+                ->where('influencer_id', $locked->id)
+                ->where('user_id', $ownerId)
+                ->where('status', ClaimStatus::Verified)
+                ->update(['status' => ClaimStatus::Rejected, 'reason' => 'released_by_admin', 'reviewed_by_user_id' => $admin->id, 'updated_at' => now()]);
+        });
+
+        $influencer->refresh();
+    }
+
     /** Admin reject: mark the claim rejected and notify the claimant. */
     public function reject(InfluencerClaim $claim, User $admin): void
     {
