@@ -23,6 +23,7 @@ export default function EditProfileScreen() {
   const [birthdate, setBirthdate] = useState(user?.birthdate ?? '');
   const [topics, setTopics] = useState<string[]>(user?.favorite_topics ?? []);
   const [foods, setFoods] = useState<string[]>(user?.favorite_foods ?? []);
+  const [isPublic, setIsPublic] = useState(user?.is_public ?? true);
   const [error, setError] = useState<string | null>(null);
 
   const save = () => {
@@ -35,6 +36,7 @@ export default function EditProfileScreen() {
         birthdate: birthdate.trim() || null,
         favorite_topics: topics,
         favorite_foods: foods,
+        is_public: isPublic,
       },
       {
         onSuccess: () => router.back(),
@@ -91,6 +93,30 @@ export default function EditProfileScreen() {
           c={c}
           styles={styles}
         />
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>{t('editProfile.privacy')}</Text>
+          <View style={styles.privacyGroup}>
+            <PrivacyOption
+              title={t('editProfile.public')}
+              hint={t('editProfile.publicHint')}
+              icon="earth"
+              selected={isPublic}
+              onPress={() => setIsPublic(true)}
+              c={c}
+              styles={styles}
+            />
+            <PrivacyOption
+              title={t('editProfile.private')}
+              hint={t('editProfile.privateHint')}
+              icon="lock-closed"
+              selected={!isPublic}
+              onPress={() => setIsPublic(false)}
+              c={c}
+              styles={styles}
+            />
+          </View>
+        </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button title={t('editProfile.save')} onPress={save} loading={update.isPending} />
@@ -161,6 +187,43 @@ function TagEditor({
   );
 }
 
+/** One selectable visibility choice (public / private) with an icon + hint. */
+function PrivacyOption({
+  title,
+  hint,
+  icon,
+  selected,
+  onPress,
+  c,
+  styles,
+}: {
+  title: string;
+  hint: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  selected: boolean;
+  onPress: () => void;
+  c: Palette;
+  styles: Styles;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={title}
+      accessibilityHint={hint}
+      onPress={onPress}
+      style={({ pressed }) => [styles.privacyOption, selected && styles.privacyOptionOn, pressed && styles.pressed]}
+    >
+      <Ionicons name={icon} size={20} color={selected ? c.primary : c.muted} />
+      <View style={styles.privacyText}>
+        <Text style={[styles.privacyTitle, selected && styles.privacyTitleOn]}>{title}</Text>
+        <Text style={styles.privacyHint}>{hint}</Text>
+      </View>
+      {selected ? <Ionicons name="checkmark-circle" size={20} color={c.primary} /> : null}
+    </Pressable>
+  );
+}
+
 type Styles = ReturnType<typeof makeStyles>;
 
 const makeStyles = (c: Palette) =>
@@ -184,6 +247,24 @@ const makeStyles = (c: Palette) =>
       paddingVertical: 6,
     },
     chipText: { color: c.secondary, fontSize: 14, fontWeight: '600' },
+    privacyGroup: { gap: 10 },
+    privacyOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    privacyOptionOn: { borderColor: c.primary, backgroundColor: c.primarySoft },
+    privacyText: { flex: 1, gap: 2 },
+    privacyTitle: { fontSize: 15, fontWeight: '700', color: c.text },
+    privacyTitleOn: { color: c.primary },
+    privacyHint: { fontSize: 13, color: c.muted },
+    pressed: { opacity: 0.7 },
     addRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
     addInput: {
       flex: 1,
