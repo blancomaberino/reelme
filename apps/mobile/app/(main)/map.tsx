@@ -144,6 +144,11 @@ function MapCanvas({
   // view" return to the user rather than to the seed city.
   const userRegionRef = useRef<Region | null>(initial.source === 'user' ? initial.region : null);
 
+  // True once the user has actually manipulated the map (pan, zoom control,
+  // cluster tap, locate, fly-to). Gates viewport persistence — see
+  // onRegionChangeComplete.
+  const interacted = useRef(false);
+
   const mapRef = useRef<MapView>(null);
   // Latest settled region — drives the zoom buttons (the map is uncontrolled).
   const regionRef = useRef<Region>(initialRegion);
@@ -209,28 +214,66 @@ function MapCanvas({
     (region: Region) => {
       regionRef.current = region;
       if (debounce.current) clearTimeout(debounce.current);
+      // Persist ONLY a viewport the user actually moved to.
+      //
+      // onRegionChangeComplete also fires on the map's initial layout, with no
+      // user action behind it. Persisting that saved whatever we happened to
+      // open at — including a DEFAULT_REGION fallback nobody picked — and rung 2
+      // of the resolve chain then beat the location rung on every later launch,
+      // leaving the map stuck on the fallback city even after location was
+      // granted. That is precisely the bug T-100 exists to fix, so the guard is
+      // load-bearing.
+      //
+      // NOT gated on the event's `details.isGesture`: that flag is Android-only
+      // (AIRMapManager.m builds an iOS payload containing `region` alone), and
+      // its type is `isGesture?: boolean`, so relying on it typechecks happily
+      // and then silently never persists anything on iOS. Verified on device.
+      const userMoved = interacted.current;
       debounce.current = setTimeout(() => {
         setQueryRegion(region);
-        // Remember where the user settled so the next cold start opens here
-        // (T-100). Shares the fetch debounce — one write per settle, not per
-        // gesture frame.
-        remember(region);
+        if (userMoved) remember(region);
       }, 400);
     },
     [remember],
   );
 
+  /**
+   * Marks the viewport as user-driven, so the settle it produces is remembered.
+   * Wired to the map's own pan gesture; every programmatic move goes through
+   * {@link moveMap}, which calls this too. Anything that does NOT go through
+   * here — the mount layout settle above all — is never persisted.
+   */
+  const markInteraction = useCallback(() => {
+    interacted.current = true;
+  }, []);
+
+  /**
+   * The single way this screen moves the map. Every caller is downstream of a
+   * user action (zoom control, reset, locate, cluster tap, post-publish fly-to),
+   * so each one counts as an interaction — routing them all through here is what
+   * stops a future move from forgetting to mark itself.
+   */
+  const moveMap = useCallback(
+    (region: Region, duration: number) => {
+      markInteraction();
+      regionRef.current = region;
+      mapRef.current?.animateToRegion(region, duration);
+    },
+    [markInteraction],
+  );
+
   // On-screen zoom controls (Apple Maps has none): factor 0.5 zooms in, 2 out.
   // Deltas are clamped so the map can't zoom past street level or out past the
   // whole world.
-  const zoomBy = useCallback((factor: number) => {
-    const r = regionRef.current;
-    const latitudeDelta = Math.min(Math.max(r.latitudeDelta * factor, 0.0025), 140);
-    const longitudeDelta = Math.min(Math.max(r.longitudeDelta * factor, 0.0025), 140);
-    const next = { latitude: r.latitude, longitude: r.longitude, latitudeDelta, longitudeDelta };
-    regionRef.current = next;
-    mapRef.current?.animateToRegion(next, 220);
-  }, []);
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const r = regionRef.current;
+      const latitudeDelta = Math.min(Math.max(r.latitudeDelta * factor, 0.0025), 140);
+      const longitudeDelta = Math.min(Math.max(r.longitudeDelta * factor, 0.0025), 140);
+      moveMap({ latitude: r.latitude, longitude: r.longitude, latitudeDelta, longitudeDelta }, 220);
+    },
+    [moveMap],
+  );
 
   // Reset control: after panning/zooming off, jump back to "home". Home is the
   // user's own position when we have one this session, and only otherwise the
@@ -238,10 +281,8 @@ function MapCanvas({
   // Like any pan, animating settles the region → the debounced refetch runs, so
   // the pin/cluster set repopulates for the reset viewport (no special-casing).
   const resetView = useCallback(() => {
-    const target = userRegionRef.current ?? DEFAULT_REGION;
-    regionRef.current = target;
-    mapRef.current?.animateToRegion(target, 350);
-  }, []);
+    moveMap(userRegionRef.current ?? DEFAULT_REGION, 350);
+  }, [moveMap]);
 
   /**
    * "Locate me". Prompts on first tap, flies to the user on success, and
@@ -255,8 +296,7 @@ function MapCanvas({
       const result = await locateUser();
       if (result.ok) {
         userRegionRef.current = result.region;
-        regionRef.current = result.region;
-        mapRef.current?.animateToRegion(result.region, 350);
+        moveMap(result.region, 350);
         setLocateHint(false);
         return;
       }
@@ -272,7 +312,7 @@ function MapCanvas({
     } finally {
       setLocating(false);
     }
-  }, [t]);
+  }, [moveMap, t]);
 
   // Band + bbox for the *rendered* frame (from queryRegion, so it tracks fetches).
   const band = zoomBand(zoomFromRegion(queryRegion));
@@ -321,42 +361,51 @@ function MapCanvas({
     [select],
   );
 
-  const onServerClusterPress = useCallback((id: string) => {
-    lastMarkerPressAt.current = Date.now();
-    const server = clustersRef.current?.find((cl) => cl.cluster_id === id);
-    if (server) {
-      mapRef.current?.animateToRegion(bboxToRegion(server.expand.bbox), 350);
-    }
-  }, []);
+  const onServerClusterPress = useCallback(
+    (id: string) => {
+      lastMarkerPressAt.current = Date.now();
+      const server = clustersRef.current?.find((cl) => cl.cluster_id === id);
+      if (server) {
+        moveMap(bboxToRegion(server.expand.bbox), 350);
+      }
+    },
+    [moveMap],
+  );
 
   // A quick-share published → center the map on the new pin (so it's framed when
   // the user returns) AND open its detail: you land on the place you just added
   // (T-076). For a multi-place post `place` is the primary. Animating settles the
   // region, which (debounced) refetches the viewport so the fresh pin renders.
-  const onQuickPublished = useCallback((place: SharePlace) => {
-    mapRef.current?.animateToRegion(
-      { latitude: place.lat, longitude: place.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
-      350,
-    );
-    router.push({ pathname: '/place/[slug]', params: { slug: place.id } });
-  }, []);
-
-  const onClientClusterPress = useCallback((clusterId: string) => {
-    lastMarkerPressAt.current = Date.now();
-    const idx = indexRef.current;
-    if (!idx) return;
-    const item = clientItemsRef.current?.find((it) => it.kind === 'cluster' && String(it.id) === clusterId);
-    if (item && item.kind === 'cluster') {
-      const zoom = clusterExpansionZoom(idx, Number(clusterId));
-      // Latitude spans 180°, longitude 360° — halve the vertical delta so the
-      // expanded region isn't ~2× too tall.
-      const span = 360 / 2 ** zoom;
-      mapRef.current?.animateToRegion(
-        { latitude: item.lat, longitude: item.lng, latitudeDelta: span / 2, longitudeDelta: span },
+  const onQuickPublished = useCallback(
+    (place: SharePlace) => {
+      moveMap(
+        { latitude: place.lat, longitude: place.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
         350,
       );
-    }
-  }, []);
+      router.push({ pathname: '/place/[slug]', params: { slug: place.id } });
+    },
+    [moveMap],
+  );
+
+  const onClientClusterPress = useCallback(
+    (clusterId: string) => {
+      lastMarkerPressAt.current = Date.now();
+      const idx = indexRef.current;
+      if (!idx) return;
+      const item = clientItemsRef.current?.find((it) => it.kind === 'cluster' && String(it.id) === clusterId);
+      if (item && item.kind === 'cluster') {
+        const zoom = clusterExpansionZoom(idx, Number(clusterId));
+        // Latitude spans 180°, longitude 360° — halve the vertical delta so the
+        // expanded region isn't ~2× too tall.
+        const span = 360 / 2 ** zoom;
+        moveMap(
+          { latitude: item.lat, longitude: item.lng, latitudeDelta: span / 2, longitudeDelta: span },
+          350,
+        );
+      }
+    },
+    [moveMap],
+  );
 
   return (
     <View style={styles.container}>
@@ -366,6 +415,8 @@ function MapCanvas({
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         onRegionChangeComplete={onRegionChangeComplete}
+        // A real pan is the primary signal that the viewport is the user's choice.
+        onPanDrag={markInteraction}
         onPress={(e) => {
           // Ignore the map tap that some builds emit alongside a marker press
           // (would deselect the just-opened pin). Guard by action + recency.

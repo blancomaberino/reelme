@@ -270,12 +270,15 @@ describe('reset view', () => {
 });
 
 describe('viewport persistence', () => {
-  it('remembers the viewport the user settles on', async () => {
+  const settled = { latitude: 1, longitude: 2, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+
+  it('remembers a viewport the user panned to', async () => {
     jest.useFakeTimers();
     useViewportStore.setState({ saved: SAVED, hydrated: true });
     render(<MapScreen />);
 
-    const settled = { latitude: 1, longitude: 2, latitudeDelta: 0.03, longitudeDelta: 0.03 };
+    // A real pan: onPanDrag marks the interaction, then the settle persists it.
+    fireEvent(screen.getByTestId('MapView'), 'panDrag');
     fireEvent(screen.getByTestId('MapView'), 'regionChangeComplete', settled);
 
     // Shares the fetch debounce — nothing is written mid-gesture.
@@ -286,6 +289,82 @@ describe('viewport persistence', () => {
     });
 
     expect(useViewportStore.getState().saved).toEqual(settled);
+    jest.useRealTimers();
+  });
+
+  it('does NOT remember a non-gesture settle (the fallback-poisoning bug)', async () => {
+    // Regression: onRegionChangeComplete also fires on the map's initial layout.
+    // Persisting that saved whatever we opened at — including a DEFAULT_REGION
+    // fallback nobody chose — after which the saved rung beat the location rung
+    // forever and the map opened on the fallback city even once location was
+    // granted. Observed on device: granting permission changed nothing.
+    jest.useFakeTimers();
+    useViewportStore.setState({ saved: null, hydrated: true });
+    perms.mockResolvedValue(deniedBlocked); // force the DEFAULT_REGION fallback
+
+    render(<MapScreen />);
+    await act(async () => {});
+
+    fireEvent(screen.getByTestId('MapView'), 'regionChangeComplete', DEFAULT_REGION);
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+
+    expect(useViewportStore.getState().saved).toBeNull();
+    jest.useRealTimers();
+  });
+
+  it('remembers a viewport reached with the zoom control', async () => {
+    // Zooming is a user action, so its settle counts — moveMap marks it.
+    jest.useFakeTimers();
+    useViewportStore.setState({ saved: SAVED, hydrated: true });
+    render(<MapScreen />);
+
+    fireEvent.press(screen.getByLabelText('Zoom in'));
+    fireEvent(screen.getByTestId('MapView'), 'regionChangeComplete', settled);
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+
+    expect(useViewportStore.getState().saved).toEqual(settled);
+    jest.useRealTimers();
+  });
+
+  it('does not rely on the Android-only isGesture flag', async () => {
+    // Regression: gating persistence on details.isGesture typechecked (the field
+    // is optional) but iOS never sends it — AIRMapManager.m builds a payload of
+    // `region` alone — so persistence silently never happened on iOS. Verified
+    // broken on device. A settle after a real pan must persist even with NO
+    // details argument at all.
+    jest.useFakeTimers();
+    useViewportStore.setState({ saved: SAVED, hydrated: true });
+    render(<MapScreen />);
+
+    fireEvent(screen.getByTestId('MapView'), 'panDrag');
+    fireEvent(screen.getByTestId('MapView'), 'regionChangeComplete', settled); // no details
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+
+    expect(useViewportStore.getState().saved).toEqual(settled);
+    jest.useRealTimers();
+  });
+
+  it('still refetches for an un-remembered settle', async () => {
+    // The fetch and the persistence are deliberately decoupled: the mount settle
+    // must still load pins for wherever the map opened.
+    jest.useFakeTimers();
+    useViewportStore.setState({ saved: SAVED, hydrated: true });
+    mapData.current = { pins: [], clusters: [], truncated: true };
+    render(<MapScreen />);
+
+    fireEvent(screen.getByTestId('MapView'), 'regionChangeComplete', settled);
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+
+    // truncated:true renders the "zoom in" chip, proving the query region moved.
+    expect(screen.getByText('Zoom in for more places')).toBeOnTheScreen();
     jest.useRealTimers();
   });
 });
