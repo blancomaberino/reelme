@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/influencer-claim.json",
+  "title": "InfluencerClaim",
+  "description": "GET/POST /api/v1/influencers/{id}/claim data payload (T-038). The caller's own claim state: status, verification method, and the one-time bio code (their own) while pending.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "influencer_id", "status", "method", "token", "expires_at"],
+  "properties": {
+    "id": { "type": "string" },
+    "influencer_id": { "type": "string" },
+    "status": { "type": "string", "enum": ["pending", "verified", "rejected"] },
+    "method": { "type": "string", "enum": ["oauth", "bio_code", "admin"] },
+    "token": { "type": ["string", "null"] },
+    "expires_at": { "type": ["string", "null"] }
+  }
+}

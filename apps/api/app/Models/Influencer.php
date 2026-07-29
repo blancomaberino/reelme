@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Carbon;
 use Laravel\Scout\Searchable;
 
 /**
@@ -18,6 +19,7 @@ use Laravel\Scout\Searchable;
  * @property string|null $display_name
  * @property string|null $avatar_url
  * @property int|null $claimed_by_user_id
+ * @property Carbon|null $claimed_at
  * @property int|null $follower_count_cached
  */
 class Influencer extends Model
@@ -58,6 +60,12 @@ class Influencer extends Model
     public function claimedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'claimed_by_user_id');
+    }
+
+    /** @return HasMany<InfluencerClaim, $this> */
+    public function claims(): HasMany
+    {
+        return $this->hasMany(InfluencerClaim::class);
     }
 
     /** @return MorphMany<Follow, $this> */
