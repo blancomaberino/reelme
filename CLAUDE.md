@@ -90,3 +90,12 @@ When the user asks to **"start the environment(s)"**, "spin up / run everything"
 - **Local PHP is 8.2 — too old for Laravel 13.** Run all API tooling inside Docker (PHP 8.4+, Laravel Sail). The API is exposed on **`:8080`** locally (MAMP holds `:80`).
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
 - The **build plan and task queue live in `~/Sites/plans/reelmap`** (`tasks/tasks.json` is the source of truth); application code lives here. Follow the plan; record deviations as ADRs in the plan, never by editing the spec to match code.
+
+### Codebase knowledge graph (graphify)
+
+This repo is mapped with **graphify** — a local knowledge graph of the codebase (Tree-sitter AST over all ~800 code files + semantic extraction over the docs). It's a **local dev aid, not a checked-in artifact**: everything lives under `graphify-out/` which is **git-ignored** (it holds machine-specific paths + a cache).
+
+- **Answering "how does X work / what connects to Y / trace the flow through Z" questions:** when `graphify-out/graph.json` exists, prefer **`graphify query "<question>"`** (or the `/graphify` skill) over a cold grep — it already knows the cross-cutting bridges. Top hubs are `Place`, `Share`, `User`; the `@reelmap/contracts` package is the API↔mobile source-of-truth bridge.
+- **Keeping it fresh:** a **post-commit hook auto-rebuilds** the graph (AST only — no tokens, no network) after every commit, and a post-checkout hook refreshes it on branch switch. **Code changes need nothing.** Doc/image/schema changes are *not* picked up automatically — run **`/graphify . --update`** (or `graphify update`) manually after meaningful doc edits.
+- **Full rebuild from scratch:** `/graphify .` (skips the `assets/` icons and test-fixture videos by design; the `.npmrc` is auto-skipped as sensitive).
+- graphify is a **personal/local setup on this machine** (installed via `uv tool install graphifyy`), like `/coderabbit` — it is not wired into CI and imposes nothing on collaborators.

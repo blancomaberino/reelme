@@ -33,3 +33,6 @@ dist/
 .idea/
 .vscode/
 !.vscode/extensions.json
+
+# graphify — local knowledge-graph cache/artifacts (rebuilt on demand & post-commit)
+graphify-out/
