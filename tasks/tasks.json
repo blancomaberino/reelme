@@ -982,7 +982,8 @@
         "Influencer claim flow UI",
         "Settings: AI model preference picker (GET /models), account management, GDPR export/delete entry points"
       ],
-      "agent": "executor"
+      "agent": "executor",
+      "notes": "2026-07-28: Profile-edit visibility piece shipped as PR #145 (feat/T-039-profile-privacy-toggle). Added a Public/Private visibility toggle to app/profile/edit.tsx wired to the existing PATCH /me is_public (backend already validated it + re-syncs search index); i18n en+es; mobile + API tests. Closes the \"Own profile + edit\" acceptance item. STILL OPEN for T-039: influencer public map, influencer claim-flow UI, settings AI-model picker (GET /models) + GDPR export/delete entry points."
     },
     {
       "id": "T-040",
