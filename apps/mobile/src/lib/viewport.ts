@@ -52,18 +52,24 @@ export async function loadSavedViewport(): Promise<Region | null> {
 }
 
 /**
- * Every read/write/delete runs through one chain so the store lands in CALL
- * order. `saveViewport` is fire-and-forget and fires on every map settle, so
- * without this a write still in flight at sign-out can resolve AFTER the delete
- * and put the key back — handing the next person on a shared device the
- * previous user's last map position. A viewport is coarse location data, so
- * that ordering is a privacy property, not a nicety.
+ * Every MUTATION runs through one chain so the store lands in CALL order.
+ * `saveViewport` is fire-and-forget and fires on every map settle, so without
+ * this a write still in flight at sign-out can resolve AFTER the delete and put
+ * the key back — handing the next person on a shared device the previous user's
+ * last map position. A viewport is coarse location data, so that ordering is a
+ * privacy property, not a nicety.
+ *
+ * Reads stay OFF the chain deliberately: queueing them would park boot
+ * hydration behind a pending write and still wouldn't help, since a read
+ * enqueued before a clear reads the pre-clear value either way. The store's
+ * generation guard is what makes a late-arriving hydrate lose to a clear.
  */
 let queue: Promise<unknown> = Promise.resolve();
 
 function enqueue<T>(op: () => Promise<T>): Promise<T> {
-  // `then(op, op)` so one failed operation never wedges the queue.
-  const run = queue.then(op, op);
+  const run = queue.then(op);
+  // The tail is always a RESOLVED promise, so one failed keychain call can
+  // never wedge every later write behind it.
   queue = run.catch(() => undefined);
   return run;
 }
