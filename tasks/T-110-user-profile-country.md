@@ -50,37 +50,70 @@ Every existing "country" in the codebase is about a **place**
   renders the raw code, so the filter chips currently read "UY" rather than
   "Uruguay". A shared helper added here should fix that too.
 
-## Open questions to settle before/while implementing
+## Decisions (owner, 2026-07-29) — settled, do not re-litigate
 
-1. **Is a user's country public?** Profiles already have an `is_public` toggle
-   (T-039). Recommendation: treat country as **public when the profile is
-   public**, mirroring `bio` — it is coarse (country, never city) and it is what
-   makes regional discovery possible. If it should be private-to-`/me` instead,
-   it must stay out of `user-profile.json`. **Decide explicitly and record it in
-   the PR**, because moving it later is a contract break.
-2. **Where do localized country names come from?** ~250 names × es/en does not
-   belong in the flat `src/i18n/*.ts` dictionaries. Options, in preference order:
-   (a) `Intl.DisplayNames` — **verify Hermes on RN 0.86 ships full ICU** before
-   committing to it; the app already depends on the OS locale via `useColorScheme`
-   /`useSettingsStore`, so this is the cheapest if available. (b) A small bundled
-   `code → {es, en}` dataset (~15 KB). Do NOT pull a heavyweight i18n library in.
-3. **Should this also appear at registration/onboarding?** Out of scope here —
-   this task is profile *editing*, as requested. File a follow-up if wanted.
+1. **Country is PUBLIC when the profile is public.** It mirrors `bio`: coarse
+   (country, never city) and it is what makes regional discovery possible. So it
+   goes into `packages/contracts/schemas/user-profile.json`, and a private profile
+   must not leak it.
+
+2. **Store the code, serve the name.** `country_code` (ISO 3166-1 alpha-2) is the
+   stored + exchanged value; the API additionally emits a localized
+   `country_name` for display.
+
+### What decision 2 settles
+
+Name resolution happens **server-side**, reusing the ADR-084 localization path the
+tag labels already use — `RequestLocale::resolve()` (`?locale=` → `Accept-Language`
+→ default; supported `es`/`en`), and the mobile client already sends
+`Accept-Language` on every request (`src/api/client.ts`).
+
+**This removes the old open question about `Intl.DisplayNames` / Hermes ICU
+entirely — the mobile app never needs a country dataset.**
+
+Verified in the Sail container on 2026-07-29:
+
+- `intl` **is** loaded; `Locale::getDisplayRegion('-UY', 'es')` → `Uruguay`,
+  `('-ES','es')` → `España`, `('-US','es')` → `Estados Unidos`. Good for both
+  supported locales.
+- ⚠️ **`getDisplayRegion()` never errors** — it echoes unknown input (`QQ` → `"QQ"`,
+  `U1` → `"U1"`) and returns `"Región desconocida"` for `ZZ`. It is a **display**
+  function only. Validation MUST use an explicit ISO 3166-1 alpha-2 allow-list
+  bundled in the API; do not infer validity from this call, and do not copy
+  Filament's loose `maxLength(2)`.
+- Iterating `ResourceBundle::create('en','ICUDATA-region')` yielded only 4 entries,
+  so it is **not** a usable source for the canonical list — bundle the ~250-code
+  list explicitly (a constant/data file, same shape as
+  `database/seeders/data/tag_es_translations.php`).
+
+### Still open (implementation detail, decide in the PR)
+
+- **Country catalog for the picker.** The mobile picker needs ~250 `{code, name}`
+  pairs. Preferred: a small `GET /api/v1/countries` returning the localized
+  catalog (one source of truth, cacheable, same `RequestLocale` path, and it also
+  feeds the my-places chip names). Alternative: ship the codes in the client and
+  take names from the profile payload only — cheaper, but leaves the picker
+  unlocalized. Recommend the endpoint.
+- **Registration/onboarding.** Out of scope here — this task is profile *editing*,
+  as requested. File a follow-up if wanted.
 
 ## Implementation
 
 - Migration: `users.country_code` `char(2)` **nullable** (existing users have no
   value and must not be forced into one), plus an index if regional queries land.
-- `PATCH /me` accepts `country_code`; validate against an explicit ISO 3166-1
+- `PATCH /me` accepts `country_code`; validate against the explicit ISO 3166-1
   alpha-2 allow-list, normalize to uppercase, and allow `null` to clear it.
-- `GET /me` returns it. Public profile resource includes it per decision (1).
+- `GET /me` and the public profile resource return **both** `country_code` and the
+  localized `country_name` (decision 2), the latter resolved through
+  `RequestLocale` + `Locale::getDisplayRegion()`. Public exposure per decision (1).
 - Extend `packages/contracts/schemas/user-profile.json` + regenerate TS. Coordinate
   with **T-102**, which is adding contract coverage — same files.
 - Mobile: a searchable country picker on `app/profile/edit.tsx` (a 250-row list
   needs search, not a raw wheel). Follow the existing `TextField`/sheet patterns;
-  use `/frontend-design` per CLAUDE.md.
-- Shared `countryName(code, locale)` helper in `apps/mobile/src/lib/`; point
-  `my-places-filters` at it so the facet chips stop showing raw ISO codes.
+  use `/frontend-design` per CLAUDE.md. **No bundled country dataset on the
+  client** — names come from the API.
+- Point `my-places-filters` at the same localized names so the facet chips stop
+  showing raw ISO codes.
 - Filament: surface + edit `country_code` on the Users resource, consistent with
   how the Places resource shows it.
 
@@ -92,13 +125,16 @@ Every existing "country" in the codebase is about a **place**
       non-ISO code (e.g. `ZZ`, `USA`, `u1`) is rejected 422 with a field error,
       and lowercase input is normalized to uppercase
 - [ ] `GET /me` returns the caller's country
-- [ ] Public profile exposure matches the decision recorded for open question (1),
-      and the `user-profile` contract + generated TS agree with the API response
-      (contract test, not just a 200 assertion)
+- [ ] Country is exposed on a PUBLIC profile (decision 1) and the `user-profile`
+      contract + generated TS agree with the API response (contract test, not just
+      a 200 assertion)
+- [ ] Responses carry both `country_code` and a localized `country_name`
+      (decision 2); the name follows `Accept-Language` — the same payload returns
+      "Spain" for `en` and "España" for `es`
 - [ ] A private profile does not leak the country to other viewers
 - [ ] Mobile edit-profile has a searchable country picker showing **localized
       names** in both es and en; selecting persists and survives an app restart;
-      clearing it works
+      clearing it works. No country name/dataset is hardcoded in the client
 - [ ] `my-places` filter chips show localized country names instead of raw ISO
       codes, via the shared helper
 - [ ] Filament Users resource shows and edits the country
@@ -118,3 +154,8 @@ country → centroid/bbox source, which is its own decision.
 
 - **2026-07-29** — Filed at the owner's request after confirming no existing task
   covered it (all `country` references in the plan and code are about places).
+- **2026-07-29** — Owner settled both open questions: (1) public when the profile
+  is public; (2) store the code, serve the name. Verified `intl` is available in
+  the container and that `getDisplayRegion()` is display-only (never errors on a
+  bogus code), so validation needs an explicit allow-list. The Hermes/ICU question
+  is closed — names are resolved server-side.
