@@ -59,6 +59,17 @@ describe('contrastRatio', () => {
     expect(contrastRatio('#FFFFFF', '#B54A25')).toBeCloseTo(5.29, 2);
   });
 
+  it.each([
+    ['first', '#GGGGGG', '#FFFFFF'],
+    ['second', '#FFFFFF', '#FFF'],
+    ['both', 'red', 'white'],
+  ])('propagates a malformed colour in the %s argument', (_position, a, b) => {
+    // The palette guard calls `contrastRatio`, never `luminance` directly — so
+    // validation has to survive the trip through here, in either position, or a
+    // typo'd token still slips past scoring as black.
+    expect(() => contrastRatio(a, b)).toThrow(/#RRGGBB/);
+  });
+
   it('exposes the WCAG AA thresholds it is measured against', () => {
     expect(AA_NORMAL).toBe(4.5);
     expect(AA_LARGE).toBe(3);
