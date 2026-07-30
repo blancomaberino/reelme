@@ -2919,6 +2919,45 @@
       ],
       "agent": "executor",
       "notes": "Audit finding A4 (2026-07-29). resolveSourcePost() is ~70 lines of domain logic in the HTTP layer, untestable except through a request. T-097 did the same extraction for the correction/merge engine (ExtractionCorrector) and is the pattern to follow."
+    },
+    {
+      "id": "T-110",
+      "title": "Users can set their country on their profile",
+      "phase": "M1",
+      "status": "pending",
+      "depends_on": [
+        "T-036",
+        "T-039"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/User.php",
+        "apps/api/app/Http/Controllers/Api/V1/MeController.php",
+        "apps/api/app/Http/Resources/",
+        "apps/api/app/Filament/Resources/Users/",
+        "packages/contracts/schemas/user-profile.json",
+        "apps/mobile/app/profile/edit.tsx",
+        "apps/mobile/src/lib/",
+        "apps/mobile/src/components/place/my-places-filters.tsx"
+      ],
+      "spec_refs": [
+        "tasks/T-110-user-profile-country.md"
+      ],
+      "acceptance": [
+        "users.country_code exists as a nullable char(2) matching the places.country_code convention; existing rows unaffected",
+        "PATCH /me sets, changes and clears (null) the country; a non-ISO code (ZZ, USA, u1) is rejected 422 with a field error; lowercase input is normalized to uppercase",
+        "GET /me returns the caller's country",
+        "Public exposure matches the recorded decision on whether country is public; the user-profile contract + generated TS agree with the actual API response (contract test, not a bare 200 assertion)",
+        "A private profile does not leak the country to other viewers",
+        "Mobile edit-profile has a searchable country picker with LOCALIZED names in es and en; the selection persists across an app restart and can be cleared",
+        "my-places filter chips show localized country names instead of raw ISO codes, via a shared countryName() helper",
+        "Filament Users resource shows and edits the country",
+        "Tests cover valid set, clear-to-null, invalid-code rejection, case normalization, private-profile non-leak, and the mobile picker select/persist",
+        "Gates green: composer lint + stan + test; npm run lint + tsc --noEmit + test; coverage not regressed"
+      ],
+      "agent": "executor",
+      "notes": "Owner request 2026-07-29. Confirmed nothing existing covers it: users has name/username/bio/avatar_path/birthdate/favorite_topics/favorite_foods/is_public and NO country column; user-profile.json has no country field; profile/edit.tsx exposes only name/bio/birthdate/topics/foods. Every country reference in the repo today is about a PLACE. Reuse the places.country_code convention (char(2), ISO 3166-1 alpha-2) but NOT Filament's loose maxLength(2) check — validate against a real ISO allow-list. Two decisions to settle in the PR: (1) is a user's country public? recommendation is public-when-profile-is-public, mirroring bio, and it must be settled before it enters the contract because moving it later is a breaking change; (2) where localized country names come from — verify Hermes/RN 0.86 ships full ICU for Intl.DisplayNames before relying on it, else bundle a small code->{es,en} dataset; ~250 names do not belong in the flat i18n dictionaries. There is no country-name helper in the repo today, which is why my-places filter chips currently read 'UY' — fold that fix in. Coordinates with T-102 (same contract files). Follow-on, NOT in scope: once this lands, T-100's DEFAULT_REGION fallback (Montevideo for every user on earth) can fall back to the user's country instead."
     }
   ]
 }
