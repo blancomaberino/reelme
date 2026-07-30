@@ -2631,7 +2631,7 @@
       "id": "T-100",
       "title": "Map: user location, permissions, persisted viewport (kill the hardcoded Montevideo default)",
       "phase": "ARCH",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-032"
       ],
@@ -2662,7 +2662,7 @@
       "id": "T-101",
       "title": "Accessibility: WCAG AA palette contrast, Dynamic Type, screen-reader status announcements",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-060"
       ],
