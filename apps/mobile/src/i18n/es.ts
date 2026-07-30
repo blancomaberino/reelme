@@ -110,6 +110,12 @@ export const es: Record<MessageKey, string> = {
   'map.zoomInLabel': 'Acercar',
   'map.zoomOutLabel': 'Alejar',
   'map.resetViewLabel': 'Restablecer vista',
+  // accessibilityHints (T-101) — solo donde la etiqueta nombra el control pero
+  // no lo que hace.
+  'map.quickAdd.hint': 'Pegá el enlace de una publicación para sumar sus lugares al mapa',
+  'map.search.hint': 'Buscá lugares por nombre, cocina o etiqueta',
+  'map.locateLabel.hint': 'Pide permiso de ubicación la primera vez',
+  'map.resetViewLabel.hint': 'Vuelve a tu ubicación, o al área por defecto si no se conoce',
   'map.clearList': 'Quitar filtro de lista',
   'map.quickAdd': 'Agregar desde un enlace',
   'map.removeFromList': 'Quitar de la lista',
@@ -127,6 +133,7 @@ export const es: Record<MessageKey, string> = {
 
   // Botón de filtros + hoja inferior (compartido por el mapa y Mis lugares).
   'filters.title': 'Filtros',
+  'filters.title.hint': 'Abre los filtros de cocina, precio y etiquetas',
   'filters.clear': 'Limpiar',
   'filters.apply': 'Ver resultados',
   'filters.remove': 'Quitar filtro {{label}}',
@@ -359,6 +366,8 @@ export const es: Record<MessageKey, string> = {
   'shares.fail.ollama_unreachable.body': 'No pudimos contactar el modelo de análisis. Reintentá o cambiá de modelo.',
   'shares.fail.resolve_conflict.title': 'Hubo un conflicto',
   'shares.fail.resolve_conflict.body': 'No pudimos resolver este lugar. Reintentá.',
+  // Anunciado al lector de pantalla cuando avanza el proceso (T-101).
+  'shares.announce.progress': 'Estado del envío: {{step}}',
   'shares.fail.default.title': 'Algo salió mal',
   'shares.fail.default.body': 'No pudimos terminar este. Reintentá.',
   'review.title': 'Revisar y publicar',

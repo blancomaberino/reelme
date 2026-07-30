@@ -40,6 +40,7 @@ export function FilterTriggerBar({ count, onOpen, chips, elevated }: Props) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t('filters.title')}
+        accessibilityHint={t('filters.title.hint')}
         // Announce the active count (the numeric badge below isn't read on its
         // own) without changing the label.
         accessibilityValue={active ? { text: String(count) } : undefined}
@@ -99,7 +100,9 @@ const makeStyles = (c: Palette) =>
     triggerLabelActive: { color: c.primary },
     badge: {
       minWidth: 18,
-      height: 18,
+      // minHeight, not height: at the largest non-accessibility text size an
+      // 11px count renders a ~19px line box and a hard 18px would clip it.
+      minHeight: 18,
       paddingHorizontal: 5,
       borderRadius: 9,
       backgroundColor: c.primary,

@@ -172,7 +172,9 @@ const makeStyles = (c: Palette) =>
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: c.border,
       paddingHorizontal: 12,
-      height: 44,
+      // Grows with the OS text size instead of cropping the query.
+      minHeight: 44,
+      paddingVertical: 8,
     },
     input: { flex: 1, fontSize: 16, color: c.text },
     empty: { color: c.muted, fontSize: 14, paddingTop: 12 },

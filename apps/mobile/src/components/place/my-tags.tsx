@@ -120,7 +120,9 @@ const makeStyles = (c: Palette) =>
     inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     input: {
       flex: 1,
-      height: 44,
+      // Grows with the OS text size instead of cropping the tag being typed.
+      minHeight: 44,
+      paddingVertical: 10,
       paddingHorizontal: 14,
       borderRadius: 12,
       backgroundColor: c.surface,

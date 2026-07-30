@@ -14,12 +14,15 @@
    Token block lifted from design/reelmap-design-v1 (claude.ai/design).
    ═══════════════════════════════════════════════════════════════════════════ */
 :root{
+  /* T-101: accent + muted values moved to clear WCAG AA on the surfaces they
+     carry text on. Lightness-only moves (OKLCH hue drift ≤3.5°, chroma never up),
+     kept in lockstep with design/tokens.md and apps/mobile/src/theme/colors.ts. */
   --bg:#F6F0E6; --bg-map:#ECE4D6; --surface:#FFFFFF; --surface-2:#F4EDE1;
-  --ink:#241E17; --ink-2:#5E5347; --muted:#938776; --line:#E6DBC8; --line-2:#D8CBB4;
-  --primary:#CF5C34; --primary-ink:#FFFFFF; --primary-soft:#F7E1D5;
-  --secondary:#356E86; --secondary-soft:#DBE8EC;
-  --gold:#B4842A; --gold-soft:#F1E6C9; --green:#4C8759; --green-soft:#DCEBDD;
-  --danger:#BC4329; --danger-soft:#F6DCD3;
+  --ink:#241E17; --ink-2:#5E5347; --muted:#6F6353; --line:#E6DBC8; --line-2:#D8CBB4;
+  --primary:#B54A25; --primary-ink:#FFFFFF; --primary-soft:#FDEDE2;
+  --secondary:#356E86; --secondary-soft:#DFEBEE;
+  --gold:#8B5D00; --gold-soft:#F7EEDA; --green:#377245; --green-soft:#E2EFE3;
+  --danger:#B2391F; --danger-soft:#F9E3DB;
   --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:22px; --r-pill:999px;
   --sh-1:0 1px 2px rgba(40,26,12,.06), 0 2px 6px rgba(40,26,12,.07);
   --sh-2:0 8px 20px rgba(40,26,12,.13);
@@ -33,7 +36,7 @@
 }
 [data-theme="dark"]{
   --bg:#151109; --bg-map:#1C1710; --surface:#241D14; --surface-2:#2C2418;
-  --ink:#F3EADA; --ink-2:#C6B9A5; --muted:#8E8272; --line:#332A1C; --line-2:#41361F;
+  --ink:#F3EADA; --ink-2:#C6B9A5; --muted:#A2957F; --line:#332A1C; --line-2:#41361F;
   --primary:#E07A50; --primary-ink:#1A1206; --primary-soft:#3A2517;
   --secondary:#6FA6BE; --secondary-soft:#1E2E36;
   --gold:#D2A24A; --gold-soft:#33290F; --green:#6FB27C; --green-soft:#1E2C1F;

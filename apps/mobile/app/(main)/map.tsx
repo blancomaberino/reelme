@@ -497,6 +497,7 @@ function MapCanvas({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('map.quickAdd')}
+            accessibilityHint={t('map.quickAdd.hint')}
             onPress={() => setQuickOpen(true)}
             style={styles.searchButton}
           >
@@ -505,6 +506,7 @@ function MapCanvas({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('map.search')}
+            accessibilityHint={t('map.search.hint')}
             onPress={() => router.push('/search')}
             style={styles.searchButton}
           >
@@ -566,6 +568,7 @@ function MapCanvas({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('map.locateLabel')}
+            accessibilityHint={t('map.locateLabel.hint')}
             accessibilityState={{ busy: locating, disabled: locating }}
             // Disabled while in flight: a double-tap would otherwise fire two
             // permission prompts / GPS requests for one intent.
@@ -583,6 +586,7 @@ function MapCanvas({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('map.resetViewLabel')}
+            accessibilityHint={t('map.resetViewLabel.hint')}
             onPress={resetView}
             style={({ pressed }) => [styles.zoomBtn, styles.zoomBtnTop, pressed && styles.zoomBtnPressed]}
           >

@@ -1,7 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef } from 'react';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useRetryShare } from '@/api/hooks/useRetryShare';
@@ -67,6 +75,47 @@ const FAILURE_TAXONOMY: Record<FailureCode, { actions: FailAction[]; stopStep: n
 const failureEntry = (code: string | undefined): { actions: FailAction[]; stopStep: number } | null =>
   code && code in FAILURE_TAXONOMY ? FAILURE_TAXONOMY[code as FailureCode] : null;
 
+/**
+ * What a screen reader should hear for a status. Reuses the STEPS copy so the
+ * announcement always names the same stage the stepper does — the published and
+ * failed states are the two that aren't stepper rows, so they map explicitly.
+ * (Published announces "Published", not the card's "Pinned!" — the sentence
+ * frame is "Share status: …", which wants the status, not the celebration.)
+ */
+const announcementKey = (status: ShareStatus): MessageKey => {
+  const step = STEPS.find((s) => s.status === status);
+  if (step) return step.label;
+  return status === 'published' ? 'shares.step.published' : 'shares.fail.default.title';
+};
+
+/**
+ * Speak each pipeline transition (T-101). The screen polls and re-renders in
+ * place, so a screen-reader user gets NO signal that anything moved — focus
+ * never changes and VoiceOver does not re-read a view that merely re-rendered.
+ * `accessibilityLiveRegion` on the terminal block covers Android; this covers
+ * both platforms, which is why they are not alternatives to each other.
+ *
+ * Deliberately silent on the FIRST status seen: arriving on the screen already
+ * reads it out, and announcing it again would talk over that.
+ */
+function useStatusAnnouncements(
+  status: ShareStatus | undefined,
+  t: (k: MessageKey, p?: Record<string, string | number>) => string,
+): void {
+  const spoken = useRef<ShareStatus | null>(null);
+
+  useEffect(() => {
+    if (!status) return;
+    const first = spoken.current === null;
+    if (spoken.current === status) return;
+    spoken.current = status;
+    if (first) return;
+    AccessibilityInfo.announceForAccessibility(
+      t('shares.announce.progress', { step: t(announcementKey(status)) }),
+    );
+  }, [status, t]);
+}
+
 export default function StatusScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const shareId = id ?? '';
@@ -75,6 +124,8 @@ export default function StatusScreen() {
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const { data: share, isLoading, isError } = useShareStatus(shareId || null);
+
+  useStatusAnnouncements(share?.status, t);
 
   // An editable review forwards straight to the correction form — the status
   // screen only lingers for progress, published, and non-editable failures.
@@ -208,7 +259,10 @@ function Terminal({
   if (share.status === 'published') {
     const places = share.places?.length ? share.places : share.place ? [share.place] : [];
     return (
-      <View style={styles.terminal}>
+      // Android re-reads a live region when its content changes; iOS is covered
+      // by useStatusAnnouncements. `polite` so it waits for the current
+      // utterance rather than cutting the user off mid-sentence.
+      <View style={styles.terminal} accessibilityLiveRegion="polite">
         <View style={[styles.badge, styles.badgeOk]}>
           <Ionicons name="checkmark" size={26} color={c.green} />
         </View>
@@ -257,7 +311,7 @@ function Terminal({
   };
 
   return (
-    <View style={styles.terminal}>
+    <View style={styles.terminal} accessibilityLiveRegion="polite">
       <View style={[styles.badge, styles.badgeErr]}>
         <Ionicons name="alert" size={26} color={c.danger} />
       </View>
