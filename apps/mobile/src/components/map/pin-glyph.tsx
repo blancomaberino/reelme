@@ -1,6 +1,7 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { priceGlyphs } from '@/lib/format';
+import { schemes } from '@/theme/colors';
 
 type Props = {
   /** The place's poster; when present the marker becomes a Google-style photo bubble. */
@@ -16,11 +17,15 @@ type Props = {
   onThumbSettled?: () => void;
 };
 
-// MERCADO pin colors — kept literal (markers render outside the themed tree and
-// must read on both light and dark map tiles). Terracotta accent, market-gold
-// when selected.
-const PIN = '#CF5C34';
-const PIN_SELECTED = '#B4842A';
+// MERCADO pin colors. Always the LIGHT scheme's values: markers render outside
+// the themed tree and sit on the same warm map tiles in either scheme, so they
+// must not follow the OS setting. Read off the palette rather than re-typed as
+// literals — they carry a white price glyph, so they are a contrast-bearing pair
+// (`onPrimary on primary` / `onPrimary on gold` in theme/__tests__/colors.test.ts)
+// and a copy here would silently drift out of AA. Terracotta accent,
+// market-gold when selected.
+const PIN = schemes.light.primary;
+const PIN_SELECTED = schemes.light.gold;
 
 // The detailed marker lives in a fixed-size box with the pointer tip at a fixed
 // y (HOTSPOT_Y). Because the box never changes size — the bubble grows upward,

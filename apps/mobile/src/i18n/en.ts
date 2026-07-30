@@ -110,6 +110,13 @@ export const en = {
   'map.zoomInLabel': 'Zoom in',
   'map.zoomOutLabel': 'Zoom out',
   'map.resetViewLabel': 'Reset map view',
+  // accessibilityHints (T-101) — only where the label names the control but not
+  // what it DOES. VoiceOver reads a hint after a pause, so hinting the obvious
+  // ("Zoom in") is noise, not help.
+  'map.quickAdd.hint': 'Paste a post link to add its places to your map',
+  'map.search.hint': 'Find places by name, cuisine or tag',
+  'map.locateLabel.hint': 'Asks for location permission the first time',
+  'map.resetViewLabel.hint': 'Returns to your location, or the default area if it is unknown',
   'map.clearList': 'Clear list filter',
   'map.quickAdd': 'Add from a link',
   'map.removeFromList': 'Remove from list',
@@ -127,6 +134,7 @@ export const en = {
 
   // Filters button + bottom-sheet (map and My places share these).
   'filters.title': 'Filters',
+  'filters.title.hint': 'Opens cuisine, price and tag filters',
   'filters.clear': 'Clear',
   'filters.apply': 'Show results',
   'filters.remove': 'Remove {{label}} filter',
@@ -359,6 +367,10 @@ export const en = {
   'shares.fail.ollama_unreachable.body': 'We couldn’t reach the analysis model. Try again, or switch models.',
   'shares.fail.resolve_conflict.title': 'Something clashed',
   'shares.fail.resolve_conflict.body': 'We couldn’t settle this place. Try again.',
+  // Spoken to a screen reader when the pipeline moves on (T-101). Prefixed
+  // because an announcement arrives with no visual context — "Published" alone
+  // could be anything on screen.
+  'shares.announce.progress': 'Share status: {{step}}',
   'shares.fail.default.title': 'Something went wrong',
   'shares.fail.default.body': 'We couldn’t finish this one. Try again.',
   'review.title': 'Review & publish',

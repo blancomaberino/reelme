@@ -2,6 +2,8 @@ import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 
+import { schemes } from '@/theme/colors';
+
 type Props = {
   id: string;
   lat: number;
@@ -10,7 +12,11 @@ type Props = {
   onPress: (id: string) => void;
 };
 
-const CLUSTER = '#CF5C34'; // MERCADO terracotta
+// MERCADO terracotta, read off the palette rather than re-typed: the bubble
+// carries a white count, so it is the `onPrimary on primary` contrast pair and a
+// literal copy here would drift out of AA unnoticed. Always the light scheme's
+// value — clusters sit on the same map tiles whatever the OS setting.
+const CLUSTER = schemes.light.primary;
 
 /** A count bubble standing in for several nearby places; tap zooms to expand. */
 function ClusterMarkerBase({ id, lat, lng, count, onPress }: Props) {

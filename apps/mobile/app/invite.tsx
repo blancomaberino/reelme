@@ -130,7 +130,10 @@ const makeStyles = (c: Palette) =>
     inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     input: {
       flex: 1,
-      height: 46,
+      // minHeight + padding rather than a hard height, so the field grows with
+      // the OS text size instead of cropping the value the user typed.
+      minHeight: 46,
+      paddingVertical: 12,
       paddingHorizontal: 14,
       borderRadius: 12,
       backgroundColor: c.surface,
