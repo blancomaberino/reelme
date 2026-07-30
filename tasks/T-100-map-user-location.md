@@ -73,11 +73,10 @@ branch from `main`, `/frontend-design` for any UI work, `/coderabbit` before the
   reset between runs: clean slate opens on Barcelona with the blue dot; pan → quit
   → relaunch reopens on the panned viewport. 376 tests green; coverage 98.2% stmts
   / 98.8% branch over the new modules. Approval receipt re-recorded at 1cad142.
-  **PR still not opened.**
+  PR #147 opened 2026-07-29 with the full device-verification evidence.
 
 ## Lesson
 
 Green tests + a config grep are not evidence a mobile change works. Native-module
 additions invalidate the installed dev client, and jest mocks hide every native
 failure. Run it on the simulator before calling a task done.
-
