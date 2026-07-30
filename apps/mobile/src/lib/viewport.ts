@@ -52,12 +52,29 @@ export async function loadSavedViewport(): Promise<Region | null> {
 }
 
 /**
+ * Every read/write/delete runs through one chain so the store lands in CALL
+ * order. `saveViewport` is fire-and-forget and fires on every map settle, so
+ * without this a write still in flight at sign-out can resolve AFTER the delete
+ * and put the key back — handing the next person on a shared device the
+ * previous user's last map position. A viewport is coarse location data, so
+ * that ordering is a privacy property, not a nicety.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue<T>(op: () => Promise<T>): Promise<T> {
+  // `then(op, op)` so one failed operation never wedges the queue.
+  const run = queue.then(op, op);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+/**
  * Persist a settled viewport. Fire-and-forget: this runs on every map settle,
  * and a failed write is not worth interrupting panning for.
  */
 export function saveViewport(region: Region): void {
   if (!isValidRegion(region)) return;
-  void SecureStore.setItemAsync(VIEWPORT_KEY, JSON.stringify(region)).catch(() => {
+  void enqueue(() => SecureStore.setItemAsync(VIEWPORT_KEY, JSON.stringify(region))).catch(() => {
     // Best-effort — the map still works, it just won't restore next launch.
   });
 }
@@ -65,7 +82,7 @@ export function saveViewport(region: Region): void {
 /** Drop the saved viewport (used by tests; also the natural sign-out hook). */
 export async function clearSavedViewport(): Promise<void> {
   try {
-    await SecureStore.deleteItemAsync(VIEWPORT_KEY);
+    await enqueue(() => SecureStore.deleteItemAsync(VIEWPORT_KEY));
   } catch {
     // Nothing to do.
   }

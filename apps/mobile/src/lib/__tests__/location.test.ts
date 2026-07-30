@@ -118,8 +118,18 @@ describe('getUserRegion', () => {
     expect(await getUserRegion()).toBeNull();
   });
 
+  it('falls through to a fresh fix when the CACHED fix is bogus', async () => {
+    // A stale NaN from a flaky provider must not short-circuit the fallback into
+    // "no location" — there is still a perfectly good fresh fix to ask for.
+    lastKnown.mockResolvedValueOnce({ coords: { latitude: NaN, longitude: 20 } } as never);
+    currentPos.mockResolvedValueOnce({ coords: { latitude: 3, longitude: 4 } } as never);
+
+    expect(await getUserRegion()).toMatchObject({ latitude: 3, longitude: 4 });
+  });
+
   it('rejects a non-finite fix rather than centring the map on nowhere', async () => {
     lastKnown.mockResolvedValueOnce({ coords: { latitude: NaN, longitude: 20 } } as never);
+    currentPos.mockResolvedValueOnce({ coords: { latitude: 10, longitude: Infinity } } as never);
 
     expect(await getUserRegion()).toBeNull();
   });

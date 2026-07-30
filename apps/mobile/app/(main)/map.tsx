@@ -237,6 +237,16 @@ function MapCanvas({
     [remember],
   );
 
+  // Drop a settle still waiting out its 400 ms window when the screen goes away
+  // — otherwise leaving mid-pan fires `setQueryRegion` on an unmounted tree and
+  // persists a viewport for a map the user has already navigated off.
+  useEffect(
+    () => () => {
+      if (debounce.current) clearTimeout(debounce.current);
+    },
+    [],
+  );
+
   /**
    * Marks the viewport as user-driven, so the settle it produces is remembered.
    * Wired to the map's own pan gesture; every programmatic move goes through

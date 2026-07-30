@@ -8,8 +8,12 @@ import { clearSavedViewport, loadSavedViewport, saveViewport } from '../viewport
 
 const getItem = jest.mocked(SecureStore.getItemAsync);
 const setItem = jest.mocked(SecureStore.setItemAsync);
+const deleteItem = jest.mocked(SecureStore.deleteItemAsync);
 
 const REGION = { latitude: 51.5, longitude: -0.12, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+
+/** Drain the microtask queue so a fire-and-forget write reaches SecureStore. */
+const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 beforeEach(async () => {
   await clearSavedViewport();
@@ -86,5 +90,39 @@ it('swallows a failed write rather than interrupting panning', async () => {
 it('survives an unreadable store', async () => {
   getItem.mockRejectedValueOnce(new Error('keychain unavailable'));
 
+  expect(await loadSavedViewport()).toBeNull();
+});
+
+it('swallows a failed delete rather than rejecting the sign-out', async () => {
+  deleteItem.mockRejectedValueOnce(new Error('keychain unavailable'));
+
+  // Sign-out awaits this; a rejection here would blow up the whole flow over a
+  // viewport nobody can see.
+  await expect(clearSavedViewport()).resolves.toBeUndefined();
+});
+
+it('a write still in flight cannot resurrect the viewport after a clear', async () => {
+  // The privacy-relevant ordering: `saveViewport` is fire-and-forget and fires
+  // on every map settle, so a write can easily be mid-keychain when sign-out
+  // clears. If it landed afterwards, the next person to sign in on this device
+  // would open the map on the previous user's last position.
+  // Defer the write but still PERFORM it on release — a mock that resolves
+  // without storing anything would pass whether or not the ordering holds.
+  const realSetItem = setItem.getMockImplementation()!;
+  let releaseWrite = () => {};
+  setItem.mockImplementationOnce(
+    (key, value) =>
+      new Promise<void>((resolve) => {
+        releaseWrite = () => resolve(realSetItem(key, value));
+      }),
+  );
+
+  saveViewport(REGION);
+  await flush(); // let the write actually reach the (blocked) keychain call
+  const cleared = clearSavedViewport();
+  releaseWrite(); // the pending write resolves only now, AFTER clear was called
+  await cleared;
+
+  expect(deleteItem).toHaveBeenCalledWith('map_viewport');
   expect(await loadSavedViewport()).toBeNull();
 });

@@ -115,7 +115,10 @@ export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise
 
   try {
     const last = await m.getLastKnownPositionAsync();
-    if (last) return toRegion(last.coords);
+    // Only RETURN a usable cached region. A bogus one (`toRegion` → null) must
+    // fall through to the fresh fix, not short-circuit it into "no location".
+    const cached = last ? toRegion(last.coords) : null;
+    if (cached) return cached;
   } catch {
     // Fall through to a fresh fix.
   }

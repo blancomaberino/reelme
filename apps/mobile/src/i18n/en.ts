@@ -123,7 +123,7 @@ export const en = {
   'map.location.blocked.message':
     'Turn on location access in Settings to center the map where you are.',
   'map.location.blocked.cta': 'Open Settings',
-  'map.location.unavailable': "Couldn't get your location. Try again in a moment.",
+  'map.location.unavailable': 'Couldn’t get your location. Try again in a moment.',
 
   // Filters button + bottom-sheet (map and My places share these).
   'filters.title': 'Filters',

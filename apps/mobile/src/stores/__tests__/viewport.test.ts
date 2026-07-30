@@ -59,6 +59,24 @@ it('forgets the viewport in memory and on disk when cleared', async () => {
   expect(useViewportStore.getState().hydrated).toBe(true);
 });
 
+it('a hydrate started before clear() cannot repopulate the store', async () => {
+  await SecureStore.setItemAsync('map_viewport', JSON.stringify(REGION));
+  let releaseRead: (value: string | null) => void = () => {};
+  jest
+    .mocked(SecureStore.getItemAsync)
+    .mockImplementationOnce(() => new Promise((resolve) => (releaseRead = resolve)));
+
+  // Boot read in flight; the user signs out before it comes back.
+  const hydrating = useViewportStore.getState().hydrate();
+  await useViewportStore.getState().clear();
+  releaseRead(JSON.stringify(REGION)); // the pre-sign-out value arrives late
+  await hydrating;
+
+  // The clear has to win — otherwise the stale read hands the next user the
+  // previous user's coarse location even though the keychain was emptied.
+  expect(useViewportStore.getState()).toMatchObject({ saved: null, hydrated: true });
+});
+
 it('survives an unreadable store by reporting nothing saved', async () => {
   jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('keychain unavailable'));
 

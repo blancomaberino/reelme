@@ -18,6 +18,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     icon: './assets/expo.icon',
     supportsTablet: true,
     config: { usesNonExemptEncryption: false },
+    // Required companion to `locales` below (Expo's localization guide): lets
+    // iOS serve a per-language InfoPlist.strings override and fall back to the
+    // base Info.plist value for any language we don't ship. Expo does not set
+    // it for you — @expo/config-plugins only leaves a "possibly validate
+    // CFBundleAllowMixedLocalizations is enabled" TODO. Applies at prebuild.
+    infoPlist: { CFBundleAllowMixedLocalizations: true },
   },
   android: {
     package: IS_DEV ? 'pet.one.reelmap.dev' : 'pet.one.reelmap',
@@ -38,11 +44,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   web: { output: 'static', favicon: './assets/images/favicon.png' },
   // Localized permission prompts. The base strings below are Spanish (the app's
   // default locale, 05-mobile-app §1); an English-locale device gets these
-  // overrides instead. Expo writes them to InfoPlist.strings per language.
+  // overrides instead. Expo writes them to `en.lproj/InfoPlist.strings`.
+  //
+  // Given inline rather than as a file path: @expo/config-plugins' locale
+  // resolver takes either ("in the off chance that someone defined the locales
+  // json in the config, pass it directly"), and one prompt does not warrant a
+  // second file. Nested under `ios` because the resolver hands every TOP-LEVEL
+  // key to both platforms — a flat `NSLocation…` would land in Android's
+  // `values-b+en/strings.xml` as a string resource nothing reads.
   locales: {
     en: {
-      NSLocationWhenInUseUsageDescription:
-        'Reelmap uses your location to open the map where you are and show places nearby.',
+      ios: {
+        NSLocationWhenInUseUsageDescription:
+          'Reelmap uses your location to open the map where you are and show places nearby.',
+      },
     },
   },
   extra: {

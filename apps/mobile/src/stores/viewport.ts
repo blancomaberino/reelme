@@ -27,11 +27,22 @@ type ViewportState = {
   clear: () => Promise<void>;
 };
 
+/**
+ * Bumped by every `clear()`. A `hydrate()` that started before the clear is
+ * reading the PRE-sign-out viewport, so letting it `set()` on arrival would put
+ * the previous user's coarse location back into the store that `clear()` just
+ * emptied. Comparing the generation it captured against the current one makes
+ * the clear win regardless of which read resolves last.
+ */
+let generation = 0;
+
 export const useViewportStore = create<ViewportState>((set) => ({
   saved: null,
   hydrated: false,
   hydrate: async () => {
+    const startedAt = generation;
     const saved = await loadSavedViewport();
+    if (startedAt !== generation) return; // superseded by a clear()
     set({ saved, hydrated: true });
   },
   remember: (region) => {
@@ -39,6 +50,7 @@ export const useViewportStore = create<ViewportState>((set) => ({
     saveViewport(region);
   },
   clear: async () => {
+    generation += 1;
     set({ saved: null, hydrated: true });
     await clearSavedViewport();
   },

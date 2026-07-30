@@ -233,7 +233,7 @@ describe('locate control', () => {
       fireEvent.press(screen.getByLabelText('Center on my location'));
     });
 
-    expect(alert).toHaveBeenCalledWith("Couldn't get your location. Try again in a moment.");
+    expect(alert).toHaveBeenCalledWith('Couldn’t get your location. Try again in a moment.');
     expect(animateToRegion).not.toHaveBeenCalled();
     alert.mockRestore();
   });
@@ -365,6 +365,26 @@ describe('viewport persistence', () => {
 
     // truncated:true renders the "zoom in" chip, proving the query region moved.
     expect(screen.getByText('Zoom in for more places')).toBeOnTheScreen();
+    jest.useRealTimers();
+  });
+
+  it('drops a pending settle when the screen unmounts mid-pan', () => {
+    // Navigating away inside the 400 ms window used to leave the timer armed:
+    // it then fired on an unmounted tree and persisted a viewport for a map the
+    // user had already left.
+    jest.useFakeTimers();
+    useViewportStore.setState({ saved: SAVED, hydrated: true });
+    const { unmount } = render(<MapScreen />);
+
+    fireEvent(screen.getByTestId('MapView'), 'panDrag');
+    fireEvent(screen.getByTestId('MapView'), 'regionChangeComplete', settled);
+    unmount();
+
+    act(() => {
+      jest.advanceTimersByTime(400);
+    });
+
+    expect(useViewportStore.getState().saved).toEqual(SAVED);
     jest.useRealTimers();
   });
 });
