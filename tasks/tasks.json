@@ -2959,6 +2959,31 @@
       ],
       "agent": "executor",
       "notes": "Owner request 2026-07-29; both open questions settled by the owner same day. DECISION 1: country is PUBLIC when the profile is public (mirrors bio — coarse, and it is what enables regional discovery), so it enters user-profile.json and must not leak from a private profile. DECISION 2: store the code, serve the name — country_code (ISO 3166-1 alpha-2) is stored/exchanged, and the API additionally emits a localized country_name. Name resolution is SERVER-SIDE via the existing ADR-084 path (RequestLocale::resolve → ?locale= then Accept-Language, supported es/en; the mobile client already sends Accept-Language). This closes the old Intl.DisplayNames/Hermes-ICU question — the client needs no country dataset. VERIFIED in the container 2026-07-29: intl is loaded and Locale::getDisplayRegion gives Uruguay/España/Estados Unidos correctly for es and en. GOTCHA: getDisplayRegion NEVER errors — it echoes bogus input (QQ->'QQ', U1->'U1') and returns 'Región desconocida' for ZZ, so it is DISPLAY ONLY; validation must use an explicit bundled ISO 3166-1 alpha-2 allow-list, and must not copy Filament's loose maxLength(2). ResourceBundle::create('en','ICUDATA-region') yielded only 4 entries so it is not a usable canonical list — bundle the ~250 codes explicitly (same shape as database/seeders/data/tag_es_translations.php). Confirmed nothing existing covered this: users has no country column, user-profile.json has no country field, profile/edit.tsx exposes only name/bio/birthdate/topics/foods, and every country reference in the repo is about a PLACE. There is no country-name helper today, which is why my-places chips read 'UY' — fold that fix in. Still open (PR-level): whether to add GET /api/v1/countries for the picker catalog (recommended — one localized source of truth, also feeds the chips) vs shipping codes client-side. Registration/onboarding is OUT of scope (this is profile editing, as requested). Coordinates with T-102 (same contract files). Follow-on, NOT in scope: once this lands, T-100's DEFAULT_REGION fallback (Montevideo for every user on earth) can fall back to the user's country instead."
+    },
+    {
+      "id": "T-111",
+      "title": "Mobile: resolve the Expo SDK 57 package skew (17 outdated deps) — suspected native crash source",
+      "phase": "ARCH",
+      "status": "pending",
+      "depends_on": [],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/package.json",
+        "apps/mobile/ios/",
+        "package-lock.json"
+      ],
+      "spec_refs": [
+        "tasks/T-111-expo-sdk-package-skew.md"
+      ],
+      "acceptance": [
+        "`npx expo install --check` reports no outdated packages for the mobile app",
+        "The iOS dev client is rebuilt against the aligned versions and Podfile.lock is committed",
+        "The full jest suite, tsc and lint stay green after the bump; any breaking change is handled, not pinned around",
+        "The app survives 10 consecutive cold launches with no entry in ~/Library/Logs/DiagnosticReports (the reproduction harness for the 2026-07-30 crash)",
+        "If the ExpoModulesCore async-bridge crash still reproduces after alignment, the finding is written up (minimal repro + upstream issue link) rather than closed silently"
+      ],
+      "agent": "executor",
+      "notes": "Flagged but deliberately not bundled in T-100 (commit 1cad142): `expo install --check` reports 17 outdated packages including expo 57.0.4->57.0.9, react-native 0.86.0->0.86.2, reanimated, screens, worklets, and expo-secure-store 57.0.0->57.0.1. On 2026-07-30 the app took a native SIGBUS (EXC_ARM_DA_ALIGN, pointer-authentication failure) with the faulting frame in ExpoModulesCore.ConcurrentFunctionDefinition.call -> JavaScriptValuesBuffer.deinit -> jsi::Value::~Value() — i.e. inside Expo's ASYNC native-function bridge, not app JS. expo-secure-store is one of the skewed packages and is the async module that runs at boot (auth token, settings x2, and the map viewport since T-100), so boot fires several concurrent async Expo calls. Version skew is the leading hypothesis; the crash was seen once and did not reproduce over 6 relaunches after a Metro cache clear, so it is intermittent and must be chased with a repeat-launch harness rather than a single try."
     }
   ]
 }
