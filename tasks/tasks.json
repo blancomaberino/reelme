@@ -2662,7 +2662,7 @@
       "id": "T-101",
       "title": "Accessibility: WCAG AA palette contrast, Dynamic Type, screen-reader status announcements",
       "phase": "ARCH",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-060"
       ],
