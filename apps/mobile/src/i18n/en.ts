@@ -5,6 +5,7 @@
 export const en = {
   'common.tryAgain': 'Try again',
   'common.cancel': 'Cancel',
+  'common.close': 'Close',
 
   'errorBoundary.title': 'Something went wrong',
   'errorBoundary.body': 'The app hit an unexpected error. You can try again — if it keeps happening, restarting usually fixes it.',
@@ -115,6 +116,14 @@ export const en = {
   'map.removeFromList.confirm.title': 'Remove from “{{name}}”?',
   'map.removeFromList.confirm.message': 'This removes it from this list only — it stays anywhere else you saved it.',
   'map.removeFromList.confirm.cta': 'Remove',
+  // Location / "locate me" control (T-100).
+  'map.locateLabel': 'Center on my location',
+  'map.locating': 'Finding your location…',
+  'map.location.blocked.title': 'Location is off for Reelmap',
+  'map.location.blocked.message':
+    'Turn on location access in Settings to center the map where you are.',
+  'map.location.blocked.cta': 'Open Settings',
+  'map.location.unavailable': 'Couldn’t get your location. Try again in a moment.',
 
   // Filters button + bottom-sheet (map and My places share these).
   'filters.title': 'Filters',

@@ -18,6 +18,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     icon: './assets/expo.icon',
     supportsTablet: true,
     config: { usesNonExemptEncryption: false },
+    // Required companion to `locales` below (Expo's localization guide): lets
+    // iOS serve a per-language InfoPlist.strings override and fall back to the
+    // base Info.plist value for any language we don't ship. Expo does not set
+    // it for you — @expo/config-plugins only leaves a "possibly validate
+    // CFBundleAllowMixedLocalizations is enabled" TODO. Applies at prebuild.
+    infoPlist: { CFBundleAllowMixedLocalizations: true },
   },
   android: {
     package: IS_DEV ? 'pet.one.reelmap.dev' : 'pet.one.reelmap',
@@ -36,6 +42,24 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     predictiveBackGestureEnabled: false,
   },
   web: { output: 'static', favicon: './assets/images/favicon.png' },
+  // Localized permission prompts. The base strings below are Spanish (the app's
+  // default locale, 05-mobile-app §1); an English-locale device gets these
+  // overrides instead. Expo writes them to `en.lproj/InfoPlist.strings`.
+  //
+  // Given inline rather than as a file path: @expo/config-plugins' locale
+  // resolver takes either ("in the off chance that someone defined the locales
+  // json in the config, pass it directly"), and one prompt does not warrant a
+  // second file. Nested under `ios` because the resolver hands every TOP-LEVEL
+  // key to both platforms — a flat `NSLocation…` would land in Android's
+  // `values-b+en/strings.xml` as a string resource nothing reads.
+  locales: {
+    en: {
+      ios: {
+        NSLocationWhenInUseUsageDescription:
+          'Reelmap uses your location to open the map where you are and show places nearby.',
+      },
+    },
+  },
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
     // EAS project @mindastic/reelmap. Set manually because eas-cli 20.5's config
@@ -52,6 +76,29 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     'expo-secure-store',
     'expo-notifications',
+    // Foreground location (T-100): centres the map on the user on first launch
+    // and powers the "locate me" control. WHEN-IN-USE only — Reelmap never
+    // tracks in the background, so both background flags stay off (they also
+    // trigger extra App Store review questions we have no reason to answer).
+    // The plugin writes NSLocationWhenInUseUsageDescription plus the Android
+    // ACCESS_COARSE/FINE_LOCATION permissions; `locales.en` above localizes it.
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'Reelmap usa tu ubicación para abrir el mapa donde estás y mostrarte lugares cerca.',
+        isIosBackgroundLocationEnabled: false,
+        isAndroidBackgroundLocationEnabled: false,
+        // `false` DELETES the key (see @expo/config-plugins applyPermissions) —
+        // without this the plugin writes its generic defaults for all four
+        // permissions, declaring always/background location and motion that we
+        // never request. Keep the declared surface to exactly what we use, so
+        // App Store review has nothing extra to ask about.
+        locationAlwaysAndWhenInUsePermission: false,
+        locationAlwaysPermission: false,
+        motionUsagePermission: false,
+      },
+    ],
     // Share extension (T-025): receive links/text shared from other apps (e.g.
     // Instagram) into Reelmap. iOS app group defaults to group.<bundleId>.
     [

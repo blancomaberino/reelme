@@ -5,9 +5,11 @@ import { Alert } from 'react-native';
 import type { MapData } from '@/api/hooks/useMapPlaces';
 import type { MapFilters } from '@/api/keys';
 import type { MapPin } from '@/api/places';
+import { DEFAULT_REGION } from '@/lib/initial-region';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
+import { useViewportStore } from '@/stores/viewport';
 
 import MapScreen from '../map';
 
@@ -131,6 +133,10 @@ beforeEach(() => {
   useMapStore.setState({ selected: null, filters: { cuisine: null, price_range: null, tags: [], list: null, filter: null } });
   useSessionStore.setState({ user: null, status: 'guest' });
   useSettingsStore.setState({ locale: 'en' }); // match jest.setup's default
+  // A remembered viewport (T-100) — the returning-user path, which resolves
+  // synchronously so these tests need no async gate. The first-launch /
+  // permission paths are covered in map-location.test.tsx.
+  useViewportStore.setState({ saved: DEFAULT_REGION, hydrated: true });
   mockRouter.push.mockClear();
   mockRouter.params = {};
   animateToRegion.mockClear();

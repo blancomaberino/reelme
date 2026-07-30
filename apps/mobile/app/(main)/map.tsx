@@ -18,19 +18,19 @@ import { QuickShareModal } from '@/components/map/quick-share';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
+import {
+  DEFAULT_REGION,
+  type InitialRegion,
+  locateUser,
+  resolveInitialRegion,
+  syncInitialRegion,
+} from '@/lib/initial-region';
+import { openLocationSettings } from '@/lib/location';
 import { useT } from '@/i18n';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
+import { useViewportStore } from '@/stores/viewport';
 import { type Palette, useColors } from '@/theme/colors';
-
-// Default viewport (Montevideo — where the seed/demo data lives) until the user
-// pans. A place-detail "open in map" push overrides it via lat/lng params.
-const DEFAULT_REGION: Region = {
-  latitude: -34.9,
-  longitude: -56.16,
-  latitudeDelta: 0.15,
-  longitudeDelta: 0.15,
-};
 
 // Client-side supercluster kicks in once the server stops clustering (§4.1).
 const CLIENT_CLUSTER_BAND = 15;
@@ -42,13 +42,91 @@ const CLIENT_CLUSTER_BAND = 15;
 // singletons.
 const DETAIL_BAND = 13;
 
+/**
+ * Resolves WHERE the map opens before mounting the canvas (T-100).
+ *
+ * The MapView is uncontrolled — it reads `initialRegion` exactly once — so the
+ * opening viewport has to be known at first render. A deep-linked lat/lng or a
+ * remembered viewport is available synchronously, so those (the overwhelmingly
+ * common cases) paint with no loading state at all. Only a true first launch,
+ * where we ask the OS for permission and wait on a fix, shows the interim state
+ * — and there, "finding your location" is a far better answer than flashing a
+ * city the user has no connection to.
+ */
 export default function MapScreen() {
+  const params = useLocalSearchParams<{ lat?: string; lng?: string; list?: string; listName?: string }>();
+
+  // Resolved ONCE and then sticky. Deliberately not derived from a subscribed
+  // `saved` — the store's `saved` changes on every map settle, and re-deriving
+  // off it would re-render this wrapper (and hand MapCanvas a fresh `initial`)
+  // on every pan, for a value the uncontrolled MapView read at mount and will
+  // never read again.
+  const [resolved, setResolved] = useState<InitialRegion | null>(() => {
+    const { saved, hydrated } = useViewportStore.getState();
+    return syncInitialRegion({ lat: params.lat, lng: params.lng, saved, hydrated });
+  });
+  // Subscribe to the hydration flip only — one re-render, not one per pan.
+  const hydrated = useViewportStore((s) => s.hydrated);
+
+  useEffect(() => {
+    if (resolved || !hydrated) return;
+
+    let active = true;
+    const { saved } = useViewportStore.getState();
+    void resolveInitialRegion({ lat: params.lat, lng: params.lng, saved }).then((next) => {
+      if (active) setResolved(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [resolved, hydrated, params.lat, params.lng]);
+
+  if (!resolved) return <LocatingState />;
+
+  return <MapCanvas initial={resolved} params={params} />;
+}
+
+/** Interim state while a first-launch location fix resolves. */
+function LocatingState() {
+  const c = useColors();
+  const t = useT();
+  // Its own two-rule sheet — building the map's full stylesheet for a spinner
+  // would be ~25 wasted StyleSheet entries.
+  const styles = useMemo(() => makeLocatingStyles(c), [c]);
+
+  return (
+    <View style={styles.root}>
+      <ActivityIndicator color={c.primary} />
+      <Text style={styles.label}>{t('map.locating')}</Text>
+    </View>
+  );
+}
+
+const makeLocatingStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: c.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+    },
+    label: { fontSize: 15, color: c.ink2 },
+  });
+
+function MapCanvas({
+  initial,
+  params,
+}: {
+  initial: InitialRegion;
+  params: { lat?: string; lng?: string; list?: string; listName?: string };
+}) {
   const c = useColors();
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const params = useLocalSearchParams<{ lat?: string; lng?: string; list?: string; listName?: string }>();
   const setList = useMapStore((s) => s.setList);
   const activeList = useMapStore((s) => s.filters.list);
+  const remember = useViewportStore((s) => s.remember);
 
   // "View on map" from a list deep-links here with ?list=&listName= — apply it
   // as the map's list filter once (then it lives in the map store).
@@ -56,17 +134,20 @@ export default function MapScreen() {
     if (params.list && params.listName) setList({ id: params.list, name: params.listName });
   }, [params.list, params.listName, setList]);
 
-  const initialRegion = useMemo<Region>(() => {
-    const lat = Number(params.lat);
-    const lng = Number(params.lng);
-    // Both params must be present AND finite — `Number('')` is 0, which would
-    // otherwise center an lat-only push on longitude 0 (the Gulf of Guinea).
-    const bothPresent = (params.lat ?? '') !== '' && (params.lng ?? '') !== '';
-    if (bothPresent && Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { latitude: lat, longitude: lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
-    }
-    return DEFAULT_REGION;
-  }, [params.lat, params.lng]);
+  const initialRegion = initial.region;
+  // A permanently-denied permission surfaced during first-launch resolution —
+  // show the "enable it in Settings" hint once, unprompted, since the map is
+  // silently framed on a fallback the user didn't choose.
+  const [locateHint, setLocateHint] = useState(initial.permissionBlocked);
+  const [locating, setLocating] = useState(false);
+  // The last position we successfully resolved for this session — lets "reset
+  // view" return to the user rather than to the seed city.
+  const userRegionRef = useRef<Region | null>(initial.source === 'user' ? initial.region : null);
+
+  // True once the user has actually manipulated the map (pan, zoom control,
+  // cluster tap, locate, fly-to). Gates viewport persistence — see
+  // onRegionChangeComplete.
+  const interacted = useRef(false);
 
   const mapRef = useRef<MapView>(null);
   // Latest settled region — drives the zoom buttons (the map is uncontrolled).
@@ -129,31 +210,119 @@ export default function MapScreen() {
     [activeList, removeFromList, select, t],
   );
 
-  const onRegionChangeComplete = useCallback((region: Region) => {
-    regionRef.current = region;
-    if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => setQueryRegion(region), 400);
+  const onRegionChangeComplete = useCallback(
+    (region: Region) => {
+      regionRef.current = region;
+      if (debounce.current) clearTimeout(debounce.current);
+      // Persist ONLY a viewport the user actually moved to.
+      //
+      // onRegionChangeComplete also fires on the map's initial layout, with no
+      // user action behind it. Persisting that saved whatever we happened to
+      // open at — including a DEFAULT_REGION fallback nobody picked — and rung 2
+      // of the resolve chain then beat the location rung on every later launch,
+      // leaving the map stuck on the fallback city even after location was
+      // granted. That is precisely the bug T-100 exists to fix, so the guard is
+      // load-bearing.
+      //
+      // NOT gated on the event's `details.isGesture`: that flag is Android-only
+      // (AIRMapManager.m builds an iOS payload containing `region` alone), and
+      // its type is `isGesture?: boolean`, so relying on it typechecks happily
+      // and then silently never persists anything on iOS. Verified on device.
+      const userMoved = interacted.current;
+      debounce.current = setTimeout(() => {
+        setQueryRegion(region);
+        if (userMoved) remember(region);
+      }, 400);
+    },
+    [remember],
+  );
+
+  // Drop a settle still waiting out its 400 ms window when the screen goes away
+  // — otherwise leaving mid-pan fires `setQueryRegion` on an unmounted tree and
+  // persists a viewport for a map the user has already navigated off.
+  useEffect(
+    () => () => {
+      if (debounce.current) clearTimeout(debounce.current);
+    },
+    [],
+  );
+
+  /**
+   * Marks the viewport as user-driven, so the settle it produces is remembered.
+   * Wired to the map's own pan gesture; every programmatic move goes through
+   * {@link moveMap}, which calls this too. Anything that does NOT go through
+   * here — the mount layout settle above all — is never persisted.
+   */
+  const markInteraction = useCallback(() => {
+    interacted.current = true;
   }, []);
+
+  /**
+   * The single way this screen moves the map. Every caller is downstream of a
+   * user action (zoom control, reset, locate, cluster tap, post-publish fly-to),
+   * so each one counts as an interaction — routing them all through here is what
+   * stops a future move from forgetting to mark itself.
+   */
+  const moveMap = useCallback(
+    (region: Region, duration: number) => {
+      markInteraction();
+      regionRef.current = region;
+      mapRef.current?.animateToRegion(region, duration);
+    },
+    [markInteraction],
+  );
 
   // On-screen zoom controls (Apple Maps has none): factor 0.5 zooms in, 2 out.
   // Deltas are clamped so the map can't zoom past street level or out past the
   // whole world.
-  const zoomBy = useCallback((factor: number) => {
-    const r = regionRef.current;
-    const latitudeDelta = Math.min(Math.max(r.latitudeDelta * factor, 0.0025), 140);
-    const longitudeDelta = Math.min(Math.max(r.longitudeDelta * factor, 0.0025), 140);
-    const next = { latitude: r.latitude, longitude: r.longitude, latitudeDelta, longitudeDelta };
-    regionRef.current = next;
-    mapRef.current?.animateToRegion(next, 220);
-  }, []);
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const r = regionRef.current;
+      const latitudeDelta = Math.min(Math.max(r.latitudeDelta * factor, 0.0025), 140);
+      const longitudeDelta = Math.min(Math.max(r.longitudeDelta * factor, 0.0025), 140);
+      moveMap({ latitude: r.latitude, longitude: r.longitude, latitudeDelta, longitudeDelta }, 220);
+    },
+    [moveMap],
+  );
 
-  // Reset control: after panning/zooming off, jump back to the default city view.
+  // Reset control: after panning/zooming off, jump back to "home". Home is the
+  // user's own position when we have one this session, and only otherwise the
+  // seed city — pre-T-100 this always sent everyone to Montevideo.
   // Like any pan, animating settles the region → the debounced refetch runs, so
   // the pin/cluster set repopulates for the reset viewport (no special-casing).
   const resetView = useCallback(() => {
-    regionRef.current = DEFAULT_REGION;
-    mapRef.current?.animateToRegion(DEFAULT_REGION, 350);
-  }, []);
+    moveMap(userRegionRef.current ?? DEFAULT_REGION, 350);
+  }, [moveMap]);
+
+  /**
+   * "Locate me". Prompts on first tap, flies to the user on success, and
+   * explains itself on every failure — a permanently-denied permission offers
+   * the Settings deep link, a missing fix says so and stays tappable. Never a
+   * silent no-op.
+   */
+  const locate = useCallback(async () => {
+    setLocating(true);
+    try {
+      const result = await locateUser();
+      if (result.ok) {
+        userRegionRef.current = result.region;
+        moveMap(result.region, 350);
+        setLocateHint(false);
+        return;
+      }
+      if (result.reason === 'blocked') {
+        setLocateHint(true);
+        return;
+      }
+      if (result.reason === 'unavailable') {
+        Alert.alert(t('map.location.unavailable'));
+      }
+      // 'denied' with canAskAgain — the user dismissed the OS prompt. They know
+      // what they did; re-explaining it would be nagging.
+    } finally {
+      setLocating(false);
+    }
+  }, [moveMap, t]);
 
   // Band + bbox for the *rendered* frame (from queryRegion, so it tracks fetches).
   const band = zoomBand(zoomFromRegion(queryRegion));
@@ -202,42 +371,51 @@ export default function MapScreen() {
     [select],
   );
 
-  const onServerClusterPress = useCallback((id: string) => {
-    lastMarkerPressAt.current = Date.now();
-    const server = clustersRef.current?.find((cl) => cl.cluster_id === id);
-    if (server) {
-      mapRef.current?.animateToRegion(bboxToRegion(server.expand.bbox), 350);
-    }
-  }, []);
+  const onServerClusterPress = useCallback(
+    (id: string) => {
+      lastMarkerPressAt.current = Date.now();
+      const server = clustersRef.current?.find((cl) => cl.cluster_id === id);
+      if (server) {
+        moveMap(bboxToRegion(server.expand.bbox), 350);
+      }
+    },
+    [moveMap],
+  );
 
   // A quick-share published → center the map on the new pin (so it's framed when
   // the user returns) AND open its detail: you land on the place you just added
   // (T-076). For a multi-place post `place` is the primary. Animating settles the
   // region, which (debounced) refetches the viewport so the fresh pin renders.
-  const onQuickPublished = useCallback((place: SharePlace) => {
-    mapRef.current?.animateToRegion(
-      { latitude: place.lat, longitude: place.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
-      350,
-    );
-    router.push({ pathname: '/place/[slug]', params: { slug: place.id } });
-  }, []);
-
-  const onClientClusterPress = useCallback((clusterId: string) => {
-    lastMarkerPressAt.current = Date.now();
-    const idx = indexRef.current;
-    if (!idx) return;
-    const item = clientItemsRef.current?.find((it) => it.kind === 'cluster' && String(it.id) === clusterId);
-    if (item && item.kind === 'cluster') {
-      const zoom = clusterExpansionZoom(idx, Number(clusterId));
-      // Latitude spans 180°, longitude 360° — halve the vertical delta so the
-      // expanded region isn't ~2× too tall.
-      const span = 360 / 2 ** zoom;
-      mapRef.current?.animateToRegion(
-        { latitude: item.lat, longitude: item.lng, latitudeDelta: span / 2, longitudeDelta: span },
+  const onQuickPublished = useCallback(
+    (place: SharePlace) => {
+      moveMap(
+        { latitude: place.lat, longitude: place.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
         350,
       );
-    }
-  }, []);
+      router.push({ pathname: '/place/[slug]', params: { slug: place.id } });
+    },
+    [moveMap],
+  );
+
+  const onClientClusterPress = useCallback(
+    (clusterId: string) => {
+      lastMarkerPressAt.current = Date.now();
+      const idx = indexRef.current;
+      if (!idx) return;
+      const item = clientItemsRef.current?.find((it) => it.kind === 'cluster' && String(it.id) === clusterId);
+      if (item && item.kind === 'cluster') {
+        const zoom = clusterExpansionZoom(idx, Number(clusterId));
+        // Latitude spans 180°, longitude 360° — halve the vertical delta so the
+        // expanded region isn't ~2× too tall.
+        const span = 360 / 2 ** zoom;
+        moveMap(
+          { latitude: item.lat, longitude: item.lng, latitudeDelta: span / 2, longitudeDelta: span },
+          350,
+        );
+      }
+    },
+    [moveMap],
+  );
 
   return (
     <View style={styles.container}>
@@ -247,6 +425,8 @@ export default function MapScreen() {
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         onRegionChangeComplete={onRegionChangeComplete}
+        // A real pan is the primary signal that the viewport is the user's choice.
+        onPanDrag={markInteraction}
         onPress={(e) => {
           // Ignore the map tap that some builds emit alongside a marker press
           // (would deselect the just-opened pin). Guard by action + recency.
@@ -351,11 +531,55 @@ export default function MapScreen() {
             <Text style={styles.zoomChipText}>{t('map.zoomIn')}</Text>
           </View>
         ) : null}
+
+        {/* Location is permanently denied — the only fix is the OS settings
+            page, so say so once and offer the jump. Dismissible: the map is
+            fully usable without it. */}
+        {locateHint ? (
+          <View style={styles.locateHint}>
+            <View style={styles.locateHintBody}>
+              <Text style={styles.locateHintTitle}>{t('map.location.blocked.title')}</Text>
+              <Text style={styles.locateHintText}>{t('map.location.blocked.message')}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void openLocationSettings()}
+                hitSlop={8}
+              >
+                <Text style={styles.locateHintCta}>{t('map.location.blocked.cta')}</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+              onPress={() => setLocateHint(false)}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={18} color={c.muted} />
+            </Pressable>
+          </View>
+        ) : null}
       </SafeAreaView>
 
       {/* Zoom controls (bottom-right) — Apple Maps has none of its own. */}
       <SafeAreaView edges={['bottom']} style={styles.zoomControls} pointerEvents="box-none">
         <View style={styles.zoomStack}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('map.locateLabel')}
+            accessibilityState={{ busy: locating, disabled: locating }}
+            // Disabled while in flight: a double-tap would otherwise fire two
+            // permission prompts / GPS requests for one intent.
+            disabled={locating}
+            onPress={() => void locate()}
+            style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
+          >
+            {locating ? (
+              <ActivityIndicator size="small" color={c.primary} />
+            ) : (
+              <Ionicons name="locate" size={20} color={c.text} />
+            )}
+          </Pressable>
+          <View style={styles.zoomDivider} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('map.resetViewLabel')}
@@ -485,6 +709,27 @@ const makeStyles = (c: Palette) =>
       borderRadius: 999,
     },
     listBannerText: { color: c.onPrimary, fontSize: 13, fontWeight: '700', flexShrink: 1 },
+    locateHint: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      marginTop: 8,
+      marginHorizontal: 12,
+      padding: 14,
+      borderRadius: 14,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      shadowColor: '#000',
+      shadowOpacity: 0.12,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    locateHintBody: { flex: 1, gap: 4 },
+    locateHintTitle: { fontSize: 15, fontWeight: '700', color: c.text },
+    locateHintText: { fontSize: 13, color: c.ink2, lineHeight: 18 },
+    locateHintCta: { fontSize: 14, fontWeight: '700', color: c.primary, marginTop: 4 },
     zoomControls: { position: 'absolute', right: 0, bottom: 0, padding: 16, alignItems: 'flex-end' },
     zoomStack: {
       backgroundColor: c.surface,

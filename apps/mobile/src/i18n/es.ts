@@ -5,6 +5,7 @@ import type { MessageKey } from './en';
 export const es: Record<MessageKey, string> = {
   'common.tryAgain': 'Reintentar',
   'common.cancel': 'Cancelar',
+  'common.close': 'Cerrar',
 
   'errorBoundary.title': 'Algo salió mal',
   'errorBoundary.body': 'La app tuvo un error inesperado. Puedes reintentar; si sigue pasando, reiniciar suele solucionarlo.',
@@ -115,6 +116,14 @@ export const es: Record<MessageKey, string> = {
   'map.removeFromList.confirm.title': '¿Quitar de «{{name}}»?',
   'map.removeFromList.confirm.message': 'Solo se quita de esta lista; sigue guardado donde sea que lo hayas guardado.',
   'map.removeFromList.confirm.cta': 'Quitar',
+  // Ubicación / control "centrar en mí" (T-100).
+  'map.locateLabel': 'Centrar en mi ubicación',
+  'map.locating': 'Buscando tu ubicación…',
+  'map.location.blocked.title': 'La ubicación está desactivada para Reelmap',
+  'map.location.blocked.message':
+    'Activá el acceso a la ubicación en Ajustes para centrar el mapa donde estás.',
+  'map.location.blocked.cta': 'Abrir Ajustes',
+  'map.location.unavailable': 'No pudimos obtener tu ubicación. Probá de nuevo en un momento.',
 
   // Botón de filtros + hoja inferior (compartido por el mapa y Mis lugares).
   'filters.title': 'Filtros',

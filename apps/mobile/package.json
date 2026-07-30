@@ -17,9 +17,9 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.0",
-    "@reelmap/contracts": "*",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@react-navigation/native": "^7.1.6",
+    "@reelmap/contracts": "*",
     "@shopify/flash-list": "2.0.2",
     "@tanstack/react-query": "^5.101.2",
     "@types/supercluster": "^7.1.3",
@@ -29,6 +29,7 @@
     "expo-device": "^57.0.0",
     "expo-font": "~57.0.0",
     "expo-linking": "~57.0.2",
+    "expo-location": "57.0.2",
     "expo-notifications": "~57.0.0",
     "expo-router": "~57.0.4",
     "expo-secure-store": "~57.0.0",

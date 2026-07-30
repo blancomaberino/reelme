@@ -17,6 +17,7 @@ import { usePushNotifications } from '@/notifications/use-push-notifications';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
 import { useUiStore } from '@/stores/ui';
+import { useViewportStore } from '@/stores/viewport';
 
 // Keep the splash up until the token check resolves (no login/tab flash).
 SplashScreen.preventAutoHideAsync();
@@ -132,9 +133,12 @@ function AuthBootstrap() {
   const setUser = useSessionStore((s) => s.setUser);
   const clear = useSessionStore((s) => s.clear);
 
-  // Apply the saved language before the first screens paint (Spanish default).
+  // Apply the saved language before the first screens paint (Spanish default),
+  // and read back the remembered map viewport (T-100) so the map can open where
+  // the user left it without an async gate on its own mount.
   useEffect(() => {
     void useSettingsStore.getState().hydrate();
+    void useViewportStore.getState().hydrate();
   }, []);
 
   useEffect(() => {
