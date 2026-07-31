@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Carbon;
 
@@ -22,6 +23,11 @@ use Illuminate\Support\Carbon;
  * WKB), so set it via {@see setPoint()} and read coordinates via {@see coordinates()}.
  * `normalized_name` (accent-folded, suffix-stripped) and `slug` are maintained
  * on save for trigram matching and stable URLs.
+ *
+ * T-106 moved four concerns out into `Models\Concerns` and the six query scopes
+ * into {@see PlaceQueryBuilder}: this is the highest-degree node in the
+ * codebase, so every concern it carries is blast radius. What remains is
+ * persistence, casts and relationships.
  *
  * @property int $id
  * @property string $name
@@ -47,14 +53,11 @@ use Illuminate\Support\Carbon;
  */
 class Place extends Model
 {
-    // T-106: five concerns that were inline here. `Place` is the highest-degree
-    // node in the codebase, so each one it carries is blast radius; what remains
-    // below is persistence and relationships.
     use Concerns\DerivesNameColumns;
-
     use Concerns\HasGeoPoint;
     use Concerns\LocksFields;
     use Concerns\SearchesAsPlace;
+
     /** @use HasFactory<PlaceFactory> */
     use HasFactory;
 
@@ -152,21 +155,21 @@ class Place extends Model
     }
 
     /**
-     * Public routes bind by slug (canonical, T-030) but numeric ids keep
-     * working — map pins and existing clients address places by id.
-     */
-    /**
      * Every Place query starts on {@see PlaceQueryBuilder}, which owns the query
      * vocabulary (publiclyVisible / mine / followedBy / …) that used to be six
      * `scopeX()` methods here.
      *
-     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  QueryBuilder  $query
      */
     public function newEloquentBuilder($query): PlaceQueryBuilder
     {
         return new PlaceQueryBuilder($query);
     }
 
+    /**
+     * Public routes bind by slug (canonical, T-030) but numeric ids keep
+     * working — map pins and existing clients address places by id.
+     */
     public function resolveRouteBinding($value, $field = null): ?Place
     {
         $field ??= ctype_digit((string) $value) ? 'id' : 'slug';
