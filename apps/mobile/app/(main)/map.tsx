@@ -182,7 +182,14 @@ function MapCanvas({
   // The pin whose "save to a list" sheet is open (T-073); authed viewers only.
   const [saveFor, setSaveFor] = useState<string | null>(null);
 
-  const { data, isFetching } = useMapPlaces(queryRegion, effectiveFilters);
+  const { data, isFetching, isError, refetch } = useMapPlaces(queryRegion, effectiveFilters);
+
+  // A map with no pins has three causes and the user can only act on one of
+  // them (T-103). Offline is the ConnectionBanner's job — it is app-wide and
+  // there is nothing to retry. A genuine failure gets a chip here, because the
+  // alternative is an empty map that looks exactly like "you have no places".
+  // Only when there is nothing to show: cached pins beat an error notice.
+  const showFetchError = isError && (data?.pins.length ?? 0) === 0 && (data?.clusters.length ?? 0) === 0;
 
   // With a saved list as the active scope, a tapped pin is already in that list,
   // so the sheet's action removes it from THAT list only (T-073 follow-up) —
@@ -528,6 +535,18 @@ function MapCanvas({
               <Ionicons name="close" size={16} color={c.onPrimary} />
             </Pressable>
           </View>
+        ) : showFetchError ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${t('map.error')} — ${t('common.tryAgain')}`}
+            onPress={() => void refetch()}
+            style={styles.errorChip}
+            testID="map-error-chip"
+          >
+            <Ionicons name="alert-circle-outline" size={14} color={c.onPrimary} />
+            <Text style={styles.errorChipText}>{t('map.error')}</Text>
+            <Text style={styles.errorChipAction}>{t('common.tryAgain')}</Text>
+          </Pressable>
         ) : data?.truncated ? (
           <View style={styles.zoomChip}>
             <Text style={styles.zoomChipText}>{t('map.zoomIn')}</Text>
@@ -700,6 +719,20 @@ const makeStyles = (c: Palette) =>
       borderRadius: 999,
     },
     zoomChipText: { color: c.background, fontSize: 13, fontWeight: '600' },
+    // Same pinned-chip language as the zoom hint, in the danger tone.
+    errorChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'center',
+      marginTop: 8,
+      backgroundColor: c.danger,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: 999,
+    },
+    errorChipText: { color: c.onPrimary, fontSize: 13, fontWeight: '600' },
+    errorChipAction: { color: c.onPrimary, fontSize: 13, fontWeight: '800', textDecorationLine: 'underline' },
     listBanner: {
       alignSelf: 'center',
       marginTop: 8,

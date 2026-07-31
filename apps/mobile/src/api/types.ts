@@ -40,6 +40,20 @@ export class ValidationError extends Error {
 }
 
 /**
+ * Thrown when a request never reached the API — no response at all: airplane
+ * mode, a dead tunnel, DNS failure, a timeout (T-103). Distinct from a 5xx,
+ * which DID reach the server. Screens use it to say "you're offline" instead of
+ * the generic "something went wrong", and mutations use it to fail loudly
+ * rather than sit paused waiting for a connection that may never come back.
+ */
+export class NetworkError extends Error {
+  constructor(message = 'Network request failed.') {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
+/**
  * Thrown for a 403 `email_not_verified` (T-066) — a correct password on an
  * unconfirmed account. Carries the email so the screen can route to the verify
  * flow prefilled.

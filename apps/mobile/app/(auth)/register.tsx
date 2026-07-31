@@ -61,7 +61,7 @@ export default function RegisterScreen() {
         textContentType="newPassword"
         error={fieldErrors.password}
       />
-      {generalError ? <Text style={styles.general}>{generalError}</Text> : null}
+      {generalError ? <Text style={styles.general}>{t(generalError)}</Text> : null}
       <Button title={t('auth.register.submit')} onPress={submit} loading={register.isPending} />
       <View style={styles.footer}>
         <Text style={styles.muted}>{t('auth.register.haveAccount')}</Text>

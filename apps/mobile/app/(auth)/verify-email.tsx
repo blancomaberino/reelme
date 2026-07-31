@@ -59,7 +59,7 @@ export default function VerifyEmailScreen() {
         maxLength={6}
         error={fieldErrors.code}
       />
-      {generalError ? <Text style={styles.general}>{generalError}</Text> : null}
+      {generalError ? <Text style={styles.general}>{t(generalError)}</Text> : null}
       <Button
         title={t('verify.submit')}
         onPress={submit}

@@ -68,7 +68,7 @@ export default function LoginScreen() {
         textContentType="password"
         error={fieldErrors.password}
       />
-      {generalError ? <Text style={styles.general}>{generalError}</Text> : null}
+      {generalError ? <Text style={styles.general}>{t(generalError)}</Text> : null}
       <Button title={t('auth.login.submit')} onPress={submit} loading={login.isPending} />
       <View style={styles.footer}>
         <Text style={styles.muted}>{t('auth.login.newHere')}</Text>
