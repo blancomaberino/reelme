@@ -6,6 +6,12 @@ export const es: Record<MessageKey, string> = {
   'common.tryAgain': 'Reintentar',
   'common.cancel': 'Cancelar',
   'common.close': 'Cerrar',
+  'common.error.general': 'Algo salió mal. Inténtalo de nuevo.',
+  'common.error.offline': 'Sin conexión. Revisa tu red e inténtalo de nuevo.',
+
+  'connection.offline': 'Estás sin conexión: mostramos tus lugares guardados',
+  'connection.rateLimited': 'Espera un momento: demasiadas solicitudes',
+  'connection.restored': 'Conexión restablecida',
 
   'errorBoundary.title': 'Algo salió mal',
   'errorBoundary.body': 'La app tuvo un error inesperado. Puedes reintentar; si sigue pasando, reiniciar suele solucionarlo.',
@@ -34,6 +40,8 @@ export const es: Record<MessageKey, string> = {
   'myPlaces.guest.body': 'Inicia sesión para armar tu mapa y tu lista personal.',
   'myPlaces.guest.cta': 'Iniciar sesión',
   'myPlaces.error.title': 'No pudimos cargar tus lugares',
+  'myPlaces.offline.title': 'Estás sin conexión',
+  'myPlaces.offline.body': 'Cargaremos tus lugares en cuanto vuelvas a tener conexión.',
 
   // Compartidas por la tarjeta de origen (atribución) + los buscadores.
   'feed.search': 'Buscar',
@@ -107,6 +115,7 @@ export const es: Record<MessageKey, string> = {
 
   'map.search': 'Buscar',
   'map.zoomIn': 'Acercá para ver más lugares',
+  'map.error': 'No pudimos cargar los lugares',
   'map.zoomInLabel': 'Acercar',
   'map.zoomOutLabel': 'Alejar',
   'map.resetViewLabel': 'Restablecer vista',

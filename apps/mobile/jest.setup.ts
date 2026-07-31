@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-import { notifyManager } from '@tanstack/react-query';
+import { focusManager, notifyManager, onlineManager } from '@tanstack/react-query';
 
 import { useSettingsStore } from '@/stores/settings';
 
@@ -29,6 +29,72 @@ jest.mock('expo-secure-store', () => {
 
 // `isDevice: true` so push registration runs in tests (a simulator reports false).
 jest.mock('expo-device', () => ({ deviceName: 'jest-device', isDevice: true }));
+
+// In-memory AsyncStorage (T-103) — backs the persisted query cache. Exposed so
+// a test can seed a dehydrated cache before mounting, or read back what was
+// written. `__reset()` between tests; jest.setup owns the lifecycle below.
+export const mockAsyncStorage = {
+  store: new Map<string, string>(),
+  __reset() {
+    this.store.clear();
+  },
+};
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async (k: string) => mockAsyncStorage.store.get(k) ?? null),
+    setItem: jest.fn(async (k: string, v: string) => {
+      mockAsyncStorage.store.set(k, v);
+    }),
+    removeItem: jest.fn(async (k: string) => {
+      mockAsyncStorage.store.delete(k);
+    }),
+  },
+}));
+
+// NetInfo (T-103) — drives React Query's onlineManager. Default: connected.
+// `mockNetInfo.emit({ isConnected: false })` flips the whole app offline and
+// notifies every live listener, which is how the offline/reconnect tests work.
+type NetInfoSnapshot = { isConnected: boolean; isInternetReachable: boolean | null };
+
+export const mockNetInfo = {
+  state: { isConnected: true, isInternetReachable: true } as NetInfoSnapshot,
+  listeners: new Set<(s: NetInfoSnapshot) => void>(),
+  emit(next: Partial<NetInfoSnapshot>) {
+    mockNetInfo.state = { ...mockNetInfo.state, ...next };
+    for (const listener of mockNetInfo.listeners) listener(mockNetInfo.state);
+  },
+  /**
+   * Back to connected, notifying anyone already subscribed. Listeners are NOT
+   * dropped: `setupNetworkManagers()` subscribes once at module load, so
+   * clearing the set would silently cut onlineManager off from every later
+   * `emit()` in the same worker.
+   */
+  __reset() {
+    mockNetInfo.emit({ isConnected: true, isInternetReachable: true });
+  },
+};
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: jest.fn((cb: (s: NetInfoSnapshot) => void) => {
+      mockNetInfo.listeners.add(cb);
+      cb(mockNetInfo.state);
+      return () => mockNetInfo.listeners.delete(cb);
+    }),
+    fetch: jest.fn(async () => mockNetInfo.state),
+  },
+}));
+
+// Each test starts connected, with an empty cache on "disk" and the query
+// managers back at their defaults — otherwise one offline test leaves the whole
+// worker offline for every suite that follows it.
+beforeEach(() => {
+  mockNetInfo.__reset();
+  mockAsyncStorage.__reset();
+  onlineManager.setOnline(true);
+  focusManager.setFocused(true);
+});
 
 // expo-constants: supply the EAS projectId + version the push token registration
 // reads (jest-expo's default has no expoConfig).

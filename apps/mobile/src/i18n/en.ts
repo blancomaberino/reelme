@@ -6,6 +6,14 @@ export const en = {
   'common.tryAgain': 'Try again',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
+  'common.error.general': 'Something went wrong. Please try again.',
+  'common.error.offline': 'No connection. Check your network and try again.',
+
+  // Connection states (T-103). `offline` is the network being gone; `rateLimited`
+  // is a 429 from the API. Both say "not your fault, not right now".
+  'connection.offline': 'You’re offline — showing your saved places',
+  'connection.rateLimited': 'Slow down a moment — too many requests',
+  'connection.restored': 'Back online',
 
   'errorBoundary.title': 'Something went wrong',
   'errorBoundary.body': 'The app hit an unexpected error. You can try again — if it keeps happening, restarting usually fixes it.',
@@ -34,6 +42,8 @@ export const en = {
   'myPlaces.guest.body': 'Sign in to build your personal map and list.',
   'myPlaces.guest.cta': 'Sign in',
   'myPlaces.error.title': 'Couldn’t load your places',
+  'myPlaces.offline.title': 'You’re offline',
+  'myPlaces.offline.body': 'We’ll load your places as soon as you’re back online.',
 
   // Shared by the source card (attribution) + the search headers.
   'feed.search': 'Search',
@@ -107,6 +117,7 @@ export const en = {
 
   'map.search': 'Search',
   'map.zoomIn': 'Zoom in for more places',
+  'map.error': 'Couldn’t load places',
   'map.zoomInLabel': 'Zoom in',
   'map.zoomOutLabel': 'Zoom out',
   'map.resetViewLabel': 'Reset map view',

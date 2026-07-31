@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as Device from 'expo-device';
 
+import { clearPersistedQueryCache } from '@/lib/query-persist';
 import { unregisterPush } from '@/notifications/push';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
@@ -91,6 +92,10 @@ export function useLogout() {
       // user's last map position.
       await useViewportStore.getState().clear();
       qc.clear();
+      // …and the on-disk copy of it (T-103): the persisted cache is this
+      // account's private collection in plaintext, so it must not survive
+      // sign-out for the next person to use the device.
+      await clearPersistedQueryCache();
     },
   });
 }

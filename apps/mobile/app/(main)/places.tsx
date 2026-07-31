@@ -31,11 +31,18 @@ export default function MyPlacesScreen() {
   const [filters, setFilters] = useState<Filters>({ sort: 'recent' });
   const onChange = useCallback((patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch })), []);
 
-  const { data, isLoading, isError, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } =
+  const { data, isLoading, isError, isPaused, refetch, isRefetching, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useMyPlaces(filters, { enabled: authed });
   const remove = useRemoveFromMap();
 
   const items = useMemo(() => data?.pages.flatMap((p) => p.data) ?? [], [data]);
+
+  // Three distinct answers to "why is this list not showing anything", which
+  // the user needs told apart (T-103): the network is gone, the request failed,
+  // or you genuinely have no places. `isPaused` is React Query parking the
+  // query because `onlineManager` says we're offline — with cached pages
+  // restored from disk we show those instead and say nothing.
+  const offline = isPaused && items.length === 0;
 
   // Country/type chip options come from a dedicated facet endpoint computed over
   // my FULL collection (T-088) — not derived from the loaded page, which silently
@@ -85,6 +92,8 @@ export default function MyPlacesScreen() {
 
       {!authed ? (
         <SignInPrompt styles={styles} c={c} t={t} />
+      ) : offline ? (
+        <OfflineState styles={styles} c={c} t={t} />
       ) : isError ? (
         <ErrorState styles={styles} c={c} t={t} onRetry={() => void refetch()} />
       ) : (
@@ -159,10 +168,26 @@ function SignInPrompt({ styles, c, t }: { styles: Styles; c: Palette; t: T }) {
   );
 }
 
+/**
+ * Offline with nothing cached (T-103) — deliberately NOT the error state: there
+ * is nothing wrong and nothing to retry, the request is parked and will run
+ * itself the moment the connection is back. Offering "try again" here would be
+ * a button that does nothing.
+ */
+function OfflineState({ styles, c, t }: { styles: Styles; c: Palette; t: T }) {
+  return (
+    <View style={styles.center} testID="my-places-offline">
+      <Ionicons name="cloud-offline-outline" size={40} color={c.muted} />
+      <Text style={styles.emptyTitle}>{t('myPlaces.offline.title')}</Text>
+      <Text style={styles.emptyBody}>{t('myPlaces.offline.body')}</Text>
+    </View>
+  );
+}
+
 function ErrorState({ styles, c, t, onRetry }: { styles: Styles; c: Palette; t: T; onRetry: () => void }) {
   return (
-    <View style={styles.center}>
-      <Ionicons name="cloud-offline-outline" size={40} color={c.muted} />
+    <View style={styles.center} testID="my-places-error">
+      <Ionicons name="alert-circle-outline" size={40} color={c.muted} />
       <Text style={styles.emptyTitle}>{t('myPlaces.error.title')}</Text>
       <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retry}>
         <Text style={styles.retryText}>{t('common.tryAgain')}</Text>

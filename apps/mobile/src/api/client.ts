@@ -7,8 +7,9 @@ import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
 import { useUiStore } from '@/stores/ui';
 
+import { resetClientCache } from './query-client';
 import { clearToken, getToken } from './token';
-import { EmailNotVerifiedError, ValidationError, type FieldErrors } from './types';
+import { EmailNotVerifiedError, NetworkError, ValidationError, type FieldErrors } from './types';
 
 type ApiErrorEnvelope = {
   error?: { code?: string; message?: string; details?: Record<string, string[] | string> };
@@ -66,6 +67,10 @@ api.interceptors.response.use(
       const bootstrapping = useSessionStore.getState().status === 'loading';
       await clearToken();
       useSessionStore.getState().clear();
+      // The cache holds this account's private collection (T-103) — a revoked
+      // session must not leave it in memory for the next user to see, nor on
+      // disk for the next launch to rehydrate.
+      await resetClientCache();
       // During bootstrap the root-layout gate + index own navigation; redirecting
       // here would race them (login vs welcome). Only redirect a live session.
       if (!bootstrapping) {
@@ -91,6 +96,13 @@ api.interceptors.response.use(
     if (status === 403 && error.response?.data?.error?.code === 'email_not_verified') {
       const email = String(error.response?.data?.error?.details?.email ?? '');
       return Promise.reject(new EmailNotVerifiedError(email));
+    }
+
+    // No response at all — the request never reached the API (T-103). Surface a
+    // typed error so a screen can say "you're offline" rather than the generic
+    // failure copy. `ERR_CANCELED` is an aborted request, not a dead network.
+    if (!error.response && error.code !== 'ERR_CANCELED') {
+      return Promise.reject(new NetworkError(error.message));
     }
 
     return Promise.reject(error);
