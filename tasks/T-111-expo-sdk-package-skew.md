@@ -57,21 +57,60 @@ cache clear. Treat it as intermittent: a single clean launch is not evidence of 
 - [ ] If the crash still reproduces after alignment, it is written up — minimal repro plus
       an upstream issue link — rather than closed silently
 
+## What is actually established (2026-07-30 investigation)
+
+- The crash is **real and recurring**: two occurrences, 20:45 and 20:55, with an
+  **identical** faulting stack.
+- **Reload is a far better trigger than cold launch.** 12 cold relaunches produced
+  nothing; driving `reload` over the Metro dev-server websocket killed the app on
+  the *second* reload.
+- It is **intermittent**: after that, 11 further reloads across two conditions did
+  not reproduce it.
+- **A location-related hypothesis was tested and NOT confirmed.** `getUserRegion`'s
+  `withTimeout` resolves `null` after 5s but never cancels the underlying
+  `getCurrentPositionAsync`, so on a simulator with no fix an Expo async call stays
+  pending forever — which would explain a teardown crash exactly like this one.
+  Setting a simulator location gave 6 clean reloads; but **clearing it again also
+  gave 5 clean reloads**, so the correlation did not hold up. Treat this as an
+  open lead, not the cause.
+
+  (The abandoned-promise behaviour is a **genuine defect regardless** — a native
+  call left pending forever is a leak, and it is reachable in production by any
+  user indoors or in a tunnel. Worth fixing on its own merits; see the Notes.)
+
 ## Reproduction harness
+
+Drive **reloads**, not cold launches — reloads are what reproduced it. macOS blocks
+`osascript` keystrokes, so send the reload over Metro's dev-server websocket instead
+of trying to synthesise Cmd+R:
 
 ```bash
 D=$(xcrun simctl list devices booted -j | python3 -c "import json,sys;print([x['udid'] for v in json.load(sys.stdin)['devices'].values() for x in v][0])")
+reload() { node --input-type=module -e "
+import WebSocket from 'ws';
+const ws=new WebSocket('ws://localhost:8081/message');
+ws.on('open',()=>{ws.send(JSON.stringify({version:2,method:'reload'}));setTimeout(()=>{ws.close();process.exit(0)},800)});
+ws.on('error',()=>process.exit(1));" >/dev/null 2>&1; }
+
 for i in $(seq 1 10); do
-  xcrun simctl terminate $D pet.one.reelmap >/dev/null 2>&1
-  sleep 1; xcrun simctl launch $D pet.one.reelmap >/dev/null 2>&1; sleep 7
-  echo "$i → $(ls ~/Library/Logs/DiagnosticReports | grep -ci reelmap) crash reports"
+  reload; sleep 9
+  echo "$i → $(ls ~/Library/Logs/DiagnosticReports | grep -ci reelmap) crashes | alive: $(xcrun simctl spawn $D launchctl list | grep -c pet.one.reelmap)"
 done
 ```
+
+`alive: 0` is the signal — the app is gone, and every later reload is a no-op against
+a dead process, so read the FIRST transition, not the final count.
 
 Read a report with: the `.ips` file is two JSON documents separated by a newline — parse
 the second for `threads[?triggered].frames` and map `imageIndex` through `usedImages`.
 
 ## Notes
+
+**Fix the abandoned promise irrespective of the crash.** `src/lib/location.ts`'s
+`withTimeout` resolves the wrapper but abandons `getCurrentPositionAsync`. Expo has no
+cancel for the one-shot call, so the cancellable shape is `watchPositionAsync` + take
+the first fix + `subscription.remove()` on fix-or-timeout. That removes the
+pending-forever call whether or not it turns out to be this crash's trigger.
 
 Bumping `expo` itself (57.0.4 → 57.0.9) changes `expo-modules-core`, so **every** native
 module must move together and the dev client must be rebuilt — this is not a
