@@ -1,41 +1,33 @@
 // Discovery-domain API types (places, sources, map, feed, search).
 //
 // Shapes that have a JSON Schema in packages/contracts are RE-EXPORTED from
-// @reelmap/contracts (T-094), so a renamed/removed API field breaks these at
-// typecheck time, not on-device: PlaceSummary here, UserProfile in ./profile.ts.
-// The remaining types (map/feed/search rows, and PlaceDetail — pending the
-// schema gaps in place.json, e.g. the ?include=reviews payload) stay hand-written
-// and mirror the live API resources; migrate them as their schemas gain the
-// missing fields (tracked with CI T-006).
-import type { PlaceSummary as ContractPlaceSummary } from '@reelmap/contracts';
+// @reelmap/contracts (T-094, T-102), so a renamed/removed API field breaks these
+// at typecheck time, not on-device: PlaceSummary, UserSummary and FeedItem here,
+// UserProfile in ./profile.ts, ShareDetail in ./shares.ts, the list shapes in
+// ./lists.ts. What stays hand-written below is what has no schema yet (map/search
+// rows, and PlaceDetail — pending the gaps in place.json, e.g. ?include=reviews);
+// migrate each as its schema lands.
+import type {
+  FeedItem as ContractFeedItem,
+  InfluencerSummary as ContractInfluencerSummary,
+  PlaceSummary as ContractPlaceSummary,
+  UserSummary as ContractUserSummary,
+} from '@reelmap/contracts';
 
 /** Google/native rating pair — the contract's shared rating block. */
 export type RatingBlock = ContractPlaceSummary['rating']['google'];
 
 /** Attribution glyph on a source card / pin (SourcePost.influencer). */
-export type InfluencerSummary = {
-  id: string;
-  platform: string;
-  handle: string;
-  display_name: string | null;
-  avatar_url: string | null;
-};
+export type InfluencerSummary = ContractInfluencerSummary;
 
-/** The user who shared a post (UserSummaryResource; anonymized when private). */
-export type SharerSummary = {
-  id: string;
-  username: string;
-  name: string;
-  avatar_path: string | null;
-} | null;
+/**
+ * The user who shared a post (UserSummaryResource). Null when their profile is
+ * private — the API omits the identity rather than anonymizing it.
+ */
+export type SharerSummary = ContractUserSummary | null;
 
 /** A person row from `/search` (UserSummaryResource) — taps through to /users/[username]. */
-export type UserSummary = {
-  id: string;
-  username: string;
-  name: string | null;
-  avatar_path: string | null;
-};
+export type UserSummary = ContractUserSummary;
 
 export type SocialPlatform = 'instagram' | 'x' | 'tiktok' | 'youtube';
 
@@ -249,19 +241,12 @@ export type MapResponse = {
 
 // --- Feed ---
 
-export type FeedItem = {
-  id: string;
-  published_at: string | null;
-  sharer: SharerSummary;
-  source_post: {
-    platform: string;
-    url: string;
-    caption: string | null;
-    thumbnail_url: string | null;
-  };
-  influencer: InfluencerSummary | null;
-  place: PlaceSummary;
-};
+/**
+ * One row of GET /feed (FeedItemResource), derived from the schema (T-102).
+ * `sharer`, `source_post`, `influencer` and `place` are all independently
+ * nullable — a row survives a private sharer or a lost post/place.
+ */
+export type FeedItem = ContractFeedItem;
 
 export type Pagination = {
   next_cursor: string | null;

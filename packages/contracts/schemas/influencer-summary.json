@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/influencer-summary.json",
+  "title": "InfluencerSummary",
+  "description": "Compact influencer attribution block (03 §2.6) — the shape of InfluencerSummaryResource, embedded in feed rows and place-source rows. Never the full influencer profile (see influencer-profile.json).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "platform", "handle", "display_name", "avatar_url"],
+  "properties": {
+    "id": { "type": "string" },
+    "platform": { "type": "string" },
+    "handle": { "type": "string" },
+    "display_name": { "type": ["string", "null"] },
+    "avatar_url": { "type": ["string", "null"] }
+  }
+}
