@@ -2721,7 +2721,7 @@
       "id": "T-103",
       "title": "Offline resilience: NetInfo + query-cache persistence + offline indicator",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-032",
         "T-071"
@@ -2746,7 +2746,7 @@
         "Tests cover: offline cold start serves cache, reconnect refetches, offline mutation surfaces its error"
       ],
       "agent": "executor",
-      "notes": "Audit finding B2 (2026-07-29). No NetInfo, no onlineManager/focusManager, no persistQueryClient anywhere - react-query is memory-only with staleTime 60s / retry 2. The subway-and-roaming case is precisely the 'where was that restaurant I saved?' moment the product exists for. Scope the persisted cache deliberately: do not persist other users' profiles or the public feed."
+      "notes": "Audit finding B2 (2026-07-29). No NetInfo, no onlineManager/focusManager, no persistQueryClient anywhere - react-query is memory-only with staleTime 60s / retry 2. The subway-and-roaming case is precisely the 'where was that restaurant I saved?' moment the product exists for. Scope the persisted cache deliberately: do not persist other users' profiles or the public feed.\n2026-07-31: Implemented + PR #153. Adds two native modules (@react-native-community/netinfo, @react-native-async-storage/async-storage) — needs a dev-client rebuild, not just a Metro reload; both imports are guarded so a stale client still boots. Persistence scope is an allowlist (own profile / my-places / filter=mine map / opened place details); other users' profiles, feed and search stay memory-only. Two things found only by running it on device: (1) AuthBootstrap's imperative fetchMe never wrote the ['me'] query entry, so there was nothing persisted to restore and an offline cold start still fell to the welcome screen; (2) the 401 path wiped the disk cache but not the in-memory one, and the persister would write it back — both fixed. Deferred: the announce-on-change hook is now duplicated between connection-banner.tsx and shares/[id]/status.tsx (T-101); worth extracting when a third caller appears."
     },
     {
       "id": "T-104",
@@ -2783,7 +2783,7 @@
       "id": "T-105",
       "title": "API: ApiResponse envelope helper + generic KeysetPaginator",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-030",
         "T-071"
@@ -2806,7 +2806,7 @@
         "Gates green: composer lint + stan + test"
       ],
       "agent": "executor",
-      "notes": "Audit finding A1 (2026-07-29). The envelope and keyset pagination are reimplemented 9 times in 4 different flavors; PaginatesPlaces solved it for places only. Pure cleanup, roughly -150 lines, and it makes the envelope shape enforceable in one place (which T-102's contract tests then pin)."
+      "notes": "Audit finding A1 (2026-07-29). The envelope and keyset pagination are reimplemented 9 times in 4 different flavors; PaginatesPlaces solved it for places only. Pure cleanup, roughly -150 lines, and it makes the envelope shape enforceable in one place (which T-102's contract tests then pin).\n2026-07-31: Implemented + PR #154. ApiResponse (app/Http) + KeysetPage (app/Support); all 9 next_cursor sites delegate, PaginatesPlaces keeps only the place-specific filters/sort. Every cursor namespace preserved verbatim so pre-deploy cursors still decode. KeysetPage::query() had to accept Relation as well as Builder (half the callers paginate a relationship) — needs its own TDeclaring/TResult templates because PHPStan treats Relation's TDeclaringModel as invariant. ONE deliberate non-byte-identical change, flagged in the PR for accept/revert: five endpoints (devices, me/places/tags, me/places/facets, places/payment-cards, users/{u}/lists) omitted meta entirely and now emit \"meta\":{} — additive, all 1045 pre-existing tests pass untouched. Net -157 lines; 1070 tests total (+25)."
     },
     {
       "id": "T-106",
@@ -2842,7 +2842,7 @@
       "id": "T-107",
       "title": "Filament: pipeline-health dashboard (stage timings, failure mix, queue depth)",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-093"
       ],
@@ -2863,7 +2863,7 @@
         "Gates green: composer lint + stan + test"
       ],
       "agent": "executor",
-      "notes": "Audit finding B10 (2026-07-29). Filament has 8 resources across 40 files and ZERO widgets - an operator diagnoses pipeline health by eyeballing the Shares table. T-093 finished stage-completion metrics, so the data is already on disk and unread. T-051/T-052 (M5) cover the AI-cost and Sentry slices; the pipeline-health slice is in no open task. Deliberately scoped S: read-only widgets, no alerting (that stays T-052)."
+      "notes": "Audit finding B10 (2026-07-29). Filament has 8 resources across 40 files and ZERO widgets - an operator diagnoses pipeline health by eyeballing the Shares table. T-093 finished stage-completion metrics, so the data is already on disk and unread. T-051/T-052 (M5) cover the AI-cost and Sentry slices; the pipeline-health slice is in no open task. Deliberately scoped S: read-only widgets, no alerting (that stays T-052).\n2026-07-31: Implemented + PR #155. PipelineHealth service (app/Services/Observability) does the aggregation so it is testable without Livewire; three widgets + a custom Dashboard page carrying the shared 1h/24h/7d window filter. Replaces Filament's stock AccountWidget/FilamentInfoWidget on the landing page — flagged in the PR in case that is unwanted. Judgement calls: only CLOSED stages count toward p50/p95 (a running row's NULL duration would drag the median down under load); 'oldest running stage' stands in for 'oldest job' (survives a Redis flush); an unreachable queue backend renders '—' not 0. Added 3 composite indexes (ssm stage/started_at, ssm status/started_at, shares status/created_at) — both tables were indexed for row-level access, not for windowed aggregates. Could NOT screenshot the result: the Filament login needs credentials, which I don't enter; verified the rendered markup server-side instead and asked the owner to eyeball it. Seeded ~23 fake shares + stage metrics into the DEV db for that manual check — remove if unwanted."
     },
     {
       "id": "T-108",
