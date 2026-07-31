@@ -49,12 +49,12 @@ cache clear. Treat it as intermittent: a single clean launch is not evidence of 
 
 ## Acceptance criteria
 
-- [ ] `npx expo install --check` reports no outdated packages for the mobile app
-- [ ] The iOS dev client is rebuilt against the aligned versions; `Podfile.lock` committed
-- [ ] jest / tsc / lint stay green after the bump; breaking changes are handled, not pinned around
-- [ ] The app survives **10 consecutive cold launches** with no new entry in
+- [x] `npx expo install --check` reports no outdated packages for the mobile app
+- [x] The iOS dev client is rebuilt against the aligned versions; `Podfile.lock` committed
+- [x] jest / tsc / lint stay green after the bump; breaking changes are handled, not pinned around
+- [x] The app survives **10 consecutive cold launches** with no new entry in
       `~/Library/Logs/DiagnosticReports` (see the harness below)
-- [ ] If the crash still reproduces after alignment, it is written up — minimal repro plus
+- [x] If the crash still reproduces after alignment, it is written up — minimal repro plus
       an upstream issue link — rather than closed silently
 
 ## What is actually established (2026-07-30 investigation)
@@ -120,3 +120,25 @@ module must move together and the dev client must be rebuilt — this is not a
 
 - **2026-07-30** — Filed. Skew flagged in T-100; escalated after the ExpoModulesCore
   async-bridge crash above.
+- **2026-07-31** — **DONE**, merged as PR #149. Root cause confirmed by BISECTION, which
+  is what the two earlier hypotheses lacked: the commit before T-100 (`13e3a1a`, verified
+  to contain no location code in the bundle) survives 8 reloads clean; every build after
+  it dies on the second. T-100 had hit a dyld symbol-not-found from expo-location 57.0.7
+  vs expo-modules-core 57.0.3 and pinned expo-location **down** to 57.0.2 — silencing the
+  load-time symptom while leaving a live Swift ABI mismatch in exactly the internal types
+  in the crash stack. It pinned the wrong side.
+
+  Aligned the whole set (expo →57.0.9, expo-modules-core →57.0.8, expo-location →57.0.7,
+  react-native →0.86.2, +14). `expo install --check` now clean. 15 reloads, no crash.
+
+  **Two traps for next time.** (1) `expo install --fix` exits non-zero on a dynamic
+  `app.config.ts` but the install still applies — check package.json rather than trusting
+  the exit code. It also duplicates dev tools into `dependencies`. (2) The first 15-reload
+  soak came back clean and was **worthless**: the app sat on a red "[Worklets] Mismatch
+  between JavaScript code version and Worklets Babel plugin version (0.10.1 vs 0.10.0)"
+  screen the whole time, so it could not crash because it never ran app code. A dependency
+  upgrade invalidates Metro's Babel transform cache — restart with `--clear` and
+  **screenshot the app to confirm it is actually rendering before trusting any soak**.
+
+  The abandoned-`getCurrentPositionAsync` lead recorded above was **not** the cause; it was
+  a genuine leak and shipped separately as PR #150.

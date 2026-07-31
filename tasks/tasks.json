@@ -2964,7 +2964,7 @@
       "id": "T-111",
       "title": "Mobile: resolve the Expo SDK 57 package skew (17 outdated deps) — suspected native crash source",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "done",
       "depends_on": [],
       "estimate": "M",
       "paths": [
@@ -2977,6 +2977,7 @@
       ],
       "acceptance": [
         "`npx expo install --check` reports no outdated packages for the mobile app",
+        "The iOS dev client is rebuilt against the aligned versions (apps/mobile/ios/ is gitignored — prebuild-managed — so Podfile.lock is NOT committed; anyone pulling this needs `npx expo run:ios`, not just a Metro restart)",
         "The iOS dev client is rebuilt against the aligned versions and Podfile.lock is committed",
         "The full jest suite, tsc and lint stay green after the bump; any breaking change is handled, not pinned around",
         "The app survives 10 consecutive cold launches with no entry in ~/Library/Logs/DiagnosticReports (the reproduction harness for the 2026-07-30 crash)",
