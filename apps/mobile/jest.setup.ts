@@ -61,6 +61,15 @@ jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted', canAskAgain: true })),
   getLastKnownPositionAsync: jest.fn(async () => null),
   getCurrentPositionAsync: jest.fn(async () => ({ coords: { latitude: 40.4168, longitude: -3.7038 } })),
+  // The fresh-fix path watches (the only cancellable one-shot — see location.ts).
+  // Default: deliver one fix immediately, and hand back a subscription whose
+  // `remove` is a spy so tests can assert the watch is always torn down.
+  watchPositionAsync: jest.fn(
+    async (_options: unknown, callback: (l: { coords: { latitude: number; longitude: number } }) => void) => {
+      callback({ coords: { latitude: 40.4168, longitude: -3.7038 } });
+      return { remove: jest.fn() };
+    },
+  ),
 }));
 
 // No native splash module in jest — the auth gate awaits these.

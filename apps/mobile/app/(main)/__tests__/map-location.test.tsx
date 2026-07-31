@@ -44,7 +44,18 @@ jest.mock('@/components/map/quick-share', () => ({ QuickShareModal: () => null }
 const perms = jest.mocked(Location.getForegroundPermissionsAsync);
 const requestPerms = jest.mocked(Location.requestForegroundPermissionsAsync);
 const lastKnown = jest.mocked(Location.getLastKnownPositionAsync);
-const currentPos = jest.mocked(Location.getCurrentPositionAsync);
+const watchPos = jest.mocked(Location.watchPositionAsync);
+/**
+ * The fresh-fix path WATCHES (the only cancellable one-shot — see location.ts),
+ * so "the provider gave us X" is expressed as a watch that emits X, and "no fix"
+ * as a watch that never calls back.
+ */
+const watchEmits = (coords: { latitude: number; longitude: number } | null) =>
+  watchPos.mockImplementation(async (_o, cb) => {
+    if (coords) (cb as (l: unknown) => void)({ coords });
+    return { remove: jest.fn() } as never;
+  });
+
 
 const FIX = { latitude: 40.4168, longitude: -3.7038 };
 const SAVED = { latitude: 51.5, longitude: -0.12, latitudeDelta: 0.05, longitudeDelta: 0.05 };
@@ -69,7 +80,7 @@ beforeEach(() => {
   perms.mockResolvedValue(granted);
   requestPerms.mockResolvedValue(granted);
   lastKnown.mockResolvedValue(null);
-  currentPos.mockResolvedValue({ coords: FIX } as never);
+  watchEmits(FIX);
 });
 
 describe('opening viewport', () => {
@@ -224,18 +235,27 @@ describe('locate control', () => {
   });
 
   it('explains a missing fix instead of failing silently', async () => {
+    // A watch that never calls back — indoors, a tunnel, a sim with no location.
+    // Since the fresh-fix path became cancellable this no longer resolves
+    // instantly: it runs out its 5s budget, THEN reports. Advancing the clock is
+    // the point, not a workaround — it pins that the budget is actually bounded.
+    jest.useFakeTimers();
     lastKnown.mockResolvedValue(null);
-    currentPos.mockResolvedValue(null as never);
+    watchEmits(null);
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     render(<MapScreen />);
 
     await act(async () => {
       fireEvent.press(screen.getByLabelText('Center on my location'));
     });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(5_000);
+    });
 
     expect(alert).toHaveBeenCalledWith('Couldn’t get your location. Try again in a moment.');
     expect(animateToRegion).not.toHaveBeenCalled();
     alert.mockRestore();
+    jest.useRealTimers();
   });
 });
 
