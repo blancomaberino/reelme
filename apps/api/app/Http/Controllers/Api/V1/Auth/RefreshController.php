@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Auth;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
@@ -20,12 +21,9 @@ class RefreshController extends Controller
         $token = $user->createToken($current->name)->plainTextToken;
         $current->delete();
 
-        return response()->json([
-            'data' => [
-                'token' => $token,
-                'user' => new UserResource($user),
-            ],
-            'meta' => (object) [],
+        return ApiResponse::item([
+            'token' => $token,
+            'user' => new UserResource($user),
         ]);
     }
 }

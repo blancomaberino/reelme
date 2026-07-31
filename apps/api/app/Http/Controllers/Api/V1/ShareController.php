@@ -6,6 +6,7 @@ use App\Adapters\AdapterRegistry;
 use App\Enums\FetchStatus;
 use App\Enums\Platform;
 use App\Enums\ShareStatus;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreShareRequest;
 use App\Http\Requests\UpdateShareRequest;
@@ -21,6 +22,7 @@ use App\Services\Places\ExtractionCorrector;
 use App\Services\Places\PublishBestGuess;
 use App\Services\Places\ResolvePendingPlace;
 use App\Support\Contracts\ExtractionSchema;
+use App\Support\KeysetPage;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -120,16 +122,18 @@ class ShareController extends Controller
             $query->where('status', $status);
         }
 
-        $page = $query->cursorPaginate((int) min(max((int) $request->integer('limit', 25), 1), 100));
+        $paginator = $query->cursorPaginate((int) min(max((int) $request->integer('limit', 25), 1), 100));
 
-        return response()->json([
-            'data' => ShareResource::collection($page->items()),
-            'meta' => ['pagination' => [
-                'next_cursor' => $page->nextCursor()?->encode(),
-                'prev_cursor' => $page->previousCursor()?->encode(),
-                'limit' => $page->perPage(),
-            ]],
-        ]);
+        // The only endpoint on Laravel's own cursor paginator rather than
+        // KeysetCursor — and so the only one with a prev_cursor.
+        $page = KeysetPage::of(
+            $paginator->items(),
+            $paginator->perPage(),
+            $paginator->nextCursor()?->encode(),
+            $paginator->previousCursor()?->encode(),
+        );
+
+        return ApiResponse::page(ShareResource::collection($page->items), $page);
     }
 
     public function show(Request $request, Share $share): JsonResponse
@@ -277,7 +281,7 @@ class ShareController extends Controller
             $share->transitionTo(ShareStatus::Rejected, 'user_discarded');
         }
 
-        return response()->json(['data' => ['ok' => true], 'meta' => (object) []]);
+        return ApiResponse::item(['ok' => true]);
     }
 
     /**

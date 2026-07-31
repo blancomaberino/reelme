@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Services\AI\ModelCatalog;
 use Illuminate\Http\JsonResponse;
@@ -16,9 +17,6 @@ class ModelController extends Controller
 
     public function index(): JsonResponse
     {
-        return response()->json([
-            'data' => ['models' => $this->catalog->all()],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['models' => $this->catalog->all()]);
     }
 }

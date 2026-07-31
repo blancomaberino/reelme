@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\PlaceStatus;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceSourcesRequest;
 use App\Http\Requests\ReviewUpsertRequest;
@@ -11,6 +12,7 @@ use App\Models\Place;
 use App\Models\Review;
 use App\Models\ReviewReport;
 use App\Support\KeysetCursor;
+use App\Support\KeysetPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -36,21 +38,9 @@ class ReviewController extends Controller
             $query->where('id', '<', KeysetCursor::intKey($cursor[0]));
         }
 
-        $rows = $query->limit($limit + 1)->get();
-        $hasMore = $rows->count() > $limit;
-        $page = $rows->take($limit)->values();
-        $last = $page->last();
+        $page = KeysetPage::query($query, $limit, 'reviews', fn (Review $last) => [$last->id]);
 
-        return response()->json([
-            'data' => ReviewResource::collection($page),
-            'meta' => [
-                'pagination' => [
-                    'next_cursor' => ($hasMore && $last !== null) ? KeysetCursor::encode('reviews', [$last->id]) : null,
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
-            ],
-        ]);
+        return ApiResponse::page(ReviewResource::collection($page->items), $page);
     }
 
     /** POST — create; 409 when the caller already reviewed this place. */
@@ -103,7 +93,7 @@ class ReviewController extends Controller
 
         abort_if($deleted === 0, 404, 'You have no review for this place.');
 
-        return response()->json(['data' => null, 'meta' => $this->ratingMeta($place)]);
+        return ApiResponse::noContent($this->ratingMeta($place));
     }
 
     /** Report someone's review — once per user, idempotent on repeat. */
@@ -128,7 +118,7 @@ class ReviewController extends Controller
             );
         }
 
-        return response()->json(['data' => ['reported' => true], 'meta' => (object) []]);
+        return ApiResponse::item(['reported' => true]);
     }
 
     private function write(Place $place, int $userId, ReviewUpsertRequest $request): Review
@@ -146,10 +136,7 @@ class ReviewController extends Controller
     {
         $review->setRelation('user', $request->user());
 
-        return response()->json([
-            'data' => new ReviewResource($review),
-            'meta' => $this->ratingMeta($place),
-        ], $status);
+        return ApiResponse::item(new ReviewResource($review), $this->ratingMeta($place), $status);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\PlaceStatus;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceIndexRequest;
 use App\Http\Requests\PlaceShowRequest;
@@ -11,7 +12,9 @@ use App\Http\Resources\PlaceResource;
 use App\Http\Resources\PlaceSourceResource;
 use App\Http\Resources\PlaceSummaryResource;
 use App\Models\Place;
+use App\Models\PlaceSource;
 use App\Support\KeysetCursor;
+use App\Support\KeysetPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -88,25 +91,9 @@ class PlaceController extends Controller
         $cursor = KeysetCursor::decode($request->validated('cursor'), $sort, 2);
         $this->applySort($query, $sort, $cursor, $near);
 
-        $rows = $query->limit($limit + 1)->get();
-        $hasMore = $rows->count() > $limit;
-        $page = $rows->take($limit)->values();
+        $page = KeysetPage::query($query, $limit, $sort, fn (Place $last) => $this->cursorKeys($last, $sort));
 
-        $nextCursor = null;
-        if ($hasMore && ($last = $page->last()) !== null) {
-            $nextCursor = KeysetCursor::encode($sort, $this->cursorKeys($last, $sort));
-        }
-
-        return response()->json([
-            'data' => PlaceSummaryResource::collection($page),
-            'meta' => [
-                'pagination' => [
-                    'next_cursor' => $nextCursor,
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
-            ],
-        ]);
+        return ApiResponse::page(PlaceSummaryResource::collection($page->items), $page);
     }
 
     /**
@@ -145,7 +132,7 @@ class PlaceController extends Controller
                 ->all();
         });
 
-        return response()->json(['data' => $data]);
+        return ApiResponse::collection($data);
     }
 
     public function show(PlaceShowRequest $request, Place $place): JsonResponse
@@ -201,10 +188,7 @@ class PlaceController extends Controller
             ? $place->userPlaceTags()->where('user_id', $viewer->id)->orderByDesc('id')->get()
             : null;
 
-        return response()->json([
-            'data' => (new PlaceResource($place))->withIncludes($includes)->withMyTags($myTags),
-            'meta' => (object) $meta,
-        ]);
+        return ApiResponse::item((new PlaceResource($place))->withIncludes($includes)->withMyTags($myTags), $meta);
     }
 
     public function sources(PlaceSourcesRequest $request, Place $place): JsonResponse
@@ -229,21 +213,9 @@ class PlaceController extends Controller
             $query->where('id', '>', KeysetCursor::intKey($cursor[0]));
         }
 
-        $rows = $query->limit($limit + 1)->get();
-        $hasMore = $rows->count() > $limit;
-        $page = $rows->take($limit)->values();
-        $last = $page->last();
+        $page = KeysetPage::query($query, $limit, 'sources', fn (PlaceSource $last) => [$last->id]);
 
-        return response()->json([
-            'data' => PlaceSourceResource::collection($page),
-            'meta' => [
-                'pagination' => [
-                    'next_cursor' => ($hasMore && $last !== null) ? KeysetCursor::encode('sources', [$last->id]) : null,
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
-            ],
-        ]);
+        return ApiResponse::page(PlaceSourceResource::collection($page->items), $page);
     }
 
     /**

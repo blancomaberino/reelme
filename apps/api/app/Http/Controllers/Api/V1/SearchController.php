@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SearchRequest;
 use App\Http\Resources\InfluencerSummaryResource;
@@ -36,12 +37,9 @@ class SearchController extends Controller
             };
         }
 
-        return response()->json([
-            'data' => $data,
-            'meta' => array_filter([
-                'query' => $query,
-                'took_ms' => $outcome['took_ms'],
-            ], fn ($v) => $v !== null),
-        ]);
+        return ApiResponse::collection($data, array_filter([
+            'query' => $query,
+            'took_ms' => $outcome['took_ms'],
+        ], fn ($v) => $v !== null));
     }
 }

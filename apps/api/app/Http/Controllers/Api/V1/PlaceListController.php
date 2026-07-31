@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceListRequest;
 use App\Http\Requests\PublicListShowRequest;
@@ -36,10 +37,7 @@ class PlaceListController extends Controller
             ->orderByDesc('updated_at')
             ->get();
 
-        return response()->json([
-            'data' => PlaceListResource::collection($lists),
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::collection(PlaceListResource::collection($lists));
     }
 
     public function store(PlaceListRequest $request): JsonResponse
@@ -48,20 +46,14 @@ class PlaceListController extends Controller
         $list->user_id = (int) $request->user()->id;
         $list->save();
 
-        return response()->json([
-            'data' => new PlaceListResource($list->loadCount('items')),
-            'meta' => (object) [],
-        ], 201);
+        return ApiResponse::item(new PlaceListResource($list->loadCount('items')), [], 201);
     }
 
     public function show(Request $request, PlaceList $list): JsonResponse
     {
         $this->assertOwner($request, $list);
 
-        return response()->json([
-            'data' => new PlaceListDetailResource($this->loadWithPlaces($list)),
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(new PlaceListDetailResource($this->loadWithPlaces($list)));
     }
 
     public function update(PlaceListRequest $request, PlaceList $list): JsonResponse
@@ -70,10 +62,7 @@ class PlaceListController extends Controller
 
         $list->fill($request->safe()->only(['name', 'is_public']))->save();
 
-        return response()->json([
-            'data' => new PlaceListResource($list->loadCount('items')),
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(new PlaceListResource($list->loadCount('items')));
     }
 
     public function destroy(Request $request, PlaceList $list): JsonResponse
@@ -81,7 +70,7 @@ class PlaceListController extends Controller
         $this->assertOwner($request, $list);
         $list->delete();
 
-        return response()->json(['data' => null, 'meta' => (object) []]);
+        return ApiResponse::noContent();
     }
 
     /** Add a place to the list (idempotent). */
@@ -100,10 +89,7 @@ class PlaceListController extends Controller
         // previously removed it.
         HiddenPlace::where('user_id', $request->user()->id)->where('place_id', $place->id)->delete();
 
-        return response()->json([
-            'data' => new PlaceListDetailResource($this->loadWithPlaces($list)),
-            'meta' => (object) [],
-        ], $item->wasRecentlyCreated ? 201 : 200);
+        return ApiResponse::item(new PlaceListDetailResource($this->loadWithPlaces($list)), [], $item->wasRecentlyCreated ? 201 : 200);
     }
 
     /** Remove a place from the list. */
@@ -117,10 +103,7 @@ class PlaceListController extends Controller
         // an orphaned ghost pin — tombstone it so it leaves the map (T-073).
         $place->tombstoneIfOrphaned();
 
-        return response()->json([
-            'data' => new PlaceListDetailResource($this->loadWithPlaces($list)),
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(new PlaceListDetailResource($this->loadWithPlaces($list)));
     }
 
     /**
@@ -131,10 +114,7 @@ class PlaceListController extends Controller
      */
     public function publicShow(PublicListShowRequest $request, PlaceList $list): JsonResponse
     {
-        return response()->json([
-            'data' => new PlaceListDetailResource($this->loadWithVisiblePlaces($list)),
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(new PlaceListDetailResource($this->loadWithVisiblePlaces($list)));
     }
 
     /**
@@ -171,10 +151,7 @@ class PlaceListController extends Controller
             });
         $list->touch();
 
-        return response()->json([
-            'data' => new PlaceListDetailResource($this->loadWithPlaces($list)),
-            'meta' => (object) [],
-        ], 201);
+        return ApiResponse::item(new PlaceListDetailResource($this->loadWithPlaces($list)), [], 201);
     }
 
     /** A list not owned by the caller is indistinguishable from a missing one. */

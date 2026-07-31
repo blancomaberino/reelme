@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api\V1\Concerns;
 
 use App\Enums\MediaKind;
+use App\Http\ApiResponse;
 use App\Http\Requests\PlaceListingRequest;
 use App\Http\Resources\PlaceSummaryResource;
 use App\Models\Place;
 use App\Support\KeysetCursor;
+use App\Support\KeysetPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 
@@ -72,25 +74,9 @@ trait PaginatesPlaces
         $cursor = KeysetCursor::decode($request->validated('cursor'), $namespace, 2);
         $this->applyPlaceSort($query, $sort, $cursor);
 
-        $rows = $query->limit($limit + 1)->get();
-        $hasMore = $rows->count() > $limit;
-        $page = $rows->take($limit)->values();
+        $page = KeysetPage::query($query, $limit, $namespace, fn (Place $last) => $this->placeCursorKeys($last, $sort));
 
-        $nextCursor = null;
-        if ($hasMore && ($last = $page->last()) !== null) {
-            $nextCursor = KeysetCursor::encode($namespace, $this->placeCursorKeys($last, $sort));
-        }
-
-        return response()->json([
-            'data' => PlaceSummaryResource::collection($page),
-            'meta' => [
-                'pagination' => [
-                    'next_cursor' => $nextCursor,
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
-            ],
-        ]);
+        return ApiResponse::page(PlaceSummaryResource::collection($page->items), $page);
     }
 
     /**

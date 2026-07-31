@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\ShareStatus;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\FeedDismissal;
 use App\Models\Share;
@@ -33,10 +34,7 @@ class FeedDismissalController extends Controller
             'share_id' => (int) $validated['share_id'],
         ]);
 
-        return response()->json(
-            ['data' => ['id' => (string) $dismissal->id], 'meta' => (object) []],
-            $dismissal->wasRecentlyCreated ? 201 : 200,
-        );
+        return ApiResponse::item(['id' => (string) $dismissal->id], [], $dismissal->wasRecentlyCreated ? 201 : 200);
     }
 
     /** Un-hide a share (route-model-bound by share id). Idempotent. */
@@ -47,6 +45,6 @@ class FeedDismissalController extends Controller
             ->where('share_id', $share->id)
             ->delete();
 
-        return response()->json(['data' => null, 'meta' => (object) []], 200);
+        return ApiResponse::noContent();
     }
 }

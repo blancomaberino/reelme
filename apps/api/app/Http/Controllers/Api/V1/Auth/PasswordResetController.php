@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Auth;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ForgotPasswordRequest;
 use App\Http\Requests\Auth\ResetPasswordRequest;
@@ -22,10 +23,7 @@ class PasswordResetController extends Controller
     {
         Password::sendResetLink($request->only('email'));
 
-        return response()->json([
-            'data' => ['ok' => true],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['ok' => true]);
     }
 
     public function reset(ResetPasswordRequest $request): JsonResponse
@@ -51,9 +49,6 @@ class PasswordResetController extends Controller
             ]);
         }
 
-        return response()->json([
-            'data' => ['ok' => true],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['ok' => true]);
     }
 }

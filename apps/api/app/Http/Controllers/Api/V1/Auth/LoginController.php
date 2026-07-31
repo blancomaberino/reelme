@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Auth;
 
 use App\Exceptions\EmailNotVerifiedException;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
@@ -38,12 +39,9 @@ class LoginController extends Controller
 
         $token = $user->createToken($deviceName)->plainTextToken;
 
-        return response()->json([
-            'data' => [
-                'token' => $token,
-                'user' => new UserResource($user),
-            ],
-            'meta' => (object) [],
+        return ApiResponse::item([
+            'token' => $token,
+            'user' => new UserResource($user),
         ]);
     }
 }

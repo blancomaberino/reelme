@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\Platform;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PlatformAccountResource;
 use App\Models\PlatformAccount;
@@ -43,10 +44,7 @@ class PlatformAccountController extends Controller
             ->orderBy('platform')
             ->get();
 
-        return response()->json([
-            'data' => PlatformAccountResource::collection($accounts),
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::collection(PlatformAccountResource::collection($accounts));
     }
 
     /**
@@ -73,10 +71,7 @@ class PlatformAccountController extends Controller
             ->redirect()
             ->getTargetUrl();
 
-        return response()->json([
-            'data' => ['authorize_url' => $url],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['authorize_url' => $url]);
     }
 
     /**
@@ -156,7 +151,7 @@ class PlatformAccountController extends Controller
         // to stop all use); leave the seam and drop the local record.
         $platformAccount->delete();
 
-        return response()->json(['data' => null, 'meta' => (object) []]);
+        return ApiResponse::noContent();
     }
 
     /** Only Instagram is linkable today — everything else is a 422. */

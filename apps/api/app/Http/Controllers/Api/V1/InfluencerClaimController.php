@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\ClaimMethod;
 use App\Exceptions\ClaimException;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\InfluencerClaimResource;
 use App\Models\Influencer;
@@ -39,10 +40,7 @@ class InfluencerClaimController extends Controller
             ->where('user_id', $this->user($request)->id)
             ->first();
 
-        return response()->json([
-            'data' => $claim !== null ? new InfluencerClaimResource($claim) : null,
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item($claim !== null ? new InfluencerClaimResource($claim) : null);
     }
 
     /**
@@ -99,10 +97,7 @@ class InfluencerClaimController extends Controller
 
     private function respond(InfluencerClaim $claim): JsonResponse
     {
-        return response()->json([
-            'data' => new InfluencerClaimResource($claim),
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(new InfluencerClaimResource($claim));
     }
 
     /** Cap bio-verify attempts (each triggers a remote profile fetch). */

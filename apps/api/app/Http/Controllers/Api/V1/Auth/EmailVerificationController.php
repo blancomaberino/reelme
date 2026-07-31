@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Auth;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\ResendVerificationRequest;
 use App\Http\Requests\Auth\VerifyEmailRequest;
@@ -40,12 +41,9 @@ class EmailVerificationController extends Controller
         $user->tokens()->where('name', $deviceName)->delete();
         $token = $user->createToken($deviceName)->plainTextToken;
 
-        return response()->json([
-            'data' => [
-                'token' => $token,
-                'user' => new UserResource($user),
-            ],
-            'meta' => (object) [],
+        return ApiResponse::item([
+            'token' => $token,
+            'user' => new UserResource($user),
         ]);
     }
 
@@ -58,9 +56,6 @@ class EmailVerificationController extends Controller
             $verification->issue($user);
         }
 
-        return response()->json([
-            'data' => ['status' => 'sent'],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['status' => 'sent']);
     }
 }
