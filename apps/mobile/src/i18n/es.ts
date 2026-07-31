@@ -458,4 +458,11 @@ export const es: Record<MessageKey, string> = {
   'settings.model': 'Modelo de análisis',
   'settings.modelHint': 'Qué IA lee tus posts compartidos. Automático elige el mejor disponible.',
   'settings.modelUnavailable': 'No disponible ahora',
+
+  'notifications.title': 'Notificaciones',
+  'notifications.new': 'Nuevas',
+  'notifications.earlier': 'Anteriores',
+  'notifications.markAll': 'Marcar todo leído',
+  'notifications.empty': 'Nada todavía. Compartí un post y te avisamos cuando se publique.',
+  'notifications.error': 'No pudimos cargar tus notificaciones',
 };

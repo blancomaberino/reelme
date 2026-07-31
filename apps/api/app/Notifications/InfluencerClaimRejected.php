@@ -37,9 +37,12 @@ class InfluencerClaimRejected extends Notification implements ShouldQueue
     {
         return [
             'type' => 'influencer.claim_rejected',
+            'url' => '/influencers/'.$this->influencer->id,
+            // The center renders from these; see ShareNotification (T-040).
+            'title' => 'Claim not approved',
+            'body' => 'Your claim on @'.$this->influencer->handle.' was not approved.',
             'influencer_handle' => $this->influencer->handle,
             'platform' => $this->influencer->platform->value,
-            'url' => '/influencers/'.$this->influencer->id,
         ];
     }
 }

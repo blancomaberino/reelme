@@ -464,6 +464,14 @@ export const en = {
   'settings.model': 'Analysis model',
   'settings.modelHint': 'Which AI reads your shared posts. Auto picks the best available.',
   'settings.modelUnavailable': 'Unavailable right now',
+
+  // Notification center (T-040).
+  'notifications.title': 'Notifications',
+  'notifications.new': 'New',
+  'notifications.earlier': 'Earlier',
+  'notifications.markAll': 'Mark all read',
+  'notifications.empty': 'Nothing yet. Share a post and we’ll tell you when it lands.',
+  'notifications.error': 'Couldn’t load your notifications',
 } as const;
 
 export type MessageKey = keyof typeof en;
