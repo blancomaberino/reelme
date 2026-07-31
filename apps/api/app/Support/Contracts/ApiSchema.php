@@ -19,6 +19,9 @@ final class ApiSchema
 {
     private const ID_PREFIX = 'https://contracts.reelmap.app/schemas/';
 
+    /** Where `schemas/*.json` → `../extraction.schema.json` resolves to. */
+    private const EXTRACTION_ID = 'https://contracts.reelmap.app/extraction.schema.json';
+
     private static ?Validator $validator = null;
 
     /**
@@ -32,7 +35,10 @@ final class ApiSchema
     }
 
     /**
-     * Flatten a validation result into `dotted.path => [messages]`.
+     * Flatten a validation result into `dotted.path => [messages]`. Multi-message
+     * mode matters for the `anyOf` nullable embeds (share.json → extraction): the
+     * single top message is only ever "must match the type: null", which hides the
+     * real cause one level down.
      *
      * @return array<string, array<int, string>>
      */
@@ -44,7 +50,7 @@ final class ApiSchema
             return [];
         }
 
-        return (new ErrorFormatter)->format($error, false);
+        return (new ErrorFormatter)->format($error, true);
     }
 
     private static function validator(): Validator
@@ -58,6 +64,14 @@ final class ApiSchema
             $validator = new Validator;
             $validator->parser()->setOption('defaultDraft', '07');
             $validator->resolver()?->registerPrefix(self::ID_PREFIX, $dir);
+            // share.json refs the extraction contract, which lives one level ABOVE
+            // the schemas dir (`../extraction.schema.json`) and so falls outside the
+            // prefix above. Map that one resolved id to the configured file.
+            $extraction = (string) config('contracts.extraction_schema_path');
+            if (! is_file($extraction)) {
+                throw new RuntimeException("Extraction contract not found at [{$extraction}].");
+            }
+            $validator->resolver()?->registerFile(self::EXTRACTION_ID, $extraction);
             self::$validator = $validator;
         }
 

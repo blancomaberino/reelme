@@ -1,52 +1,36 @@
-import type { PlaceSummary } from './places';
+// Saved-collection API types (GET/POST /me/lists, the public read /lists/{slug}).
+//
+// All four response shapes are re-exported from @reelmap/contracts (T-102) —
+// place-list.json / place-list-detail.json are the single source of truth shared
+// with PlaceListResource / PlaceListDetailResource, so a renamed or removed API
+// field breaks `tsc`, not the device.
+import type {
+  PlaceListDetail as ContractPlaceListDetail,
+  PlaceListSummary as ContractPlaceListSummary,
+  UserSummary,
+} from '@reelmap/contracts';
 
-/** A place list in index form (GET /me/lists). */
-export type PlaceListSummary = {
-  id: string;
-  name: string;
-  slug: string;
-  /** Global share token — non-null once the list has been made public (T-063). */
-  public_slug: string | null;
-  is_public: boolean;
-  items_count: number;
-  /** Present only when the index is queried with ?contains={placeId}. */
-  contains?: boolean;
-  created_at: string | null;
-  updated_at: string | null;
-};
+/**
+ * A place list in index form (GET /me/lists). `contains` is present only when
+ * the index is queried with ?contains={placeId}; `public_slug` is the global
+ * share token, non-null once the list has been made public (T-063).
+ */
+export type PlaceListSummary = ContractPlaceListSummary;
 
 /** One place in a list, with the owner's note. */
-export type PlaceListItem = {
-  note: string | null;
-  position: number;
-  place: PlaceSummary;
-};
+export type PlaceListItem = ContractPlaceListDetail['items'][number];
 
 /** A list with its places (GET /me/lists/{id}, add/remove responses). */
-export type PlaceListDetail = {
-  id: string;
-  name: string;
-  slug: string;
-  public_slug: string | null;
-  is_public: boolean;
-  items_count: number;
-  items: PlaceListItem[];
-  created_at: string | null;
-  updated_at: string | null;
-};
+export type PlaceListDetail = ContractPlaceListDetail;
 
 /** Compact owner attribution on a shared list (T-063). */
-export type ListOwner = {
-  id: string;
-  username: string;
-  name: string | null;
-  avatar_path: string | null;
-};
+export type ListOwner = UserSummary;
 
 /**
  * A shared list read publicly (GET /lists/{public_slug}, T-063). Same as the
- * owner's detail plus owner attribution; only publicly-visible places appear.
+ * owner's detail, except `owner` is always present — nulled when the owner's
+ * profile is private. Only publicly-visible places appear.
  */
-export type PublicPlaceList = PlaceListDetail & {
+export type PublicPlaceList = ContractPlaceListDetail & {
   owner: ListOwner | null;
 };

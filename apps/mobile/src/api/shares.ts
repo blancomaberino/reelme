@@ -1,20 +1,23 @@
-// Ingest-domain API types (POST/GET /shares). Mirrors ShareResource on the API
-// (app/Http/Resources/ShareResource.php). A share moves pending → fetching →
+// Ingest-domain API types (POST/GET /shares). A share moves pending → fetching →
 // analyzing → published | review | failed | rejected; `place` is populated once
 // it publishes so the client can jump straight to the pin.
-import type { ReelmapExtraction } from '@reelmap/contracts';
+//
+// The RESPONSE types are re-exported from @reelmap/contracts (T-102) — share.json
+// is the single source of truth shared with ShareResource, so a renamed or removed
+// API field breaks `tsc`, not the device. The types below that are NOT derived are
+// request bodies and client-only view models; each says so.
+import type {
+  PendingVenue as ContractPendingVenue,
+  ShareDetail as ContractShareDetail,
+  SharePlace as ContractSharePlace,
+  ShareStatus as ContractShareStatus,
+  ReelmapExtraction,
+} from '@reelmap/contracts';
 
 /** One extracted venue — the unit the review form edits (review is single-place today). */
 export type ExtractionPlace = ReelmapExtraction['places'][number];
 
-export type ShareStatus =
-  | 'pending'
-  | 'fetching'
-  | 'analyzing'
-  | 'review'
-  | 'published'
-  | 'failed'
-  | 'rejected';
+export type ShareStatus = ContractShareStatus;
 
 /** Statuses where the pipeline has stopped (success or otherwise). */
 export const TERMINAL_STATUSES: ShareStatus[] = ['published', 'review', 'failed', 'rejected'];
@@ -23,17 +26,13 @@ export function isTerminal(status: ShareStatus): boolean {
   return TERMINAL_STATUSES.includes(status);
 }
 
-export type ShareFailure = {
-  code: string;
-  step: string | null;
-  message: string;
-  manual_fallback: boolean;
-};
+export type ShareFailure = NonNullable<ContractShareDetail['failure']>;
 
 /**
- * The pipeline writes `failure.code` as a free string at each stage (there is no
- * PHP enum). These are the values a client actually sees; anything else falls
- * through to the generic copy/action. A `review` share always carries a code too
+ * CLIENT-ONLY. The pipeline writes `failure.code` as a free string at each stage
+ * (there is no PHP enum, so the contract types it as `string`). These are the
+ * values a client actually sees and branches copy on; anything else falls through
+ * to the generic copy/action. A `review` share always carries a code too
  * (manual_fallback = true) — it explains WHY the pipeline paused for the user.
  */
 export type FailureCode =
@@ -70,70 +69,26 @@ export function hasEditableExtraction(share: Pick<ShareDetail, 'analysis'>): boo
 }
 
 /** The published pin (coordinates only — navigate by id, the place route accepts it). */
-export type SharePlace = {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-};
+export type SharePlace = ContractSharePlace;
 
-export type ShareDetail = {
-  id: string;
-  status: ShareStatus;
-  status_history: { status: ShareStatus; at: string | null }[];
-  source_post: {
-    id: string;
-    platform: string;
-    url: string | null;
-    author_handle: string | null;
-    caption: string | null;
-    fetch_status: string;
-  };
-  analysis: {
-    run_id: string;
-    model: string | null;
-    status: string;
-    confidence: number | null;
-    // The raw model output, conforming to the `@reelmap/contracts` extraction
-    // schema. The review form (T-026) reads places[0], per-field confidence and
-    // evidence out of it; PATCH /shares/:id takes a partial correction back.
-    extraction: ReelmapExtraction | null;
-  } | null;
-  failure: ShareFailure | null;
-  /**
-   * True when an uncertain review can be published as-is (best guess) without
-   * being located first — low confidence / ambiguous match (T-098). Drives the
-   * "Publish anyway" skip; false for geocode_failed (needs a pin/address first).
-   */
-  can_publish_best_guess: boolean;
-  /** The primary published pin (back-compat; first of `places`). */
-  place: SharePlace | null;
-  /** Every published pin — a multi-place post (e.g. a "best cafés" reel) resolves to several. */
-  places: SharePlace[];
-  /** Extracted venues still parked for review (partial publish). */
-  pending_place_count: number;
-  /** The pending venues themselves — resolve (pick a candidate) or dismiss each (T-071). */
-  pending_places: PendingVenue[];
-};
+/**
+ * GET /shares/{id} (ShareResource). `analysis.extraction` is the raw model output
+ * conforming to the extraction contract: the review form (T-026) reads places[0],
+ * per-field confidence and evidence out of it, and PATCH /shares/:id takes a
+ * partial correction back.
+ */
+export type ShareDetail = ContractShareDetail;
 
 /** A candidate place a pending venue can be attached to. */
-export type PendingCandidate = {
-  place_id: string;
-  name: string | null;
-  address: string | null;
-  distance_m: number | null;
-  similarity: number | null;
-};
+export type PendingCandidate = ContractPendingVenue['candidates'][number];
 
 /** An extracted venue that couldn't be auto-placed (T-071). */
-export type PendingVenue = {
-  index: number;
-  name: string | null;
-  reason: string | null;
-  candidates: PendingCandidate[];
-};
+export type PendingVenue = ContractPendingVenue;
 
-/** What the composer collects — a pasted link and/or a free-text caption. */
+/**
+ * CLIENT-ONLY (composer state, not a response): what the composer collects —
+ * a pasted link and/or a free-text caption.
+ */
 export type CreateShareInput = {
   url?: string;
   caption?: string;
@@ -146,9 +101,10 @@ export type CreateShareInput = {
 };
 
 /**
- * POST /shares returns a stripped 202 acknowledgement (id + current status,
- * `place` always null) — NOT a full ShareResource. Only the id is used, to
- * start polling GET /shares/{id} for the real, complete state.
+ * CLIENT-ONLY VIEW MODEL. POST /shares returns a stripped 202 acknowledgement
+ * (id + current status, `place` always null) — NOT a ShareResource, so it has no
+ * schema; this flattens what the screen needs out of `data` + `meta`. Only the id
+ * is used, to start polling GET /shares/{id} for the real, complete state.
  *
  * `idempotentReplay` mirrors `meta.idempotent_replay`: the API never returns a
  * 409 for a re-shared post — it replays the existing share (T-016). The screen
@@ -162,7 +118,8 @@ export type CreateShareResult = {
 };
 
 /**
- * The corrections body for PATCH /shares/:id (UpdateShareRequest). `extraction`
+ * REQUEST BODY (no response schema): the corrections body for PATCH /shares/:id
+ * (UpdateShareRequest), built from the extraction contract. `extraction`
  * is a PARTIAL, deep-merged onto the original run by ExtractionCorrector — send
  * only the changed leaves. `place_candidate.place_id` attaches to an existing
  * place from the offered dedupe candidates; `lat`/`lng` drop a manual pin.
@@ -193,7 +150,10 @@ export function extractUrl(text: string): string | null {
   return match ? match[0].replace(/[.,)\]}>'"]+$/, '') : null;
 }
 
-/** Platforms Reelmap ingests, parsed client-side from a URL's hostname. */
+/**
+ * CLIENT-ONLY. Platforms Reelmap ingests, parsed client-side from a URL's
+ * hostname for the composer badge — never read off a response.
+ */
 export type SharePlatform = 'instagram' | 'tiktok' | 'x' | 'youtube';
 
 /**

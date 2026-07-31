@@ -29,7 +29,7 @@ afterEach(() => {
 it('routes a published share to its pin and an in-review share to the status screen', async () => {
   mock.onGet('/shares').reply(200, {
     data: [
-      shareDetail({ id: '20', status: 'review', source_post: { id: '2', platform: 'instagram', url: null, author_handle: null, caption: 'A place under review', fetch_status: 'ok' } }),
+      shareDetail({ id: '20', status: 'review', source_post: { id: '2', platform: 'instagram', url: 'manual://01J0', author_handle: null, caption: 'A place under review', fetch_status: 'ok' } }),
       shareDetail({ id: '21', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
     ],
   });

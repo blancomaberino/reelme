@@ -8,9 +8,10 @@
  * COMMITTED; the mobile app and the CI drift check depend on it. Never
  * hand-edit a generated file — edit the schema and regenerate.
  */
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { compile } from 'json-schema-to-typescript';
+import $RefParser from '@apidevtools/json-schema-ref-parser';
+import { compile, type JSONSchema } from 'json-schema-to-typescript';
 
 /**
  * Strip `minItems`/`maxItems` from every array in the schema (in memory only —
@@ -20,6 +21,10 @@ import { compile } from 'json-schema-to-typescript';
  * — with enums nested across `places`×`vibe_tags`×`dietary_tags`×`dishes` this
  * exploded the generated file to ~260k lines. Dropping the bounds yields a clean
  * `T[]` and shrinks the output ~1000×.
+ *
+ * Runs AFTER `$ref` resolution: bounds inside a referenced file (share.json →
+ * extraction.schema.json) are only reachable once the refs are dereferenced —
+ * stripping the raw file alone still let the tuple explosion through.
  */
 function stripArrayBounds(node: unknown): void {
   if (Array.isArray(node)) {
@@ -50,15 +55,16 @@ const BANNER = (source: string) => `/**
 `;
 
 async function compileSchema(file: string, source: string): Promise<string> {
-  const schema = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  // Resolve every relative `$ref` (place.json → place-source.json, share.json →
+  // ../extraction.schema.json) against the schema's own location before we touch
+  // it, so stripArrayBounds sees the whole tree.
+  const schema = (await $RefParser.dereference(file)) as Record<string, unknown>;
   stripArrayBounds(schema);
   const name = typeof schema.title === 'string' ? schema.title : basename(file, '.json');
-  const body = await compile(schema, name, {
+  const body = await compile(schema as JSONSchema, name, {
     additionalProperties: false,
     bannerComment: '',
     style: { singleQuote: true },
-    // Trailing separator so relative `$ref`s (e.g. place.json → place-source.json)
-    // resolve against the schema's own directory.
     cwd: `${dirname(file)}/`,
   });
   return BANNER(source) + body;

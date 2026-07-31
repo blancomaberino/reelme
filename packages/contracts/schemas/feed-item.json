@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/feed-item.json",
+  "title": "FeedItem",
+  "description": "One row of GET /api/v1/feed (T-034, 03 §2.8): a published share with its (public-only) sharer, the source post to link out to, the crediting influencer, and the place it published.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "published_at", "sharer", "source_post", "influencer", "place"],
+  "properties": {
+    "id": { "type": "string" },
+    "published_at": { "type": ["string", "null"], "format": "date-time" },
+    "sharer": {
+      "description": "Null when the sharer's profile is private — the feed row still renders, unattributed.",
+      "anyOf": [{ "type": "null" }, { "$ref": "user-summary.json" }]
+    },
+    "source_post": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["platform", "url", "caption", "thumbnail_url"],
+      "properties": {
+        "platform": { "type": "string" },
+        "url": {
+          "description": "The canonical post URL to link out to. Always present — `source_posts.url` is NOT NULL.",
+          "type": "string"
+        },
+        "caption": {
+          "description": "Truncated to 200 characters for the card.",
+          "type": ["string", "null"]
+        },
+        "thumbnail_url": { "type": ["string", "null"] }
+      }
+    },
+    "influencer": {
+      "description": "The account credited for the original post, null when the post has none.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "platform", "handle", "display_name", "avatar_url"],
+      "properties": {
+        "id": { "type": "string" },
+        "platform": { "type": "string" },
+        "handle": { "type": "string" },
+        "display_name": { "type": ["string", "null"] },
+        "avatar_url": { "type": ["string", "null"] }
+      }
+    },
+    "place": {
+      "description": "The published pin, as the same summary card the map and browse list use.",
+      "anyOf": [{ "type": "null" }, { "$ref": "place-summary.json" }]
+    }
+  }
+}

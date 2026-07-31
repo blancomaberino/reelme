@@ -1,0 +1,152 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/share.json",
+  "title": "ShareDetail",
+  "description": "GET /api/v1/shares/{id} (T-016, 03 §3.2) — the ingest pipeline's state for one shared post: status + derived history, the source post, the latest analysis run (extraction per the canonical extraction contract), the failure/review reason, and the places it published or parked.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "status", "status_history", "source_post", "analysis", "failure",
+    "can_publish_best_guess", "place", "places", "pending_place_count", "pending_places"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "status": { "$ref": "#/definitions/shareStatus" },
+    "status_history": {
+      "description": "Derived checkpoints (share_stage_metrics + created_at), oldest first, ending at the current status.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "at"],
+        "properties": {
+          "status": { "$ref": "#/definitions/shareStatus" },
+          "at": { "type": ["string", "null"], "format": "date-time" }
+        }
+      }
+    },
+    "source_post": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "platform", "url", "author_handle", "caption", "fetch_status"],
+      "properties": {
+        "id": { "type": "string" },
+        "platform": { "type": "string" },
+        "url": {
+          "description": "The canonical post URL. Always present — `source_posts.url` is NOT NULL; a manual caption-only share still gets a synthetic one.",
+          "type": "string"
+        },
+        "author_handle": {
+          "description": "The crediting influencer's handle, null when the post has no linked influencer.",
+          "type": ["string", "null"]
+        },
+        "caption": { "type": ["string", "null"] },
+        "fetch_status": { "type": "string" }
+      }
+    },
+    "analysis": {
+      "description": "The latest analysis run. Null until one starts.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["run_id", "model", "status", "confidence", "extraction"],
+      "properties": {
+        "run_id": { "type": "string" },
+        "model": {
+          "description": "The model id the run used. Always present — `analysis_runs.model` is NOT NULL, set before the run is created.",
+          "type": "string"
+        },
+        "status": { "type": "string" },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "extraction": {
+          "description": "The model's structured output — the canonical extraction contract. Null while a run is in flight, and on a run that failed before producing schema-valid output.",
+          "anyOf": [{ "type": "null" }, { "$ref": "../extraction.schema.json" }]
+        }
+      }
+    },
+    "failure": {
+      "description": "Why the pipeline stopped or paused. Present for `failed` and for `review` (where `manual_fallback` is true and it explains what the user must resolve); null otherwise.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["code", "step", "message", "manual_fallback"],
+      "properties": {
+        "code": { "type": "string" },
+        "step": {
+          "description": "The last pipeline stage that ran, null when nothing was recorded.",
+          "type": ["string", "null"]
+        },
+        "message": { "type": "string" },
+        "manual_fallback": { "type": "boolean" }
+      }
+    },
+    "can_publish_best_guess": {
+      "description": "True when an uncertain review can be published as-is without being located first (T-098).",
+      "type": "boolean"
+    },
+    "place": {
+      "description": "The primary published pin — null until the share publishes. Back-compat single-place view of `places[0]`.",
+      "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/sharePlace" }]
+    },
+    "places": {
+      "description": "Every published pin, primary first — a multi-place post fans out to several. Empty until the share publishes.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/sharePlace" }
+    },
+    "pending_place_count": {
+      "description": "How many extracted venues are still parked for review (partial publish). Equals `pending_places.length`.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "pending_places": {
+      "description": "The parked venues themselves, each with the candidate places it can be attached to (T-071). Owner-only surface.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/pendingVenue" }
+    }
+  },
+  "definitions": {
+    "shareStatus": {
+      "type": "string",
+      "enum": ["pending", "fetching", "analyzing", "review", "published", "failed", "rejected"]
+    },
+    "sharePlace": {
+      "description": "A published pin: enough to drop/centre a marker without a second query.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "lat", "lng"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lng": { "type": "number", "minimum": -180, "maximum": 180 }
+      }
+    },
+    "pendingVenue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "name", "reason", "candidates"],
+      "properties": {
+        "index": {
+          "description": "The venue's position in the extraction's `places` array.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "name": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["place_id", "name", "address", "distance_m", "similarity"],
+            "properties": {
+              "place_id": { "type": "string" },
+              "name": { "type": ["string", "null"] },
+              "address": { "type": ["string", "null"] },
+              "distance_m": { "type": ["number", "null"], "minimum": 0 },
+              "similarity": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

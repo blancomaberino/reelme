@@ -34,15 +34,8 @@
       }
     },
     "sharer": {
-      "type": ["object", "null"],
-      "additionalProperties": false,
-      "required": ["id", "username", "name", "avatar_path"],
-      "properties": {
-        "id": { "type": "string" },
-        "username": { "type": "string" },
-        "name": { "type": ["string", "null"] },
-        "avatar_path": { "type": ["string", "null"] }
-      }
+      "description": "Null when the sharer's profile is private (03 §2.6).",
+      "anyOf": [{ "type": "null" }, { "$ref": "user-summary.json" }]
     },
     "highlights": {
       "type": "object",

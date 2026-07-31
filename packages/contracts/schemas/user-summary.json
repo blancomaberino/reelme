@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/user-summary.json",
+  "title": "UserSummary",
+  "description": "Compact public attribution block (03 §2.6) — the shape of UserSummaryResource, embedded wherever a sharer or list owner is credited. Only users who consented to public attribution are wrapped; a private user is represented as `null`, never as an anonymized stub.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "username", "name", "avatar_path"],
+  "properties": {
+    "id": { "type": "string" },
+    "username": { "type": "string" },
+    "name": { "type": ["string", "null"] },
+    "avatar_path": { "type": ["string", "null"] }
+  }
+}

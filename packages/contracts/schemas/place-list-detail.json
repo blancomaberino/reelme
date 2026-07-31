@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/place-list-detail.json",
+  "title": "PlaceListDetail",
+  "description": "A saved collection with its places (T-062) — GET /api/v1/me/lists/{id}, the add/remove responses, and the public read GET /api/v1/lists/{public_slug} (T-063). Each item carries the owner's note + position plus a map-ready place summary, so a client can render the list and drop its pins without a second query.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "slug", "public_slug", "is_public", "items_count", "items", "created_at", "updated_at"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "slug": { "type": "string" },
+    "public_slug": { "type": ["string", "null"] },
+    "is_public": { "type": "boolean" },
+    "owner": {
+      "description": "Present only when the owner was eager-loaded (the public read); null when their profile is private — a private user sharing a list must not leak their identity.",
+      "anyOf": [{ "type": "null" }, { "$ref": "user-summary.json" }]
+    },
+    "items_count": { "type": "integer", "minimum": 0 },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["note", "position", "place"],
+        "properties": {
+          "note": { "type": ["string", "null"] },
+          "position": { "type": "integer" },
+          "place": { "$ref": "place-summary.json" }
+        }
+      }
+    },
+    "created_at": { "type": ["string", "null"], "format": "date-time" },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}
