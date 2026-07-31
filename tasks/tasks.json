@@ -2692,7 +2692,7 @@
       "id": "T-102",
       "title": "Contracts: share / feed-item / place-list schemas + conformance tests (close the pipeline drift gap)",
       "phase": "ARCH",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-094"
       ],
