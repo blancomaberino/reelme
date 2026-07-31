@@ -62,6 +62,8 @@ export const queryKeys = {
   influencer: (id: string) => ['influencer', id] as const,
   /** The viewer's own claim on an influencer identity (T-038 flow, T-039 UI). */
   influencerClaim: (id: string) => ['influencer', id, 'claim'] as const,
+  /** The notification center list (T-040) — one infinite query, badge included. */
+  notifications: () => ['notifications'] as const,
   /** The selectable analysis-model catalog (T-020). */
   analysisModels: () => ['analysis', 'models'] as const,
   followers: (username: string) => ['profile', username, 'followers'] as const,
