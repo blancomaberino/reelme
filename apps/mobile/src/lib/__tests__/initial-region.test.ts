@@ -15,7 +15,18 @@ import {
 const perms = jest.mocked(Location.getForegroundPermissionsAsync);
 const requestPerms = jest.mocked(Location.requestForegroundPermissionsAsync);
 const lastKnown = jest.mocked(Location.getLastKnownPositionAsync);
-const currentPos = jest.mocked(Location.getCurrentPositionAsync);
+const watchPos = jest.mocked(Location.watchPositionAsync);
+/**
+ * The fresh-fix path WATCHES (the only cancellable one-shot — see location.ts),
+ * so "the provider gave us X" is expressed as a watch that emits X, and "no fix"
+ * as a watch that never calls back.
+ */
+const watchEmits = (coords: { latitude: number; longitude: number } | null) =>
+  watchPos.mockImplementation(async (_o, cb) => {
+    if (coords) (cb as (l: unknown) => void)({ coords });
+    return { remove: jest.fn() } as never;
+  });
+
 
 const SAVED = { latitude: 51.5, longitude: -0.12, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
@@ -35,7 +46,7 @@ beforeEach(() => {
   perms.mockResolvedValue(granted);
   requestPerms.mockResolvedValue(granted);
   lastKnown.mockResolvedValue(null);
-  currentPos.mockResolvedValue({ coords: { latitude: FIX_LAT, longitude: FIX_LNG } } as never);
+  watchEmits({ latitude: FIX_LAT, longitude: FIX_LNG });
 });
 
 describe('regionFromParams', () => {
@@ -127,7 +138,7 @@ describe('resolveInitialRegion', () => {
 
   it('falls back to the default region when permission is granted but no fix arrives', async () => {
     lastKnown.mockResolvedValue(null);
-    currentPos.mockResolvedValue(null as never);
+    watchEmits(null);
 
     const result = await resolveInitialRegion({ saved: null });
 
@@ -138,7 +149,7 @@ describe('resolveInitialRegion', () => {
 
   it('falls back when the location provider throws', async () => {
     lastKnown.mockRejectedValue(new Error('no provider'));
-    currentPos.mockRejectedValue(new Error('no provider'));
+    watchPos.mockRejectedValue(new Error('no provider'));
 
     const result = await resolveInitialRegion({ saved: null });
 
@@ -146,7 +157,7 @@ describe('resolveInitialRegion', () => {
   });
 
   it('treats a non-finite fix as no fix rather than centring on nowhere', async () => {
-    currentPos.mockResolvedValue({ coords: { latitude: NaN, longitude: 0 } } as never);
+    watchEmits({ latitude: NaN, longitude: 0 });
 
     const result = await resolveInitialRegion({ saved: null });
 
@@ -159,7 +170,7 @@ describe('resolveInitialRegion', () => {
     const result = await resolveInitialRegion({ saved: null });
 
     expect(result.region.latitude).toBe(1.5);
-    expect(currentPos).not.toHaveBeenCalled();
+    expect(watchPos).not.toHaveBeenCalled();
   });
 
   it('takes the saved viewport without touching location at all', async () => {
@@ -167,7 +178,7 @@ describe('resolveInitialRegion', () => {
 
     expect(result).toEqual({ region: SAVED, source: 'saved', permissionBlocked: false });
     expect(perms).not.toHaveBeenCalled();
-    expect(currentPos).not.toHaveBeenCalled();
+    expect(watchPos).not.toHaveBeenCalled();
   });
 
   it('lets a deep-link param win over both the saved viewport and location', async () => {
@@ -219,7 +230,7 @@ describe('locateUser', () => {
 
   it('reports "unavailable" when permission is granted but no fix arrives', async () => {
     lastKnown.mockResolvedValue(null);
-    currentPos.mockResolvedValue(null as never);
+    watchEmits(null);
 
     expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
   });

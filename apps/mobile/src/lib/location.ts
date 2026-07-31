@@ -124,14 +124,60 @@ export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise
   }
 
   try {
-    const fresh = await withTimeout(
-      m.getCurrentPositionAsync({ accuracy: m.Accuracy.Balanced }),
-      timeoutMs,
-    );
-    return fresh ? toRegion(fresh.coords) : null;
+    return await firstFixWithin(m, timeoutMs);
   } catch {
     return null;
   }
+}
+
+/**
+ * The first usable fix within `timeoutMs`, or null.
+ *
+ * Watches rather than calling `getCurrentPositionAsync` because a watch is the
+ * only CANCELLABLE one-shot in this API. `getCurrentPositionAsync` accepts no
+ * signal, so racing it against a timer abandons the native call — it keeps
+ * running for the life of the process, and it is trivially reachable: any user
+ * indoors, in a tunnel, or on a simulator with no location set never gets a fix.
+ * Beyond the leak, a still-pending Expo async call is destroyed against a dead
+ * JS runtime on teardown, which is a native crash rather than an exception.
+ */
+function firstFixWithin(m: LocationModule, timeoutMs: number): Promise<Region | null> {
+  return new Promise((resolve) => {
+    let subscription: { remove: () => void } | null = null;
+    let settled = false;
+
+    const finish = (region: Region | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      subscription?.remove();
+      resolve(region);
+    };
+
+    const timer = setTimeout(() => finish(null), timeoutMs);
+
+    m.watchPositionAsync(
+      { accuracy: m.Accuracy.Balanced },
+      (location) => {
+        // One bogus reading does not end the watch — keep listening for a good
+        // fix until the timeout, rather than reporting "no location" because a
+        // flaky provider emitted a single NaN.
+        const region = toRegion(location.coords);
+        if (region) finish(region);
+      },
+      // Watch-level failure (permission pulled mid-watch, provider died): give
+      // up now instead of holding the caller until the timeout expires.
+      () => finish(null),
+    )
+      .then((sub) => {
+        subscription = sub;
+        // Already finished before the subscription landed — remove it here or
+        // it watches forever with nobody listening, which is the exact leak
+        // this function exists to avoid.
+        if (settled) sub.remove();
+      })
+      .catch(() => finish(null));
+  });
 }
 
 function toRegion(coords: { latitude: number; longitude: number }): Region | null {
@@ -144,22 +190,6 @@ function toRegion(coords: { latitude: number; longitude: number }): Region | nul
     latitudeDelta: USER_REGION_DELTA,
     longitudeDelta: USER_REGION_DELTA,
   };
-}
-
-/** Resolve to null instead of hanging forever. */
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    promise
-      .then((value) => {
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch(() => {
-        clearTimeout(timer);
-        resolve(null);
-      });
-  });
 }
 
 /**

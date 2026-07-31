@@ -16,7 +16,7 @@ import {
 const perms = jest.mocked(Location.getForegroundPermissionsAsync);
 const requestPerms = jest.mocked(Location.requestForegroundPermissionsAsync);
 const lastKnown = jest.mocked(Location.getLastKnownPositionAsync);
-const currentPos = jest.mocked(Location.getCurrentPositionAsync);
+const watchPos = jest.mocked(Location.watchPositionAsync);
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -92,6 +92,13 @@ describe('missing native module', () => {
 });
 
 describe('getUserRegion', () => {
+  /** A watch that hands back a subscription but never delivers a fix. */
+  const silentWatch = () => {
+    const remove = jest.fn();
+    watchPos.mockImplementationOnce(async () => ({ remove }) as never);
+    return remove;
+  };
+
   it('uses the OS cached fix without paying for a fresh one', async () => {
     lastKnown.mockResolvedValueOnce({ coords: { latitude: 10, longitude: 20 } } as never);
 
@@ -101,19 +108,22 @@ describe('getUserRegion', () => {
       latitudeDelta: 0.02,
       longitudeDelta: 0.02,
     });
-    expect(currentPos).not.toHaveBeenCalled();
+    expect(watchPos).not.toHaveBeenCalled();
   });
 
   it('falls through to a fresh fix when the cache is empty or throws', async () => {
     lastKnown.mockRejectedValueOnce(new Error('no cache'));
-    currentPos.mockResolvedValueOnce({ coords: { latitude: 1, longitude: 2 } } as never);
+    watchPos.mockImplementationOnce(async (_o, cb) => {
+      (cb as (l: unknown) => void)({ coords: { latitude: 1, longitude: 2 } });
+      return { remove: jest.fn() } as never;
+    });
 
     expect(await getUserRegion()).toMatchObject({ latitude: 1, longitude: 2 });
   });
 
   it('returns null when both the cache and a fresh fix fail', async () => {
     lastKnown.mockResolvedValueOnce(null);
-    currentPos.mockRejectedValueOnce(new Error('location unavailable'));
+    watchPos.mockRejectedValueOnce(new Error('location unavailable'));
 
     expect(await getUserRegion()).toBeNull();
   });
@@ -122,28 +132,139 @@ describe('getUserRegion', () => {
     // A stale NaN from a flaky provider must not short-circuit the fallback into
     // "no location" — there is still a perfectly good fresh fix to ask for.
     lastKnown.mockResolvedValueOnce({ coords: { latitude: NaN, longitude: 20 } } as never);
-    currentPos.mockResolvedValueOnce({ coords: { latitude: 3, longitude: 4 } } as never);
+    watchPos.mockImplementationOnce(async (_o, cb) => {
+      (cb as (l: unknown) => void)({ coords: { latitude: 3, longitude: 4 } });
+      return { remove: jest.fn() } as never;
+    });
 
     expect(await getUserRegion()).toMatchObject({ latitude: 3, longitude: 4 });
   });
 
-  it('rejects a non-finite fix rather than centring the map on nowhere', async () => {
-    lastKnown.mockResolvedValueOnce({ coords: { latitude: NaN, longitude: 20 } } as never);
-    currentPos.mockResolvedValueOnce({ coords: { latitude: 10, longitude: Infinity } } as never);
+  it('keeps watching past a bogus reading instead of reporting no location', async () => {
+    // A single NaN frame is not "no fix" — the watch is still live and the very
+    // next reading may be good. Ending on the first bad frame would strand the
+    // map on its fallback city for a user whose provider warmed up slowly.
+    lastKnown.mockResolvedValueOnce(null);
+    const remove = jest.fn();
+    watchPos.mockImplementationOnce(async (_o, cb) => {
+      const emit = cb as (l: unknown) => void;
+      emit({ coords: { latitude: NaN, longitude: 20 } });
+      emit({ coords: { latitude: 7, longitude: 8 } });
+      return { remove } as never;
+    });
 
-    expect(await getUserRegion()).toBeNull();
+    expect(await getUserRegion()).toMatchObject({ latitude: 7, longitude: 8 });
   });
 
-  it('gives up on a hanging GPS instead of blocking the map forever', async () => {
+  it('rejects a non-finite fix rather than centring the map on nowhere', async () => {
     jest.useFakeTimers();
-    lastKnown.mockResolvedValueOnce(null);
-    // A fix that never arrives — the real-world tunnel/indoor case.
-    currentPos.mockReturnValueOnce(new Promise(() => {}) as never);
+    lastKnown.mockResolvedValueOnce({ coords: { latitude: NaN, longitude: 20 } } as never);
+    watchPos.mockImplementationOnce(async (_o, cb) => {
+      (cb as (l: unknown) => void)({ coords: { latitude: 10, longitude: Infinity } });
+      return { remove: jest.fn() } as never;
+    });
 
     const pending = getUserRegion(1_000);
     await jest.advanceTimersByTimeAsync(1_000);
 
     expect(await pending).toBeNull();
+    jest.useRealTimers();
+  });
+
+  it('gives up on a hanging GPS instead of blocking the map forever', async () => {
+    jest.useFakeTimers();
+    lastKnown.mockResolvedValueOnce(null);
+    silentWatch(); // the real-world tunnel/indoor case — a fix that never arrives
+
+    const pending = getUserRegion(1_000);
+    await jest.advanceTimersByTimeAsync(1_000);
+
+    expect(await pending).toBeNull();
+    jest.useRealTimers();
+  });
+
+  // --- the leak this change exists to close --------------------------------
+  // getCurrentPositionAsync takes no cancellation signal, so the previous
+  // timeout raced it and walked away, leaving a native call running for the life
+  // of the process. Every assertion below is about the watch being TORN DOWN.
+
+  it('removes the watch when it times out without a fix', async () => {
+    jest.useFakeTimers();
+    lastKnown.mockResolvedValueOnce(null);
+    const remove = silentWatch();
+
+    const pending = getUserRegion(1_000);
+    await jest.advanceTimersByTimeAsync(1_000);
+    await pending;
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it('removes the watch once it has its fix', async () => {
+    lastKnown.mockResolvedValueOnce(null);
+    const remove = jest.fn();
+    watchPos.mockImplementationOnce(async (_o, cb) => {
+      (cb as (l: unknown) => void)({ coords: { latitude: 5, longitude: 6 } });
+      return { remove } as never;
+    });
+
+    await getUserRegion();
+
+    // One fix is all we want; leaving it running would keep the GPS warm for the
+    // rest of the session.
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes a subscription that arrives AFTER the timeout fired', async () => {
+    // The nastiest ordering: watchPositionAsync is itself async, so the timeout
+    // can win before there is anything to cancel. Nothing would ever remove this
+    // one, and it is the case a naive fix forgets.
+    jest.useFakeTimers();
+    lastKnown.mockResolvedValueOnce(null);
+    const remove = jest.fn();
+    let handOverSubscription: () => void = () => {};
+    watchPos.mockImplementationOnce(
+      () => new Promise((res) => { handOverSubscription = () => res({ remove } as never); }),
+    );
+
+    const pending = getUserRegion(1_000);
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(await pending).toBeNull();
+    expect(remove).not.toHaveBeenCalled(); // nothing to remove yet
+
+    handOverSubscription();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it('degrades to null when the module throws synchronously rather than propagating', async () => {
+    // This whole file's contract is "never throw" — a caller that has to
+    // try/catch a location lookup will forget, and the map goes down with it.
+    // A malformed/partial native module (a watch that isn't callable) is the
+    // realistic way that happens, and it throws INSIDE the promise executor.
+    lastKnown.mockResolvedValueOnce(null);
+    watchPos.mockImplementationOnce(() => {
+      throw new TypeError('watchPositionAsync is not a function');
+    });
+
+    await expect(getUserRegion()).resolves.toBeNull();
+  });
+
+  it('gives up immediately when the watch itself errors, without waiting out the timeout', async () => {
+    jest.useFakeTimers();
+    lastKnown.mockResolvedValueOnce(null);
+    watchPos.mockImplementationOnce(async (_o, _cb, onError) => {
+      (onError as () => void)();
+      return { remove: jest.fn() } as never;
+    });
+
+    // Resolves without the timer ever running — permission pulled mid-watch
+    // should not hold the map's loading gate for the full budget.
+    expect(await getUserRegion(60_000)).toBeNull();
     jest.useRealTimers();
   });
 });
