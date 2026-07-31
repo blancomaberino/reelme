@@ -6,6 +6,7 @@ export const es: Record<MessageKey, string> = {
   'common.tryAgain': 'Reintentar',
   'common.cancel': 'Cancelar',
   'common.close': 'Cerrar',
+  'common.back': 'Volver',
   'common.error.general': 'Algo salió mal. Inténtalo de nuevo.',
   'common.error.offline': 'Sin conexión. Revisa tu red e inténtalo de nuevo.',
 
@@ -47,7 +48,6 @@ export const es: Record<MessageKey, string> = {
   'feed.search': 'Buscar',
   'feed.sharerFallback': 'un usuario de Reelmap',
 
-  'place.back': 'Volver',
   'place.notFound.title': 'Lugar no encontrado',
   'place.notFound.body': 'Puede que se haya eliminado o que el enlace esté desactualizado.',
   'place.directions': 'Cómo llegar',

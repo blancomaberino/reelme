@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDeleteList, useList, useUpdateList } from '@/api/hooks/useLists';
 import type { PlaceListSummary } from '@/api/lists';
 import { AddPlaceToListSheet } from '@/components/place/add-to-list-search';
+import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { listShareUrl, listWebUrl } from '@/lib/directions';
 import { fitRegion } from '@/lib/map-region';
@@ -73,52 +74,47 @@ export default function ListDetailScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.title} numberOfLines={1}>
-          {list?.name ?? name ?? ''}
-        </Text>
-        {list ? (
-          <View style={styles.headerActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('save.addPlace')}
-              onPress={() => setAddOpen(true)}
-              hitSlop={12}
-            >
-              <Ionicons name="add-circle-outline" size={24} color={c.primary} />
-            </Pressable>
-            {items.length > 0 ? (
+      <ScreenHeader
+        title={list?.name ?? name ?? ''}
+        right={
+          list ? (
+            <View style={styles.headerActions}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={t('lists.viewOnMap')}
-                onPress={() =>
-                  router.push({ pathname: '/(main)/map', params: { list: id as string, listName: list.name } })
-                }
+                accessibilityLabel={t('save.addPlace')}
+                onPress={() => setAddOpen(true)}
                 hitSlop={12}
               >
-                <Ionicons name="map-outline" size={22} color={c.primary} />
+                <Ionicons name="add-circle-outline" size={24} color={c.primary} />
               </Pressable>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('lists.share')}
-              onPress={onShare}
-              disabled={update.isPending}
-              hitSlop={12}
-            >
-              <Ionicons name="share-outline" size={22} color={update.isPending ? c.muted : c.primary} />
-            </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={t('lists.delete')} onPress={onDelete} hitSlop={12}>
-              <Ionicons name="trash-outline" size={22} color={c.danger} />
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.spacer} />
-        )}
-      </View>
+              {items.length > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('lists.viewOnMap')}
+                  onPress={() =>
+                    router.push({ pathname: '/(main)/map', params: { list: id as string, listName: list.name } })
+                  }
+                  hitSlop={12}
+                >
+                  <Ionicons name="map-outline" size={22} color={c.primary} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('lists.share')}
+                onPress={onShare}
+                disabled={update.isPending}
+                hitSlop={12}
+              >
+                <Ionicons name="share-outline" size={22} color={update.isPending ? c.muted : c.primary} />
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={t('lists.delete')} onPress={onDelete} hitSlop={12}>
+                <Ionicons name="trash-outline" size={22} color={c.danger} />
+              </Pressable>
+            </View>
+          ) : undefined
+        }
+      />
 
       {isLoading ? (
         <ActivityIndicator color={c.primary} style={styles.loading} />
@@ -195,10 +191,7 @@ export default function ListDetailScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-    title: { flex: 1, fontSize: 22, fontWeight: '700', color: c.text },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 18 },
-    spacer: { width: 22 },
     loading: { paddingVertical: 40 },
     empty: { alignItems: 'center', gap: 10, paddingTop: 80, paddingHorizontal: 40 },
     emptyText: { fontSize: 15, color: c.muted, textAlign: 'center' },

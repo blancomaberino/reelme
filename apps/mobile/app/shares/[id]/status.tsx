@@ -24,9 +24,10 @@ import {
 } from '@/api/shares';
 import { Button } from '@/components/button';
 import { PendingVenues } from '@/components/share/pending-venues';
+import { ScreenHeader } from '@/components/screen-header';
 import { type MessageKey, useT } from '@/i18n';
-import { safeBack } from '@/lib/nav';
 import { fonts, type Palette, useColors } from '@/theme/colors';
+import { space } from '@/theme/tokens';
 
 // The pipeline stages, in order, with the label shown for each stepper row. The
 // 4th step's label flips to "Published" once it lands (see terminalStepKey).
@@ -138,13 +139,7 @@ export default function StatusScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={safeBack} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>{t('shares.detail.title')}</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader title={t('shares.detail.title')} divided />
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {isLoading ? (
@@ -290,9 +285,12 @@ function Terminal({
         {(share.pending_place_count ?? 0) > 0 ? (
           <PendingVenues shareId={shareId} venues={share.pending_places ?? []} />
         ) : null}
-        <Pressable accessibilityRole="button" onPress={() => router.replace('/(main)/share')} hitSlop={8}>
-          <Text style={styles.link}>{t('share.another')}</Text>
-        </Pressable>
+        <Button
+          title={t('share.another')}
+          variant="link"
+          onPress={() => router.replace('/(main)/share')}
+          style={styles.linkSpacing}
+        />
       </View>
     );
   }
@@ -348,17 +346,6 @@ type Styles = ReturnType<typeof makeStyles>;
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: c.border,
-    },
-    headerTitle: { flex: 1, fontFamily: fonts.display, fontSize: 20, fontWeight: '700', color: c.text },
-    headerSpacer: { width: 26 },
     scroll: { padding: 24, gap: 24 },
     center: { paddingVertical: 48, alignItems: 'center' },
     notFound: { fontSize: 15, color: c.muted, textAlign: 'center', paddingVertical: 48 },
@@ -408,5 +395,5 @@ const makeStyles = (c: Palette) =>
     },
     placeName: { flex: 1, fontSize: 16, fontWeight: '700', color: c.text },
     pressed: { opacity: 0.6 },
-    link: { color: c.primary, fontSize: 15, fontWeight: '700', marginTop: 4 },
+    linkSpacing: { marginTop: space.xxs },
   });

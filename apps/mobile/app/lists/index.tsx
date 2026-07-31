@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useCreateList, useLists } from '@/api/hooks/useLists';
 import { useT } from '@/i18n';
 import { fonts, type Palette, useColors } from '@/theme/colors';
+import { ScreenHeader } from '@/components/screen-header';
 
 /** The viewer's place lists (T-062), reachable from Profile. */
 export default function ListsScreen() {
@@ -33,15 +34,14 @@ export default function ListsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.title}>{t('lists.title')}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('lists.new')} onPress={() => setCreating((v) => !v)} hitSlop={12}>
+      <ScreenHeader
+        title={t('lists.title')}
+        right={
+          <Pressable accessibilityRole="button" accessibilityLabel={t('lists.new')} onPress={() => setCreating((v) => !v)} hitSlop={12}>
           <Ionicons name="add" size={26} color={c.primary} />
-        </Pressable>
-      </View>
+          </Pressable>
+        }
+      />
 
       {creating ? (
         <View style={styles.createRow}>
@@ -102,8 +102,6 @@ export default function ListsScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
-    title: { flex: 1, fontSize: 22, fontWeight: '700', color: c.text },
     loading: { paddingVertical: 40 },
     empty: { alignItems: 'center', gap: 10, paddingTop: 80, paddingHorizontal: 40 },
     emptyText: { fontSize: 15, color: c.muted, textAlign: 'center' },

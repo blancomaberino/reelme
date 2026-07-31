@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFollow, useProfile, useUserLists, useUserPlaces } from '@/api/hooks/useProfile';
 import { Button } from '@/components/button';
 import { MyPlaceCard } from '@/components/place/my-place-card';
+import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
@@ -47,20 +48,7 @@ export default function UserProfileScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('place.back')}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(main)/map'))}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {profile ? `@${profile.username}` : ''}
-        </Text>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={profile ? `@${profile.username}` : ''} />
 
       {isLoading ? (
         <ActivityIndicator color={c.primary} style={styles.loading} />
@@ -197,16 +185,6 @@ function SegmentTab({
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-    },
-    headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: c.text },
-    spacer: { width: 26 },
     loading: { paddingVertical: 40 },
     empty: { alignItems: 'center', gap: 10, paddingTop: 80, paddingHorizontal: 40 },
     emptyText: { fontSize: 15, color: c.muted, textAlign: 'center' },

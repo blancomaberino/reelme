@@ -6,6 +6,7 @@ export const en = {
   'common.tryAgain': 'Try again',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
+  'common.back': 'Go back',
   'common.error.general': 'Something went wrong. Please try again.',
   'common.error.offline': 'No connection. Check your network and try again.',
 
@@ -49,7 +50,6 @@ export const en = {
   'feed.search': 'Search',
   'feed.sharerFallback': 'a Reelmap user',
 
-  'place.back': 'Go back',
   'place.notFound.title': 'Place not found',
   'place.notFound.body': 'It may have been removed or the link is out of date.',
   'place.directions': 'Directions',

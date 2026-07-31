@@ -1,11 +1,11 @@
-import { Ionicons } from '@expo/vector-icons';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useFollowing } from '@/api/hooks/useProfile';
 import { FollowList, type FollowListRow } from '@/components/profile/follow-list';
+import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
 
@@ -38,13 +38,7 @@ export default function FollowingScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.title}>{t('profileUser.following')}</Text>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={t('profileUser.following')} />
       <FollowList rows={rows} isLoading={isLoading} isError={isError} emptyText={t('profileUser.noFollowing')} />
     </SafeAreaView>
   );
@@ -53,7 +47,4 @@ export default function FollowingScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-    title: { flex: 1, fontSize: 20, fontWeight: '700', color: c.text },
-    spacer: { width: 26 },
   });
