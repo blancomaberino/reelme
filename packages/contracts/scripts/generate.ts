@@ -24,18 +24,30 @@ import { compile, type JSONSchema } from 'json-schema-to-typescript';
  *
  * Runs AFTER `$ref` resolution: bounds inside a referenced file (share.json →
  * extraction.schema.json) are only reachable once the refs are dereferenced —
- * stripping the raw file alone still let the tuple explosion through.
+ * stripping the raw file alone still let the tuple explosion through. That also
+ * means the input is an object GRAPH, not a tree: a dereferenced schema shares
+ * one node per `$ref` target and can be cyclic, so track what we've walked.
  */
-function stripArrayBounds(node: unknown): void {
+function stripArrayBounds(node: unknown, seen = new WeakSet<object>()): void {
+  if (node === null || typeof node !== 'object') {
+    return;
+  }
+  if (seen.has(node)) {
+    return;
+  }
+  seen.add(node);
+
   if (Array.isArray(node)) {
-    node.forEach(stripArrayBounds);
-  } else if (node !== null && typeof node === 'object') {
-    const obj = node as Record<string, unknown>;
-    delete obj.minItems;
-    delete obj.maxItems;
-    for (const value of Object.values(obj)) {
-      stripArrayBounds(value);
-    }
+    node.forEach((item) => stripArrayBounds(item, seen));
+
+    return;
+  }
+
+  const obj = node as Record<string, unknown>;
+  delete obj.minItems;
+  delete obj.maxItems;
+  for (const value of Object.values(obj)) {
+    stripArrayBounds(value, seen);
   }
 }
 

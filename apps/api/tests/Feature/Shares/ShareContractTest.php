@@ -26,7 +26,7 @@ uses(RefreshDatabase::class);
 function contractExtraction(): array
 {
     /** @var array<string, mixed> $data */
-    $data = json_decode((string) file_get_contents(base_path('tests/Fixtures/extraction/valid.json')), true);
+    $data = json_decode(pipelineExtractionJson(), true, flags: JSON_THROW_ON_ERROR);
 
     return $data;
 }
@@ -36,13 +36,11 @@ function contractShare(ShareStatus $status, User $owner): Share
     return Share::factory()->for($owner)->create(['status' => $status]);
 }
 
-/** Assert a live GET /shares/{id} body validates, with the errors in the failure message. */
+/** Fetch a live GET /shares/{id} body and assert it validates. */
 function assertShareContract(Share $share): array
 {
     $data = test()->getJson("/api/v1/shares/{$share->id}")->assertOk()->json('data');
-    $errors = ApiSchema::errors(ApiSchema::validate($data, 'share'));
-
-    expect($errors)->toBe([], 'share.json violations: '.json_encode($errors));
+    assertMatchesContract($data, 'share');
 
     return $data;
 }
@@ -101,12 +99,11 @@ it('rejects an extraction that drifts from the extraction contract', function ()
     ]);
 
     $data = $this->getJson("/api/v1/shares/{$share->id}")->assertOk()->json('data');
+    $errors = ApiSchema::errors(ApiSchema::validate($data, 'share'));
 
     // The nested cause must surface, not just the outer anyOf "must be null".
-    expect(ApiSchema::errors(ApiSchema::validate($data, 'share')))
-        ->toHaveKey('/analysis/extraction')
-        ->and(implode(' ', ApiSchema::errors(ApiSchema::validate($data, 'share'))['/analysis/extraction']))
-        ->toContain('places');
+    expect($errors)->toHaveKey('/analysis/extraction')
+        ->and(implode(' ', $errors['/analysis/extraction']))->toContain('places');
 });
 
 it('validates a run in flight — analysis present, extraction still null', function () {

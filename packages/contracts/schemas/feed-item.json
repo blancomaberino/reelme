@@ -32,16 +32,7 @@
     },
     "influencer": {
       "description": "The account credited for the original post, null when the post has none.",
-      "type": ["object", "null"],
-      "additionalProperties": false,
-      "required": ["id", "platform", "handle", "display_name", "avatar_url"],
-      "properties": {
-        "id": { "type": "string" },
-        "platform": { "type": "string" },
-        "handle": { "type": "string" },
-        "display_name": { "type": ["string", "null"] },
-        "avatar_url": { "type": ["string", "null"] }
-      }
+      "anyOf": [{ "type": "null" }, { "$ref": "influencer-summary.json" }]
     },
     "place": {
       "description": "The published pin, as the same summary card the map and browse list use.",

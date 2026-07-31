@@ -3,7 +3,6 @@
 use App\Models\Follow;
 use App\Models\Place;
 use App\Models\User;
-use App\Support\Contracts\ApiSchema;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -29,8 +28,7 @@ function assertFeedContract(): array
     expect($rows)->not->toBeEmpty();
 
     foreach ($rows as $row) {
-        $errors = ApiSchema::errors(ApiSchema::validate($row, 'feed-item'));
-        expect($errors)->toBe([], 'feed-item.json violations: '.json_encode($errors));
+        assertMatchesContract($row, 'feed-item');
     }
 
     return $rows;
@@ -100,7 +98,7 @@ it('keeps the place block a valid place-summary card', function () {
 
     $row = assertFeedContract()[0];
 
-    expect(ApiSchema::errors(ApiSchema::validate($row['place'], 'place-summary')))->toBe([]);
+    assertMatchesContract($row['place'], 'place-summary');
 });
 
 it('validates rows for the following scope too', function () {
@@ -115,7 +113,7 @@ it('validates rows for the following scope too', function () {
     expect($rows)->not->toBeEmpty();
 
     foreach ($rows as $row) {
-        expect(ApiSchema::errors(ApiSchema::validate($row, 'feed-item')))->toBe([]);
+        assertMatchesContract($row, 'feed-item');
     }
 });
 
@@ -128,6 +126,6 @@ it('validates the shares on a public profile — the same resource, a second end
     expect($rows)->not->toBeEmpty();
 
     foreach ($rows as $row) {
-        expect(ApiSchema::errors(ApiSchema::validate($row, 'feed-item')))->toBe([]);
+        assertMatchesContract($row, 'feed-item');
     }
 });

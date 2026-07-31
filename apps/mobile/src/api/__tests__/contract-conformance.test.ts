@@ -1,5 +1,6 @@
 import type {
   FeedItem as ContractFeedItem,
+  InfluencerSummary as ContractInfluencerSummary,
   PlaceListDetail as ContractPlaceListDetail,
   PlaceListSummary as ContractPlaceListSummary,
   PlaceSummary as ContractPlaceSummary,
@@ -9,7 +10,7 @@ import type {
 } from '@reelmap/contracts';
 
 import type { PlaceListDetail, PlaceListItem, PlaceListSummary, PublicPlaceList } from '../lists';
-import type { FeedItem, PlaceSummary, SharerSummary } from '../places';
+import type { FeedItem, InfluencerSummary, PlaceSummary, SharerSummary } from '../places';
 import type { PublicProfile } from '../profile';
 import type { PendingCandidate, PendingVenue, ShareDetail, ShareFailure, SharePlace } from '../shares';
 
@@ -29,6 +30,7 @@ type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 const placeSummaryMatchesContract: Exact<PlaceSummary, ContractPlaceSummary> = true;
 const publicProfileMatchesContract: Exact<PublicProfile, UserProfile> = true;
 const sharerMatchesContract: Exact<SharerSummary, UserSummary | null> = true;
+const influencerMatchesContract: Exact<InfluencerSummary, ContractInfluencerSummary> = true;
 
 // Ingest + feed + lists (T-102).
 const shareDetailMatchesContract: Exact<ShareDetail, ContractShareDetail> = true;
@@ -132,6 +134,7 @@ it('pins the mobile API types to @reelmap/contracts', () => {
   expect(placeSummaryMatchesContract).toBe(true);
   expect(publicProfileMatchesContract).toBe(true);
   expect(sharerMatchesContract).toBe(true);
+  expect(influencerMatchesContract).toBe(true);
   expect(shareDetailMatchesContract).toBe(true);
   expect(feedItemMatchesContract).toBe(true);
   expect(placeListMatchesContract).toBe(true);

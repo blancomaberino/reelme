@@ -15,7 +15,8 @@ to the TS type generated from it (`src/generated/`, re-exported from `src/index.
 | `share.json` | `ShareResource` | `GET /shares/{id}` |
 | `feed-item.json` | `FeedItemResource` | `GET /feed` |
 | `user-profile.json` | `PublicUserResource` | `GET /users/{username}` |
-| `user-summary.json` | `UserSummaryResource` | embedded attribution block |
+| `user-summary.json` | `UserSummaryResource` | embedded sharer/owner attribution |
+| `influencer-summary.json` | `InfluencerSummaryResource` | embedded influencer attribution |
 | `influencer-profile.json` | `InfluencerResource` | `GET /influencers/{handle}` |
 | `influencer-claim.json` | `InfluencerClaimResource` | `POST /influencers/{handle}/claim` |
 

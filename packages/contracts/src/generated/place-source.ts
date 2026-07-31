@@ -15,13 +15,10 @@ export interface PlaceSource {
     posted_at: string | null;
     thumbnail_url: string | null;
   } | null;
-  influencer: {
-    id: string;
-    platform: string;
-    handle: string;
-    display_name: string | null;
-    avatar_url: string | null;
-  } | null;
+  /**
+   * Null when the post has no linked influencer (03 §2.6).
+   */
+  influencer: null | InfluencerSummary;
   /**
    * Null when the sharer's profile is private (03 §2.6).
    */
@@ -30,6 +27,16 @@ export interface PlaceSource {
     dishes: string[];
     tags: string[];
   };
+}
+/**
+ * Compact influencer attribution block (03 §2.6) — the shape of InfluencerSummaryResource, embedded in feed rows and place-source rows. Never the full influencer profile (see influencer-profile.json).
+ */
+export interface InfluencerSummary {
+  id: string;
+  platform: string;
+  handle: string;
+  display_name: string | null;
+  avatar_url: string | null;
 }
 /**
  * Compact public attribution block (03 §2.6) — the shape of UserSummaryResource, embedded wherever a sharer or list owner is credited. Only users who consented to public attribution are wrapped; a private user is represented as `null`, never as an anonymized stub.

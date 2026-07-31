@@ -9,6 +9,7 @@
 // migrate each as its schema lands.
 import type {
   FeedItem as ContractFeedItem,
+  InfluencerSummary as ContractInfluencerSummary,
   PlaceSummary as ContractPlaceSummary,
   UserSummary as ContractUserSummary,
 } from '@reelmap/contracts';
@@ -17,13 +18,7 @@ import type {
 export type RatingBlock = ContractPlaceSummary['rating']['google'];
 
 /** Attribution glyph on a source card / pin (SourcePost.influencer). */
-export type InfluencerSummary = {
-  id: string;
-  platform: string;
-  handle: string;
-  display_name: string | null;
-  avatar_url: string | null;
-};
+export type InfluencerSummary = ContractInfluencerSummary;
 
 /**
  * The user who shared a post (UserSummaryResource). Null when their profile is

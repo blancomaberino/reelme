@@ -27,13 +27,7 @@ export interface FeedItem {
   /**
    * The account credited for the original post, null when the post has none.
    */
-  influencer: {
-    id: string;
-    platform: string;
-    handle: string;
-    display_name: string | null;
-    avatar_url: string | null;
-  } | null;
+  influencer: null | InfluencerSummary;
   /**
    * The published pin, as the same summary card the map and browse list use.
    */
@@ -47,6 +41,16 @@ export interface UserSummary {
   username: string;
   name: string | null;
   avatar_path: string | null;
+}
+/**
+ * Compact influencer attribution block (03 §2.6) — the shape of InfluencerSummaryResource, embedded in feed rows and place-source rows. Never the full influencer profile (see influencer-profile.json).
+ */
+export interface InfluencerSummary {
+  id: string;
+  platform: string;
+  handle: string;
+  display_name: string | null;
+  avatar_url: string | null;
 }
 /**
  * One row of GET /api/v1/places (T-030) — the browse/list card.

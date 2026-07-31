@@ -22,16 +22,8 @@
       }
     },
     "influencer": {
-      "type": ["object", "null"],
-      "additionalProperties": false,
-      "required": ["id", "platform", "handle", "display_name", "avatar_url"],
-      "properties": {
-        "id": { "type": "string" },
-        "platform": { "type": "string" },
-        "handle": { "type": "string" },
-        "display_name": { "type": ["string", "null"] },
-        "avatar_url": { "type": ["string", "null"] }
-      }
+      "description": "Null when the post has no linked influencer (03 §2.6).",
+      "anyOf": [{ "type": "null" }, { "$ref": "influencer-summary.json" }]
     },
     "sharer": {
       "description": "Null when the sharer's profile is private (03 §2.6).",
