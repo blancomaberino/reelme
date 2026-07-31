@@ -68,6 +68,9 @@ export default function RootLayout() {
                   <Stack.Screen name="users/[username]/index" />
                   <Stack.Screen name="users/[username]/followers" />
                   <Stack.Screen name="users/[username]/following" />
+                  <Stack.Screen name="influencer/[id]/index" />
+                  <Stack.Screen name="influencer/[id]/map" />
+                  <Stack.Screen name="influencer/[id]/claim" />
                   <Stack.Screen name="invite" />
                 </Stack>
                 {/* Last child so it layers over every screen, including the

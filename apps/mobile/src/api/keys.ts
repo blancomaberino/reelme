@@ -58,6 +58,12 @@ export const queryKeys = {
   publicList: (slug: string) => ['lists', 'public', slug] as const,
   /** Another user's public profile + viewer follow state (T-039). */
   profile: (username: string) => ['profile', username] as const,
+  /** An influencer's public profile + viewer follow state (T-039). */
+  influencer: (id: string) => ['influencer', id] as const,
+  /** The viewer's own claim on an influencer identity (T-038 flow, T-039 UI). */
+  influencerClaim: (id: string) => ['influencer', id, 'claim'] as const,
+  /** The selectable analysis-model catalog (T-020). */
+  analysisModels: () => ['analysis', 'models'] as const,
   followers: (username: string) => ['profile', username, 'followers'] as const,
   following: (username: string) => ['profile', username, 'following'] as const,
   /** A user's public places list + public Lists shown on their profile (T-071). */
