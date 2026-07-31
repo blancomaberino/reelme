@@ -14,6 +14,7 @@ use App\Http\Resources\InfluencerSummaryResource;
 use App\Http\Resources\PlaceListResource;
 use App\Http\Resources\PublicUserResource;
 use App\Http\Resources\UserSummaryResource;
+use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Follow;
 use App\Models\Influencer;
 use App\Models\Place;
@@ -23,7 +24,6 @@ use App\Services\Feed\PublishedShareFeed;
 use App\Services\Map\MapViewport;
 use App\Support\KeysetCursor;
 use App\Support\KeysetPage;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -56,7 +56,7 @@ class ProfileController extends Controller
             ->where('status', ShareStatus::Published)
             ->whereNotNull('published_place_source_id')
             ->whereHas('publishedPlaceSource.place', function ($p) {
-                /** @var Builder<Place> $p */
+                /** @var PlaceQueryBuilder $p */
                 $p->publiclyVisible();
             })]);
 

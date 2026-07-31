@@ -3,7 +3,7 @@
 namespace App\Services\Feed;
 
 use App\Enums\ShareStatus;
-use App\Models\Place;
+use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Share;
 use App\Support\KeysetCursor;
 use Closure;
@@ -31,7 +31,7 @@ class PublishedShareFeed
             ->whereNotNull('published_place_source_id')
             ->whereNotNull('published_at')
             ->whereHas('publishedPlaceSource.place', function ($q) {
-                /** @var Builder<Place> $q */
+                /** @var PlaceQueryBuilder $q */
                 $q->publiclyVisible();
             })
             ->with([
