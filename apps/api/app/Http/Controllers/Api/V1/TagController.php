@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\TagIndexRequest;
 use App\Http\Resources\TagResource;
 use App\Models\Tag;
 use App\Support\KeysetCursor;
+use App\Support\KeysetPage;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -64,27 +66,10 @@ class TagController extends Controller
             }
         }
 
-        $rows = $query->limit($limit + 1)->get();
-        $hasMore = $rows->count() > $limit;
-        $page = $rows->take($limit)->values();
-        $last = $page->last();
+        $page = KeysetPage::query($query, $limit, $sort, fn (Tag $last) => $popular
+            ? [(int) $last->places_count, $last->id]
+            : [$last->slug, $last->id]);
 
-        $nextCursor = null;
-        if ($hasMore && $last !== null) {
-            $nextCursor = KeysetCursor::encode($sort, $popular
-                ? [(int) $last->places_count, $last->id]
-                : [$last->slug, $last->id]);
-        }
-
-        return response()->json([
-            'data' => TagResource::collection($page),
-            'meta' => [
-                'pagination' => [
-                    'next_cursor' => $nextCursor,
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
-            ],
-        ]);
+        return ApiResponse::page(TagResource::collection($page->items), $page);
     }
 }

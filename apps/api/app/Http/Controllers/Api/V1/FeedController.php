@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\FeedRequest;
 use App\Http\Resources\FeedItemResource;
 use App\Services\Feed\PublishedShareFeed;
+use App\Support\KeysetPage;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -59,18 +61,13 @@ class FeedController extends Controller
                 }
             };
 
-        $page = $feed->paginate('feed', $request->validated('cursor'), $limit, $constrain);
+        $result = $feed->paginate('feed', $request->validated('cursor'), $limit, $constrain);
+        $page = KeysetPage::of($result['items'], $limit, $result['next_cursor']);
 
-        return response()->json([
-            'data' => FeedItemResource::collection($page['items']),
-            'meta' => [
-                'scope' => $scope,
-                'pagination' => [
-                    'next_cursor' => $page['next_cursor'],
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
-            ],
-        ]);
+        return ApiResponse::page(
+            FeedItemResource::collection($page->items),
+            $page,
+            ['scope' => $scope],
+        );
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UpdateMeRequest;
 use App\Http\Resources\UserResource;
@@ -13,10 +14,7 @@ class MeController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        return response()->json([
-            'data' => ['user' => new UserResource($request->user())],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['user' => new UserResource($request->user())]);
     }
 
     /**
@@ -40,9 +38,6 @@ class MeController extends Controller
 
         $user->fill($data)->save();
 
-        return response()->json([
-            'data' => ['user' => new UserResource($user->fresh())],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['user' => new UserResource($user->fresh())]);
     }
 }

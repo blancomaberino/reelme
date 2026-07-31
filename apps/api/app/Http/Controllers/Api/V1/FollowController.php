@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\InfluencerSummaryResource;
 use App\Http\Resources\UserSummaryResource;
@@ -10,6 +11,7 @@ use App\Models\Influencer;
 use App\Models\User;
 use App\Notifications\NewFollower;
 use App\Support\KeysetCursor;
+use App\Support\KeysetPage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -46,10 +48,7 @@ class FollowController extends Controller
             ->where('followee_id', $id)
             ->first();
         if ($existing !== null) {
-            return response()->json([
-                'data' => ['id' => (string) $existing->id],
-                'meta' => (object) [],
-            ], 409);
+            return ApiResponse::item(['id' => (string) $existing->id], [], 409);
         }
 
         $follow = DB::transaction(function () use ($me, $type, $id, $followee) {
@@ -79,10 +78,7 @@ class FollowController extends Controller
             $notifiable?->notify(new NewFollower($me));
         }
 
-        return response()->json([
-            'data' => ['id' => (string) $follow->id],
-            'meta' => (object) [],
-        ], $follow->wasRecentlyCreated ? 201 : 409);
+        return ApiResponse::item(['id' => (string) $follow->id], [], $follow->wasRecentlyCreated ? 201 : 409);
     }
 
     public function destroy(Request $request, Follow $follow): JsonResponse
@@ -110,7 +106,7 @@ class FollowController extends Controller
             }
         });
 
-        return response()->json(['data' => null, 'meta' => (object) []], 200);
+        return ApiResponse::noContent();
     }
 
     /** Who I follow — cursor-paginated, followees serialized as summaries. */
@@ -128,13 +124,10 @@ class FollowController extends Controller
             $query->where('id', '<', KeysetCursor::intKey($cursor[0]));
         }
 
-        $rows = $query->limit($limit + 1)->get();
-        $hasMore = $rows->count() > $limit;
-        $page = $rows->take($limit)->values();
-        $last = $page->last();
+        $page = KeysetPage::query($query, $limit, 'me-follows', fn (Follow $last) => [$last->id]);
 
-        return response()->json([
-            'data' => $page->map(fn (Follow $f) => [
+        return ApiResponse::page(
+            $page->items->map(fn (Follow $f) => [
                 'id' => (string) $f->id,
                 'followable_type' => $f->followee_type,
                 'followee' => match (true) {
@@ -148,14 +141,8 @@ class FollowController extends Controller
                     default => null, // followee deleted since — edge is stale
                 },
             ]),
-            'meta' => [
-                'pagination' => [
-                    'next_cursor' => ($hasMore && $last !== null) ? KeysetCursor::encode('me-follows', [$last->id]) : null,
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
-            ],
-        ]);
+            $page,
+        );
     }
 
     /**

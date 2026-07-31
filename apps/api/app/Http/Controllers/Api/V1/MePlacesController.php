@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\ShareStatus;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceListingRequest;
@@ -99,7 +100,7 @@ class MePlacesController extends Controller
             ->orderBy('tags.slug')
             ->get();
 
-        return response()->json(['data' => TagResource::collection($tags)]);
+        return ApiResponse::collection(TagResource::collection($tags));
     }
 
     /**
@@ -122,10 +123,10 @@ class MePlacesController extends Controller
             ->pluck("places.{$column}")
             ->all();
 
-        return response()->json(['data' => [
+        return ApiResponse::item([
             'countries' => $distinct('country_code'),
             'types' => $distinct('cuisine_primary'),
-        ]]);
+        ]);
     }
 
     /**

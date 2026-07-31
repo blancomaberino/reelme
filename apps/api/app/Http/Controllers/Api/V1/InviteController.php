@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\InviteRequest;
 use App\Mail\FriendInvite;
@@ -57,6 +58,6 @@ class InviteController extends Controller
             }
         }
 
-        return response()->json(['data' => ['status' => 'queued'], 'meta' => (object) []], 202);
+        return ApiResponse::item(['status' => 'queued'], [], 202);
     }
 }

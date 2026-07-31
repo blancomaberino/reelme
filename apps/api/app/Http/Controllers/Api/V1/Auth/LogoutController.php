@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Auth;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -17,9 +18,6 @@ class LogoutController extends Controller
         // Pure bearer API: the current token is always a PersonalAccessToken.
         $user->currentAccessToken()->delete();
 
-        return response()->json([
-            'data' => ['ok' => true],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['ok' => true]);
     }
 }

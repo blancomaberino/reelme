@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Auth;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
@@ -26,12 +27,9 @@ class RegisterController extends Controller
 
         $token = $user->createToken($request->string('device_name'))->plainTextToken;
 
-        return response()->json([
-            'data' => [
-                'token' => $token,
-                'user' => new UserResource($user),
-            ],
-            'meta' => (object) [],
-        ], 201);
+        return ApiResponse::item([
+            'token' => $token,
+            'user' => new UserResource($user),
+        ], [], 201);
     }
 }

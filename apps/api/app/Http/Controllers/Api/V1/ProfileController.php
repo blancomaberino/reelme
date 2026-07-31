@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\ShareStatus;
+use App\Http\ApiResponse;
 use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProfileMapRequest;
@@ -21,6 +22,7 @@ use App\Models\User;
 use App\Services\Feed\PublishedShareFeed;
 use App\Services\Map\MapViewport;
 use App\Support\KeysetCursor;
+use App\Support\KeysetPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -63,23 +65,21 @@ class ProfileController extends Controller
         $viewer = $request->user('sanctum');
         $follow = $viewer?->follows()->where('followee_type', 'user')->where('followee_id', $user->id)->first();
 
-        return response()->json([
-            'data' => [
+        $shares = KeysetPage::of($page['items'], $limit, $page['next_cursor']);
+
+        return ApiResponse::page(
+            [
                 'profile' => new PublicUserResource($user),
-                'shares' => FeedItemResource::collection($page['items']),
+                'shares' => FeedItemResource::collection($shares->items),
             ],
-            'meta' => [
+            $shares,
+            [
                 'viewer' => [
                     'following' => $follow !== null,
                     'follow_id' => $follow !== null ? (string) $follow->id : null,
                 ],
-                'pagination' => [
-                    'next_cursor' => $page['next_cursor'],
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
             ],
-        ]);
+        );
     }
 
     /**
@@ -127,9 +127,7 @@ class ProfileController extends Controller
             ->limit(100)
             ->get();
 
-        return response()->json([
-            'data' => PlaceListResource::collection($lists),
-        ]);
+        return ApiResponse::collection(PlaceListResource::collection($lists));
     }
 
     /**
@@ -202,21 +200,10 @@ class ProfileController extends Controller
      */
     private function followPage(Collection $rows, int $limit, callable $map): JsonResponse
     {
-        $hasMore = $rows->count() > $limit;
-        $page = $rows->take($limit)->values();
-        $last = $page->last();
+        // Both lists keyset on Follow.id desc, so one namespace serves both.
+        $page = KeysetPage::fromRows($rows, $limit, 'profile-follows', fn (Follow $last) => [$last->id]);
 
-        return response()->json([
-            'data' => $page->map($map),
-            'meta' => [
-                'pagination' => [
-                    // Both lists keyset on Follow.id desc, so one namespace serves both.
-                    'next_cursor' => ($hasMore && $last !== null) ? KeysetCursor::encode('profile-follows', [$last->id]) : null,
-                    'prev_cursor' => null,
-                    'limit' => $limit,
-                ],
-            ],
-        ]);
+        return ApiResponse::page($page->items->map($map), $page);
     }
 
     /** Private profiles 404 for everyone but their owner (no existence leak). */

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
@@ -30,9 +31,6 @@ class AnalysisPreferenceController extends Controller
         $user->preferred_analysis_model = $validated['model'] === 'auto' ? null : $validated['model'];
         $user->save();
 
-        return response()->json([
-            'data' => ['user' => new UserResource($user)],
-            'meta' => (object) [],
-        ]);
+        return ApiResponse::item(['user' => new UserResource($user)]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UserPlaceTagRequest;
 use App\Http\Resources\UserPlaceTagResource;
@@ -99,9 +100,6 @@ class UserPlaceTagController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        return response()->json([
-            'data' => UserPlaceTagResource::collection($tags),
-            'meta' => (object) [],
-        ], $status);
+        return ApiResponse::item(UserPlaceTagResource::collection($tags), [], $status);
     }
 }

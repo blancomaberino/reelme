@@ -2,6 +2,7 @@
 
 namespace App\Services\Map;
 
+use App\Http\ApiResponse;
 use App\Http\Requests\MapPlacesRequest;
 use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Place;
@@ -111,15 +112,12 @@ class MapViewport
         $truncated = $places->count() > self::PIN_CAP;
         $pins = $places->take(self::PIN_CAP)->map(fn (Place $p) => $this->pin($p))->all();
 
-        return response()->json([
-            'data' => ['pins' => $pins, 'clusters' => []],
-            'meta' => array_filter([
-                'zoom' => $zoom,
-                'total_in_bbox' => $total,
-                'clustered' => false,
-                'truncated' => $truncated ?: null,
-            ], fn ($v) => $v !== null),
-        ]);
+        return ApiResponse::item(['pins' => $pins, 'clusters' => []], array_filter([
+            'zoom' => $zoom,
+            'total_in_bbox' => $total,
+            'clustered' => false,
+            'truncated' => $truncated ?: null,
+        ], fn ($v) => $v !== null));
     }
 
     /**
@@ -197,15 +195,12 @@ class MapViewport
                 ->all();
         }
 
-        return response()->json([
-            'data' => ['pins' => $pins, 'clusters' => $clusters],
-            'meta' => array_filter([
-                'zoom' => $zoom,
-                'total_in_bbox' => $total,
-                'clustered' => true,
-                'truncated' => $truncated ?: null,
-            ], fn ($v) => $v !== null),
-        ]);
+        return ApiResponse::item(['pins' => $pins, 'clusters' => $clusters], array_filter([
+            'zoom' => $zoom,
+            'total_in_bbox' => $total,
+            'clustered' => true,
+            'truncated' => $truncated ?: null,
+        ], fn ($v) => $v !== null));
     }
 
     /**

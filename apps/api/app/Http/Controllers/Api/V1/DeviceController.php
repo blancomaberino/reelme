@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use Illuminate\Http\JsonResponse;
@@ -41,12 +42,10 @@ class DeviceController extends Controller
             ],
         );
 
-        return response()->json([
-            'data' => [
-                'id' => $device->id,
-                'platform' => $device->platform,
-            ],
-        ], $device->wasRecentlyCreated ? 201 : 200);
+        return ApiResponse::item([
+            'id' => $device->id,
+            'platform' => $device->platform,
+        ], [], $device->wasRecentlyCreated ? 201 : 200);
     }
 
     /**
