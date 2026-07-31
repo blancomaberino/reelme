@@ -2692,7 +2692,7 @@
       "id": "T-102",
       "title": "Contracts: share / feed-item / place-list schemas + conformance tests (close the pipeline drift gap)",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-094"
       ],
@@ -2715,7 +2715,7 @@
         "Gates green: composer lint + stan + test; npm run lint + tsc --noEmit + test"
       ],
       "agent": "executor",
-      "notes": "Audit finding A3 (2026-07-29). ADR-006 declares contracts the single source of truth, but the 7 schemas cover only the read-only discovery surface. ShareResource is the most complex payload in the system (222 lines) and its mobile counterpart is 12 hand-written types with nothing pinning them together - exactly where drift hurts most. T-094 pinned PlaceSummary/UserProfile/extraction; this finishes the job."
+      "notes": "Audit finding A3 (2026-07-29). ADR-006 declares contracts the single source of truth, but the 7 schemas cover only the read-only discovery surface. ShareResource is the most complex payload in the system (222 lines) and its mobile counterpart is 12 hand-written types with nothing pinning them together - exactly where drift hurts most. T-094 pinned PlaceSummary/UserProfile/extraction; this finishes the job.\n2026-07-31: 2026-07-31: implemented on feat/T-102-contracts-share-feed-list, PR #152 (awaiting merge). Delivered 6 schemas, not 3: share.json, feed-item.json, place-list.json + place-list-detail.json (the index and detail resources are separate shapes, mirroring place.json/place-summary.json), and user-summary.json + influencer-summary.json for the attribution blocks the others were each restating (place-source.json now refs them too). METHOD NOTE: share.json refs ../extraction.schema.json, which forced two infrastructure fixes — (1) generate.ts must dereference before stripping array bounds, else bounds inside a REFERENCED file survive and json-schema-to-typescript expands them into tuple unions (measured: 262k-line share.ts); the walk is now cycle-safe since dereferencing makes the schema a graph. (2) The ref resolves to https://contracts.reelmap.app/extraction.schema.json, outside the registered schemas prefix, so ApiSchema registers that one id against config('contracts.extraction_schema_path'). Also switched ApiSchema::errors to multi-message formatting — an anyOf nullable embed otherwise reports only 'must match the type: null' and hides the real cause. TWO DRIFTS FOUND AND FIXED IN THE CODE: analysis.model and source_post.url were typed nullable on mobile though both columns are NOT NULL; FeedItem's sharer/place/source_post were typed non-nullable though the API nulls each independently. 28 new tests; all 9 gates green."
     },
     {
       "id": "T-103",
