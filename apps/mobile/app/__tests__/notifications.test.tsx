@@ -129,9 +129,15 @@ describe('mark all read', () => {
     render(<NotificationsScreen />, { wrapper: Providers });
     fireEvent.press(await screen.findByTestId('mark-all-read'));
 
-    // Still in flight, and the dots are already gone.
-    await waitFor(() => expect(screen.queryAllByTestId('unread-dot')).toHaveLength(0));
+    // Sequence on the request being issued rather than on a wall-clock timeout:
+    // the POST appearing in history is the exact moment "in flight" begins, and
+    // the reply above is still held open, so anything asserted after this line
+    // is by definition pre-response.
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
     expect(JSON.parse(mock.history.post[0].data)).toEqual({ all: true });
+
+    // Still in flight, and the dots are already gone.
+    expect(screen.queryAllByTestId('unread-dot')).toHaveLength(0);
 
     release();
   });
