@@ -2752,7 +2752,7 @@
       "id": "T-104",
       "title": "Design tokens (space/radius/type) + ScreenHeader + Button variants",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-060",
         "T-101"
@@ -2777,7 +2777,7 @@
         "Uses /frontend-design per CLAUDE.md"
       ],
       "agent": "executor",
-      "notes": "Audit findings B5/B6/B9 (2026-07-29). Today src/theme/colors.ts IS the design system. Spacing drift: 12 (111x), 8 (84x), 10 (50x), 16 (47x), 6 (39x), 4 (38x), 14 (30x) plus one-offs at 3/5/7/9/13. Radius: 12/999/14/16 plus 2/3/4/6/8/9/10/22/28/40/44. Type: 20 distinct sizes including 17/19/21/27. 15 screens duplicate the back header. Button has 2 variants and 1 size, so only 13 of 29 screens import it. Sequenced after T-101 so tokens are defined against the corrected palette."
+      "notes": "Audit findings B5/B6/B9 (2026-07-29). Today src/theme/colors.ts IS the design system. Spacing drift: 12 (111x), 8 (84x), 10 (50x), 16 (47x), 6 (39x), 4 (38x), 14 (30x) plus one-offs at 3/5/7/9/13. Radius: 12/999/14/16 plus 2/3/4/6/8/9/10/22/28/40/44. Type: 20 distinct sizes including 17/19/21/27. 15 screens duplicate the back header. Button has 2 variants and 1 size, so only 13 of 29 screens import it. Sequenced after T-101 so tokens are defined against the corrected palette.\n2026-07-31: Implemented + PR #156. tokens.ts (space/radius/type, descriptive — every step is a value already in heavy use), ScreenHeader replaces 14 of 15 back headers (place/[slug] keeps its own: title-less overlay on the hero image), Button gains danger/ghost/link + size + icon slot. ESLint token rule polarity matters: applies to everything with a legacy exemption list (eslint.tokens-legacy.js, 55 files) that may only SHRINK, so new files are covered by default. ⭐ REGRESSION I INTRODUCED AND TESTS MISSED: the mechanical header migration discarded each onPress, dropping safeBack from 3 deep-linkable screens incl. share-status (a PUSH NOTIFICATION target) where bare router.back() throws GO_BACK-not-handled. Found only because safeBack showed as an unused import. Fixed at the component — ScreenHeader now DEFAULTS to safeBack. ⭐ ESLINT GOTCHA: esquery applies regex attribute matching only to STRING values, so Literal[value=/^\\d+$/] matched 0 of 832 real violations and looked like a clean pass; use Literal[value>=0]. ⭐ minimatch reads [slug] as a character class, so Expo Router paths in a files: list need \\\\[ escaping in the JS source. Visual: title 20pt sans/22pt sans/20pt serif -> uniform 20pt serif; shares screens shift exactly 4pt (padding 10->12) with 0.00 residual; Button 15/28/r14 -> 16/32/r16."
     },
     {
       "id": "T-105",
@@ -2896,7 +2896,7 @@
       "id": "T-109",
       "title": "Extract SourcePostResolver out of ShareController",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-097"
       ],
