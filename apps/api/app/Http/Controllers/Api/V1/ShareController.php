@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Adapters\AdapterRegistry;
-use App\Enums\FetchStatus;
 use App\Enums\Platform;
 use App\Enums\ShareStatus;
 use App\Http\ApiResponse;
@@ -16,8 +14,7 @@ use App\Jobs\Pipeline;
 use App\Models\HiddenPlace;
 use App\Models\PlaceSource;
 use App\Models\Share;
-use App\Models\SourcePost;
-use App\Services\Ingestion\UrlCanonicalizer;
+use App\Services\Ingestion\SourcePostResolver;
 use App\Services\Places\ExtractionCorrector;
 use App\Services\Places\PublishBestGuess;
 use App\Services\Places\ResolvePendingPlace;
@@ -28,7 +25,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ShareController extends Controller
@@ -57,8 +53,7 @@ class ShareController extends Controller
     }
 
     public function __construct(
-        private readonly UrlCanonicalizer $canonicalizer,
-        private readonly AdapterRegistry $registry,
+        private readonly SourcePostResolver $sources,
         private readonly ExtractionCorrector $corrector,
         private readonly PublishBestGuess $bestGuess,
     ) {}
@@ -69,7 +64,7 @@ class ShareController extends Controller
         $url = $this->extractUrl($request);
         $caption = $request->string('caption')->value() ?: null;
 
-        [$post, $platform] = $this->resolveSourcePost($url, $request->string('source_hint')->value() ?: null, $caption);
+        $source = $this->sources->resolve($url, $request->string('source_hint')->value() ?: null, $caption);
 
         // Duplicate guard: one share per (user, source_post). Never a 2nd row.
         // Fast path avoids the insert; the unique(user_id, source_post_id)
@@ -77,14 +72,14 @@ class ShareController extends Controller
         // of the same post would otherwise hit (common on a mobile double-tap /
         // share-sheet double-fire) — the loser returns the idempotent replay
         // instead of a 500.
-        $existing = Share::where('user_id', $user->id)->where('source_post_id', $post->id)->first();
+        $existing = Share::where('user_id', $user->id)->where('source_post_id', $source->post->id)->first();
         if ($existing !== null) {
             // Re-sharing a post you'd soft-hidden is the natural "re-add" gesture
             // (there is no separate un-hide) — clear the dismissal so its pin
             // returns to your map + "my places" (T-071).
             $this->undismiss($existing);
 
-            return $this->created($existing, $url, $platform, idempotentReplay: true);
+            return $this->created($existing, $url, $source->platform, idempotentReplay: true);
         }
 
         try {
@@ -95,21 +90,21 @@ class ShareController extends Controller
             // whether or not an ambient transaction is open.
             $share = DB::transaction(fn (): Share => Share::query()->forceCreate([
                 'user_id' => $user->id,
-                'source_post_id' => $post->id,
+                'source_post_id' => $source->post->id,
                 'status' => ShareStatus::Pending->value,
                 'shared_via' => $request->string('shared_via')->value()
                     ?: ($url !== null ? 'share_sheet' : 'manual'),
             ]));
         } catch (UniqueConstraintViolationException) {
-            $winner = Share::where('user_id', $user->id)->where('source_post_id', $post->id)->firstOrFail();
+            $winner = Share::where('user_id', $user->id)->where('source_post_id', $source->post->id)->firstOrFail();
             $this->undismiss($winner);
 
-            return $this->created($winner, $url, $platform, idempotentReplay: true);
+            return $this->created($winner, $url, $source->platform, idempotentReplay: true);
         }
 
         IngestShare::dispatch($share->id);
 
-        return $this->created($share, $url, $platform, idempotentReplay: false);
+        return $this->created($share, $url, $source->platform, idempotentReplay: false);
     }
 
     public function index(Request $request): JsonResponse
@@ -282,80 +277,6 @@ class ShareController extends Controller
         }
 
         return ApiResponse::item(['ok' => true]);
-    }
-
-    /**
-     * @return array{0: SourcePost, 1: ?Platform}
-     */
-    private function resolveSourcePost(?string $url, ?string $hint, ?string $caption = null): array
-    {
-        $hintPlatform = $hint !== null ? Platform::tryFrom($hint) : null;
-
-        // Manual text share: a pasted caption IS the content. Store it pre-fetched
-        // (any URL is kept only as a reference) so FetchSourcePost no-ops and the
-        // pipeline extracts from the caption directly — the fetch-free demo path.
-        // NOTE: each submission mints a fresh external_id, so the (user,source_post)
-        // dedup guard can't fire — a resubmitted caption creates a new run/pin. Fine
-        // for the demo; ResolvePlace still dedups the resulting *place* by geo+name.
-        if ($caption !== null) {
-            $externalId = 'manual-'.Str::ulid();
-
-            $post = SourcePost::forceCreate([
-                'platform' => ($hintPlatform ?? Platform::Instagram)->value,
-                'external_id' => $externalId,
-                'url' => $url !== null ? mb_substr($url, 0, 2048) : "manual://{$externalId}",
-                'caption' => $caption,
-                'fetch_status' => FetchStatus::Fetched->value,
-                'fetched_at' => now(),
-            ]);
-
-            return [$post, $hintPlatform];
-        }
-
-        if ($url !== null) {
-            $canonical = $this->canonicalizer->canonicalize($url);
-            // The `url` field is validated max:2048 to match source_posts.url, but a
-            // URL pulled out of `shared_text` (max:5000) or a shortlink expansion can
-            // exceed that — reject cleanly instead of letting Postgres 22001 → 500.
-            abort_if(mb_strlen($canonical->url) > 2048, 422, 'The resolved URL is too long.');
-
-            // Launch gate (T-014): reject a share from a recognised but disabled
-            // source (Instagram-only at launch) with a clear message, instead of
-            // silently parking it for manual upload. Same switch the adapter chain
-            // reads — flip ingestion.platforms.<p>.enabled to open a source.
-            if ($canonical->platform !== null && ! $this->registry->platformEnabled($canonical->platform)) {
-                throw ValidationException::withMessages([
-                    'url' => "Sharing from {$canonical->platform->label()} isn't available yet — only Instagram is supported right now.",
-                ]);
-            }
-            // NOTE: source_posts.platform is NOT NULL with 4 fixed values (02 §3.4),
-            // but an unknown-host URL has no platform — a data-model gap. We store a
-            // placeholder (hint or instagram) that FetchSourcePost ignores (it
-            // re-resolves adapters by URL), and return the *real* (possibly null)
-            // platform to the client. TODO(T-024/ADR): nullable platform / `unknown`.
-            $platform = $canonical->platform ?? $hintPlatform ?? Platform::Instagram;
-            $externalId = $canonical->externalId ?? sha1($canonical->url);
-
-            $post = SourcePost::firstOrCreate(
-                ['platform' => $platform, 'external_id' => $externalId],
-                ['url' => $canonical->url],
-            );
-
-            return [$post, $canonical->platform];
-        }
-
-        // Pure manual share: no URL yet.
-        $platform = $hintPlatform ?? Platform::Instagram;
-        $externalId = 'manual-'.Str::ulid();
-
-        $post = SourcePost::forceCreate([
-            'platform' => $platform->value,
-            'external_id' => $externalId,
-            'url' => "manual://{$externalId}",
-            'fetch_status' => FetchStatus::Manual->value,
-        ]);
-
-        return [$post, null];
     }
 
     private function extractUrl(Request $request): ?string
