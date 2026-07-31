@@ -2812,7 +2812,7 @@
       "id": "T-106",
       "title": "Place model decomposition wave 2: field-locking, Scout, geo and scopes out of the model",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-096"
       ],
@@ -2918,7 +2918,7 @@
         "Gates green: composer lint + stan + test"
       ],
       "agent": "executor",
-      "notes": "Audit finding A4 (2026-07-29). resolveSourcePost() is ~70 lines of domain logic in the HTTP layer, untestable except through a request. T-097 did the same extraction for the correction/merge engine (ExtractionCorrector) and is the pattern to follow."
+      "notes": "Audit finding A4 (2026-07-29). resolveSourcePost() is ~70 lines of domain logic in the HTTP layer, untestable except through a request. T-097 did the same extraction for the correction/merge engine (ExtractionCorrector) and is the pattern to follow.\n2026-07-31: Implemented + PR #157. SourcePostResolver (Services\\Ingestion) + ResolvedSource DTO; ShareController 410->331 lines, keeps auth/dedup/TOCTOU/transaction/response only. The DTO's two fields are intentionally different values: post->platform is the STORAGE PLACEHOLDER (source_posts.platform is NOT NULL, 4 fixed values) while ->platform is what we tell the client (null for an unknown host). Wrote ADR-109 in the plan repo answering the standing TODO(T-024/ADR): column stays NOT NULL because (a) a nullable column breaks share dedup — (platform, external_id) is the unique index and Postgres treats NULL as distinct, so every unknown-host re-share mints a new row; (b) an 'unknown' enum member costs a CHECK migration + a fifth match arm meaning 'ask the URL', which FetchSourcePost already does. Two behaviours PRESERVED not improved, both in the ADR as follow-ups: the >2048 URL guard still uses abort(422) (renders http_error/empty details vs every other 422's validation_failed/details.url — better but client-visible), and a resubmitted caption still mints a fresh external_id so share dedup can't fire on it. 18 new unit tests; all 109 existing share feature tests unchanged; 1108 total."
     },
     {
       "id": "T-110",
