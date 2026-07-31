@@ -74,16 +74,11 @@ Pick whichever surface(s) actually exercise the change — don't invent an admin
 
 ### Starting the local environment
 
-When the user asks to **"start the environment(s)"**, "spin up / run everything", "boot the backend", or "run the app locally", use **`./scripts/dev.sh`** (repo root) — do **not** hand-roll `docker compose` + worker + expo commands:
-
-- `./scripts/dev.sh backend` — boots the Docker stack (Postgres/PostGIS, Redis, Meilisearch, Mailpit, PHP 8.4 API on **`:8080`**), runs migrations, and starts the **queue worker**. The worker is required for the **share/analysis pipeline AND queued emails** (email verification, invites) — without it, shares never publish and no mail is sent. This mode is non-interactive; **the agent can run it directly**, then confirm `GET http://localhost:8080/api/v1/health` → 200.
-- `./scripts/dev.sh` (default `run`) — the above **plus** a native iOS build + launch of the Expo **dev client** (custom native app, not Expo Go) with `EXPO_PUBLIC_API_URL=http://localhost:8080` wired. First build is ~2–3 min; `start` skips the build (Metro only, fast) after a first `run`; `stop` tears the stack down.
-- `./scripts/dev.sh android` (+ `android-start`) — builds/launches on a connected **physical Android device**. A phone can't reach `localhost`, so the script points it at this Mac's **LAN IP** (`ipconfig getifaddr en0`) — the phone and Mac must share Wi-Fi. Android's map is Google Maps (iOS is Apple Maps), so it needs **`GOOGLE_MAPS_ANDROID_KEY`** set (wired conditionally in `app.config.ts`; the map is blank without it, everything else works). Needs Android Studio/SDK + a device with USB debugging (`adb devices`).
-- The build/launch modes are long-running and interactive — have the **user** run them in their terminal (suggest `! ./scripts/dev.sh`, `! ./scripts/dev.sh android`, etc.). The agent typically runs `./scripts/dev.sh backend` and lets the user launch the device.
-- Captured emails (verification codes, invites) are viewable in **Mailpit at http://localhost:8025**.
-- The script selects Node 22 from nvm automatically (Expo SDK 57 tooling needs Node ≥ 20.19; the host default may be older).
+Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compose` + worker + expo commands. For the mode reference (`backend` / `run` / `start` / `stop` / `android`), what each one boots, and the device caveats, see the **`dev-environment`** skill.
 
 > ⚠️ **Never run `php artisan migrate:fresh` (or `db:wipe`) against the dev DB** — artisan's default connection is the dev Postgres, so it **wipes dev data**. Use plain `migrate` on dev; the Pest suite uses a separate testing database. Only wipe dev when the user explicitly asks (e.g. "clear the DB").
+>
+> This rule is **enforced**, not advisory: a `PreToolUse` hook blocks those commands outright. Neither `--env=testing` nor `--database=testing` gets around it — verified, neither points at the test database. The only override is `REELMAP_ALLOW_DB_WIPE=1`.
 
 ### Other
 
@@ -91,11 +86,18 @@ When the user asks to **"start the environment(s)"**, "spin up / run everything"
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
 - The **build plan and task queue live in `~/Sites/plans/reelmap`** (`tasks/tasks.json` is the source of truth); application code lives here. Follow the plan; record deviations as ADRs in the plan, never by editing the spec to match code.
 
+### Automation in `.claude/` (checked in — shared, not personal)
+
+Unlike `/coderabbit` and graphify (user-level setups on one machine), the following live in the repo and apply to everyone:
+
+- **`/gates`** — runs the gate matrix for the areas the branch touches, mirroring the path filters in `.github/workflows/ci.yml`. Use it as you work; it does **not** replace `/coderabbit`, which is still the mandatory pre-PR pass.
+- **`/task`** — drives the `T-###` lifecycle over the plan queue (`next` / `show` / `start` / `note` / `done`) and carries the completion-report template. Set `REELMAP_PLAN_DIR` if your plan checkout isn't at `~/Sites/plans/reelmap`.
+- **Agents** — `contract-consistency-reviewer` (a payload shape must agree across the API Resource, the JSON Schema, and the mobile TS; `tsc` and Pest each see only one seam) and `native-rebuild-checker` (JS-only vs full dev-client rebuild, so mobile work isn't called done on green Jest alone).
+- **Hooks** (`.claude/settings.json`) — the dev-DB guard above; Pint-on-save for `apps/api/**/*.php` (run in the container, since local PHP is 8.2); and contract regeneration when a `packages/contracts` schema is edited, because stale generated output is an automatic CI failure.
+- **`.mcp.json`** wires **Laravel Boost** over `docker exec`. Boost's `tinker` tool reaches the dev database and is **not** covered by the Bash guard above — it inspects shell commands only.
+
+`.claude/settings.local.json` is git-ignored: put personal overrides there.
+
 ### Codebase knowledge graph (graphify)
 
-This repo is mapped with **graphify** — a local knowledge graph of the codebase (Tree-sitter AST over all ~800 code files + semantic extraction over the docs). It's a **local dev aid, not a checked-in artifact**: everything lives under `graphify-out/` which is **git-ignored** (it holds machine-specific paths + a cache).
-
-- **Answering "how does X work / what connects to Y / trace the flow through Z" questions:** when `graphify-out/graph.json` exists, prefer **`graphify query "<question>"`** (or the `/graphify` skill) over a cold grep — it already knows the cross-cutting bridges. Top hubs are `Place`, `Share`, `User`; the `@reelmap/contracts` package is the API↔mobile source-of-truth bridge.
-- **Keeping it fresh:** a **post-commit hook auto-rebuilds** the graph (AST only — no tokens, no network) after every commit, and a post-checkout hook refreshes it on branch switch. **Code changes need nothing.** Doc/image/schema changes are *not* picked up automatically — run **`/graphify . --update`** (or `graphify update`) manually after meaningful doc edits.
-- **Full rebuild from scratch:** `/graphify .` (skips the `assets/` icons and test-fixture videos by design; the `.npmrc` is auto-skipped as sensitive).
-- graphify is a **personal/local setup on this machine** (installed via `uv tool install graphifyy`), like `/coderabbit` — it is not wired into CI and imposes nothing on collaborators.
+This repo is mapped with **graphify**, a local (git-ignored, never checked in) knowledge graph of the codebase. For **"how does X work / what connects to Y / trace the flow through Z"** questions, prefer **`graphify query "<question>"`** over a cold grep — it already knows the cross-cutting bridges. See the **`graphify-repo`** skill for how it's built, when it auto-refreshes, and when you must rebuild it by hand.
