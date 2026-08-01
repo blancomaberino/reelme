@@ -8,6 +8,7 @@ import { useLogout } from '@/api/hooks/useAuth';
 import { Button } from '@/components/button';
 import { VerifyEmailBanner } from '@/components/verify-email-banner';
 import { useT } from '@/i18n';
+import { useUnreadCount } from '@/api/hooks/useNotifications';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
 
@@ -16,6 +17,8 @@ export default function ProfileScreen() {
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
   const user = useSessionStore((s) => s.user);
+  const authed = useSessionStore((s) => s.status === 'authed');
+  const unread = useUnreadCount();
   const logout = useLogout();
 
   function onLogout() {
@@ -32,6 +35,27 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.name}>{user?.name ?? t('profile.title')}</Text>
         {user ? <Text style={styles.username}>@{user.username}</Text> : null}
+        {authed ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              unread > 0 ? `${t('notifications.title')} (${unread})` : t('notifications.title')
+            }
+            onPress={() => router.push('/notifications')}
+            hitSlop={12}
+            style={styles.bell}
+            testID="notifications-bell"
+          >
+            <Ionicons name="notifications-outline" size={24} color={c.text} />
+            {unread > 0 ? (
+              <View style={styles.badge} testID="notifications-badge">
+                {/* Capped: a three-digit badge stops being a number and starts
+                    being noise, and it would blow the pill's width. */}
+                <Text style={styles.badgeText}>{unread > 99 ? '99+' : unread}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
       </View>
       <View style={styles.body}>
         <VerifyEmailBanner />
@@ -109,6 +133,20 @@ const makeStyles = (c: Palette) =>
     },
     avatarText: { fontSize: 32, fontWeight: '700', color: c.primary },
     name: { fontSize: 28, fontWeight: '700', color: c.text },
+    bell: { position: 'absolute', right: 0, top: 0, padding: 4 },
+    badge: {
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      minWidth: 18,
+      height: 18,
+      paddingHorizontal: 4,
+      borderRadius: 9,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    badgeText: { color: c.onPrimary, fontSize: 11, fontWeight: '800' },
     username: { fontSize: 16, color: c.muted },
     body: { flex: 1, marginTop: 24 },
     settingsRow: {

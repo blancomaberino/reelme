@@ -72,6 +72,7 @@ export default function RootLayout() {
                   <Stack.Screen name="influencer/[id]/map" />
                   <Stack.Screen name="influencer/[id]/claim" />
                   <Stack.Screen name="invite" />
+                  <Stack.Screen name="notifications" />
                 </Stack>
                 {/* Last child so it layers over every screen, including the
                     fullscreen map, which has no header to push down. */}

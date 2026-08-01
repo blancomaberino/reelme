@@ -52,6 +52,12 @@ abstract class ShareNotification extends Notification implements ShouldQueue
         return [
             'type' => $this->type(),
             'url' => $this->url(),
+            // title/body are the same strings the push carries. The center
+            // renders from the stored row, so without them a notification that
+            // arrived while the app was closed would list as a blank line
+            // (T-040). One payload convention, both channels.
+            'title' => $this->title(),
+            'body' => $this->body(),
             'share_id' => $this->share->id,
         ];
     }

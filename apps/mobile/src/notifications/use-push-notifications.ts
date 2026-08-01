@@ -77,6 +77,9 @@ export function usePushNotifications(): void {
       // is /place/… and has no id to parse) so an open share screen live-updates.
       const id = shareIdFromData(dataFromNotification(notification));
       if (id) void qc.invalidateQueries({ queryKey: queryKeys.share(id) });
+      // Every push now has a database twin (T-040), so the center and its badge
+      // must reflect an arrival that happened while the app was open.
+      void qc.invalidateQueries({ queryKey: queryKeys.notifications() });
     });
     return () => sub.remove();
   }, [qc]);

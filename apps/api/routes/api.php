@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\MePlacesController;
 use App\Http\Controllers\Api\V1\ModelController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PlaceController;
 use App\Http\Controllers\Api\V1\PlaceListController;
 use App\Http\Controllers\Api\V1\PlatformAccountController;
@@ -201,6 +202,11 @@ Route::prefix('v1')->group(function () {
         // A light write throttle matches the other write surfaces; the bio-verify
         // action additionally self-limits its remote profile fetch in-controller.
         Route::middleware('throttle:30,1')->group(function () {
+            // Notification center (T-040, 03 §2.15) — the durable twin of the
+            // T-027 pushes. Every query is scoped from $user->notifications().
+            Route::get('/notifications', [NotificationController::class, 'index']);
+            Route::post('/notifications/read', [NotificationController::class, 'read']);
+
             Route::get('/influencers/{influencer}/claim', [InfluencerClaimController::class, 'show']);
             Route::post('/influencers/{influencer}/claim', [InfluencerClaimController::class, 'store']);
         });
