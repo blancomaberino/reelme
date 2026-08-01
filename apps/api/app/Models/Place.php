@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ClaimStatus;
 use App\Enums\PlaceStatus;
 use App\Models\Builders\PlaceQueryBuilder;
 use App\Services\Reviews\ReviewSourceRegistry;
@@ -181,6 +182,31 @@ class Place extends Model
     public function sources(): HasMany
     {
         return $this->hasMany(PlaceSource::class);
+    }
+
+    /**
+     * Restaurant-owner claims (T-041), in every state.
+     *
+     * @return HasMany<PlaceClaim, $this>
+     */
+    public function claims(): HasMany
+    {
+        return $this->hasMany(PlaceClaim::class);
+    }
+
+    /**
+     * The one verified claim, if the place has an operator.
+     *
+     * A `HasOne` rather than a denormalised column on `places`: the partial
+     * unique index already guarantees there is at most one, so a mirrored flag
+     * would be a second copy of a fact the database is enforcing anyway — and
+     * the only way for the two to disagree.
+     *
+     * @return HasOne<PlaceClaim, $this>
+     */
+    public function verifiedClaim(): HasOne
+    {
+        return $this->hasOne(PlaceClaim::class)->where('status', ClaimStatus::Verified);
     }
 
     /**

@@ -71,6 +71,11 @@ class PlaceResource extends JsonResource
             'name' => $this->name,
             'slug' => $this->slug,
             'status' => $this->status->value,
+            // Whether the venue has a verified operator (T-041). A boolean, not
+            // the claim or the owner: who runs a restaurant is not public, but
+            // "the people who run this place are here" is the signal a diner
+            // acts on — and it is what gates the offer surfaces in M4.
+            'claimed' => $this->verifiedClaim()->exists(),
             'lat' => $coords['lat'],
             'lng' => $coords['lng'],
             'category' => $this->cuisine_primary,

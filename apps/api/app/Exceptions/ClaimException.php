@@ -45,14 +45,18 @@ class ClaimException extends Exception
     }
 
     /** The identity is already owned by someone else — never silently reassigned. */
-    public static function conflict(): self
-    {
-        return new self(
-            'conflict',
-            'This influencer has already been claimed by another account. Contact support if this is you.',
-            409,
-            ['reason' => 'claimed_by_other'],
-        );
+    /**
+     * Something is already claimed by someone else.
+     *
+     * Both arguments are optional so the no-arg influencer call sites (T-038)
+     * read exactly as before; place claims (T-041) pass their own reason and
+     * wording, because "this influencer" is the wrong noun for a restaurant.
+     */
+    public static function conflict(
+        string $reason = 'claimed_by_other',
+        string $message = 'This influencer has already been claimed by another account. Contact support if this is you.',
+    ): self {
+        return new self('conflict', $message, 409, ['reason' => $reason]);
     }
 
     /** A moderator rejected this user's claim — re-claiming is blocked until appeal. */
