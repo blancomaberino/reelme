@@ -11,6 +11,7 @@ import { fitRegion } from '@/lib/map-region';
 import { useFormat } from '@/lib/use-format';
 import { useSessionStore } from '@/stores/session';
 import { fonts, type Palette, useColors } from '@/theme/colors';
+import { ScreenHeader } from '@/components/screen-header';
 
 /**
  * Read-only view of a shared list (T-063), reached by the deep link
@@ -43,20 +44,7 @@ export default function SharedListScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('place.back')}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(main)/map'))}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.title} numberOfLines={1}>
-          {list?.name ?? ''}
-        </Text>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={list?.name ?? ''} />
 
       {isLoading ? (
         <ActivityIndicator color={c.primary} style={styles.loading} />
@@ -141,16 +129,6 @@ export default function SharedListScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-    },
-    title: { flex: 1, fontSize: 22, fontWeight: '700', color: c.text },
-    spacer: { width: 26 },
     loading: { paddingVertical: 40 },
     empty: { alignItems: 'center', gap: 10, paddingTop: 80, paddingHorizontal: 40 },
     emptyTitle: { fontSize: 17, fontWeight: '700', color: c.text },

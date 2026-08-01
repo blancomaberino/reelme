@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -22,9 +21,9 @@ import { DishEditor } from '@/components/share/review/dish-editor';
 import { EvidencePanel } from '@/components/share/review/evidence-panel';
 import { PinAdjuster } from '@/components/share/review/pin-adjuster';
 import { PriceSelect } from '@/components/share/review/price-select';
+import { ScreenHeader } from '@/components/screen-header';
 import { type MessageKey, useT } from '@/i18n';
-import { safeBack } from '@/lib/nav';
-import { fonts, type Palette, useColors } from '@/theme/colors';
+import { type Palette, useColors } from '@/theme/colors';
 
 // App default center (matches the map screen) — the pin's starting point when the
 // extraction carries no coordinates (a geocode_failed review). Publishing without
@@ -207,13 +206,7 @@ function ReviewForm({ share, shareId }: { share: ShareDetail; shareId: string })
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={safeBack} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>{t('review.title')}</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader title={t('review.title')} divided />
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.subtitle}>{t('review.subtitle')}</Text>
@@ -388,17 +381,6 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
     center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: c.border,
-    },
-    headerTitle: { flex: 1, fontFamily: fonts.display, fontSize: 20, fontWeight: '700', color: c.text },
-    headerSpacer: { width: 26 },
     scroll: { padding: 20, gap: 20, paddingBottom: 48 },
     subtitle: { fontSize: 15, color: c.muted, lineHeight: 21, marginTop: -4 },
     section: { gap: 12 },

@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useInviteFriends } from '@/api/hooks/useInviteFriends';
 import { Button } from '@/components/button';
+import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
 
@@ -48,13 +49,7 @@ export default function InviteScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.title}>{t('invite.title')}</Text>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={t('invite.title')} />
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.hint}>{t('invite.hint')}</Text>
@@ -122,9 +117,6 @@ export default function InviteScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-    title: { flex: 1, fontSize: 20, fontWeight: '700', color: c.text },
-    spacer: { width: 26 },
     scroll: { padding: 20, gap: 14 },
     hint: { fontSize: 14, color: c.muted },
     inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

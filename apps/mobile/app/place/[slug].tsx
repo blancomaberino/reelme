@@ -69,7 +69,7 @@ function Header({
   const t = useT();
   return (
     <View style={styles.header}>
-      <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={onBack} hitSlop={12}>
+      <Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={onBack} hitSlop={12}>
         <Ionicons name="chevron-back" size={26} color={c.text} />
       </Pressable>
       {onSave ? (

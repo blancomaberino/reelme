@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, router } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useT } from '@/i18n';
 import { CURRENCIES, type Currency, type Locale, useSettingsStore } from '@/stores/settings';
 import { type Palette, useColors } from '@/theme/colors';
+import { ScreenHeader } from '@/components/screen-header';
 
 const LOCALES: { value: Locale; labelKey: 'settings.language.es' | 'settings.language.en' }[] = [
   { value: 'es', labelKey: 'settings.language.es' },
@@ -25,12 +26,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.title}>{t('settings.title')}</Text>
-      </View>
+      <ScreenHeader title={t('settings.title')} />
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.language')}</Text>
@@ -84,8 +80,6 @@ export default function SettingsScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-    title: { fontSize: 22, fontWeight: '700', color: c.text },
     section: { paddingHorizontal: 20, paddingTop: 12, gap: 6 },
     sectionTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: c.muted },
     hint: { fontSize: 14, color: c.muted, marginBottom: 6 },

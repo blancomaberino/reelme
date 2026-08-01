@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUpdateMe } from '@/api/hooks/useUpdateMe';
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
+import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
@@ -48,12 +49,7 @@ export default function EditProfileScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.title}>{t('editProfile.title')}</Text>
-      </View>
+      <ScreenHeader title={t('editProfile.title')} />
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <TextField label={t('editProfile.name')} value={name} onChangeText={setName} autoCapitalize="words" />
@@ -229,8 +225,6 @@ type Styles = ReturnType<typeof makeStyles>;
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-    title: { fontSize: 22, fontWeight: '700', color: c.text },
     scroll: { padding: 20, gap: 14, paddingBottom: 40 },
     age: { fontSize: 13, color: c.muted, marginTop: -6 },
     error: { color: c.danger, fontSize: 14 },

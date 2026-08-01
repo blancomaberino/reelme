@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,6 +9,7 @@ import { useUserPlaces } from '@/api/hooks/useProfile';
 import { fitRegion } from '@/lib/map-region';
 import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
+import { ScreenHeader } from '@/components/screen-header';
 
 /**
  * A user's map (T-071) — their published places on a fit-to-bounds MapView.
@@ -27,20 +28,7 @@ export default function UserMapScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('place.back')}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(main)/map'))}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {username ? `@${username}` : ''}
-        </Text>
-        <View style={styles.spacer} />
-      </View>
+      <ScreenHeader title={username ? `@${username}` : ''} />
 
       {isLoading ? (
         <ActivityIndicator color={c.primary} style={styles.loading} />
@@ -74,16 +62,6 @@ export default function UserMapScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-    },
-    headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: c.text },
-    spacer: { width: 26 },
     loading: { paddingVertical: 40 },
     map: { flex: 1 },
     empty: { alignItems: 'center', gap: 10, paddingTop: 80, paddingHorizontal: 40 },

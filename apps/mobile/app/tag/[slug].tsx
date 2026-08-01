@@ -9,6 +9,7 @@ import { usePlacesByTag } from '@/api/hooks/usePlacesByTag';
 import type { PlaceSummary } from '@/api/places';
 import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
+import { ScreenHeader } from '@/components/screen-header';
 
 /** Places carrying a tag (T-034): reached from a search Tags result. */
 export default function TagResultsScreen() {
@@ -49,14 +50,7 @@ export default function TagResultsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.title} numberOfLines={1}>
-          #{fmt.tag(slug.replace(/-/g, ' '))}
-        </Text>
-      </View>
+      <ScreenHeader title={`#${fmt.tag(slug.replace(/-/g, ' '))}`} />
 
       {isLoading ? (
         <View style={styles.center}>
@@ -91,8 +85,6 @@ export default function TagResultsScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
-    title: { fontFamily: fonts.display, fontSize: 22, fontWeight: '700', color: c.text, flex: 1, letterSpacing: -0.2 },
     list: { paddingHorizontal: 16, paddingBottom: 24 },
     row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
     pressed: { opacity: 0.6 },

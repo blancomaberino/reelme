@@ -1,14 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useShares } from '@/api/hooks/useShares';
 import { ShareRow } from '@/components/share/share-row';
+import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
-import { safeBack } from '@/lib/nav';
-import { fonts, type Palette, useColors } from '@/theme/colors';
+import { type Palette, useColors } from '@/theme/colors';
 
 /**
  * "My shares" — the ingest history, reachable from Profile (T-026). Each row
@@ -25,13 +24,7 @@ export default function MySharesScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel={t('place.back')} onPress={safeBack} hitSlop={12}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>{t('profile.myShares')}</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader title={t('profile.myShares')} divided />
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {isLoading ? (
@@ -51,17 +44,6 @@ export default function MySharesScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: c.border,
-    },
-    headerTitle: { flex: 1, fontFamily: fonts.display, fontSize: 20, fontWeight: '700', color: c.text },
-    headerSpacer: { width: 26 },
     scroll: { padding: 16 },
     center: { paddingVertical: 48, alignItems: 'center' },
     empty: { fontSize: 15, color: c.muted, textAlign: 'center', paddingVertical: 48 },
