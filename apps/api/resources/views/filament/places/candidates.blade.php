@@ -2,43 +2,47 @@
     /** @var list<array<string, mixed>> $candidates */
 @endphp
 
+{{-- `rm-` classes come from resources/views/filament/admin-styles.blade.php.
+     This view previously used Tailwind utilities, which a Filament v5 panel does
+     not ship: the table rendered with no cell padding and no row dividers. --}}
+
 @if (empty($candidates))
-    <p class="text-sm text-gray-500 dark:text-gray-400">
+    <p class="rm-note">
         No nearby candidates — nothing within the dedup radius looks like this place.
     </p>
 @else
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+    <div class="rm-scroll">
+        <table class="rm-table">
             <thead>
-                <tr class="text-left text-gray-500 dark:text-gray-400">
-                    <th class="py-2 pe-4 font-medium">Candidate</th>
-                    <th class="py-2 pe-4 font-medium">Similarity</th>
-                    <th class="py-2 pe-4 font-medium">Distance</th>
-                    <th class="py-2 pe-4 font-medium">Status</th>
-                    <th class="py-2 pe-4 font-medium">Sources</th>
-                    <th class="py-2 font-medium">Address</th>
+                <tr>
+                    <th>Candidate</th>
+                    <th>Similarity</th>
+                    <th>Distance</th>
+                    <th>Status</th>
+                    <th>Sources</th>
+                    <th>Address</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200 dark:divide-white/10">
+            <tbody>
                 @foreach ($candidates as $candidate)
                     <tr>
-                        <td class="py-2 pe-4">
-                            <a class="font-medium text-primary-600 underline"
+                        <td>
+                            <a class="rm-link rm-strong"
                                href="{{ \App\Filament\Resources\Places\PlaceResource::getUrl('view', ['record' => $candidate['place_id']]) }}">
                                 {{ $candidate['name'] }}
                             </a>
                         </td>
-                        <td class="py-2 pe-4 tabular-nums">{{ number_format($candidate['similarity'] * 100, 1) }}%</td>
-                        <td class="py-2 pe-4 tabular-nums">{{ number_format($candidate['distance_m'], 0) }} m</td>
-                        <td class="py-2 pe-4">{{ $candidate['status'] }}</td>
-                        <td class="py-2 pe-4 tabular-nums">{{ $candidate['shares_count'] }}</td>
-                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $candidate['address'] }}</td>
+                        <td class="rm-num">{{ number_format($candidate['similarity'] * 100, 1) }}%</td>
+                        <td class="rm-num">{{ number_format($candidate['distance_m'], 0) }} m</td>
+                        <td>{{ $candidate['status'] }}</td>
+                        <td class="rm-num">{{ $candidate['shares_count'] }}</td>
+                        <td class="rm-muted">{{ $candidate['address'] }}</td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
     </div>
-    <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">
+    <p class="rm-footnote">
         Use the <strong>Merge into…</strong> action above to fold this place into one of these candidates.
     </p>
 @endif

@@ -20,60 +20,52 @@
     };
 @endphp
 
+{{-- `rm-` classes come from resources/views/filament/admin-styles.blade.php,
+     which the panel injects once per page. Tailwind utilities do NOT work in a
+     Filament v5 panel — that file explains why. --}}
 <x-filament-widgets::widget>
     <x-filament::section
         heading="Stage timings"
         :description="'p50 / p95 duration and failure rate per pipeline stage · ' . $window"
     >
         @if (! $hasData)
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-                No pipeline stage ran in this window.
-            </p>
+            <p class="rm-note">No pipeline stage ran in this window.</p>
         @else
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
+            <div class="rm-scroll">
+                <table class="rm-table">
                     <thead>
-                        <tr class="text-left text-gray-500 dark:text-gray-400">
-                            <th class="py-2 pe-4 font-medium">Stage</th>
-                            <th class="py-2 pe-4 text-right font-medium">Runs</th>
-                            <th class="py-2 pe-4 text-right font-medium">p50</th>
-                            <th class="py-2 pe-4 text-right font-medium">p95</th>
-                            <th class="py-2 text-right font-medium">Failed</th>
+                        <tr>
+                            <th>Stage</th>
+                            <th class="rm-right">Runs</th>
+                            <th class="rm-right">p50</th>
+                            <th class="rm-right">p95</th>
+                            <th class="rm-right">Failed</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-white/10">
+                    <tbody>
                         @foreach ($rows as $row)
-                            {{-- A stage that never ran is dimmed, not hidden: in pipeline
-                                 order, a gap is itself the finding. --}}
-                            <tr @class(['opacity-50' => $row['runs'] === 0])>
-                                <td class="py-2 pe-4 font-medium text-gray-950 dark:text-white">
-                                    {{ $row['stage'] }}
-                                </td>
+                            <tr @class(['rm-idle' => $row['runs'] === 0])>
+                                <td class="rm-strong">{{ $row['stage'] }}</td>
                                 {{-- tabular-nums keeps the digits in a column so the
                                      eye can compare magnitudes down the table. --}}
-                                <td class="py-2 pe-4 text-right tabular-nums text-gray-500 dark:text-gray-400">
-                                    {{ number_format($row['runs']) }}
-                                </td>
-                                <td class="py-2 pe-4 text-right tabular-nums text-gray-950 dark:text-white">
-                                    {{ $duration($row['p50']) }}
-                                </td>
+                                <td class="rm-num rm-right rm-muted">{{ number_format($row['runs']) }}</td>
+                                <td class="rm-num rm-right rm-strong">{{ $duration($row['p50']) }}</td>
                                 {{-- The gap between p50 and p95 is the real signal, so p95
                                      gets the same weight as p50, not a muted treatment. --}}
-                                <td class="py-2 pe-4 text-right tabular-nums text-gray-950 dark:text-white">
-                                    {{ $duration($row['p95']) }}
-                                </td>
-                                <td class="py-2 text-right tabular-nums">
+                                <td class="rm-num rm-right rm-strong">{{ $duration($row['p95']) }}</td>
+                                <td class="rm-num rm-right">
                                     @if ($row['failed'] === 0)
-                                        <span class="text-gray-400 dark:text-gray-500">—</span>
+                                        <span class="rm-none">—</span>
                                     @else
                                         {{-- Colour only above a threshold. A table where every
                                              row is coloured communicates nothing. --}}
-                                        <x-filament::badge
-                                            :color="$row['failureRate'] >= 20 ? 'danger' : 'warning'"
-                                            class="inline-flex"
-                                        >
+                                        <span @class([
+                                            'rm-pill',
+                                            'rm-pill-danger' => $row['failureRate'] >= 20,
+                                            'rm-pill-warn' => $row['failureRate'] < 20,
+                                        ])>
                                             {{ number_format($row['failed']) }} · {{ $row['failureRate'] }}%
-                                        </x-filament::badge>
+                                        </span>
                                     @endif
                                 </td>
                             </tr>

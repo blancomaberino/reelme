@@ -3,6 +3,7 @@
     /** @var string $window */
 @endphp
 
+{{-- `rm-` classes come from resources/views/filament/admin-styles.blade.php. --}}
 <x-filament-widgets::widget>
     <x-filament::section
         heading="Failure mix"
@@ -11,30 +12,20 @@
         @if ($rows === [])
             {{-- The one empty state on this dashboard that is good news, so it
                  says so rather than reading like missing data. --}}
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-                No failures in this window.
-            </p>
+            <p class="rm-note">No failures in this window.</p>
         @else
-            <ul class="space-y-3">
+            <ul class="rm-mix">
                 @foreach ($rows as $row)
                     <li>
-                        <div class="flex items-baseline justify-between gap-4 text-sm">
-                            <span class="font-mono text-gray-950 dark:text-white">{{ $row['reason'] }}</span>
-                            <span class="tabular-nums text-gray-500 dark:text-gray-400">
-                                {{ number_format($row['total']) }}
-                            </span>
+                        <div class="rm-mix-head">
+                            <span class="rm-mix-reason">{{ $row['reason'] }}</span>
+                            <span class="rm-mix-count">{{ number_format($row['total']) }}</span>
                         </div>
                         {{-- Bars are scaled to the LARGEST code, not to the total: this
                              is a ranking, and scaling to the total flattens every bar
                              into invisibility as soon as failures are spread out. --}}
-                        <div
-                            class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-white/10"
-                            role="presentation"
-                        >
-                            <div
-                                class="h-full rounded-full bg-danger-500"
-                                style="width: {{ max($row['share'], 2) }}%"
-                            ></div>
+                        <div class="rm-mix-track" role="presentation">
+                            <div class="rm-mix-fill" style="width: {{ max($row['share'], 2) }}%"></div>
                         </div>
                     </li>
                 @endforeach

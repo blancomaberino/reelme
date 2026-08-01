@@ -10,8 +10,10 @@ use App\Models\Share;
 use App\Models\ShareStageMetric;
 use App\Models\User;
 use App\Services\Observability\PipelineHealth;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+use Symfony\Component\Finder\SplFileInfo;
 
 /**
  * The pipeline-health dashboard (T-107). The aggregates are asserted against
@@ -261,5 +263,92 @@ describe('the dashboard page', function () {
         Livewire::test(PipelineFailureMix::class)
             ->assertOk()
             ->assertSee('No failures in this window');
+    });
+});
+
+/**
+ * Every custom view in the admin panel first shipped styled with Tailwind
+ * utilities (`py-2`, `h-1.5`, `text-sm`, `bg-danger-600`). Filament v5 ships
+ * only its own compiled `fi-*` stylesheet and no utility layer, so all of them
+ * matched no CSS whatsoever — measured in the panel, `py-2` computed to 0px and
+ * `font-medium` to weight 400. The tables had no cell padding and no row
+ * dividers, the failure bars were 0px tall, and the place map iframe fell back
+ * to its intrinsic 300px. The render tests above stayed green throughout,
+ * because the classes were present in the HTML and `assertSee` only ever looked
+ * at the text.
+ *
+ * So these pin the invariant that actually broke, over the whole panel rather
+ * than the two widgets that happened to get noticed: a class a view applies
+ * must be one the panel's stylesheet defines, and that stylesheet must reach
+ * the page.
+ */
+describe('admin panel styling', function () {
+    /** @return list<string> */
+    function rmClasses(string $source): array
+    {
+        // Scans raw source rather than `class` attributes, so it also sees the
+        // conditional modifiers applied via `@class(['rm-pill-danger' => …])`.
+        preg_match_all('/\brm-[a-z0-9-]+/', $source, $m);
+
+        return array_values(array_unique($m[0]));
+    }
+
+    it('defines every rm- class used anywhere in the panel', function () {
+        $stylesheet = resource_path('views/filament/admin-styles.blade.php');
+        $defined = rmClasses((string) file_get_contents($stylesheet));
+
+        $views = collect(File::allFiles(resource_path('views/filament')))
+            ->reject(fn (SplFileInfo $f) => $f->getPathname() === $stylesheet);
+
+        expect($views)->not->toBeEmpty();
+
+        // Keyed by file, so a failure names the view to fix rather than just
+        // the orphaned class.
+        $orphans = $views
+            ->mapWithKeys(fn (SplFileInfo $f) => [$f->getFilename() => array_values(
+                array_diff(rmClasses($f->getContents()), $defined)
+            )])
+            ->filter(fn (array $missing) => $missing !== [])
+            ->all();
+
+        expect($orphans)->toBe([]);
+    });
+
+    it('injects the stylesheet into the panel, not just into one widget', function () {
+        // The render hook is the single point of failure for all four views: if
+        // it stops firing they all silently lose their styling at once.
+        $this->actingAs(User::factory()->admin()->create());
+
+        $this->get('/admin')
+            ->assertOk()
+            ->assertSee('.rm-table', escape: false)
+            ->assertSee('.rm-mix-fill', escape: false);
+    });
+
+    it('keeps the widgets free of inline <style>', function (string $widget) {
+        // A <style> alongside the widget root gives the Livewire component two
+        // root elements; Livewire drops everything after the first and the whole
+        // widget vanishes from the dashboard while `assertOk()` still passes.
+        $this->actingAs(User::factory()->admin()->create());
+
+        expect(Livewire::test($widget)->html())->not->toContain('<style');
+    })->with([[PipelineStageDurations::class], [PipelineFailureMix::class]]);
+
+    it('scales a ranked bar to the commonest code and tints a pill by severity', function () {
+        $share = Share::factory()->create(['status' => ShareStatus::Failed, 'failure_reason' => 'geocode_failed']);
+        metric($share->id, 'fetch', 'completed', 1200);
+        metric($share->id, 'extract', 'failed', 900);
+        $this->actingAs(User::factory()->admin()->create());
+
+        // The sole failure code is its own maximum, so it fills the track.
+        expect(Livewire::test(PipelineFailureMix::class)->html())->toContain('width: 100%');
+
+        // 1 of 1 `extract` runs failed — 100%, past the 20% danger threshold —
+        // while `fetch` had none and must stay uncoloured, or a table where
+        // every row is tinted communicates nothing.
+        $durations = Livewire::test(PipelineStageDurations::class)->html();
+        expect($durations)->toContain('rm-pill rm-pill-danger')
+            ->and($durations)->not->toContain('rm-pill-warn')
+            ->and($durations)->toContain('1 · 100%');
     });
 });
