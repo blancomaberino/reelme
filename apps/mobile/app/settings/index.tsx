@@ -1,12 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAnalysisModels, useSetAnalysisModel } from '@/api/hooks/useAnalysisModels';
 import { useT } from '@/i18n';
+import { useSessionStore } from '@/stores/session';
 import { CURRENCIES, type Currency, type Locale, useSettingsStore } from '@/stores/settings';
 import { type Palette, useColors } from '@/theme/colors';
+import { space, type } from '@/theme/tokens';
 import { ScreenHeader } from '@/components/screen-header';
 
 const LOCALES: { value: Locale; labelKey: 'settings.language.es' | 'settings.language.en' }[] = [
@@ -23,11 +26,19 @@ export default function SettingsScreen() {
   const currency = useSettingsStore((s) => s.currency);
   const setCurrency = useSettingsStore((s) => s.setCurrency);
 
+  // The model picker is account state, not device state — so unlike language
+  // and currency it is authed-only and lives on the server.
+  const authed = useSessionStore((s) => s.status === 'authed');
+  const preferred = useSessionStore((s) => s.user?.preferred_analysis_model) ?? 'auto';
+  const { data: models, isLoading: modelsLoading } = useAnalysisModels({ enabled: authed });
+  const setModel = useSetAnalysisModel();
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
       <ScreenHeader title={t('settings.title')} />
 
+      <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.language')}</Text>
         <Text style={styles.hint}>{t('settings.languageHint')}</Text>
@@ -73,6 +84,45 @@ export default function SettingsScreen() {
           })}
         </View>
       </View>
+
+      {authed ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('settings.model')}</Text>
+          <Text style={styles.hint}>{t('settings.modelHint')}</Text>
+          {modelsLoading ? (
+            <ActivityIndicator color={c.primary} style={styles.modelsLoading} />
+          ) : (
+            <View style={styles.group}>
+              {(models ?? []).map((m) => {
+                const selected = preferred === m.id;
+                return (
+                  <Pressable
+                    key={m.id}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected, disabled: !m.available }}
+                    accessibilityLabel={m.label}
+                    // An unavailable model is shown but not selectable: hiding
+                    // it would make a model the user picked yesterday silently
+                    // vanish today, with no explanation for why analysis moved.
+                    disabled={!m.available || setModel.isPending}
+                    onPress={() => setModel.mutate(m.id)}
+                    style={({ pressed }) => [styles.option, pressed && styles.pressed, !m.available && styles.unavailable]}
+                  >
+                    <View style={styles.modelText}>
+                      <Text style={styles.optionLabel}>{m.label}</Text>
+                      <Text style={styles.modelProvider}>
+                        {m.available ? m.provider : t('settings.modelUnavailable')}
+                      </Text>
+                    </View>
+                    {selected ? <Ionicons name="checkmark" size={20} color={c.primary} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      ) : null}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -80,6 +130,11 @@ export default function SettingsScreen() {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
+    scroll: { paddingBottom: space.xl },
+    modelsLoading: { paddingVertical: space.lg },
+    modelText: { flex: 1, gap: space.xxs },
+    modelProvider: { ...type.bodySm, color: c.muted },
+    unavailable: { opacity: 0.45 },
     section: { paddingHorizontal: 20, paddingTop: 12, gap: 6 },
     sectionTitle: { fontSize: 13, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', color: c.muted },
     hint: { fontSize: 14, color: c.muted, marginBottom: 6 },

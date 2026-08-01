@@ -435,6 +435,35 @@ export const en = {
   'review.discardBody': 'It won’t be pinned. You can always share it again.',
   'review.discardCancel': 'Keep it',
   'review.discardConfirm': 'Discard',
+
+  // Influencer profile + claim flow (T-039).
+  'influencer.notFound': 'This creator isn’t on Reelmap yet.',
+  'influencer.places': 'Places',
+  'influencer.followers': 'Followers',
+  'influencer.viewMap': 'View their map',
+  'influencer.noPlaces': 'No places from this creator yet.',
+  'influencer.claimed': 'Claimed',
+  'influencer.claimedBy': 'Claimed by @{{username}}',
+  'influencer.claim.prompt': 'Is this you?',
+  'influencer.claim.promptBody': 'Claim this profile to manage it and earn from the places you put on the map.',
+  'influencer.claim.start': 'Claim this profile',
+  'influencer.claim.title': 'Claim profile',
+  'influencer.claim.intro': 'Prove the account is yours. Pick whichever is easier.',
+  'influencer.claim.viaAccount': 'I’ve linked this account',
+  'influencer.claim.viaAccountHint': 'Instant if you already linked it in your profile.',
+  'influencer.claim.viaBio': 'Verify with a code',
+  'influencer.claim.viaBioHint': 'Put a one-time code in your bio, then come back.',
+  'influencer.claim.codeTitle': 'Add this to your bio',
+  'influencer.claim.codeBody': 'Paste it anywhere in your profile bio, then tap verify. You can remove it afterwards.',
+  'influencer.claim.codeHint': 'Long-press the code to copy it. It expires in 72 hours.',
+  'influencer.claim.verify': 'I’ve added it — verify',
+  'influencer.claim.verified': 'Profile claimed',
+  'influencer.claim.verifiedBody': 'It’s yours. You can remove the code from your bio now.',
+  'influencer.claim.backToProfile': 'Back to profile',
+
+  'settings.model': 'Analysis model',
+  'settings.modelHint': 'Which AI reads your shared posts. Auto picks the best available.',
+  'settings.modelUnavailable': 'Unavailable right now',
 } as const;
 
 export type MessageKey = keyof typeof en;
