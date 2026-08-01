@@ -35,9 +35,13 @@ use Laravel\Scout\Searchable;
  * @property bool $is_influencer
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $stripe_connect_onboarded_at
+ * @property string|null $two_factor_secret
+ * @property list<string>|null $two_factor_recovery_codes
+ * @property Carbon|null $two_factor_confirmed_at
+ * @property int|null $two_factor_last_used_ts
  */
 #[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'birthdate', 'favorite_topics', 'favorite_foods', 'is_public', 'preferred_analysis_model'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable implements FilamentUser, MustVerifyEmailContract
 {
     /** @use HasFactory<UserFactory> */
@@ -142,6 +146,18 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     }
 
     /**
+     * Is 2FA actually switched on (T-068)?
+     *
+     * Keyed on the confirmation, never on the secret alone: a secret with no
+     * confirmation means setup was started and abandoned, and enforcing on that
+     * would lock out anyone who opened the setup screen and closed it again.
+     */
+    public function hasTwoFactorEnabled(): bool
+    {
+        return $this->two_factor_confirmed_at !== null && $this->two_factor_secret !== null;
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array
@@ -150,6 +166,12 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
             'email_verified_at' => 'datetime',
             'stripe_connect_onboarded_at' => 'datetime',
             'password' => 'hashed',
+            // Encrypted, not hashed (T-068): both must be readable again — the
+            // secret to verify every login, the codes to show back to a user who
+            // asks for them after confirming their password.
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
             'birthdate' => 'date',
             'favorite_topics' => 'array',
             'favorite_foods' => 'array',
