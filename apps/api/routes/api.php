@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\MePlacesController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\PlaceClaimController;
 use App\Http\Controllers\Api\V1\PlaceController;
 use App\Http\Controllers\Api\V1\PlaceListController;
 use App\Http\Controllers\Api\V1\PlatformAccountController;
@@ -130,6 +131,15 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::patch('/me', [MeController::class, 'update']);
+
+        // Restaurant-owner claiming (T-041, 06 §2.1). Acts on the caller's own
+        // claim only — no user id in any signature. Throttled harder than the
+        // other writes because starting a phone claim places a real call.
+        Route::middleware('throttle:10,1')->group(function () {
+            Route::get('/places/{place}/claim', [PlaceClaimController::class, 'show']);
+            Route::post('/places/{place}/claim', [PlaceClaimController::class, 'store']);
+            Route::post('/places/{place}/claim/verify', [PlaceClaimController::class, 'verify']);
+        });
 
         // Managing your own second factor (T-068). Acts on the authenticated
         // user only — no id in any signature. The destructive three re-ask for

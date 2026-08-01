@@ -10,6 +10,10 @@ export interface PlaceDetail {
   name: string;
   slug: string;
   status: 'pending' | 'active';
+  /**
+   * Whether a restaurant operator has a verified claim on this place (T-041). Who the operator is stays private; this only says the venue is claimed.
+   */
+  claimed: boolean;
   lat: number;
   lng: number;
   category: string | null;

@@ -118,4 +118,17 @@ return [
         ],
     ],
 
+    // Restaurant-owner claiming (T-041, 06 §2.1).
+    'claims' => [
+        // Timeout for fetching /.well-known/reelmap-verify.txt on the claimant's
+        // own domain.
+        'website_timeout_seconds' => (int) env('PLACES_CLAIM_WEBSITE_TIMEOUT', 8),
+        // DNS-resolve + vet that the host is public before fetching it. The URL
+        // comes from `places.website`, which was extracted from a third party,
+        // so this is what stops "verify my website" being a request-forgery
+        // primitive. Mirrors enrich.website.verify_host: off in the no-network
+        // test env, ON everywhere else.
+        'verify_host' => (bool) env('PLACES_CLAIM_VERIFY_HOST', true),
+    ],
+
 ];
