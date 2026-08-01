@@ -6,6 +6,7 @@ use App\Enums\MediaKind;
 use App\Http\ApiResponse;
 use App\Http\Requests\PlaceListingRequest;
 use App\Http\Resources\PlaceSummaryResource;
+use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Place;
 use App\Support\KeysetCursor;
 use App\Support\KeysetPage;
@@ -23,12 +24,12 @@ use Illuminate\Http\JsonResponse;
 trait PaginatesPlaces
 {
     /**
-     * @param  Builder<Place>  $base  the ownership-scoped, publicly-visible query
+     * @param  PlaceQueryBuilder  $base  the ownership-scoped, publicly-visible query
      * @param  list<array{0: string, 1: list<mixed>}>  $rawSelects  extra `[expr, bindings]`
      *                                                              columns a caller adds (e.g. /me/places' per-row `mine` provenance);
      *                                                              select bindings sort before the WHERE, so order is irrelevant
      */
-    protected function placeListResponse(Builder $base, PlaceListingRequest $request, array $rawSelects = []): JsonResponse
+    protected function placeListResponse(PlaceQueryBuilder $base, PlaceListingRequest $request, array $rawSelects = []): JsonResponse
     {
         $sort = $request->sort();
         $limit = $request->limit();

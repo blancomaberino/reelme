@@ -5,6 +5,7 @@ namespace App\Services\Map;
 use App\Http\ApiResponse;
 use App\Http\Requests\MapPlacesRequest;
 use App\Http\Resources\Concerns\ResolvesThumbnail;
+use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Place;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -36,7 +37,7 @@ class MapViewport
     private const GRID_K = 3;
 
     /**
-     * @param  (Closure(Builder<Place>): mixed)|null  $constrain
+     * @param  (Closure(PlaceQueryBuilder): mixed)|null  $constrain
      */
     public function respond(MapPlacesRequest $request, ?Closure $constrain = null): JsonResponse
     {
@@ -60,7 +61,7 @@ class MapViewport
      * so both the count and the pin/cluster paths share one definition.
      *
      * @param  array{minLng: float, minLat: float, maxLng: float, maxLat: float}  $bbox
-     * @param  (Closure(Builder<Place>): mixed)|null  $constrain
+     * @param  (Closure(PlaceQueryBuilder): mixed)|null  $constrain
      * @return Builder<Place>
      */
     private function baseQuery(MapPlacesRequest $request, array $bbox, ?Closure $constrain): Builder
@@ -97,7 +98,7 @@ class MapViewport
 
     /**
      * @param  array{minLng: float, minLat: float, maxLng: float, maxLat: float}  $bbox
-     * @param  (Closure(Builder<Place>): mixed)|null  $constrain
+     * @param  (Closure(PlaceQueryBuilder): mixed)|null  $constrain
      */
     private function pinsResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total): JsonResponse
     {
@@ -122,7 +123,7 @@ class MapViewport
 
     /**
      * @param  array{minLng: float, minLat: float, maxLng: float, maxLat: float}  $bbox
-     * @param  (Closure(Builder<Place>): mixed)|null  $constrain
+     * @param  (Closure(PlaceQueryBuilder): mixed)|null  $constrain
      */
     private function clusteredResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total): JsonResponse
     {

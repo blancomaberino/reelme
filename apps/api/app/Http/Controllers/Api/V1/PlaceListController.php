@@ -8,10 +8,10 @@ use App\Http\Requests\PlaceListRequest;
 use App\Http\Requests\PublicListShowRequest;
 use App\Http\Resources\PlaceListDetailResource;
 use App\Http\Resources\PlaceListResource;
+use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\HiddenPlace;
 use App\Models\Place;
 use App\Models\PlaceList;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -138,7 +138,7 @@ class PlaceListController extends Controller
         $position = 0;
         $source->items()
             ->whereHas('place', function ($q): void {
-                /** @var Builder<Place> $q */
+                /** @var PlaceQueryBuilder $q */
                 $q->publiclyVisible();
             })
             ->orderBy('position')->orderBy('id')

@@ -11,6 +11,7 @@ use App\Http\Requests\PlaceSourcesRequest;
 use App\Http\Resources\PlaceResource;
 use App\Http\Resources\PlaceSourceResource;
 use App\Http\Resources\PlaceSummaryResource;
+use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Place;
 use App\Models\PlaceSource;
 use App\Support\KeysetCursor;
@@ -218,10 +219,7 @@ class PlaceController extends Controller
         return ApiResponse::page(PlaceSourceResource::collection($page->items), $page);
     }
 
-    /**
-     * @return Builder<Place>
-     */
-    private function visible(): Builder
+    private function visible(): PlaceQueryBuilder
     {
         return Place::query()->publiclyVisible();
     }
