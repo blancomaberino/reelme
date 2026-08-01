@@ -66,6 +66,9 @@ export const queryKeys = {
   notifications: () => ['notifications'] as const,
   /** The selectable analysis-model catalog (T-020). */
   analysisModels: () => ['analysis', 'models'] as const,
+  /** The caller's 2FA state (T-068). Not nested under `me` — invalidating the
+   *  profile must not re-fetch it, and vice versa. */
+  twoFactor: () => ['two-factor'] as const,
   followers: (username: string) => ['profile', username, 'followers'] as const,
   following: (username: string) => ['profile', username, 'following'] as const,
   /** A user's public places list + public Lists shown on their profile (T-071). */

@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAnalysisModels, useSetAnalysisModel } from '@/api/hooks/useAnalysisModels';
+import { useTwoFactorStatus } from '@/api/hooks/useTwoFactor';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { CURRENCIES, type Currency, type Locale, useSettingsStore } from '@/stores/settings';
@@ -32,6 +33,7 @@ export default function SettingsScreen() {
   const preferred = useSessionStore((s) => s.user?.preferred_analysis_model) ?? 'auto';
   const { data: models, isLoading: modelsLoading } = useAnalysisModels({ enabled: authed });
   const setModel = useSetAnalysisModel();
+  const { data: twoFactor } = useTwoFactorStatus({ enabled: authed });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -122,6 +124,31 @@ export default function SettingsScreen() {
           )}
         </View>
       ) : null}
+
+      {authed ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('settings.security')}</Text>
+          <View style={styles.group}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.twoFactor')}
+              onPress={() => router.push('/settings/two-factor')}
+              style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+              testID="settings-two-factor"
+            >
+              <Text style={styles.optionLabel}>{t('settings.twoFactor')}</Text>
+              <View style={styles.rowRight}>
+                {/* State on the row itself: whether the second factor is on is
+                    the one thing worth knowing without opening the screen. */}
+                <Text style={twoFactor?.enabled ? styles.onValue : styles.offValue}>
+                  {twoFactor?.enabled ? t('settings.twoFactorOn') : t('settings.twoFactorOff')}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={c.muted} />
+              </View>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -156,4 +183,7 @@ const makeStyles = (c: Palette) =>
     },
     pressed: { opacity: 0.6 },
     optionLabel: { fontSize: 16, color: c.text },
+    rowRight: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+    onValue: { ...type.bodySm, color: c.green, fontWeight: '600' },
+    offValue: { ...type.bodySm, color: c.muted },
   });

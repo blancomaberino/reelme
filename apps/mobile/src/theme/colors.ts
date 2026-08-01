@@ -110,6 +110,14 @@ const dark: Palette = {
 /** Font families. Georgia ships on iOS; Android falls back to its serif. */
 export const fonts = {
   display: Platform.select({ ios: 'Georgia', default: 'serif' }) as string,
+  /**
+   * Fixed-width, for strings read and transcribed character by character — the
+   * 2FA secret and recovery codes (T-068). Named per platform rather than
+   * hard-coding 'Courier', which is an iOS face: on Android it silently falls
+   * back to the default proportional font, losing exactly the alignment that
+   * makes an O distinguishable from a 0.
+   */
+  mono: Platform.select({ ios: 'Menlo', default: 'monospace' }) as string,
 };
 
 /**
