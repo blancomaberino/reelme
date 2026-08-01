@@ -10,7 +10,7 @@ import { useViewportStore } from '@/stores/viewport';
 import { api } from '../client';
 import { queryKeys } from '../keys';
 import { clearToken, setToken } from '../token';
-import type { AuthResponse } from '../types';
+import { type AuthResponse, type LoginResponse, isTwoFactorChallenge, TwoFactorRequiredError } from '../types';
 
 export type RegisterInput = { name: string; username: string; email: string; password: string };
 export type LoginInput = { email: string; password: string };
@@ -22,7 +22,15 @@ function deviceName(): string {
 }
 
 async function authenticate(path: string, body: Record<string, unknown>): Promise<AuthResponse> {
-  const { data } = await api.post<{ data: AuthResponse }>(path, { ...body, device_name: deviceName() });
+  const { data } = await api.post<{ data: LoginResponse }>(path, { ...body, device_name: deviceName() });
+
+  // A 2FA account gets a challenge, not a session (T-068). Surface it as a
+  // typed error rather than letting a token-less payload reach
+  // `onAuthenticated`, which would persist `undefined` as the credential.
+  if (isTwoFactorChallenge(data.data)) {
+    throw new TwoFactorRequiredError(data.data.challenge_token);
+  }
+
   return data.data;
 }
 

@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Auth\PasswordResetController;
 use App\Http\Controllers\Api\V1\Auth\RefreshController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
+use App\Http\Controllers\Api\V1\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\FeedController;
 use App\Http\Controllers\Api\V1\FeedDismissalController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\ShareController;
 use App\Http\Controllers\Api\V1\TagController;
+use App\Http\Controllers\Api\V1\TwoFactorController;
 use App\Http\Controllers\Api\V1\UserPlaceTagController;
 use App\Http\Controllers\MediaUploadController;
 use Illuminate\Support\Facades\Route;
@@ -106,6 +108,12 @@ Route::prefix('v1')->group(function () {
         Route::post('/verify-email', [EmailVerificationController::class, 'verify']);
         Route::post('/resend-verification', [EmailVerificationController::class, 'resend']);
 
+        // Second factor (T-068). PUBLIC by necessity — the caller has no session
+        // yet; the challenge token issued by /login is the proof that the
+        // password step passed. Sharing the `throttle:auth` bucket caps guessing
+        // per IP, on top of the per-challenge attempt budget in TwoFactorService.
+        Route::post('/two-factor-challenge', TwoFactorChallengeController::class);
+
         Route::middleware('auth:sanctum')->group(function () {
             Route::post('/logout', LogoutController::class);
             Route::post('/refresh', RefreshController::class);
@@ -121,6 +129,19 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::patch('/me', [MeController::class, 'update']);
+
+        // Managing your own second factor (T-068). Acts on the authenticated
+        // user only — no id in any signature. The destructive three re-ask for
+        // the password inside the controller. Throttled like the other small
+        // write surfaces; the login challenge itself lives in the auth group.
+        Route::middleware('throttle:30,1')->prefix('two-factor')->group(function () {
+            Route::get('/', [TwoFactorController::class, 'show']);
+            Route::post('/enable', [TwoFactorController::class, 'enable']);
+            Route::post('/confirm', [TwoFactorController::class, 'confirm']);
+            Route::post('/recovery-codes', [TwoFactorController::class, 'recoveryCodes']);
+            Route::post('/recovery-codes/regenerate', [TwoFactorController::class, 'regenerateRecoveryCodes']);
+            Route::delete('/', [TwoFactorController::class, 'disable']);
+        });
 
         // Expo push-token registration (T-027). {device} is the numeric id OR the
         // raw token (logout convenience). Light write throttle like the other

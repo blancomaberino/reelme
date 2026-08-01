@@ -24,7 +24,37 @@ export type Me = {
   created_at: string | null;
 };
 
+/**
+ * `/auth/login` answers one of two shapes (T-068): a full session, or — when
+ * the account has a second factor — a challenge to exchange at
+ * `/auth/two-factor-challenge`. Modelled as a union rather than optional fields
+ * so a caller cannot read `token` without first narrowing.
+ */
 export type AuthResponse = { token: string; user: Me };
+
+export type TwoFactorChallenge = { two_factor_required: true; challenge_token: string };
+
+export type LoginResponse = AuthResponse | TwoFactorChallenge;
+
+export function isTwoFactorChallenge(res: LoginResponse): res is TwoFactorChallenge {
+  return 'two_factor_required' in res && res.two_factor_required === true;
+}
+
+/**
+ * Thrown when the API asks for a second factor that this build cannot present
+ * yet — the mobile 2FA screens are still to come (T-068 mobile half).
+ *
+ * Explicitly NOT silent: without this, `onAuthenticated` would destructure a
+ * response that has no `token`, write `undefined` into secure storage and the
+ * session store, and leave the app in a signed-in-looking state with no
+ * credentials.
+ */
+export class TwoFactorRequiredError extends Error {
+  constructor(public readonly challengeToken: string) {
+    super('Two-factor authentication is required.');
+    this.name = 'TwoFactorRequiredError';
+  }
+}
 
 export type FieldErrors = Record<string, string>;
 
