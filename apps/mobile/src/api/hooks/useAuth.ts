@@ -17,7 +17,10 @@ export type LoginInput = { email: string; password: string };
 
 // The API issues one token per device and revokes a same-named token, so a
 // stable device_name is required by the register/login contract (03 §2.1).
-function deviceName(): string {
+// Exported because the 2FA challenge (T-068) also mints a session and must use
+// the SAME name — a different one would leave the pre-2FA token alive on this
+// device instead of replacing it.
+export function deviceName(): string {
   return Device.deviceName ?? 'mobile';
 }
 

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { useLogin } from '@/api/hooks/useAuth';
-import { EmailNotVerifiedError } from '@/api/types';
+import { EmailNotVerifiedError, TwoFactorRequiredError } from '@/api/types';
 import { AuthScreenLayout, useAuthFormStyles } from '@/components/auth-screen-layout';
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
@@ -37,6 +37,13 @@ export default function LoginScreen() {
           if (err instanceof EmailNotVerifiedError) {
             login.reset();
             router.push({ pathname: '/(auth)/verify-email', params: { email: err.email || email.trim() } });
+          }
+          // The password was right; the account just wants its second factor
+          // (T-068). Same shape as the unverified case above — reset so the
+          // error doesn't linger on this form if they swipe back.
+          if (err instanceof TwoFactorRequiredError) {
+            login.reset();
+            router.push({ pathname: '/(auth)/two-factor', params: { challenge: err.challengeToken } });
           }
         },
       },
