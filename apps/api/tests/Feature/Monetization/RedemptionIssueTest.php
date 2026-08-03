@@ -16,6 +16,7 @@ use App\Services\Redemptions\RedemptionCode;
 use App\Services\Redemptions\RedemptionGuards;
 use App\Services\Redemptions\RedemptionIssuer;
 use App\Services\Redemptions\RedemptionQr;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Issuing a code (T-043, 06 §3).
@@ -298,6 +299,48 @@ describe('the anti-fraud table (06 §3)', function () {
             fn () => issuer()->issue(activeOfferAt($tombstone), User::factory()->create()),
             'offer_not_redeemable',
         );
+    });
+
+    /*
+     * The offer row is locked before the quota counts are read, so two diners
+     * issuing at once cannot both see "one slot left" and both take it. Without
+     * the lock a venue that capped an offer at N a day pays for N + (requests
+     * in flight) — the partial unique index only covers one diner racing
+     * themselves, not two different ones.
+     *
+     * Serial here rather than genuinely parallel (Pest has one connection), so
+     * this pins the RULE — the lock itself is what makes it hold concurrently.
+     */
+    it('never issues past the lifetime quota', function () {
+        $place = Place::factory()->active()->create();
+        $offer = activeOfferAt($place, ['quota_total' => 2, 'quota_per_day' => null]);
+
+        issuer()->issue($offer, User::factory()->create());
+        issuer()->issue($offer, User::factory()->create());
+        // The counter cache T-043 does not yet maintain is what `isRedeemable()`
+        // reads, so make it true the way the redemption pipeline will.
+        $offer->forceFill(['redemptions_count' => 2])->save();
+
+        expectIssueRefused(
+            fn () => issuer()->issue($offer->fresh(), User::factory()->create()),
+            'offer_not_redeemable',
+        );
+    });
+
+    it('takes a row lock on the offer before counting its quotas', function () {
+        $place = Place::factory()->active()->create();
+        $offer = activeOfferAt($place, ['quota_per_day' => 5]);
+
+        $locking = collect();
+        DB::listen(function ($query) use ($locking) {
+            if (str_contains($query->sql, 'from "offers"') && str_contains($query->sql, 'for update')) {
+                $locking->push($query->sql);
+            }
+        });
+
+        issuer()->issue($offer, User::factory()->create());
+
+        expect($locking)->not->toBeEmpty();
     });
 
     it("respects the offer's per-day quota", function () {

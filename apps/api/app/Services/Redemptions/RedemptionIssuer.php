@@ -5,6 +5,7 @@ namespace App\Services\Redemptions;
 use App\Enums\RedemptionStatus;
 use App\Exceptions\RedemptionInvalid;
 use App\Models\Offer;
+use App\Models\Place;
 use App\Models\Redemption;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -52,11 +53,12 @@ class RedemptionIssuer
             throw RedemptionInvalid::offerNotRedeemable();
         }
 
-        $this->guards->assertMayIssue($offer, $place, $diner);
-
+        // Resolved BEFORE the transaction: attribution reads several tables and
+        // has no bearing on the quota arithmetic, so it must not be holding the
+        // offer's row lock while it does.
         $attribution = $this->attribution->resolve($offer, $referralShareId);
 
-        $redemption = $this->insert($offer, $diner, $attribution);
+        $redemption = $this->insert($offer, $place, $diner, $attribution);
 
         // Only now — a diner refused for any reason above must not have spent
         // part of their daily allowance on the refusal.
@@ -70,13 +72,35 @@ class RedemptionIssuer
      *
      * @throws RedemptionInvalid
      */
-    private function insert(Offer $offer, User $diner, array $attribution): Redemption
+    private function insert(Offer $offer, Place $place, User $diner, array $attribution): Redemption
     {
         for ($attempt = 0; $attempt < self::CODE_ATTEMPTS; $attempt++) {
             $code = RedemptionCode::generate();
 
             try {
-                return DB::transaction(function () use ($offer, $diner, $attribution, $code): Redemption {
+                return DB::transaction(function () use ($offer, $place, $diner, $attribution, $code): Redemption {
+                    /*
+                     * Lock the OFFER row before counting anything against it.
+                     *
+                     * The quota checks read `redemptions_count` and today's rows
+                     * and then insert. Without this lock two requests from
+                     * DIFFERENT diners both read the same count and both insert,
+                     * so `quota_total` and `quota_per_day` can be overshot by the
+                     * number of requests in flight — a real cost to a venue that
+                     * capped an offer at ten a day. The partial unique index only
+                     * covers one diner racing themselves.
+                     *
+                     * Serialising issuance per offer is cheap: issues are
+                     * human-paced and already throttled to 10/min per user.
+                     */
+                    $locked = Offer::query()->whereKey($offer->id)->lockForUpdate()->first();
+
+                    if ($locked === null) {
+                        throw RedemptionInvalid::offerNotRedeemable();
+                    }
+
+                    $this->guards->assertMayIssue($locked, $place, $diner);
+
                     $redemption = new Redemption;
                     $redemption->forceFill([
                         'offer_id' => $offer->id,

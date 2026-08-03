@@ -82,9 +82,14 @@ return new class extends Migration
              ON redemptions (offer_id, user_id) WHERE status = '{$issued}'",
         );
 
-        // A redeemed row must carry when and by whom; an unredeemed one must
-        // carry neither. Without this, a partially-written verify (or a manual
-        // fix-up) leaves a row that is billable but cannot say who honoured it.
+        // A redeemed row must carry WHEN, and an unredeemed one must not.
+        // Without this, a partially-written verify (or a manual fix-up) leaves a
+        // row that is billable but cannot say when it was honoured.
+        //
+        // `redeemed_by_user_id` is deliberately NOT part of the check: the FK is
+        // nullOnDelete, so a redeemed row legitimately loses its actor when that
+        // staff account is deleted. The timestamp is the fact a dispute turns
+        // on; the actor is best-effort.
         DB::statement(
             "ALTER TABLE redemptions ADD CONSTRAINT redemptions_redeemed_fields_check
              CHECK ((status = 'redeemed') = (redeemed_at IS NOT NULL))",

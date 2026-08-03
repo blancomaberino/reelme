@@ -163,12 +163,18 @@ Route::prefix('v1')->group(function () {
         Route::middleware('throttle:30,1')->group(function () {
             Route::post('/redemptions/verify', [RedemptionController::class, 'verify']);
         });
-        // Registered AFTER /redemptions/verify so the literal segment can never
-        // be captured as an id.
-        Route::get('/redemptions/{redemption}', [RedemptionController::class, 'show']);
-        Route::get('/me/redemptions', [RedemptionController::class, 'index']);
-        // The venue's own log — operator-only, and without codes.
-        Route::get('/places/{place}/redemptions', [RedemptionController::class, 'forPlace']);
+        // Reads carry the same interactive limiter as the other read surfaces.
+        // Two of them return BEARER CREDENTIALS to their owner (a live code is a
+        // free meal), so an unbounded read rate is worth closing even though
+        // RedemptionPolicy authorizes every row.
+        Route::middleware('throttle:map')->group(function () {
+            // Registered AFTER /redemptions/verify so the literal segment can
+            // never be captured as an id.
+            Route::get('/redemptions/{redemption}', [RedemptionController::class, 'show']);
+            Route::get('/me/redemptions', [RedemptionController::class, 'index']);
+            // The venue's own log — operator-only, and without codes.
+            Route::get('/places/{place}/redemptions', [RedemptionController::class, 'forPlace']);
+        });
 
         // Offer management (T-042, 06 §2.2). Owner-only via OfferPolicy — every
         // check re-derives operator status from the verified place claim, so a

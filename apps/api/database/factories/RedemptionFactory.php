@@ -30,8 +30,10 @@ class RedemptionFactory extends Factory
             'offer_id' => Offer::factory(),
             'user_id' => User::factory(),
             'code' => $code,
-            // Signed against id 0: a factory row is not meant to survive a real
-            // QR scan, and tests that care use the issuer, which signs properly.
+            // An UNSIGNED placeholder — the literal string, no HMAC. A factory
+            // row cannot pass RedemptionQr::verify(), which is deliberate: a
+            // test about QR signing must go through the issuer, which signs
+            // over the real row id.
             'qr_payload' => 'v1.'.$code.'.factory',
             'status' => RedemptionStatus::Issued,
             'issued_at' => now(),

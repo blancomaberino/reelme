@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Models\Place;
 use App\Models\Redemption;
 use App\Notifications\Channels\ExpoChannel;
 use Illuminate\Bus\Queueable;
@@ -63,7 +64,14 @@ class RedemptionConfirmed extends Notification implements ShouldQueue
      */
     private function payload(): array
     {
-        $placeName = $this->redemption->offer?->place->name ?? 'the restaurant';
+        // `instanceof`, not `?->`: this runs in a queued worker after
+        // SerializesModels re-resolves the relations, so a row that vanished
+        // between dispatch and delivery must degrade to the fallback rather
+        // than fail the job on every retry. (A nullsafe chain would be the
+        // obvious spelling, but the FK chain makes `place` non-null to static
+        // analysis, which then flags it as unnecessary.)
+        $place = $this->redemption->offer?->place;
+        $placeName = $place instanceof Place ? $place->name : 'the restaurant';
 
         return [
             'type' => 'redemption.verified',

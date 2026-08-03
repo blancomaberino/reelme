@@ -231,6 +231,29 @@ describe('the geofence', function () {
             ->and($redemption->geofence_distance_m)->toBeNull();
     });
 
+    /*
+     * A rejected attempt leaves NOTHING on the row — the throw rolls the verify
+     * back, so there is no redeemed row to annotate and the code is still
+     * unspent, which is the right outcome. The failure lives in the log
+     * (`redemption.geofence_failed`), per 06 §3's "logged + flagged". Pinned
+     * because the class docblock previously claimed the row carried it.
+     */
+    it('leaves the row untouched when the geofence rejects', function () {
+        [$place, $operator] = venueWithOperator();
+        liveCode($place);
+
+        expectRedemptionRefused(
+            fn () => app(RedemptionVerifier::class)->verify($operator, 'ABCD1234EF', $place, 41.1579, -8.6291),
+            'outside_geofence',
+        );
+
+        $redemption = Redemption::firstOrFail();
+        expect($redemption->status)->toBe(RedemptionStatus::Issued)
+            ->and($redemption->redeemed_at)->toBeNull()
+            ->and($redemption->geofence_ok)->toBeNull()
+            ->and($redemption->geofence_distance_m)->toBeNull();
+    });
+
     it('records the measured distance on a pass', function () {
         [$place, $operator] = venueWithOperator();
         liveCode($place);
