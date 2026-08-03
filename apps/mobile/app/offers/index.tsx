@@ -5,13 +5,14 @@ import { Stack, router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
 
 import { BROWSE_RADIUS_M, useNearbyOffers } from '@/api/hooks/useNearbyOffers';
 import { queryKeys } from '@/api/keys';
 import type { Offer } from '@/api/offers';
 import { Button } from '@/components/button';
-import { LocationBlockedHint, MapControls, useMapCamera } from '@/components/map/map-controls';
+import { LocationBlockedHint, MapControls, useMapCamera, useMapSelection } from '@/components/map/map-controls';
+import { OfferMarker } from '@/components/map/offer-marker';
 import { discountHeadline, OfferCard } from '@/components/offer/offer-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { type MessageKey, useT } from '@/i18n';
@@ -20,7 +21,7 @@ import { DEFAULT_REGION, locateUser } from '@/lib/initial-region';
 import { openLocationSettings, USER_REGION_DELTA } from '@/lib/location';
 import { useSettingsStore } from '@/stores/settings';
 import { useViewportStore } from '@/stores/viewport';
-import { fonts, type Palette, useColors } from '@/theme/colors';
+import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
 type Mode = 'list' | 'map';
@@ -48,7 +49,10 @@ export default function OffersBrowseScreen() {
   const currency = useSettingsStore((s) => s.currency);
 
   const [mode, setMode] = useState<Mode>('list');
-  const [selected, setSelected] = useState<string | null>(null);
+  // Not a plain useState: the background handler below has to ignore the map
+  // press that some builds fire alongside a marker press, or every pin tap
+  // selects and instantly deselects — which looks like a dead pin.
+  const { selected, selectFromMarker, onBackgroundPress } = useMapSelection<string>();
 
   /*
    * The device fix is a QUERY, not an effect writing state. `locateUser` never
@@ -141,7 +145,7 @@ export default function OffersBrowseScreen() {
         style={StyleSheet.absoluteFill}
         initialRegion={mapRegion}
         onRegionChangeComplete={onRegionSettled}
-        onPress={() => setSelected(null)}
+        onPress={onBackgroundPress}
         showsUserLocation
         showsMyLocationButton={false}
         // Same as the home map: Apple's own POI pins clutter the view and are
@@ -149,19 +153,19 @@ export default function OffersBrowseScreen() {
         showsPointsOfInterests={false}
         testID="offers-map"
       >
+        {/* The discount, not a generic pin — on a map of ten venues the number
+            IS the reason to walk to one of them. */}
         {mappable.map((offer) => (
-          <Marker
+          <OfferMarker
             key={offer.id}
-            coordinate={{ latitude: offer.place!.lat!, longitude: offer.place!.lng! }}
-            onPress={() => setSelected(offer.id)}
-            tracksViewChanges={false}
-          >
-            {/* The discount, not a generic pin — on a map of ten venues the
-                number IS the reason to walk to one of them. */}
-            <View style={[styles.pin, selected === offer.id && styles.pinSelected]}>
-              <Text style={styles.pinText}>{shortHeadline(offer, currency, t)}</Text>
-            </View>
-          </Marker>
+            id={offer.id}
+            lat={offer.place!.lat!}
+            lng={offer.place!.lng!}
+            label={shortHeadline(offer, currency, t)}
+            selected={selected === offer.id}
+            onPress={selectFromMarker}
+            accessibilityLabel={`${shortHeadline(offer, currency, t)} — ${offer.place?.name ?? offer.title}`}
+          />
         ))}
       </MapView>
 
@@ -346,16 +350,6 @@ const makeStyles = (c: Palette) =>
 
     mapWrap: { flex: 1 },
     map: { flex: 1 },
-    pin: {
-      backgroundColor: c.primary,
-      borderRadius: radius.pill,
-      paddingHorizontal: space.sm,
-      paddingVertical: space.xxs,
-      borderWidth: 2,
-      borderColor: c.surface,
-    },
-    pinSelected: { backgroundColor: c.text },
-    pinText: { ...type.bodySm, fontFamily: fonts.display, color: c.onPrimary },
     sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: space.md },
     mapNote: {
       ...type.caption,

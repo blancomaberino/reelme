@@ -122,6 +122,44 @@ export function useMapCamera(input: {
 export type MapCamera = ReturnType<typeof useMapCamera>;
 
 /**
+ * Some react-native-maps builds fire the MapView's OWN `onPress` alongside a
+ * marker press. A background handler that clears the selection therefore
+ * deselects the pin the user just opened, in the same frame — so the tap reads
+ * as doing nothing at all.
+ *
+ * Guarded two ways because neither is reliable alone: the event's `action`
+ * (present on the builds that label it) and recency against the last marker
+ * press (for the ones that don't). Extracted from the home map, where this was
+ * found the first time — the offers map then shipped a second background
+ * handler without it and its pins were dead on tap.
+ */
+export function useMapSelection<T>() {
+  const [selected, setSelected] = useState<T | null>(null);
+  const lastMarkerPressAt = useRef(0);
+
+  const selectFromMarker = useCallback((value: T) => {
+    lastMarkerPressAt.current = Date.now();
+    setSelected(value);
+  }, []);
+
+  /** Call from a marker handler that moves the map instead of selecting. */
+  const noteMarkerPress = useCallback(() => {
+    lastMarkerPressAt.current = Date.now();
+  }, []);
+
+  const onBackgroundPress = useCallback((event?: { nativeEvent?: { action?: string } }) => {
+    if (event?.nativeEvent?.action === 'marker-press') return;
+    if (Date.now() - lastMarkerPressAt.current < MARKER_PRESS_GRACE_MS) return;
+    setSelected(null);
+  }, []);
+
+  return { selected, setSelected, selectFromMarker, noteMarkerPress, onBackgroundPress };
+}
+
+/** Long enough to cover the paired map press, short enough to feel immediate. */
+const MARKER_PRESS_GRACE_MS = 350;
+
+/**
  * The control stack, bottom-right: locate · reset · zoom in · zoom out.
  *
  * Apple Maps ships no zoom buttons of its own, and a map with pins the user is

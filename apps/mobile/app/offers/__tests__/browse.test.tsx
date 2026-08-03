@@ -281,6 +281,45 @@ describe('the map toggle', () => {
     await waitFor(() => expect(screen.getByText(label)).toBeTruthy());
   });
 
+  /*
+   * The bug this pins: some react-native-maps builds fire the MapView's own
+   * onPress alongside a marker press, so a background handler that clears the
+   * selection deselects the pin in the same frame — and the tap reads as doing
+   * absolutely nothing. The home map guards this; the offers map shipped
+   * without the guard and its pins were dead.
+   */
+  it('keeps the card open when the map fires its own press alongside the marker', async () => {
+    mock.onGet('/offers').reply(200, { data: [offer({ id: '42' })] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    fireEvent.press(await screen.findByText('20%'));
+    // The paired background press the buggy builds emit.
+    fireEvent.press(screen.getByTestId('offers-map'));
+
+    expect(screen.getByTestId('offers-map-sheet')).toBeTruthy();
+  });
+
+  it('closes the card on a genuine background tap', async () => {
+    mock.onGet('/offers').reply(200, { data: [offer({ id: '42' })] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    fireEvent.press(await screen.findByText('20%'));
+    await waitFor(() => expect(screen.getByTestId('offers-map-sheet')).toBeTruthy());
+
+    // Well after the grace window — a real tap on empty map, which must dismiss.
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 1000);
+    fireEvent.press(screen.getByTestId('offers-map'));
+
+    await waitFor(() => expect(screen.queryByTestId('offers-map-sheet')).toBeNull());
+    jest.restoreAllMocks();
+  });
+
   it('opens the offer card when a marker is tapped', async () => {
     mock.onGet('/offers').reply(200, { data: [offer({ id: '42' })] });
 
