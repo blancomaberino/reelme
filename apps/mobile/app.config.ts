@@ -87,6 +87,32 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
      * redirect, so there is no navigation to intercept by hand.
      */
     'expo-web-browser',
+    /*
+     * Redemption scanning (T-047, 05 screen #20).
+     *
+     * Camera is requested ONLY for reading a diner's redemption QR at the till.
+     * The purpose string says exactly that: a vague one is what makes people
+     * decline, and a declined camera here is recoverable (manual code entry is
+     * always available) whereas a rejected App Store review is not.
+     */
+    [
+      'expo-camera',
+      {
+        cameraPermission: 'Reelmap usa la cámara para escanear el código QR de un cliente al canjear una oferta.',
+        // No microphone and no photo library: this scans a barcode, nothing
+        // more. `false` DELETES the key rather than writing a default (see the
+        // expo-location block above), so the declared surface stays exactly
+        // what we use.
+        microphonePermission: false,
+        recordAudioAndroid: false,
+      },
+    ],
+    /*
+     * Brightness (T-047, screen #18): the diner's QR is raised to full while it
+     * is on screen and restored on blur. A dim phone in a dim restaurant is the
+     * difference between a scan that works and one the staff give up on.
+     */
+    'expo-brightness',
     // Foreground location (T-100): centres the map on the user on first launch
     // and powers the "locate me" control. WHEN-IN-USE only — Reelmap never
     // tracks in the background, so both background flags stay off (they also

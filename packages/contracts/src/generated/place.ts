@@ -228,6 +228,14 @@ export interface Offer {
     name: string;
     slug: string;
     city: string | null;
+    /**
+     * Venue latitude. Present on the flat /offers reads so the diner browse can map them; null when the query did not select coordinates.
+     */
+    lat: number | null;
+    /**
+     * Venue longitude. See lat.
+     */
+    lng: number | null;
     country_code: string | null;
     thumbnail_url: string | null;
   };

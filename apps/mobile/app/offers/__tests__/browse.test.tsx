@@ -1,0 +1,183 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import AxiosMockAdapter from 'axios-mock-adapter';
+import type { ReactNode } from 'react';
+
+import OffersBrowseScreen from '../index';
+import { api } from '@/api/client';
+import type { Offer } from '@/api/offers';
+import { mockRouter } from '@/../jest.setup';
+import * as initialRegion from '@/lib/initial-region';
+
+/**
+ * Nearby offers (T-047).
+ *
+ * The browse is only honest if two things hold: it never lists an offer whose
+ * window has closed, and it never pretends to know where the diner is. The
+ * first is `active=1` on the request — `status` alone still reads `active` for
+ * a promotion that ended overnight. The second is why a refused permission gets
+ * its own state rather than an empty list from a default city centre.
+ */
+let mock: AxiosMockAdapter;
+let qc: QueryClient;
+let locate: jest.SpyInstance;
+
+const REGION = { latitude: 38.7223, longitude: -9.1393, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+
+function offer(overrides: Partial<Offer> = {}): Offer {
+  return {
+    id: '1',
+    place_id: '10',
+    title: 'Two-for-one pastéis',
+    description: null,
+    discount_type: 'percent',
+    discount_value: 20,
+    terms: null,
+    starts_at: '2020-01-01T00:00:00Z',
+    ends_at: null,
+    quota_total: null,
+    quota_per_user: 1,
+    quota_per_day: null,
+    redemptions_count: 0,
+    remaining_quota: null,
+    status: 'active',
+    is_redeemable: true,
+    place: {
+      id: '10',
+      name: 'Taberna do Bairro',
+      slug: 'taberna-do-bairro',
+      city: 'Lisboa',
+      country_code: 'PT',
+      thumbnail_url: null,
+      lat: 38.72,
+      lng: -9.13,
+    },
+    created_at: null,
+    updated_at: null,
+    ...overrides,
+  };
+}
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
+
+beforeEach(() => {
+  mock = new AxiosMockAdapter(api);
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  locate = jest.spyOn(initialRegion, 'locateUser').mockResolvedValue({ ok: true, region: REGION });
+  mockRouter.push.mockClear();
+});
+
+afterEach(() => {
+  mock.restore();
+  qc.clear();
+  locate.mockRestore();
+});
+
+describe('the list', () => {
+  it('asks only for offers redeemable right now, near the diner', async () => {
+    mock.onGet('/offers').reply(200, { data: [offer()] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+
+    await waitFor(() => expect(mock.history.get).toHaveLength(1));
+    // Without `active=1` this lists offers whose window shut overnight — the
+    // column never gets rewritten — and sends someone to a closed promotion.
+    expect(mock.history.get[0].params).toMatchObject({ active: 1, near: '38.7223,-9.1393' });
+  });
+
+  it('shows the venue behind each offer, not just the discount', async () => {
+    mock.onGet('/offers').reply(200, { data: [offer()] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+    expect(screen.getByText(/Taberna do Bairro/)).toBeTruthy();
+  });
+
+  it('says there is nothing nearby rather than showing a blank screen', async () => {
+    mock.onGet('/offers').reply(200, { data: [] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('offers-empty')).toBeTruthy());
+  });
+
+  it('routes to the code screen for the offer that was tapped', async () => {
+    mock.onGet('/offers').reply(200, { data: [offer({ id: '42' })] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+
+    fireEvent.press(screen.getByText('Get code'));
+
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/offers/[id]/redeem', params: { id: '42' } });
+  });
+});
+
+describe('without a location fix', () => {
+  it('asks for permission instead of listing offers from nowhere', async () => {
+    locate.mockResolvedValue({ ok: false, reason: 'denied' });
+
+    render(<OffersBrowseScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('offers-location-blocked')).toBeTruthy());
+    // Critically: no request went out. A browse with no fix has nothing to ask.
+    expect(mock.history.get).toHaveLength(0);
+  });
+
+  it('sends a hard-denied user to Settings, which is the only thing that fixes it', async () => {
+    locate.mockResolvedValue({ ok: false, reason: 'blocked' });
+
+    render(<OffersBrowseScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByText('Open settings')).toBeTruthy());
+  });
+
+  it('retries the fix when the refusal was only a dismissed prompt', async () => {
+    locate.mockResolvedValueOnce({ ok: false, reason: 'denied' });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('offers-location-cta')).toBeTruthy());
+
+    locate.mockResolvedValue({ ok: true, region: REGION });
+    mock.onGet('/offers').reply(200, { data: [offer()] });
+    fireEvent.press(screen.getByTestId('offers-location-cta'));
+
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+  });
+});
+
+describe('the map toggle', () => {
+  it('places a marker per offer once the diner switches to the map', async () => {
+    mock.onGet('/offers').reply(200, { data: [offer(), offer({ id: '2', place_id: '11' })] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getAllByText('Two-for-one pastéis')).toHaveLength(2));
+
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    // The discount, not a generic pin — the number is the reason to walk there.
+    // (Asserted through the marker labels: the jest mock for react-native-maps
+    // renders MapView under its own testID, so the screen's is not visible.)
+    await waitFor(() => expect(screen.getAllByText('20%')).toHaveLength(2));
+  });
+
+  /*
+   * A venue with no coordinates cannot be a marker. Silently dropping it makes
+   * the map quietly disagree with the list the diner was just looking at.
+   */
+  it('says so when an offer cannot be placed on the map', async () => {
+    mock.onGet('/offers').reply(200, {
+      data: [offer(), offer({ id: '2', place: { ...offer().place!, lat: null, lng: null } })],
+    });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getAllByText('Two-for-one pastéis')).toHaveLength(2));
+
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    await waitFor(() => expect(screen.getByText('1 offer has no map location.')).toBeTruthy());
+  });
+});

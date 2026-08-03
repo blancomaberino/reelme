@@ -314,3 +314,48 @@ jest.mock('react-native-safe-area-context', () => {
     useSafeAreaFrame: () => ({ x: 0, y: 0, width: 390, height: 844 }),
   };
 });
+
+// expo-camera is native (T-047). `CameraView` renders as a plain View that
+// exposes its `onBarcodeScanned` through a testID, so a suite can fire a scan
+// without a camera — the scanner's duplicate-read lock is the behaviour worth
+// pinning and it is unreachable otherwise.
+jest.mock('expo-camera', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    CameraView: ({ children, ...props }: { children?: React.ReactNode; testID?: string }) =>
+      React.createElement(View, { ...props, testID: props.testID ?? 'CameraView' }, children),
+    useCameraPermissions: () => [{ granted: true, canAskAgain: true }, jest.fn()],
+  };
+});
+
+// expo-brightness is native. Every call is best-effort in the app (a failure
+// must never break the code screen), so resolving is the honest default.
+jest.mock('expo-brightness', () => ({
+  getBrightnessAsync: jest.fn(async () => 0.4),
+  setBrightnessAsync: jest.fn(async () => undefined),
+  restoreSystemBrightnessAsync: jest.fn(async () => undefined),
+}));
+
+// react-native-qrcode-svg draws through react-native-svg — native, and the
+// pixels are not what any assertion here is about.
+jest.mock('react-native-qrcode-svg', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: (props: { testID?: string }) => React.createElement(View, { ...props, testID: 'QRCode' }),
+  };
+});
+
+// `useIsFocused` needs a navigation container the render helpers don't mount.
+// Only the focus signal is stubbed — the rest of the module (ThemeProvider,
+// used by the root layout) stays real, so a test rendering the layout is
+// unaffected. Screens read it to gate polling and the brightness boost; in a
+// unit test the screen under test is always the focused one.
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useIsFocused: () => true,
+}));

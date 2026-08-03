@@ -66,7 +66,13 @@ class OfferController extends Controller
     {
         $limit = $request->limit();
 
-        $query = Offer::query()->with('place');
+        // `lat`/`lng` are SQL aliases over the PostGIS column — the diner browse
+        // renders these offers on a map (T-047), and without them the map
+        // toggle has nothing to place. Selected on the RELATION so one query
+        // still answers the whole list.
+        $query = Offer::query()->with(['place' => fn ($q) => $q->selectRaw(
+            'places.*, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng'
+        )]);
 
         if ($request->boolean('mine')) {
             // The route itself is public (diners browse it unauthenticated), so

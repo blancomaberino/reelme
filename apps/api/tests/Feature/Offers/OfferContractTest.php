@@ -29,6 +29,22 @@ it('validates a browse row against offer.json', function () {
     }
 });
 
+/*
+ * The diner browse renders these on a map (T-047). Coordinates live in a
+ * PostGIS column, so they only exist on the payload when the query aliased
+ * them — and a map with no coordinates is a toggle that shows an empty map next
+ * to a full list.
+ */
+it('carries the venue coordinates on the browse so the map can place them', function () {
+    $place = Place::factory()->active()->atPoint(38.7223, -9.1393)->create();
+    Offer::factory()->active()->create(['place_id' => $place->id]);
+
+    $row = $this->getJson('/api/v1/offers')->assertOk()->json('data.0');
+
+    expect($row['place']['lat'])->toBeFloat()->toEqualWithDelta(38.7223, 0.0001)
+        ->and($row['place']['lng'])->toBeFloat()->toEqualWithDelta(-9.1393, 0.0001);
+});
+
 it('validates the detail payload', function () {
     $offer = Offer::factory()->active()->create([
         'place_id' => Place::factory()->active(),

@@ -68,12 +68,14 @@
       "description": "Compact venue block, present only on the flat /offers reads — never on the ?include=offers embed, where the caller already holds the place.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "slug", "city", "country_code", "thumbnail_url"],
+      "required": ["id", "name", "slug", "city", "country_code", "thumbnail_url", "lat", "lng"],
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
         "slug": { "type": "string" },
         "city": { "type": ["string", "null"] },
+          "lat": { "type": ["number", "null"], "minimum": -90, "maximum": 90, "description": "Venue latitude. Present on the flat /offers reads so the diner browse can map them; null when the query did not select coordinates." },
+          "lng": { "type": ["number", "null"], "minimum": -180, "maximum": 180, "description": "Venue longitude. See lat." },
         "country_code": { "type": ["string", "null"] },
         "thumbnail_url": { "type": ["string", "null"] }
       }

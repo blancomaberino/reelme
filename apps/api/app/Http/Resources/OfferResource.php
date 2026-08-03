@@ -70,6 +70,12 @@ class OfferResource extends JsonResource
                 'name' => $this->place->name,
                 'slug' => $this->place->slug,
                 'city' => $this->place->city,
+                // Present only when the caller's query aliased them (the flat
+                // browse does; the place-detail embed has no need). Null rather
+                // than absent so the map can skip a venue it cannot place
+                // instead of the client having to feature-detect the field.
+                'lat' => isset($this->place->lat) ? (float) $this->place->lat : null,
+                'lng' => isset($this->place->lng) ? (float) $this->place->lng : null,
                 'country_code' => $this->place->country_code,
                 'thumbnail_url' => $this->place->thumbnail_url ?? $this->place->image_url,
             ]),

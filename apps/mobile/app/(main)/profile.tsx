@@ -105,6 +105,21 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={18} color={c.muted} />
           </Pressable>
         ) : null}
+        {/* The till (T-047). Same gate as the offers screen — an operator needs
+            this in reach during service, not buried under offer management. */}
+        {user?.is_restaurant_owner ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('profile.verifyCode')}
+            onPress={() => router.push('/restaurant/verify')}
+            style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+            testID="profile-verify"
+          >
+            <Ionicons name="qr-code-outline" size={20} color={c.text} />
+            <Text style={styles.settingsLabel}>{t('profile.verifyCode')}</Text>
+            <Ionicons name="chevron-forward" size={18} color={c.muted} />
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('profile.invite')}
