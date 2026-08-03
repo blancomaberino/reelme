@@ -83,7 +83,7 @@ So, before any UI task is called done:
 
 5. **Generated native dirs are stale until proven otherwise.** `ios/` and `android/` are git-ignored build output, and `expo run:*` does **not** re-run prebuild over an existing one. Any change to `app.config.ts` plugins or permissions needs `npx expo prebuild --clean` before anything observed on the device means a thing.
 
-6. **Do NOT use `simctl openurl` to navigate. Navigate with Maestro.**
+6. **Do NOT use `simctl openurl` to navigate. Navigate with Maestro.** *(enforced — `.claude/hooks/guard-simulator-deeplink.sh` denies it)*
 
    `simctl openurl` sets the app's *launch URL*, and Expo Router replays it on every reload — so the owner's next **Cmd+R lands on whatever screen you were testing**, not home. This has been reported three separate times ("stuck in offers", "stuck in new offer", "STUCK ON THE WRONG PAGE"), each time caused by an agent's own verification. Remembering to clean up afterwards demonstrably does not work; the fix is to stop creating the state.
 
