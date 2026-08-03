@@ -1066,7 +1066,7 @@
       "id": "T-043",
       "title": "Redemptions: issue code/QR + verify endpoint + anti-fraud",
       "phase": "M4",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-042"
       ],
