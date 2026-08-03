@@ -1041,7 +1041,7 @@
       "id": "T-042",
       "title": "Offers CRUD (API + Filament + restaurant mobile screens)",
       "phase": "M4",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-041"
       ],
