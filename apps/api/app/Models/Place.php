@@ -210,6 +210,18 @@ class Place extends Model
     }
 
     /**
+     * Restaurant offers (T-042) in every state — drafts and archived rows
+     * included. Diner-facing surfaces constrain this with `active()` or
+     * `publiclyVisible()`; nothing here decides that for them.
+     *
+     * @return HasMany<Offer, $this>
+     */
+    public function offers(): HasMany
+    {
+        return $this->hasMany(Offer::class);
+    }
+
+    /**
      * Native user reviews (1–5 stars) — distinct from the cached Google snippets.
      *
      * @return HasMany<Review, $this>

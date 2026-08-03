@@ -89,6 +89,22 @@ export default function ProfileScreen() {
           <Text style={styles.settingsLabel}>{t('profile.lists')}</Text>
           <Ionicons name="chevron-forward" size={18} color={c.muted} />
         </Pressable>
+        {/* The restaurant surface (T-042) appears only once a place claim has
+            been verified — `is_restaurant_owner` is set by that approval. A
+            diner has nothing to manage, so the row would be a dead end. */}
+        {user?.is_restaurant_owner ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('profile.restaurant')}
+            onPress={() => router.push('/restaurant/offers')}
+            style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+            testID="profile-restaurant"
+          >
+            <Ionicons name="pricetag-outline" size={20} color={c.text} />
+            <Text style={styles.settingsLabel}>{t('profile.restaurant')}</Text>
+            <Ionicons name="chevron-forward" size={18} color={c.muted} />
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('profile.invite')}

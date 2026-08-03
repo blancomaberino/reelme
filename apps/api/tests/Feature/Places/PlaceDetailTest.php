@@ -192,7 +192,7 @@ it('omits sources without include and rejects unknown includes', function () {
         ->assertJsonPath('error.code', 'validation_failed');
 });
 
-it('accepts include=offers as an empty list until M4', function () {
+it('returns an empty offers list for a place with no offers', function () {
     $place = Place::factory()->active()->atPoint(51.5, -0.13)->create();
 
     $this->getJson("/api/v1/places/{$place->id}?include=offers")

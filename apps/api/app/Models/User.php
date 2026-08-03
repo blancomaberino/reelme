@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ClaimStatus;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
@@ -143,6 +144,44 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     public function routeNotificationForExpo(): array
     {
         return $this->devices()->pluck('expo_push_token')->all();
+    }
+
+    /**
+     * Verified operator claims this user holds (T-041) — the source of truth for
+     * which venues they may run offers for.
+     *
+     * @return HasMany<PlaceClaim, $this>
+     */
+    public function placeClaims(): HasMany
+    {
+        return $this->hasMany(PlaceClaim::class);
+    }
+
+    /**
+     * Does this user operate the place — i.e. hold its one VERIFIED claim
+     * (T-041, 06 §2.1)? The gate on every offer write (T-042) and, downstream,
+     * on verifying redemptions (T-043).
+     *
+     * Derived from `place_claims` on every call rather than mirrored onto a
+     * column: the partial unique index already guarantees at most one verified
+     * claim per place, so a cached flag would be a second copy of a fact the
+     * database owns — and revoking a claim would have to remember to clear it.
+     * Uses the loaded relation when there is one, so a list of offers costs no
+     * N+1.
+     */
+    public function ownsPlace(Place $place): bool
+    {
+        if ($this->relationLoaded('placeClaims')) {
+            return $this->placeClaims->contains(
+                fn (PlaceClaim $claim) => $claim->place_id === $place->id
+                    && $claim->status === ClaimStatus::Verified,
+            );
+        }
+
+        return $this->placeClaims()
+            ->where('place_id', $place->id)
+            ->where('status', ClaimStatus::Verified)
+            ->exists();
     }
 
     /**

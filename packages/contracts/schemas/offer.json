@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/offer.json",
+  "title": "Offer",
+  "description": "A restaurant offer (T-042, 03 §2.12) — GET /api/v1/offers, GET /api/v1/offers/{id}, and the ?include=offers embed on place detail. `discount_value` is one integer in three units, selected by `discount_type`: a percentage (5–50 via the API), MINOR currency units for fixed_amount (350 = €3.50), or an item count for free_item. Never a float — money in a float is a rounding bug waiting for the ledger to find it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "place_id",
+    "title",
+    "description",
+    "discount_type",
+    "discount_value",
+    "terms",
+    "starts_at",
+    "ends_at",
+    "quota_total",
+    "quota_per_user",
+    "quota_per_day",
+    "redemptions_count",
+    "remaining_quota",
+    "status",
+    "is_redeemable",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "place_id": { "type": "string" },
+    "title": { "type": "string", "maxLength": 160 },
+    "description": { "type": ["string", "null"] },
+    "discount_type": { "enum": ["percent", "fixed_amount", "free_item"] },
+    "discount_value": { "type": "integer", "minimum": 1 },
+    "terms": {
+      "description": "Free-text terms shown to the diner before a redemption is issued (06 §2.2).",
+      "type": ["string", "null"]
+    },
+    "starts_at": { "type": "string", "format": "date-time" },
+    "ends_at": {
+      "description": "Null = open-ended. The API defaults an omitted end date to starts_at + 90 days (06 §2.2 caps a run at 90 days), so null reaches clients only for rows created outside the public API.",
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "quota_total": {
+      "description": "Lifetime cap on redemptions; null = unlimited.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "quota_per_user": { "type": "integer", "minimum": 1 },
+    "quota_per_day": {
+      "description": "Per-day cap (06 §2.2 anti-fraud throttle); null = unlimited.",
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "redemptions_count": { "type": "integer", "minimum": 0 },
+    "remaining_quota": {
+      "description": "Redemptions left under quota_total; null when unlimited — a distinction a raw subtraction cannot express.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "status": { "enum": ["draft", "active", "paused", "expired", "archived"] },
+    "is_redeemable": {
+      "description": "Computed, not derived from `status`: an offer whose window lapsed overnight still reads status=active. Covers the window and the lifetime quota; the per-day quota is settled at issue time.",
+      "type": "boolean"
+    },
+    "place": {
+      "description": "Compact venue block, present only on the flat /offers reads — never on the ?include=offers embed, where the caller already holds the place.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "slug", "city", "country_code", "thumbnail_url"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "city": { "type": ["string", "null"] },
+        "country_code": { "type": ["string", "null"] },
+        "thumbnail_url": { "type": ["string", "null"] }
+      }
+    },
+    "created_at": { "type": ["string", "null"], "format": "date-time" },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

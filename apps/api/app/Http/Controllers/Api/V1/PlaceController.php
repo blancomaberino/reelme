@@ -40,6 +40,9 @@ class PlaceController extends Controller
     /** Embedded native reviews on ?include=reviews; page the rest via /reviews. */
     private const REVIEW_CAP = 10;
 
+    /** Embedded live offers on ?include=offers; page the rest via /offers (T-042). */
+    private const OFFER_CAP = 10;
+
     public function index(PlaceIndexRequest $request): JsonResponse
     {
         $sort = $request->sort();
@@ -172,6 +175,15 @@ class PlaceController extends Controller
         // Hidden (moderated) reviews never count toward the public aggregate.
         $place->loadCount(['reviews' => fn ($q) => $q->visible()])
             ->loadAvg(['reviews' => fn ($q) => $q->visible()], 'rating');
+
+        // Live offers only (T-042): `active()` evaluates the validity window, so
+        // an offer whose `ends_at` passed overnight drops out even though its
+        // status column still says `active`.
+        if (in_array('offers', $includes, true)) {
+            $place->load([
+                'offers' => fn ($q) => $q->active()->orderByDesc('id')->limit(self::OFFER_CAP),
+            ]);
+        }
 
         if (in_array('reviews', $includes, true)) {
             $place->load([

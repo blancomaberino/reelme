@@ -17,7 +17,7 @@ use Illuminate\Support\Collection;
  * multi-source aggregate (T-082): one normalized row per resolving provider.
  *
  * `?include=sources` embeds the attribution list (PlaceSourceResource shape);
- * `?include=offers` is accepted-but-empty until M4 (T-030).
+ * `?include=offers` embeds the venue's live offers (T-042, OfferResource shape).
  *
  * @mixin Place
  */
@@ -131,9 +131,12 @@ class PlaceResource extends JsonResource
                     $this->sources->sortBy([['is_primary', 'desc'], ['id', 'asc']])->values()
                 ),
             ),
+            // Only offers that are LIVE — the controller loads them through
+            // Offer::active(), so a draft, a paused promo, or one whose window
+            // lapsed overnight never reaches a diner from here (T-042).
             'offers' => $this->when(
                 in_array('offers', $this->includes, true),
-                [], // offers ship in M4 — the include is accepted-but-empty (03 §2.6)
+                fn () => OfferResource::collection($this->offers),
             ),
             'reviews' => $this->when(
                 in_array('reviews', $this->includes, true),
