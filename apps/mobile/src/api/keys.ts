@@ -70,6 +70,10 @@ export const queryKeys = {
   offer: (id: string) => ['offers', id] as const,
   /** The venues the caller operates — a verified place claim each (T-041/T-042). */
   venues: () => ['me', 'venues'] as const,
+  /** Balance, Connect state and recent entries (T-046). Never cached — money. */
+  wallet: () => ['wallet'] as const,
+  walletLedger: () => ['wallet', 'ledger'] as const,
+  walletPayouts: () => ['wallet', 'payouts'] as const,
   /** The selectable analysis-model catalog (T-020). */
   analysisModels: () => ['analysis', 'models'] as const,
   /** The caller's 2FA state (T-068). Not nested under `me` — invalidating the

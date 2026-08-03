@@ -27,6 +27,7 @@ class PayoutFactory extends Factory
             'status' => PayoutStatus::Pending,
             'period_start' => now()->startOfMonth()->toDateString(),
             'period_end' => now()->endOfMonth()->toDateString(),
+            'idempotency_key' => null,
             'failure_reason' => null,
             'paid_at' => null,
         ];

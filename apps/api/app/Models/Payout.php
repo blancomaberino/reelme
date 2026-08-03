@@ -28,6 +28,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $period_start
  * @property Carbon $period_end
  * @property string|null $failure_reason
+ * @property string|null $idempotency_key
  * @property Carbon|null $paid_at
  */
 class Payout extends Model

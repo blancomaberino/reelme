@@ -76,6 +76,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     'expo-secure-store',
     'expo-notifications',
+    /*
+     * Stripe Connect onboarding (T-046, 05 screen #22).
+     *
+     * A system auth-session browser rather than an in-app WebView, and that is a
+     * deliberate call: this flow asks for ID documents and bank details, so the
+     * user should see a real URL bar saying `stripe.com`. An app that renders
+     * KYC inside its own chrome is indistinguishable from one that is
+     * harvesting it. `openAuthSessionAsync` also closes itself on the return
+     * redirect, so there is no navigation to intercept by hand.
+     */
+    'expo-web-browser',
     // Foreground location (T-100): centres the map on the user on first launch
     // and powers the "locate me" control. WHEN-IN-USE only — Reelmap never
     // tracks in the background, so both background flags stay off (they also
