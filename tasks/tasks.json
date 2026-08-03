@@ -2871,7 +2871,7 @@
       "id": "T-108",
       "title": "Skeleton loaders for place detail + my-places (replace spinner-first loading)",
       "phase": "ARCH",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-104"
       ],
