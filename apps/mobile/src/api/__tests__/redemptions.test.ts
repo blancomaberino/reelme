@@ -69,8 +69,13 @@ describe('secondsRemaining', () => {
     expect(secondsRemaining(redemption({ expires_at: '2026-08-03T11:00:00Z' }), NOW)).toBe(0);
   });
 
-  it('is zero when the API sent no expiry at all', () => {
-    expect(secondsRemaining(redemption({ expires_at: null }), NOW)).toBe(0);
+  /*
+   * `null`, not 0 — "no expiry" and "no time left" are different facts, and
+   * collapsing them puts "Expires in 0s" under a code that never lapses. The
+   * screen omits the countdown on null.
+   */
+  it('answers null, not zero, for a code with no expiry at all', () => {
+    expect(secondsRemaining(redemption({ expires_at: null }), NOW)).toBeNull();
   });
 });
 

@@ -31,9 +31,16 @@ export function codeState(redemption: Redemption, now: Date = new Date()): CodeS
   return expiresAt !== null && expiresAt <= now.getTime() ? 'expired' : 'active';
 }
 
-/** Whole seconds until the code lapses; 0 once it has. Never negative. */
-export function secondsRemaining(redemption: Redemption, now: Date = new Date()): number {
-  if (!redemption.expires_at) return 0;
+/**
+ * Whole seconds until the code lapses; 0 once it has, never negative.
+ *
+ * `null` means NO EXPIRY, which is a different fact from "no time left" — the
+ * contract allows a null `expires_at`, and collapsing it to 0 puts
+ * "Expires in 0s" under a code that never lapses. The screen omits the
+ * countdown instead.
+ */
+export function secondsRemaining(redemption: Redemption, now: Date = new Date()): number | null {
+  if (!redemption.expires_at) return null;
 
   return Math.max(0, Math.floor((new Date(redemption.expires_at).getTime() - now.getTime()) / 1000));
 }

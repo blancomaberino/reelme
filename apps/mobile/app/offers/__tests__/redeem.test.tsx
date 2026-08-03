@@ -84,8 +84,9 @@ describe('claiming a code', () => {
 
     await waitFor(() => expect(mock.history.post).toHaveLength(1));
     expect(JSON.parse(mock.history.post[0].data)).toMatchObject({ offer_id: 7, share_id: 9 });
-    // A retry on flaky restaurant wifi must not mint a second code.
-    expect(mock.history.post[0].headers?.['Idempotency-Key']).toBeTruthy();
+    // A key that changes per request cannot deduplicate anything, so it has to
+    // be stable for the attempt — this pins that it is sent at all.
+    expect(mock.history.post[0].headers?.['Idempotency-Key']).toMatch(/^redeem-7-\d+$/);
   });
 
   /*
@@ -157,8 +158,9 @@ describe('claiming a code', () => {
     render(<RedeemScreen />, { wrapper });
     fireEvent.press(screen.getByTestId('redeem-cta'));
 
-    await waitFor(() => expect(screen.getByTestId('redeem-error')).toBeTruthy());
-    expect(screen.queryByText(/already have a live code/)).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId('redeem-error')).toHaveTextContent('Something went wrong. Please try again.'),
+    );
   });
 });
 
@@ -191,6 +193,43 @@ describe('the state machine', () => {
 
     await waitFor(() => expect(screen.getByTestId('redeem-expired')).toBeTruthy());
     expect(screen.queryByTestId('redeem-active')).toBeNull();
+  });
+
+  /* A void was cancelled, not lapsed — "get another" would invite a repeat. */
+  it('tells a voided code apart from an expired one', async () => {
+    mockRouter.params = { id: '7', redemptionId: '55' };
+    mock.onGet('/redemptions/55').reply(200, { data: redemption({ status: 'void' }) });
+
+    render(<RedeemScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('redeem-void')).toBeTruthy());
+    expect(screen.queryByTestId('redeem-expired')).toBeNull();
+    expect(screen.queryByTestId('redeem-again')).toBeNull();
+  });
+
+  it('omits the countdown for a code that never lapses', async () => {
+    mockRouter.params = { id: '7', redemptionId: '55' };
+    mock.onGet('/redemptions/55').reply(200, { data: redemption({ expires_at: null }) });
+
+    render(<RedeemScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('redeem-active')).toBeTruthy());
+    // "Expires in 0s" under a live code is worse than no line at all.
+    expect(screen.queryByTestId('redeem-countdown')).toBeNull();
+  });
+
+  it('offers a retry instead of spinning forever when the code cannot be read', async () => {
+    mockRouter.params = { id: '7', redemptionId: '55' };
+    mock.onGet('/redemptions/55').reply(500);
+
+    render(<RedeemScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('redeem-load-error')).toBeTruthy());
+
+    mock.onGet('/redemptions/55').reply(200, { data: redemption() });
+    fireEvent.press(screen.getByText('Try again'));
+
+    await waitFor(() => expect(screen.getByTestId('redeem-active')).toBeTruthy());
   });
 
   it('offers a fresh code after one lapses instead of dead-ending', async () => {

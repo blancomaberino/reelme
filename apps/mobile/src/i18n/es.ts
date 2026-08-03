@@ -616,6 +616,8 @@ export const es: Record<MessageKey, string> = {
   'redeem.expired': 'Este código venció',
   'redeem.expiredBody': 'Los códigos duran 24 horas. Podés sacar uno nuevo si la oferta sigue activa.',
   'redeem.getAnother': 'Obtener uno nuevo',
+  'redeem.void': 'Este código fue cancelado',
+  'redeem.voidBody': 'Ya no se puede usar. Contactá al restaurante si creés que es un error.',
   'redeem.error.alreadyIssued': 'Ya tenés un código para esta oferta — revisá tus códigos.',
   'redeem.error.quota': 'Ya usaste esta oferta.',
   'redeem.error.velocity': 'Reclamaste muchas ofertas hoy. Probá mañana.',
@@ -624,12 +626,12 @@ export const es: Record<MessageKey, string> = {
   'redeem.error.unavailable': 'Esta oferta no está disponible ahora.',
 
   // Ofertas cerca (T-047).
-  'offers.browse.title': 'Ofertas cerca tuyo',
+  'offers.browse.title': 'Ofertas cerca de vos',
   'offers.browse.list': 'Lista',
   'offers.browse.map': 'Mapa',
   'offers.browse.getCode': 'Obtener código',
   'offers.browse.empty': 'No hay ofertas activas a menos de {{km}} km ahora mismo.',
-  'offers.browse.needLocation': 'Activá la ubicación para ver qué hay en oferta cerca tuyo.',
+  'offers.browse.needLocation': 'Activá la ubicación para ver qué hay en oferta cerca de vos.',
   'offers.browse.noFix': 'No pudimos obtener tu ubicación. Probá de nuevo en un momento.',
   'offers.browse.openSettings': 'Abrir ajustes',
   'offers.browse.notMapped': '{{count}} ofertas sin ubicación en el mapa.',

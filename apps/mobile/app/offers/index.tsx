@@ -100,7 +100,10 @@ export default function OffersBrowseScreen() {
       );
     }
 
-    if (fix.isPending || fix.isFetching || isLoading) {
+    // `isPending` only — NOT `isFetching`. A background refetch after the
+    // 5-minute staleTime would otherwise replace a rendered list with a spinner
+    // while re-reading a fix we already have.
+    if (fix.isPending || isLoading) {
       return <ActivityIndicator color={c.primary} style={styles.loading} accessibilityLabel={t('common.loading')} />;
     }
 

@@ -179,6 +179,53 @@ describe('the scanner lock', () => {
     expect(mock.history.post).toHaveLength(1);
   });
 
+  /*
+   * The camera renders as soon as permission is granted, which is BEFORE
+   * /me/venues resolves. A scan in that window has no place to verify against.
+   * If it took the lock anyway, the scanner would be dead for the rest of the
+   * session with no sheet to dismiss and no hint why.
+   */
+  it('does not strand itself on a scan that arrives before the venue loads', async () => {
+    let releaseVenues: (() => void) | undefined;
+    mock.onGet('/me/venues').reply(
+      () =>
+        new Promise((resolve) => {
+          releaseVenues = () => resolve([200, { data: [VENUE] }]);
+        }),
+    );
+    mock.onPost('/redemptions/verify').reply(200, { data: REDEEMED, meta: { replayed: false } });
+
+    render(<VerifyScreen />, { wrapper });
+    const camera = await screen.findByTestId('verify-camera');
+
+    fireEvent(camera, 'barcodeScanned', { data: 'v1.7F3K92QXAB.sig' });
+    expect(mock.history.post).toHaveLength(0);
+
+    releaseVenues?.();
+    await waitFor(() => expect(screen.getByTestId('verify-manual-input')).toBeTruthy());
+
+    // The scanner still works — the discarded read did not consume the lock.
+    fireEvent(await screen.findByTestId('verify-camera'), 'barcodeScanned', { data: 'v1.7F3K92QXAB.sig' });
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+  });
+
+  it('does not let the typed path fire twice for one code', async () => {
+    serveVenues();
+    mock.onPost('/redemptions/verify').reply(200, { data: REDEEMED, meta: { replayed: false } });
+
+    render(<VerifyScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('verify-manual-input')).toBeTruthy());
+
+    fireEvent.changeText(screen.getByTestId('verify-manual-input'), '7F3K92QXAB');
+    // A press plus the keyboard's submit — the duplicate the velocity limiter
+    // reads as someone guessing codes.
+    fireEvent.press(screen.getByTestId('verify-submit'));
+    fireEvent(screen.getByTestId('verify-manual-input'), 'submitEditing');
+
+    await waitFor(() => expect(screen.getByTestId('verify-result-success')).toBeTruthy());
+    expect(mock.history.post).toHaveLength(1);
+  });
+
   it('unlocks for the next customer once the result is dismissed', async () => {
     serveVenues();
     mock.onPost('/redemptions/verify').reply(200, { data: REDEEMED, meta: { replayed: false } });

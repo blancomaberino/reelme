@@ -19,12 +19,16 @@ import { ValidationError } from '../types';
  * the route rather than guessing server-side is the whole reason the influencer
  * who actually sent someone gets paid.
  *
- * Carries an `Idempotency-Key` per 03 §1. Note the ISSUE endpoint does not read
- * it today — the anti-fraud unique index on (offer_id, user_id) is what stops a
- * retry minting a second code, and it reports that as `already_issued`. The
- * header is sent so the endpoint can honour it without a client release; the
- * screen's recovery is {@see useLiveRedemptionForOffer}, which turns that
- * refusal back into the code the diner already holds.
+ * Carries an `Idempotency-Key` per 03 §1. The key is supplied by the CALLER and
+ * held for the whole claim attempt — generating it here from a clock made every
+ * retry a new key, which is the one thing an idempotency key must never be.
+ *
+ * Note the issue endpoint does not read the header today: the unique index on
+ * (offer_id, user_id) is what stops a retry minting a second code, reported as
+ * `already_issued`. The header is sent so the endpoint can honour it without a
+ * client release, and the screen's recovery is
+ * {@see useLiveRedemptionForOffer}, which turns that refusal back into the code
+ * the diner already holds.
  */
 export function useIssueRedemption() {
   const qc = useQueryClient();
@@ -34,11 +38,16 @@ export function useIssueRedemption() {
     // and a silent retry is exactly what the idempotency key exists to survive
     // — not something to do casually.
     retry: 0,
-    mutationFn: async (input: { offerId: string; shareId?: string | null }): Promise<Redemption> => {
+    mutationFn: async (input: {
+      offerId: string;
+      shareId?: string | null;
+      /** Stable for the whole attempt, including retries. */
+      idempotencyKey: string;
+    }): Promise<Redemption> => {
       const { data } = await api.post<{ data: Redemption }>(
         '/redemptions',
         { offer_id: Number(input.offerId), share_id: input.shareId ? Number(input.shareId) : undefined },
-        { headers: { 'Idempotency-Key': `redeem-${input.offerId}-${Date.now()}` } },
+        { headers: { 'Idempotency-Key': input.idempotencyKey } },
       );
       return data.data;
     },
@@ -94,9 +103,13 @@ export function useRedemption(id: string | null, options: { poll?: boolean } = {
     staleTime: 0,
     refetchInterval: (query) => {
       if (options.poll === false) return false;
-      const status = query.state.data?.status;
+      const current = query.state.data;
 
-      return status === 'issued' ? 3000 : false;
+      // Gated on the DERIVED state, not on `status`: the expiry sweep is
+      // scheduled, so a lapsed code keeps reading `issued` and a status-only
+      // check polls a settled question every 3s for as long as the screen is
+      // open.
+      return current && codeState(current) === 'active' ? 3000 : false;
     },
   });
 }

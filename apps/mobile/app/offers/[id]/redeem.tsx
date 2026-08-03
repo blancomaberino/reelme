@@ -68,7 +68,7 @@ export default function RedeemScreen() {
   // Derived, not mirrored into state by an effect: the adopted id IS a function
   // of "what we claimed" and "what the lookup found".
   const redemptionId = claimedId ?? (refusedAsDuplicate ? (existing.data?.id ?? null) : null);
-  const { data: redemption, isLoading } = useRedemption(redemptionId, { poll: focused });
+  const { data: redemption, isLoading, isError, refetch } = useRedemption(redemptionId, { poll: focused });
 
   // Raised while a live code is on screen, restored on blur. A dim phone in a
   // dim restaurant is the difference between a scan that works and staff giving
@@ -76,7 +76,8 @@ export default function RedeemScreen() {
   const state = redemption ? codeState(redemption) : null;
   useScreenBrightness(focused && state === 'active');
 
-  const [remaining, setRemaining] = useState(0);
+  // `null` = this code has no expiry, which is not the same as "no time left".
+  const [remaining, setRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     if (!redemption || state !== 'active') return;
@@ -92,7 +93,9 @@ export default function RedeemScreen() {
 
   const claim = () =>
     issue.mutate(
-      { offerId, shareId: params.shareId ?? null },
+      // One key per attempt, generated at the tap and reused by every retry of
+      // it — a key that changes per request cannot deduplicate anything.
+      { offerId, shareId: params.shareId ?? null, idempotencyKey: `redeem-${offerId}-${Date.now()}` },
       { onSuccess: (created) => setClaimedId(created.id) },
     );
 
@@ -119,6 +122,14 @@ export default function RedeemScreen() {
               </Text>
             ) : null}
           </View>
+        ) : isError ? (
+          /* Without this the screen spins forever on a failed read — a diner
+             standing at a counter watching a loader with no way out. */
+          <View style={styles.centered} testID="redeem-load-error">
+            <Ionicons name="cloud-offline-outline" size={40} color={c.muted} />
+            <Text style={styles.hint}>{t('common.error.general')}</Text>
+            <Button title={t('common.tryAgain')} variant="secondary" onPress={() => void refetch()} />
+          </View>
         ) : isLoading || !redemption ? (
           <ActivityIndicator color={c.primary} style={styles.loading} accessibilityLabel={t('common.loading')} />
         ) : state === 'verified' ? (
@@ -136,14 +147,29 @@ export default function RedeemScreen() {
                 code is the fallback for a scanner that will not focus. */}
             <RedemptionCode payload={redemption.qr_payload ?? ''} code={redemption.code_display ?? ''} />
 
-            <View style={styles.countdown}>
-              <Ionicons name="time-outline" size={16} color={c.muted} />
-              <Text style={styles.countdownText} testID="redeem-countdown">
-                {t('redeem.expiresIn', { time: formatRemaining(remaining) })}
-              </Text>
-            </View>
+            {/* Omitted entirely for a code with no expiry — "Expires in 0s"
+                under a code that never lapses is worse than no line at all. */}
+            {remaining !== null ? (
+              <View style={styles.countdown}>
+                <Ionicons name="time-outline" size={16} color={c.muted} />
+                <Text style={styles.countdownText} testID="redeem-countdown">
+                  {t('redeem.expiresIn', { time: formatRemaining(remaining) })}
+                </Text>
+              </View>
+            ) : null}
 
             <Text style={styles.hint}>{t('redeem.showToStaff')}</Text>
+          </View>
+        ) : state === 'void' ? (
+          /* A void is not an expiry. It was cancelled — by a moderator or a
+             reversal — so "get another" would be an invitation to fail again. */
+          <View style={styles.centered} testID="redeem-void">
+            <View style={[styles.badge, { backgroundColor: c.dangerSoft }]}>
+              <Ionicons name="close-circle" size={56} color={c.danger} />
+            </View>
+            <Text style={styles.headline}>{t('redeem.void')}</Text>
+            <Text style={styles.hint}>{t('redeem.voidBody')}</Text>
+            <Button title={t('common.close')} variant="secondary" onPress={() => router.back()} />
           </View>
         ) : (
           <View style={styles.centered} testID="redeem-expired">

@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as Location from 'expo-location';
 import { Stack } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -12,6 +11,7 @@ import type { VerifyOutcome } from '@/api/redemptions';
 import { Button } from '@/components/button';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
+import { getLocationPermission, getUserRegion } from '@/lib/location';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
@@ -56,51 +56,60 @@ export default function VerifyScreen() {
   const placeId = venueId ?? venues?.[0]?.id ?? null;
   const selectedVenue = venues?.find((venue) => venue.id === placeId) ?? null;
 
+  /**
+   * One verify, start to finish.
+   *
+   * The lock is released on EVERY path that does not end in a result sheet.
+   * That is the whole contract: the sheet is the only thing that clears it by
+   * hand, so a scan that gets discarded (venues still loading) or that throws
+   * would otherwise leave a dead camera the operator can only fix by leaving
+   * the screen — mid-service, with a queue.
+   */
   const submit = useCallback(
     async (code: string) => {
+      if (locked.current) return;
       if (placeId === null || code.trim() === '') return;
 
-      // Best-effort. A denied permission or a phone that cannot get a fix must
-      // not stop a customer being served — the server records the location as
-      // unknown and lets the verification through (06 §3).
-      let coords: { lat: number; lng: number } | null = null;
+      locked.current = true;
+
       try {
-        const granted = await Location.getForegroundPermissionsAsync();
-        if (granted.granted) {
-          const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          coords = { lat: position.coords.latitude, lng: position.coords.longitude };
-        }
+        // Best-effort AND time-boxed, through the shared helper: a phone that
+        // cannot get a fix must not stop a customer being served, and
+        // `getCurrentPositionAsync` takes no timeout — indoors it simply never
+        // returns. The server records an unknown location and lets the
+        // verification through (06 §3).
+        const region =
+          (await getLocationPermission()).state === 'granted' ? await getUserRegion(FIX_BUDGET_MS) : null;
+
+        setOutcome(
+          await verify.mutateAsync({
+            code: code.trim(),
+            placeId,
+            lat: region?.latitude,
+            lng: region?.longitude,
+          }),
+        );
       } catch {
-        // Recorded as unknown server-side.
+        // `useVerifyRedemption` returns refusals as data, so reaching here means
+        // something unexpected broke. Unlock rather than strand the scanner.
+        locked.current = false;
       }
-
-      const result = await verify.mutateAsync({
-        code: code.trim(),
-        placeId,
-        lat: coords?.lat,
-        lng: coords?.lng,
-      });
-
-      setOutcome(result);
     },
     [placeId, verify],
   );
 
-  const onScan = useCallback(
-    ({ data }: { data: string }) => {
-      if (locked.current) return;
-      locked.current = true;
-
-      void submit(data);
-    },
-    [submit],
-  );
+  const onScan = useCallback(({ data }: { data: string }) => void submit(data), [submit]);
 
   const reset = () => {
     setOutcome(null);
     setManualCode('');
     locked.current = false;
   };
+
+  // The lock guards the typed path too: a second press, or a press followed by
+  // the keyboard's submit, is the same duplicate the velocity limiter reads as
+  // someone guessing codes.
+  const submitManual = () => void submit(manualCode);
 
   if (venues !== undefined && venues.length === 0) {
     return (
@@ -194,14 +203,14 @@ export default function VerifyScreen() {
           autoCapitalize="characters"
           autoCorrect={false}
           returnKeyType="done"
-          onSubmitEditing={() => void submit(manualCode)}
+          onSubmitEditing={submitManual}
           testID="verify-manual-input"
         />
         <Button
           title={t('scan.check')}
-          onPress={() => void submit(manualCode)}
+          onPress={submitManual}
           loading={verify.isPending}
-          disabled={manualCode.trim() === ''}
+          disabled={manualCode.trim() === '' || verify.isPending}
           testID="verify-submit"
         />
       </View>
@@ -312,6 +321,13 @@ const FAILURE_BODY = {
   staff_velocity_exceeded: 'scan.fail.velocityBody',
   unknown: 'scan.fail.unknownBody',
 } as const;
+
+/**
+ * How long the till waits for a fix before verifying without one. Shorter than
+ * the map's budget: a queue is forming, and the geofence is a signal the server
+ * already tolerates being absent.
+ */
+const FIX_BUDGET_MS = 3_000;
 
 /** Big enough to read across a counter at arm's length. */
 const BADGE = 96;

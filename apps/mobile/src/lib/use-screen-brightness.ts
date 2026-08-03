@@ -5,9 +5,11 @@ import { useEffect } from 'react';
  * Raise the screen while a QR is visible, restore it after (T-047, screen #18).
  *
  * A dim phone in a dim restaurant is the difference between a scan that works
- * and staff giving up and typing the code by hand. The original brightness is
- * captured and put back on unmount, because silently leaving someone's screen
- * at full is a battery complaint they will never connect to this app.
+ * and staff giving up and typing the code by hand. The override is RELINQUISHED
+ * on unmount rather than overwritten with a captured value — silently leaving
+ * someone's screen at full is a battery complaint they will never connect to
+ * this app, and writing back a number we read earlier would also clobber any
+ * auto-brightness change made while the code was up.
  *
  * Every call is guarded. Brightness needs a permission on Android and is a
  * no-op in some environments; failing to brighten a QR is a small annoyance,
@@ -19,11 +21,9 @@ export function useScreenBrightness(active: boolean): void {
     if (!active) return;
 
     let cancelled = false;
-    let previous: number | null = null;
 
     void (async () => {
       try {
-        previous = await Brightness.getBrightnessAsync();
         if (cancelled) return;
         await Brightness.setBrightnessAsync(1);
       } catch {
@@ -36,7 +36,7 @@ export function useScreenBrightness(active: boolean): void {
 
       void (async () => {
         try {
-          if (previous !== null) await Brightness.setBrightnessAsync(previous);
+          await Brightness.restoreSystemBrightnessAsync();
         } catch {
           // Same: a failure to restore must not crash a screen teardown.
         }

@@ -627,6 +627,8 @@ export const en = {
   'redeem.expired': 'This code expired',
   'redeem.expiredBody': 'Codes last 24 hours. You can take a fresh one if the offer is still running.',
   'redeem.getAnother': 'Get a new code',
+  'redeem.void': 'This code was cancelled',
+  'redeem.voidBody': 'It can no longer be used. Contact the restaurant if you think this is a mistake.',
   'redeem.error.alreadyIssued': 'You already have a code for this offer — check your codes.',
   'redeem.error.quota': 'You have already used this offer.',
   'redeem.error.velocity': 'You have claimed a lot of offers today. Try again tomorrow.',
