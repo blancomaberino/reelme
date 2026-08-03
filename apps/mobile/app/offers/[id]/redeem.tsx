@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -33,7 +32,22 @@ export default function RedeemScreen() {
   const c = useColors();
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const focused = useIsFocused();
+
+  /*
+   * expo-router's own focus signal, NOT `useIsFocused` from
+   * @react-navigation/native — that one needs a navigation object this screen
+   * does not have and throws a render error on device. Focus drives two things
+   * that must stop when the diner navigates away: the poll, and the raised
+   * brightness.
+   */
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+
+      return () => setFocused(false);
+    }, []),
+  );
 
   const params = useLocalSearchParams<{ id: string; shareId?: string; redemptionId?: string }>();
   const offerId = params.id;

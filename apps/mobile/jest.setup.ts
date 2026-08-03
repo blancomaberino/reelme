@@ -176,6 +176,11 @@ jest.mock('expo-router', () => {
       return null;
     },
     Stack: Object.assign(() => null, { Screen: () => null }),
+    // Runs the effect on mount and cleans up on unmount — the real hook adds
+    // re-running on focus changes, which a single-screen render never has.
+    useFocusEffect: (effect: () => (() => void) | void) => {
+      React.useEffect(effect, [effect]);
+    },
     Tabs: Object.assign(
       ({ children, initialRouteName }: { children?: React.ReactNode; initialRouteName?: string }) => {
         mockRouter.initialRouteName = initialRouteName ?? null;
@@ -355,13 +360,3 @@ jest.mock('react-native-qrcode-svg', () => {
     default: (props: { testID?: string }) => React.createElement(View, { ...props, testID: 'QRCode' }),
   };
 });
-
-// `useIsFocused` needs a navigation container the render helpers don't mount.
-// Only the focus signal is stubbed — the rest of the module (ThemeProvider,
-// used by the root layout) stays real, so a test rendering the layout is
-// unaffected. Screens read it to gate polling and the brightness boost; in a
-// unit test the screen under test is always the focused one.
-jest.mock('@react-navigation/native', () => ({
-  ...jest.requireActual('@react-navigation/native'),
-  useIsFocused: () => true,
-}));
