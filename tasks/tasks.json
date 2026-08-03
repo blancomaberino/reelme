@@ -1141,7 +1141,7 @@
       "id": "T-046",
       "title": "Wallet API + mobile wallet/earnings screens",
       "phase": "M4",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-045"
       ],
