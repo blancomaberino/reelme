@@ -76,4 +76,27 @@ return [
         'receipt_delay_minutes' => (int) env('EXPO_RECEIPT_DELAY_MINUTES', 15),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Stripe Connect (T-045, 06 §4.3)
+    |--------------------------------------------------------------------------
+    | Express accounts for influencers: Stripe hosts KYC, the platform triggers
+    | Transfers. `webhook_secret` is what makes an incoming event trustworthy —
+    | without a verified signature the endpoint is an unauthenticated way to
+    | mark payouts paid.
+    |
+    | `enabled` gates the whole surface. With no key configured the fake driver
+    | is bound instead, so the app boots and every test runs without ever
+    | reaching Stripe.
+    */
+    'stripe' => [
+        'key' => env('STRIPE_KEY'),
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+        // Where Stripe sends the operator back after hosted onboarding. Deep
+        // links the mobile webview intercepts (05 screen #22).
+        'connect_return_url' => env('STRIPE_CONNECT_RETURN_URL', 'reelmap://wallet/connect/return'),
+        'connect_refresh_url' => env('STRIPE_CONNECT_REFRESH_URL', 'reelmap://wallet/connect/refresh'),
+    ],
+
 ];

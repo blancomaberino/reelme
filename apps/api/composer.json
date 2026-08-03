@@ -21,7 +21,8 @@
         "opis/json-schema": "^2.6",
         "phiki/phiki": "^2.2",
         "pragmarx/google2fa": "^9.0",
-        "socialiteproviders/instagram": "^5.2"
+        "socialiteproviders/instagram": "^5.2",
+        "stripe/stripe-php": "^21.1"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

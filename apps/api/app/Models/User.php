@@ -190,6 +190,16 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     }
 
     /**
+     * This user's subledger rows (T-044) — the wallet's statement.
+     *
+     * @return HasMany<LedgerEntry, $this>
+     */
+    public function ledgerEntries(): HasMany
+    {
+        return $this->hasMany(LedgerEntry::class);
+    }
+
+    /**
      * Is 2FA actually switched on (T-068)?
      *
      * Keyed on the confirmation, never on the secret alone: a secret with no

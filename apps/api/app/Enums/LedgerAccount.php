@@ -47,7 +47,16 @@ enum LedgerAccount: string
     /** EXPENSE. Stripe's cut, absorbed at payout level in v1 (06 §4.1). */
     case StripeFees = 'stripe_fees';
 
-    /** ASSET. Money in flight to an influencer: debited at transfer, cleared on webhook. */
+    /**
+     * LIABILITY. Money in flight: it has left an influencer's payable balance
+     * and has not yet left our cash.
+     *
+     * CREDIT-normal, which reads backwards until you follow 06 §4.2's entries 4
+     * and 5: the payout run *credits* this account when a transfer starts, and
+     * *debits* it when the transfer is confirmed and platform cash actually
+     * moves. So a positive balance here means "we owe this to transfers already
+     * promised" — an obligation, not an asset we hold.
+     */
     case PayoutClearing = 'payout_clearing';
 
     /**
@@ -64,11 +73,11 @@ enum LedgerAccount: string
         return match ($this) {
             self::RestaurantReceivable,
             self::RestaurantFees,
-            self::StripeFees,
-            self::PayoutClearing => LedgerDirection::Debit,
+            self::StripeFees => LedgerDirection::Debit,
 
             self::PlatformRevenue,
-            self::InfluencerEarnings => LedgerDirection::Credit,
+            self::InfluencerEarnings,
+            self::PayoutClearing => LedgerDirection::Credit,
         };
     }
 }

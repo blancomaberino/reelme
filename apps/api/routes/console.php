@@ -33,3 +33,8 @@ Schedule::command('reelmap:redemptions:expire')->hourly()->onOneServer()->withou
 // imbalance, so this should never find anything — which is the point. A silent
 // arithmetic failure in the ledger is the one bug that does not announce itself.
 Schedule::command('reelmap:ledger:verify')->dailyAt('03:30')->onOneServer()->withoutOverlapping();
+
+// T-045 / 06 §4.3: the monthly payout run, first business day. One earner's
+// failed KYC must never stop the others being paid — the command catches per
+// user and continues, so this schedule is safe to leave unattended.
+Schedule::command('reelmap:payouts:run')->monthlyOn(1, '09:00')->onOneServer()->withoutOverlapping();

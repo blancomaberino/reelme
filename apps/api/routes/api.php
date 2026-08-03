@@ -35,7 +35,9 @@ use App\Http\Controllers\Api\V1\ShareController;
 use App\Http\Controllers\Api\V1\TagController;
 use App\Http\Controllers\Api\V1\TwoFactorController;
 use App\Http\Controllers\Api\V1\UserPlaceTagController;
+use App\Http\Controllers\Api\V1\WalletController;
 use App\Http\Controllers\MediaUploadController;
+use App\Http\Controllers\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -131,6 +133,13 @@ Route::prefix('v1')->group(function () {
         });
     });
 
+    // Stripe webhooks (T-045, 03 §4.1). PUBLIC by necessity — Stripe carries no
+    // bearer token, so the SIGNATURE is the authentication. Outside every auth
+    // group, and outside the standard throttles: Stripe retries aggressively on
+    // a non-2xx, and rate-limiting it would turn a burst into a retry storm.
+    Route::post('/webhooks/stripe', StripeWebhookController::class)
+        ->withoutMiddleware(['throttle:api']);
+
     // Platform-account OAuth callback (T-015, 03 §2.3). PUBLIC — the provider
     // redirects here unauthenticated; the controller re-binds it to the user via
     // a signed, single-use state nonce. Throttled like the other auth surfaces.
@@ -148,6 +157,23 @@ Route::prefix('v1')->group(function () {
             Route::get('/places/{place}/claim', [PlaceClaimController::class, 'show']);
             Route::post('/places/{place}/claim', [PlaceClaimController::class, 'store']);
             Route::post('/places/{place}/claim/verify', [PlaceClaimController::class, 'verify']);
+        });
+
+        // Wallet + payouts (T-045, 03 §2.14). Reads are on the interactive
+        // limiter; the payout request is throttled hard — it moves real money
+        // and each call creates a Stripe Transfer.
+        Route::middleware('throttle:map')->group(function () {
+            Route::get('/wallet', [WalletController::class, 'show']);
+            Route::get('/wallet/ledger', [WalletController::class, 'ledger']);
+            Route::get('/wallet/payouts', [WalletController::class, 'payouts']);
+            Route::get('/wallet/connect/status', [WalletController::class, 'connectStatus']);
+        });
+        Route::middleware('throttle:10,1')->group(function () {
+            // "Create or refresh" — links expire in minutes and are single-use.
+            Route::post('/wallet/connect/onboarding-link', [WalletController::class, 'onboardingLink']);
+        });
+        Route::middleware('throttle:5,1')->group(function () {
+            Route::post('/wallet/payouts', [WalletController::class, 'requestPayout']);
         });
 
         // Redemptions (T-043, 03 §2.13, 06 §3) — the payable event.
