@@ -63,7 +63,7 @@ class PayoutService
      *
      * @throws PayoutFailed
      */
-    public function request(User $user, ?string $currency = null): Payout
+    public function request(User $user, ?string $currency = null, ?string $idempotencyKey = null): Payout
     {
         $currency ??= (string) config('monetization.currency');
 
@@ -87,7 +87,7 @@ class PayoutService
             throw PayoutFailed::insufficientBalance($available, $this->threshold());
         }
 
-        $payout = $this->openWithHold($user, $available, $currency);
+        $payout = $this->openWithHold($user, $available, $currency, $idempotencyKey);
 
         return $this->send($payout, $status->accountId);
     }
@@ -102,13 +102,13 @@ class PayoutService
      *
      * @throws PayoutFailed
      */
-    private function openWithHold(User $user, int $amount, string $currency): Payout
+    private function openWithHold(User $user, int $amount, string $currency, ?string $idempotencyKey = null): Payout
     {
         $periodStart = Carbon::now()->startOfMonth()->toDateString();
         $periodEnd = Carbon::now()->endOfMonth()->toDateString();
 
         try {
-            return DB::transaction(function () use ($user, $amount, $currency, $periodStart, $periodEnd): Payout {
+            return DB::transaction(function () use ($user, $amount, $currency, $periodStart, $periodEnd, $idempotencyKey): Payout {
                 $payout = new Payout;
                 $payout->forceFill([
                     'user_id' => $user->id,
@@ -117,6 +117,10 @@ class PayoutService
                     'status' => PayoutStatus::Pending,
                     'period_start' => $periodStart,
                     'period_end' => $periodEnd,
+                    // Client-supplied (03 §1). Unique per user, so a retried
+                    // request resolves to this row instead of spending the
+                    // balance again.
+                    'idempotency_key' => $idempotencyKey,
                 ])->save();
 
                 $this->ledger->record(

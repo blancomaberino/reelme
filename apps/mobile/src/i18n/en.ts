@@ -587,6 +587,31 @@ export const en = {
   'offers.form.saveDraft': 'Save as draft',
   'offers.form.save': 'Save changes',
   'profile.restaurant': 'My restaurant',
+  // Wallet (T-046) — the influencer's money. Amounts are always rendered from
+  // {amount, currency} minor units, never interpolated as bare numbers.
+  'tabs.wallet': 'Wallet',
+  'wallet.title': 'Wallet',
+  'wallet.available': 'Available',
+  'wallet.pending': '{{amount}} on its way',
+  'wallet.lifetime': 'Earned all time',
+  'wallet.feesOwed': 'Fees owed',
+  'wallet.history': 'Activity',
+  'wallet.noHistory': 'Nothing here yet. Earnings appear when someone redeems an offer you sent them to.',
+  'wallet.type.revenueShare': 'Revenue share',
+  'wallet.type.escrowRelease': 'Earnings released',
+  'wallet.type.payout': 'Paid out',
+  'wallet.type.adjustment': 'Adjustment',
+  'wallet.payout.cta': 'Cash out',
+  'wallet.payout.confirmTitle': 'Cash out your balance?',
+  'wallet.payout.confirmBody': '{{amount}} will be sent to your connected account. It usually arrives in a couple of days.',
+  'wallet.payout.confirm': 'Cash out',
+  'wallet.payout.failedTitle': 'Could not cash out',
+  'wallet.payout.belowThreshold': 'You can cash out once you reach {{amount}}.',
+  'wallet.connect.setUp': 'Set up payouts',
+  'wallet.connect.setUpBody': 'Verify your details with Stripe so we can send you money.',
+  'wallet.connect.actionNeeded': 'Stripe needs something',
+  'wallet.connect.actionNeededBody': 'Payouts are paused until you finish verifying.',
+  'wallet.connect.cta': 'Continue',
 } as const;
 
 export type MessageKey = keyof typeof en;
