@@ -128,6 +128,8 @@ export const es: Record<MessageKey, string> = {
   'map.locateLabel.hint': 'Pide permiso de ubicación la primera vez',
   'map.resetViewLabel.hint': 'Vuelve a tu ubicación, o al área por defecto si no se conoce',
   'map.clearList': 'Quitar filtro de lista',
+  'map.offers': 'Ofertas cerca de vos',
+  'map.offers.hint': 'Ver las ofertas que podés canjear cerca',
   'map.quickAdd': 'Agregar desde un enlace',
   'map.removeFromList': 'Quitar de la lista',
   'map.removeFromList.confirm.title': '¿Quitar de «{{name}}»?',

@@ -132,6 +132,8 @@ export const en = {
   'map.locateLabel.hint': 'Asks for location permission the first time',
   'map.resetViewLabel.hint': 'Returns to your location, or the default area if it is unknown',
   'map.clearList': 'Clear list filter',
+  'map.offers': 'Offers near you',
+  'map.offers.hint': 'Browse offers you can redeem nearby',
   'map.quickAdd': 'Add from a link',
   'map.removeFromList': 'Remove from list',
   'map.removeFromList.confirm.title': 'Remove from “{{name}}”?',

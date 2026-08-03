@@ -501,6 +501,19 @@ function MapCanvas({
               <ActivityIndicator size="small" color={c.primary} />
             </View>
           ) : null}
+          {/* The diner's way into nearby offers (T-047, screen #17). It lives
+              here rather than in the tab bar because an offer is a geographic
+              fact — "what's on near me" is the same question the map answers. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('map.offers')}
+            accessibilityHint={t('map.offers.hint')}
+            onPress={() => router.push('/offers')}
+            style={styles.searchButton}
+            testID="map-offers"
+          >
+            <Ionicons name="pricetag-outline" size={20} color={c.primary} />
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('map.quickAdd')}
