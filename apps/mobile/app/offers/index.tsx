@@ -11,12 +11,14 @@ import { BROWSE_RADIUS_M, useNearbyOffers } from '@/api/hooks/useNearbyOffers';
 import { queryKeys } from '@/api/keys';
 import type { Offer } from '@/api/offers';
 import { Button } from '@/components/button';
+import { LocationBlockedHint, MapControls, useMapCamera } from '@/components/map/map-controls';
 import { discountHeadline, OfferCard } from '@/components/offer/offer-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { type MessageKey, useT } from '@/i18n';
-import { locateUser } from '@/lib/initial-region';
+import { DEFAULT_REGION, locateUser } from '@/lib/initial-region';
 import { openLocationSettings, USER_REGION_DELTA } from '@/lib/location';
 import { useSettingsStore } from '@/stores/settings';
+import { useViewportStore } from '@/stores/viewport';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
@@ -63,6 +65,19 @@ export default function OffersBrowseScreen() {
   const at = fix.data?.ok ? fix.data.region : null;
   const blocked = fix.data && !fix.data.ok ? fix.data.reason : null;
 
+  /*
+   * Where the MAP opens, which is a different question from where the LIST
+   * queries. The list needs a real fix — "offers near you" from a city you are
+   * not in is a lie — but the map must always draw something, so it falls back
+   * the same way the home map does: the last viewport you settled on, then the
+   * seed city. Rendering nothing was why this looked broken next to the real map.
+   */
+  const savedRegion = useViewportStore((s) => s.saved);
+  const mapRegion = at
+    ? { ...at, latitudeDelta: USER_REGION_DELTA, longitudeDelta: USER_REGION_DELTA }
+    : (savedRegion ?? DEFAULT_REGION);
+
+  const camera = useMapCamera({ initialRegion: mapRegion, initialUserRegion: at });
   const { data: offers, isLoading, isError, refetch, isRefetching } = useNearbyOffers(at);
 
   const mappable = useMemo(
@@ -79,7 +94,81 @@ export default function OffersBrowseScreen() {
     router.push({ pathname: '/offers/[id]/redeem', params: { id: offer.id } });
   }, []);
 
+  /**
+   * The map, which never depends on having a fix.
+   *
+   * It opens on the user's position when we have one and on the same fallback
+   * chain as the home map otherwise (last settled viewport → seed city), so it
+   * always draws something. "Locate me" in the control stack is a better answer
+   * to a missing fix than an empty screen with a retry button.
+   */
+  const mapBody = () => (
+    <View style={styles.mapWrap}>
+      <MapView
+        ref={camera.mapRef}
+        provider={PROVIDER_DEFAULT}
+        style={StyleSheet.absoluteFill}
+        initialRegion={mapRegion}
+        onRegionChangeComplete={camera.rememberRegion}
+        onPress={() => setSelected(null)}
+        showsUserLocation
+        showsMyLocationButton={false}
+        // Same as the home map: Apple's own POI pins clutter the view and are
+        // easy to tap instead of ours.
+        showsPointsOfInterests={false}
+        testID="offers-map"
+      >
+        {mappable.map((offer) => (
+          <Marker
+            key={offer.id}
+            coordinate={{ latitude: offer.place!.lat!, longitude: offer.place!.lng! }}
+            onPress={() => setSelected(offer.id)}
+            tracksViewChanges={false}
+          >
+            {/* The discount, not a generic pin — on a map of ten venues the
+                number IS the reason to walk to one of them. */}
+            <View style={[styles.pin, selected === offer.id && styles.pinSelected]}>
+              <Text style={styles.pinText}>{shortHeadline(offer, currency, t)}</Text>
+            </View>
+          </Marker>
+        ))}
+      </MapView>
+
+      {camera.locateBlocked ? (
+        <SafeAreaView edges={['top']} pointerEvents="box-none">
+          <LocationBlockedHint onDismiss={() => camera.setLocateBlocked(false)} />
+        </SafeAreaView>
+      ) : null}
+
+      {/* A venue with no coordinates cannot be a marker, and silently dropping
+          it makes the map disagree with the list. */}
+      {mappable.length < (offers?.length ?? 0) ? (
+        <Text style={styles.mapNote}>
+          {t('offers.browse.notMapped', { count: (offers?.length ?? 0) - mappable.length })}
+        </Text>
+      ) : null}
+
+      <MapControls camera={camera} />
+
+      {selectedOffer ? (
+        <View style={styles.sheet} testID="offers-map-sheet">
+          <OfferCard
+            offer={selectedOffer}
+            venueName={selectedOffer.place?.name}
+            onPress={() => open(selectedOffer)}
+            actions={<Button title={t('offers.browse.getCode')} size="sm" onPress={() => redeem(selectedOffer)} />}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+
   const body = () => {
+    // The map is exempt from the location gates below — it has its own answer
+    // to a missing fix, and it is the one view that can still be useful without
+    // one.
+    if (mode === 'map') return mapBody();
+
     if (blocked !== null) {
       return (
         <View style={styles.centered} testID="offers-location-blocked">
@@ -113,59 +202,6 @@ export default function OffersBrowseScreen() {
           <Ionicons name="cloud-offline-outline" size={40} color={c.muted} />
           <Text style={styles.emptyText}>{t('common.error.general')}</Text>
           <Button title={t('common.tryAgain')} variant="secondary" onPress={() => void refetch()} />
-        </View>
-      );
-    }
-
-    if (mode === 'map') {
-      return (
-        <View style={styles.mapWrap}>
-          {at ? (
-            <MapView
-              style={styles.map}
-              provider={PROVIDER_DEFAULT}
-              initialRegion={{ ...at, latitudeDelta: USER_REGION_DELTA, longitudeDelta: USER_REGION_DELTA }}
-              showsUserLocation
-              onPress={() => setSelected(null)}
-              testID="offers-map"
-            >
-              {mappable.map((offer) => (
-                <Marker
-                  key={offer.id}
-                  coordinate={{ latitude: offer.place!.lat!, longitude: offer.place!.lng! }}
-                  onPress={() => setSelected(offer.id)}
-                  tracksViewChanges={false}
-                >
-                  {/* The discount, not a generic pin — on a map of ten venues
-                      the number IS the reason to walk to one of them. */}
-                  <View style={[styles.pin, selected === offer.id && styles.pinSelected]}>
-                    <Text style={styles.pinText}>{shortHeadline(offer, currency, t)}</Text>
-                  </View>
-                </Marker>
-              ))}
-            </MapView>
-          ) : null}
-
-          {selectedOffer ? (
-            <View style={styles.sheet} testID="offers-map-sheet">
-              <OfferCard
-                offer={selectedOffer}
-                venueName={selectedOffer.place?.name}
-                onPress={() => open(selectedOffer)}
-                actions={
-                  <Button title={t('offers.browse.getCode')} size="sm" onPress={() => redeem(selectedOffer)} />
-                }
-              />
-            </View>
-          ) : null}
-
-          {/* A venue with no coordinates cannot be a marker, and silently
-              dropping it makes the map disagree with the list. */}
-          {mappable.length < (offers?.length ?? 0) ? (
-            <Text style={styles.mapNote}>
-              {t('offers.browse.notMapped', { count: (offers?.length ?? 0) - mappable.length })}
-            </Text>
-          ) : null}
         </View>
       );
     }

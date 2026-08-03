@@ -168,6 +168,44 @@ describe('when the request fails', () => {
 });
 
 describe('the map toggle', () => {
+  /*
+   * The offers map is not a second, lesser map. It carries the same control
+   * stack as the home map — locate, reset, zoom — because a user who learns
+   * those on one screen should not find them missing on the other.
+   */
+  it('carries the same controls as the home map', async () => {
+    mock.onGet('/offers').reply(200, { data: [offer()] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    await waitFor(() => expect(screen.getByTestId('map-locate')).toBeTruthy());
+    expect(screen.getByTestId('map-reset')).toBeTruthy();
+    expect(screen.getByTestId('map-zoom-in')).toBeTruthy();
+    expect(screen.getByTestId('map-zoom-out')).toBeTruthy();
+  });
+
+  /*
+   * The map draws from a fallback region, so it must render even with no fix —
+   * the control stack's "locate me" is a better answer to a missing position
+   * than a screen with nothing on it. It used to render `null`, which is what
+   * made it look broken next to the real map.
+   */
+  it('still draws the map when the device has no location fix', async () => {
+    locate.mockResolvedValue({ ok: false, reason: 'unavailable' });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('offers-toggle-map')).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    await waitFor(() => expect(screen.getByTestId('map-locate')).toBeTruthy());
+    // Not the list's "turn on location" dead end.
+    expect(screen.queryByTestId('offers-location-blocked')).toBeNull();
+  });
+
   it('places a marker per offer once the diner switches to the map', async () => {
     mock.onGet('/offers').reply(200, { data: [offer(), offer({ id: '2', place_id: '11' })] });
 

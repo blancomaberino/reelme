@@ -12,20 +12,14 @@ import type { MapPin } from '@/api/places';
 import type { SharePlace } from '@/api/shares';
 import { ClusterMarker } from '@/components/map/cluster-marker';
 import { FilterBar } from '@/components/map/filter-bar';
+import { LocationBlockedHint, MapControls, useMapCamera } from '@/components/map/map-controls';
 import { PlaceMarker } from '@/components/map/place-marker';
 import { PlaceSheet } from '@/components/map/place-sheet';
 import { QuickShareModal } from '@/components/map/quick-share';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
-import {
-  DEFAULT_REGION,
-  type InitialRegion,
-  locateUser,
-  resolveInitialRegion,
-  syncInitialRegion,
-} from '@/lib/initial-region';
-import { openLocationSettings } from '@/lib/location';
+import { type InitialRegion, resolveInitialRegion, syncInitialRegion } from '@/lib/initial-region';
 import { useT } from '@/i18n';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
@@ -139,19 +133,12 @@ function MapCanvas({
   // show the "enable it in Settings" hint once, unprompted, since the map is
   // silently framed on a fallback the user didn't choose.
   const [locateHint, setLocateHint] = useState(initial.permissionBlocked);
-  const [locating, setLocating] = useState(false);
-  // The last position we successfully resolved for this session — lets "reset
-  // view" return to the user rather than to the seed city.
-  const userRegionRef = useRef<Region | null>(initial.source === 'user' ? initial.region : null);
 
   // True once the user has actually manipulated the map (pan, zoom control,
   // cluster tap, locate, fly-to). Gates viewport persistence — see
   // onRegionChangeComplete.
   const interacted = useRef(false);
 
-  const mapRef = useRef<MapView>(null);
-  // Latest settled region — drives the zoom buttons (the map is uncontrolled).
-  const regionRef = useRef<Region>(initialRegion);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Timestamp of the last marker tap. Some react-native-maps builds also fire
   // the MapView's own onPress for a marker tap, which would immediately
@@ -217,9 +204,33 @@ function MapCanvas({
     [activeList, removeFromList, select, t],
   );
 
+  const markInteraction = useCallback(() => {
+    interacted.current = true;
+  }, []);
+
+  /**
+   * The single way this screen moves the map. Every caller is downstream of a
+   * user action (zoom control, reset, locate, cluster tap, post-publish fly-to),
+   * so each one counts as an interaction — routing them all through here is what
+   * stops a future move from forgetting to mark itself.
+   */
+  /*
+   * The camera is shared with the offers map (T-047). It owns the ref, the
+   * clamped zoom steps, "reset to home", and the locate flow — so the two maps
+   * cannot drift into disagreeing about what a zoom step or a reset means.
+   */
+  const camera = useMapCamera({
+    initialRegion,
+    initialUserRegion: initial.source === 'user' ? initial.region : null,
+    onInteraction: markInteraction,
+  });
+  const { mapRef, moveMap } = camera;
+
   const onRegionChangeComplete = useCallback(
     (region: Region) => {
-      regionRef.current = region;
+      // Into the SHARED camera: the zoom buttons step from this, so a local
+      // copy would leave them zooming out from wherever the map first opened.
+      camera.rememberRegion(region);
       if (debounce.current) clearTimeout(debounce.current);
       // Persist ONLY a viewport the user actually moved to.
       //
@@ -241,7 +252,7 @@ function MapCanvas({
         if (userMoved) remember(region);
       }, 400);
     },
-    [remember],
+    [camera, remember],
   );
 
   // Drop a settle still waiting out its 400 ms window when the screen goes away
@@ -260,76 +271,6 @@ function MapCanvas({
    * {@link moveMap}, which calls this too. Anything that does NOT go through
    * here — the mount layout settle above all — is never persisted.
    */
-  const markInteraction = useCallback(() => {
-    interacted.current = true;
-  }, []);
-
-  /**
-   * The single way this screen moves the map. Every caller is downstream of a
-   * user action (zoom control, reset, locate, cluster tap, post-publish fly-to),
-   * so each one counts as an interaction — routing them all through here is what
-   * stops a future move from forgetting to mark itself.
-   */
-  const moveMap = useCallback(
-    (region: Region, duration: number) => {
-      markInteraction();
-      regionRef.current = region;
-      mapRef.current?.animateToRegion(region, duration);
-    },
-    [markInteraction],
-  );
-
-  // On-screen zoom controls (Apple Maps has none): factor 0.5 zooms in, 2 out.
-  // Deltas are clamped so the map can't zoom past street level or out past the
-  // whole world.
-  const zoomBy = useCallback(
-    (factor: number) => {
-      const r = regionRef.current;
-      const latitudeDelta = Math.min(Math.max(r.latitudeDelta * factor, 0.0025), 140);
-      const longitudeDelta = Math.min(Math.max(r.longitudeDelta * factor, 0.0025), 140);
-      moveMap({ latitude: r.latitude, longitude: r.longitude, latitudeDelta, longitudeDelta }, 220);
-    },
-    [moveMap],
-  );
-
-  // Reset control: after panning/zooming off, jump back to "home". Home is the
-  // user's own position when we have one this session, and only otherwise the
-  // seed city — pre-T-100 this always sent everyone to Montevideo.
-  // Like any pan, animating settles the region → the debounced refetch runs, so
-  // the pin/cluster set repopulates for the reset viewport (no special-casing).
-  const resetView = useCallback(() => {
-    moveMap(userRegionRef.current ?? DEFAULT_REGION, 350);
-  }, [moveMap]);
-
-  /**
-   * "Locate me". Prompts on first tap, flies to the user on success, and
-   * explains itself on every failure — a permanently-denied permission offers
-   * the Settings deep link, a missing fix says so and stays tappable. Never a
-   * silent no-op.
-   */
-  const locate = useCallback(async () => {
-    setLocating(true);
-    try {
-      const result = await locateUser();
-      if (result.ok) {
-        userRegionRef.current = result.region;
-        moveMap(result.region, 350);
-        setLocateHint(false);
-        return;
-      }
-      if (result.reason === 'blocked') {
-        setLocateHint(true);
-        return;
-      }
-      if (result.reason === 'unavailable') {
-        Alert.alert(t('map.location.unavailable'));
-      }
-      // 'denied' with canAskAgain — the user dismissed the OS prompt. They know
-      // what they did; re-explaining it would be nagging.
-    } finally {
-      setLocating(false);
-    }
-  }, [moveMap, t]);
 
   // Band + bbox for the *rendered* frame (from queryRegion, so it tracks fetches).
   const band = zoomBand(zoomFromRegion(queryRegion));
@@ -569,81 +510,17 @@ function MapCanvas({
         {/* Location is permanently denied — the only fix is the OS settings
             page, so say so once and offer the jump. Dismissible: the map is
             fully usable without it. */}
-        {locateHint ? (
-          <View style={styles.locateHint}>
-            <View style={styles.locateHintBody}>
-              <Text style={styles.locateHintTitle}>{t('map.location.blocked.title')}</Text>
-              <Text style={styles.locateHintText}>{t('map.location.blocked.message')}</Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void openLocationSettings()}
-                hitSlop={8}
-              >
-                <Text style={styles.locateHintCta}>{t('map.location.blocked.cta')}</Text>
-              </Pressable>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('common.close')}
-              onPress={() => setLocateHint(false)}
-              hitSlop={8}
-            >
-              <Ionicons name="close" size={18} color={c.muted} />
-            </Pressable>
-          </View>
+        {locateHint || camera.locateBlocked ? (
+          <LocationBlockedHint
+            onDismiss={() => {
+              setLocateHint(false);
+              camera.setLocateBlocked(false);
+            }}
+          />
         ) : null}
       </SafeAreaView>
 
-      {/* Zoom controls (bottom-right) — Apple Maps has none of its own. */}
-      <SafeAreaView edges={['bottom']} style={styles.zoomControls} pointerEvents="box-none">
-        <View style={styles.zoomStack}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('map.locateLabel')}
-            accessibilityHint={t('map.locateLabel.hint')}
-            accessibilityState={{ busy: locating, disabled: locating }}
-            // Disabled while in flight: a double-tap would otherwise fire two
-            // permission prompts / GPS requests for one intent.
-            disabled={locating}
-            onPress={() => void locate()}
-            style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
-          >
-            {locating ? (
-              <ActivityIndicator size="small" color={c.primary} />
-            ) : (
-              <Ionicons name="locate" size={20} color={c.text} />
-            )}
-          </Pressable>
-          <View style={styles.zoomDivider} />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('map.resetViewLabel')}
-            accessibilityHint={t('map.resetViewLabel.hint')}
-            onPress={resetView}
-            style={({ pressed }) => [styles.zoomBtn, styles.zoomBtnTop, pressed && styles.zoomBtnPressed]}
-          >
-            <Ionicons name="scan-outline" size={20} color={c.text} />
-          </Pressable>
-          <View style={styles.zoomDivider} />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('map.zoomInLabel')}
-            onPress={() => zoomBy(0.5)}
-            style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
-          >
-            <Ionicons name="add" size={24} color={c.text} />
-          </Pressable>
-          <View style={styles.zoomDivider} />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('map.zoomOutLabel')}
-            onPress={() => zoomBy(2)}
-            style={({ pressed }) => [styles.zoomBtn, pressed && styles.zoomBtnPressed]}
-          >
-            <Ionicons name="remove" size={24} color={c.text} />
-          </Pressable>
-        </View>
-      </SafeAreaView>
+      <MapControls camera={camera} />
 
       <PreviewSheet
         pin={selected}
