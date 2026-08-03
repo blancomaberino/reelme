@@ -28,3 +28,8 @@ Schedule::command('reelmap:reviews:publish-abandoned')->everyFiveMinutes()->onOn
 // verify path re-checks the clock, so the window between a code lapsing and
 // this run is safe, not merely unlikely.
 Schedule::command('reelmap:redemptions:expire')->hourly()->onOneServer()->withoutOverlapping();
+
+// T-044 / 02 §3.15: assert the books balance. LedgerService refuses to write an
+// imbalance, so this should never find anything — which is the point. A silent
+// arithmetic failure in the ledger is the one bug that does not announce itself.
+Schedule::command('reelmap:ledger:verify')->dailyAt('03:30')->onOneServer()->withoutOverlapping();

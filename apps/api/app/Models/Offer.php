@@ -60,7 +60,7 @@ class Offer extends Model
     protected $attributes = [
         'quota_per_user' => 1,
         'redemptions_count' => 0,
-        'influencer_share_bps' => 1000,
+        'influencer_share_bps' => 5000,
         'status' => OfferStatus::Draft->value,
     ];
 
