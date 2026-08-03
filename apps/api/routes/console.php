@@ -22,3 +22,9 @@ Schedule::command('reelmap:trustpilot:refresh-stale')->daily()->onOneServer()->w
 // T-098: publish the best guess for uncertain shares whose confirm step was
 // abandoned (shared + closed the app), so nothing dead-ends in review.
 Schedule::command('reelmap:reviews:publish-abandoned')->everyFiveMinutes()->onOneServer()->withoutOverlapping();
+
+// T-043 / 06 §2.3: only a REDEEMED code is billable, so an unvisited one must
+// not sit at `issued` looking like an open obligation. Hygiene only — the
+// verify path re-checks the clock, so the window between a code lapsing and
+// this run is safe, not merely unlikely.
+Schedule::command('reelmap:redemptions:expire')->hourly()->onOneServer()->withoutOverlapping();

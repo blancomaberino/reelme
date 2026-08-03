@@ -2,8 +2,6 @@
 
 namespace App\Providers;
 
-use App\Events\ShareStatusChanged;
-use App\Listeners\SendShareStatusNotification;
 use App\Models\Influencer;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -44,7 +42,20 @@ class AppServiceProvider extends ServiceProvider
 
         // Push/DB notifications on pipeline outcomes (T-027). No EventServiceProvider
         // here either, so register the listener explicitly.
-        Event::listen(ShareStatusChanged::class, SendShareStatusNotification::class);
+        /*
+         * Listeners in `app/Listeners` are NOT registered here.
+         *
+         * Laravel discovers them automatically from their `handle()` type hint,
+         * so a manual `Event::listen()` registers the SAME listener a second
+         * time and it runs twice per event. That was live for
+         * SendShareStatusNotification (every share status change sent two
+         * notifications) and was caught adding the T-043 redemption listener —
+         * where a duplicate would become a duplicate LEDGER ENTRY once T-044
+         * hangs the fee posting off the same event, i.e. a restaurant billed
+         * twice for one visit.
+         *
+         * `tests/Feature/Queue/EventListenerRegistrationTest.php` pins the rule.
+         */
 
         // Auth endpoints: 5/min per IP (03-api-design §1). The 429 renders through
         // ApiExceptionRenderer as a rate_limited error envelope with Retry-After.
