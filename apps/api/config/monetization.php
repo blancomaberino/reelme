@@ -44,4 +44,14 @@ return [
     */
     'default_influencer_share_bps' => 5000,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Payout threshold (06 §4.3)
+    |--------------------------------------------------------------------------
+    | €25.00 payable before a transfer is worth its fees. Below it the balance
+    | rolls over — nothing is lost, and the wallet says so rather than showing a
+    | disabled button with no explanation.
+    */
+    'payout_threshold_minor' => (int) env('REELMAP_PAYOUT_THRESHOLD_MINOR', 2500),
+
 ];

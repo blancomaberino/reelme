@@ -7,6 +7,7 @@ use App\Providers\GeoServiceProvider;
 use App\Providers\HorizonServiceProvider;
 use App\Providers\IngestionServiceProvider;
 use App\Providers\ObservabilityServiceProvider;
+use App\Providers\PaymentsServiceProvider;
 use App\Providers\PlacesServiceProvider;
 use App\Providers\ReviewsServiceProvider;
 use App\Providers\TranscriptionServiceProvider;
@@ -19,6 +20,7 @@ return [
     HorizonServiceProvider::class,
     IngestionServiceProvider::class,
     ObservabilityServiceProvider::class,
+    PaymentsServiceProvider::class,
     PlacesServiceProvider::class,
     ReviewsServiceProvider::class,
     TranscriptionServiceProvider::class,
