@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\V1\PlaceController;
 use App\Http\Controllers\Api\V1\PlaceListController;
 use App\Http\Controllers\Api\V1\PlatformAccountController;
 use App\Http\Controllers\Api\V1\ProfileController;
+use App\Http\Controllers\Api\V1\RedemptionController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\ShareController;
@@ -148,6 +149,26 @@ Route::prefix('v1')->group(function () {
             Route::post('/places/{place}/claim', [PlaceClaimController::class, 'store']);
             Route::post('/places/{place}/claim/verify', [PlaceClaimController::class, 'verify']);
         });
+
+        // Redemptions (T-043, 03 §2.13, 06 §3) — the payable event.
+        //
+        // Issue is throttled hard: it mints a bearer token a restaurant will
+        // honour, and 06 §3's per-diner velocity limits (3/day, 10/week) live in
+        // RedemptionGuards on top of this. Verify is 30/min per staff ACCOUNT —
+        // a busy till is bursty, while the hourly cap in RedemptionGuards is
+        // what actually bounds a grinding attack.
+        Route::middleware('throttle:10,1')->group(function () {
+            Route::post('/redemptions', [RedemptionController::class, 'store']);
+        });
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::post('/redemptions/verify', [RedemptionController::class, 'verify']);
+        });
+        // Registered AFTER /redemptions/verify so the literal segment can never
+        // be captured as an id.
+        Route::get('/redemptions/{redemption}', [RedemptionController::class, 'show']);
+        Route::get('/me/redemptions', [RedemptionController::class, 'index']);
+        // The venue's own log — operator-only, and without codes.
+        Route::get('/places/{place}/redemptions', [RedemptionController::class, 'forPlace']);
 
         // Offer management (T-042, 06 §2.2). Owner-only via OfferPolicy — every
         // check re-derives operator status from the verified place claim, so a

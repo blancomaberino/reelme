@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/redemption.json",
+  "title": "Redemption",
+  "description": "A single-use offer code (T-043, 03 §2.13/§3.4). The BEARER CREDENTIALS — `code`, `code_display`, `qr_payload` — are present only on the holder's own reads (POST /redemptions, GET /redemptions/{id} as the diner, GET /me/redemptions). The venue operator reads the same row WITHOUT them: a code they have not been presented with is a free meal, so their log must never double as a list of live codes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "offer_id",
+    "status",
+    "is_live",
+    "issued_at",
+    "expires_at",
+    "redeemed_at",
+    "attribution"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "offer_id": { "type": "string" },
+    "status": { "enum": ["issued", "redeemed", "expired", "void"] },
+    "is_live": {
+      "description": "Computed, not read off `status`: the expiry sweep runs on a schedule, so a code past its window still reads `issued` until it catches up. A client must not offer a dead code to a till.",
+      "type": "boolean"
+    },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" },
+    "redeemed_at": { "type": ["string", "null"], "format": "date-time" },
+    "code": {
+      "description": "Ten Crockford base32 characters, bare. Holder-only. Input is folded (case, grouping, O→0, I/L→1) before lookup, so it can be read aloud.",
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 10
+    },
+    "code_display": {
+      "description": "The grouped form (7F3K-92QX-AB) so a client never re-implements the formatting. Holder-only.",
+      "type": "string"
+    },
+    "qr_payload": {
+      "description": "`v1.<code>.<hmac>` — signed over the code AND the row id, so a payload lifted from one redemption cannot be replayed against another. Holder-only.",
+      "type": "string"
+    },
+    "attribution": {
+      "description": "Who earns from this visit, FROZEN at issue (02 §5). Never recomputed: the share can be edited or deleted afterwards, and a payout that moves retroactively cannot be reconciled.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["influencer_id", "share_id"],
+      "properties": {
+        "influencer_id": { "type": ["string", "null"] },
+        "share_id": {
+          "description": "Null once the underlying share is deleted (the FK is SET NULL). The influencer survives, and T-044's ledger rows are the immutable copy.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "offer": {
+      "description": "Present when the offer was eager-loaded — the diner's wallet needs the terms alongside the code.",
+      "$ref": "offer.json"
+    }
+  }
+}
