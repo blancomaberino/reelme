@@ -31,7 +31,13 @@ class PaymentsServiceProvider extends ServiceProvider
                 return new FakeStripeConnect;
             }
 
-            return new StripeConnectClient(new StripeClient($secret));
+            return new StripeConnectClient(new StripeClient([
+                'api_key' => $secret,
+                // Pinned: Stripe ties a webhook endpoint to an API version, and
+                // an SDK upgrade that moved ours would change payload shapes
+                // under handlers that reconcile payouts.
+                'stripe_version' => (string) config('services.stripe.api_version'),
+            ]));
         });
     }
 }

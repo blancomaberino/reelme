@@ -132,9 +132,12 @@ class PayoutService
                 return $payout;
             });
         } catch (UniqueConstraintViolationException) {
-            // One payout per user per period (02 §3.16). A second request in the
-            // same month is not an error to the caller — their balance is
-            // already committed.
+            // One LIVE payout per user per period (02 §3.16, narrowed to exclude
+            // failed rows). Hitting it means a payout for this period is already
+            // in flight or settled — so the balance really is committed, and
+            // `insufficient_balance` is the honest reason. A FAILED row does not
+            // reach here: its hold was released and the partial index lets the
+            // retry through.
             throw PayoutFailed::insufficientBalance($this->availableBalance($user, $currency), $this->threshold());
         }
     }
@@ -154,12 +157,30 @@ class PayoutService
             throw $e;
         }
 
-        $payout->forceFill([
-            'stripe_transfer_id' => $transferId,
-            'status' => PayoutStatus::Processing,
-        ])->save();
+        /*
+         * Guarded on `pending`, not a blind write.
+         *
+         * Stripe can deliver a webhook for this transfer before `createTransfer`
+         * has even returned, so by the time we get here the row may already have
+         * been advanced to `paid` or `failed`. A blind
+         * `forceFill(status: processing)` would REGRESS a settled payout — the
+         * money has moved and our record would say it is still in flight.
+         *
+         * The transfer id is written either way: it is a fact about this payout
+         * whatever its status, and it is how a webhook that arrived without our
+         * metadata finds the row.
+         */
+        Payout::query()
+            ->whereKey($payout->id)
+            ->where('status', PayoutStatus::Pending)
+            ->update(['status' => PayoutStatus::Processing, 'updated_at' => now()]);
 
-        return $payout;
+        Payout::query()
+            ->whereKey($payout->id)
+            ->whereNull('stripe_transfer_id')
+            ->update(['stripe_transfer_id' => $transferId, 'updated_at' => now()]);
+
+        return $payout->refresh();
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Services\Payments;
 use App\Exceptions\PayoutFailed;
 use App\Models\Payout;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Stripe\Exception\ApiErrorException;
 use Stripe\StripeClient;
 
@@ -120,13 +121,25 @@ class StripeConnectClient implements StripeConnect
     }
 
     /**
-     * Stripe's message, but only the parts safe to show.
+     * A fixed message for the client, and the real detail in the log.
      *
-     * Their errors can carry account ids and internal detail; the full object is
-     * logged by the caller, the client gets the summary.
+     * Stripe's own text can name account ids and internal state, and
+     * `PayoutFailed` is rendered straight to the mobile app by
+     * `ApiExceptionRenderer` — so passing it through would publish that. The
+     * operator gets what they need (Stripe's code and request id, which is what
+     * a support ticket to Stripe asks for) without it travelling to a client.
      */
     private function safeMessage(ApiErrorException $e): string
     {
-        return $e->getError()->message ?? 'The payment provider rejected the request.';
+        $error = $e->getError();
+
+        Log::error('stripe.api_error', [
+            'code' => $error->code ?? null,
+            'type' => $error->type ?? null,
+            'request_id' => $e->getRequestId(),
+            'message' => $error->message ?? null,
+        ]);
+
+        return 'The payment provider rejected the request.';
     }
 }

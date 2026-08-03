@@ -168,6 +168,45 @@ describe('requesting a payout', function () {
     });
 });
 
+describe('retrying after a failure', function () {
+    /*
+     * A failed payout releases its hold — the money is payable again — so the
+     * retry must go through. The original blanket unique index kept the dead row
+     * occupying the key and reported the refusal as `insufficient_balance`,
+     * telling an influencer whose transfer Stripe bounced that they had no money
+     * for the rest of the month.
+     */
+    it('lets the same period be retried once a payout has failed', function () {
+        $user = earnerWith(5000);
+        fakeStripe()->failNextTransfer();
+
+        expectPayoutRefused(fn () => app(PayoutService::class)->request($user), 'transfer_rejected');
+        expect(app(PayoutService::class)->availableBalance($user))->toBe(5000);
+
+        // Same period, same user — and this time Stripe accepts.
+        $payout = app(PayoutService::class)->request($user);
+
+        expect($payout->status)->toBe(PayoutStatus::Processing)
+            ->and(Payout::query()->count())->toBe(2)
+            ->and(Payout::query()->where('status', PayoutStatus::Failed)->count())->toBe(1);
+    });
+
+    it('still refuses a second LIVE payout in the same period', function () {
+        $user = earnerWith(5000);
+        app(PayoutService::class)->request($user);
+
+        // Give them a fresh balance so the refusal is about the period, not the
+        // amount.
+        app(LedgerService::class)->record('extra:'.$user->id, [
+            LedgerLine::debit(LedgerAccount::RestaurantReceivable, 5000, 'EUR'),
+            LedgerLine::credit(LedgerAccount::InfluencerEarnings, 5000, 'EUR', userId: $user->id),
+        ]);
+
+        expectPayoutRefused(fn () => app(PayoutService::class)->request($user), 'insufficient_balance');
+        expect(Payout::query()->count())->toBe(1);
+    });
+});
+
 describe('the monthly run', function () {
     it('pays everyone eligible and skips the rest without aborting', function () {
         $ready = earnerWith(5000);
@@ -206,21 +245,25 @@ describe('the monthly run', function () {
 });
 
 describe('the ledger stays balanced', function () {
-    it('holds after a request, a failure, and a fresh request', function () {
+    it('holds through a failure, a successful retry, and a webhook settlement', function () {
         $user = earnerWith(5000);
 
         fakeStripe()->failNextTransfer();
         try {
             app(PayoutService::class)->request($user);
         } catch (PayoutFailed) {
-            // expected
+            // expected — the hold is released with it
         }
 
-        // The per-period unique index means the retry is a second row only if
-        // the period differs; here it collides and is reported as no balance.
-        expectPayoutRefused(fn () => app(PayoutService::class)->request($user), 'insufficient_balance');
+        // The retry goes through: the failed row no longer blocks the period.
+        $payout = app(PayoutService::class)->request($user);
+        expect($payout->status)->toBe(PayoutStatus::Processing);
 
-        expect(app(LedgerService::class)->verifyInvariants()->isHealthy())->toBeTrue();
+        app(PayoutService::class)->markPaid($payout);
+
+        expect(app(LedgerService::class)->verifyInvariants()->isHealthy())->toBeTrue()
+            // Settled: the hold stands, so nothing is payable any more.
+            ->and(app(PayoutService::class)->availableBalance($user))->toBe(0);
 
         $debits = (int) LedgerEntry::query()->where('direction', 'debit')->sum('amount');
         $credits = (int) LedgerEntry::query()->where('direction', 'credit')->sum('amount');

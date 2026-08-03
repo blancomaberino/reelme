@@ -85,18 +85,31 @@ return [
     | without a verified signature the endpoint is an unauthenticated way to
     | mark payouts paid.
     |
-    | `enabled` gates the whole surface. With no key configured the fake driver
-    | is bound instead, so the app boots and every test runs without ever
-    | reaching Stripe.
+    | There is no `enabled` flag: the presence of `secret` IS the switch. With
+    | none configured the FAKE driver is bound instead, so the app boots and the
+    | whole suite runs without ever reaching Stripe or being able to move money.
+    |
+    | `api_version` is pinned rather than left to the SDK's `CURRENT`. Stripe
+    | ties a webhook endpoint to a version, and an SDK upgrade that silently
+    | moved ours would change payload shapes under handlers that reconcile
+    | payouts.
     */
     'stripe' => [
         'key' => env('STRIPE_KEY'),
         'secret' => env('STRIPE_SECRET'),
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
-        // Where Stripe sends the operator back after hosted onboarding. Deep
-        // links the mobile webview intercepts (05 screen #22).
-        'connect_return_url' => env('STRIPE_CONNECT_RETURN_URL', 'reelmap://wallet/connect/return'),
-        'connect_refresh_url' => env('STRIPE_CONNECT_REFRESH_URL', 'reelmap://wallet/connect/refresh'),
+        'api_version' => env('STRIPE_API_VERSION', '2025-10-29.clover'),
+        /*
+         * Where Stripe returns the operator after hosted onboarding.
+         *
+         * HTTPS, not the `reelmap://` deep link it might look like it wants:
+         * Stripe REJECTS a non-HTTPS account-link URL in live mode, so a custom
+         * scheme here breaks onboarding in production while working fine
+         * against the fake. These routes redirect into the deep link the mobile
+         * webview intercepts (05 screen #22).
+         */
+        'connect_return_url' => env('STRIPE_CONNECT_RETURN_URL', env('APP_URL', 'http://localhost:8080').'/connect/return'),
+        'connect_refresh_url' => env('STRIPE_CONNECT_REFRESH_URL', env('APP_URL', 'http://localhost:8080').'/connect/refresh'),
     ],
 
 ];

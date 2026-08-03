@@ -150,6 +150,30 @@ describe('idempotency', function () {
         expect(StripeEvent::query()->count())->toBe(1);
     });
 
+    /*
+     * "Seen" is not "handled". A previous delivery that stored the row and then
+     * threw leaves `processed_at` null — answering `duplicate` there would drop
+     * the event permanently, because Stripe's retry keeps losing to the unique
+     * index while nothing is ever applied.
+     */
+    it('replays an event that was stored but never processed', function () {
+        $payout = Payout::factory()->processing('tr_stuck')->create();
+        StripeEvent::factory()->create([
+            'stripe_event_id' => 'evt_stuck',
+            'type' => 'transfer.paid',
+            'processed_at' => null,
+        ]);
+
+        postWebhook(
+            'transfer.paid',
+            ['id' => 'tr_stuck', 'metadata' => ['reelmap_payout_id' => (string) $payout->id]],
+            'evt_stuck',
+        )->assertOk()->assertJsonPath('data.status', 'processed');
+
+        expect($payout->fresh()->status)->toBe(PayoutStatus::Paid)
+            ->and(StripeEvent::firstOrFail()->processed_at)->not->toBeNull();
+    });
+
     it('stores the event before acting on it', function () {
         postWebhook('transfer.paid', ['id' => 'tr_unknown'], 'evt_store')->assertOk();
 
@@ -172,6 +196,38 @@ describe('transfer outcomes', function () {
         $payout->refresh();
         expect($payout->status)->toBe(PayoutStatus::Paid)
             ->and($payout->paid_at)->not->toBeNull();
+    });
+
+    /*
+     * `transfer.created` fires the moment the object exists — synchronously with
+     * our own API call — so it says nothing about money having moved. Treating
+     * it as settlement both lies and races `PayoutService::send()`, which is
+     * still writing `processing` for the transfer it just created.
+     */
+    it('does not settle a payout on transfer.created', function () {
+        $payout = Payout::factory()->create(['stripe_transfer_id' => 'tr_new']);
+
+        postWebhook('transfer.created', ['id' => 'tr_new', 'metadata' => ['reelmap_payout_id' => (string) $payout->id]])
+            ->assertOk();
+
+        expect($payout->fresh()->status)->toBe(PayoutStatus::Pending)
+            ->and($payout->fresh()->paid_at)->toBeNull();
+    });
+
+    /*
+     * The race the guarded write exists for: a webhook settles the payout before
+     * `send()` gets to write `processing`. A blind write there would REGRESS a
+     * settled payout — the money moved and our record would say it is in flight.
+     */
+    it('never regresses a payout that a webhook already settled', function () {
+        $payout = Payout::factory()->paid('tr_fast')->create();
+
+        // What `send()` does after Stripe returns.
+        Payout::query()->whereKey($payout->id)
+            ->where('status', PayoutStatus::Pending)
+            ->update(['status' => PayoutStatus::Processing]);
+
+        expect($payout->fresh()->status)->toBe(PayoutStatus::Paid);
     });
 
     it('resolves a payout by transfer id when the metadata is absent', function () {

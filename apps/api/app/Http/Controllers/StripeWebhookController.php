@@ -78,8 +78,26 @@ class StripeWebhookController extends Controller
                 'payload' => $event->toArray(),
             ]));
         } catch (UniqueConstraintViolationException) {
-            // Already seen. 200 so Stripe stops retrying.
-            return response()->json(['data' => ['status' => 'duplicate']]);
+            /*
+             * Seen before — but "seen" is not "handled". If a previous delivery
+             * stored the row and then threw in a handler, `processed_at` is
+             * still null and the side effect never happened. Answering
+             * `duplicate` there would drop the event permanently: Stripe's retry
+             * would keep losing to the index while nothing was ever applied.
+             */
+            $existing = StripeEvent::query()->where('stripe_event_id', $event->id)->first();
+
+            if ($existing === null || $existing->processed_at !== null) {
+                return response()->json(['data' => ['status' => 'duplicate']]);
+            }
+
+            // Re-seat the payload from THIS delivery. It is the same event, so
+            // the content matches — but the stored row may predate a change in
+            // what we record, and the handler must act on the verified body we
+            // are holding rather than on whatever happened to be persisted.
+            $existing->forceFill(['payload' => $event->toArray()])->save();
+
+            $record = $existing;
         }
 
         $this->dispatchEvent($record, $payouts, $stripe);
@@ -93,11 +111,18 @@ class StripeWebhookController extends Controller
     {
         match ($record->type) {
             'account.updated' => $this->syncAccount($record, $stripe),
-            // Transfer success is the practical v1 trigger for "paid": it is the
-            // movement WE initiate. Stripe's own `payout.*` events on an Express
-            // account describe Stripe→bank, which is the influencer's bank's
-            // business and can lag by days.
-            'transfer.created', 'transfer.paid' => $this->markPaid($record, $payouts),
+            /*
+             * ONLY `transfer.paid` settles. `transfer.created` fires the moment
+             * the object exists — synchronously with our own API call — so
+             * treating it as settlement both claims money moved when it has not
+             * and races `PayoutService::send()`, which is still writing
+             * `processing` for the very transfer it just created.
+             *
+             * Stripe's own `payout.*` events on an Express account describe
+             * Stripe→bank and can lag by days; they are not our signal either.
+             */
+            'transfer.paid' => $this->markPaid($record, $payouts),
+            'transfer.created' => Log::info('stripe.transfer_created', ['event' => $record->stripe_event_id]),
             'transfer.failed', 'transfer.reversed', 'payout.failed' => $this->markFailed($record, $payouts),
             default => Log::info('stripe.webhook_ignored', ['type' => $record->type, 'id' => $record->stripe_event_id]),
         };
