@@ -131,6 +131,26 @@ describe('creating an offer', function () {
             ->assertForbidden();
     });
 
+    /*
+     * 02 §3.13 makes `draft` the column default. The model mirrors it in
+     * `$attributes` so a freshly created row answers the same as one read back
+     * — without that, the CREATE response carries a null status for a row
+     * Postgres stored as `draft`, and `OfferResource` fatals reading ->value.
+     */
+    it('creates a draft when no status is asserted', function () {
+        $place = Place::factory()->active()->create();
+        $operator = operatorOf($place);
+        $payload = offerPayload($place);
+        unset($payload['status']);
+
+        $res = $this->actingAs($operator)->postJson('/api/v1/offers', $payload)->assertCreated();
+
+        expect($res->json('data.status'))->toBe('draft')
+            ->and($res->json('data.is_redeemable'))->toBeFalse()
+            ->and($res->json('data.quota_per_user'))->toBe(1)
+            ->and(Offer::firstOrFail()->status)->toBe(OfferStatus::Draft);
+    });
+
     it('defaults an omitted end date to the 90-day maximum rather than open-ended', function () {
         $place = Place::factory()->active()->create();
         $operator = operatorOf($place);
