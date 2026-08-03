@@ -39,7 +39,7 @@ class OfferFactory extends Factory
             'quota_per_user' => 1,
             'quota_per_day' => null,
             'redemptions_count' => 0,
-            'influencer_share_bps' => 1000,
+            'influencer_share_bps' => 5000,
             'status' => OfferStatus::Draft,
         ];
     }
