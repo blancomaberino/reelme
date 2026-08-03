@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\ClaimStatus;
 use App\Enums\ShareStatus;
 use App\Http\ApiResponse;
 use App\Http\Controllers\Api\V1\Concerns\PaginatesPlaces;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PlaceListingRequest;
+use App\Http\Resources\PlaceSummaryResource;
 use App\Http\Resources\TagResource;
 use App\Models\HiddenPlace;
 use App\Models\Place;
@@ -127,6 +129,34 @@ class MePlacesController extends Controller
             'countries' => $distinct('country_code'),
             'types' => $distinct('cuisine_primary'),
         ]);
+    }
+
+    /**
+     * The venues I OPERATE — places I hold a verified claim on (T-041/T-042).
+     *
+     * A different sense of "mine" from every other route on this controller,
+     * which mean "places I shared or saved". Kept separate rather than folded in
+     * as a filter for exactly that reason: an operator is usually not a diner at
+     * their own restaurant, and conflating the two would put their workplace in
+     * their personal collection.
+     *
+     * Unpaginated: an operator has a handful of venues, and the offer-management
+     * screen needs all of them at once to name the place each offer belongs to.
+     */
+    public function venues(Request $request): JsonResponse
+    {
+        $places = Place::query()
+            ->publiclyVisible()
+            ->whereIn('id', DB::table('place_claims')
+                ->select('place_id')
+                ->where('user_id', $request->user()->id)
+                ->where('status', ClaimStatus::Verified->value))
+            ->select('places.*')
+            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
+            ->orderBy('name')
+            ->get();
+
+        return ApiResponse::collection(PlaceSummaryResource::collection($places));
     }
 
     /**

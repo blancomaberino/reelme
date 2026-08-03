@@ -17,3 +17,4 @@ export type { ShareDetail, ShareStatus, SharePlace, PendingVenue } from './gener
 export type { FeedItem } from './generated/feed-item';
 export type { PlaceListSummary } from './generated/place-list';
 export type { PlaceListDetail } from './generated/place-list-detail';
+export type { Offer } from './generated/offer';

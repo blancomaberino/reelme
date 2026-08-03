@@ -21,7 +21,11 @@ class MapPlacesRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $parts = array_map('trim', explode(',', (string) $this->query('bbox')));
+        // Same guard as `near` above: an array `?bbox[]=…` would be cast to
+        // string here, before the `string` rule can reject it, and the warning
+        // surfaces as a 500 rather than a 422.
+        $bbox = $this->query('bbox');
+        $parts = is_string($bbox) ? array_map('trim', explode(',', $bbox)) : [];
         if (count($parts) === 4) {
             $this->merge([
                 'minLng' => $parts[0],

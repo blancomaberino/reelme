@@ -102,10 +102,7 @@ class MapViewport
      */
     private function pinsResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total): JsonResponse
     {
-        $places = $this->baseQuery($request, $bbox, $constrain)
-            ->select('*')
-            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-            ->with(['primarySource.sourcePost.influencer', 'primarySource.sourcePost.mediaAssets', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
+        $places = $this->selectPinFields($this->baseQuery($request, $bbox, $constrain))
             ->orderByDesc('shares_count')
             ->limit(self::PIN_CAP + 1)
             ->get();
@@ -186,11 +183,7 @@ class MapViewport
 
         $pins = [];
         if ($singletonIds !== []) {
-            $pins = Place::query()
-                ->whereIn('id', $singletonIds)
-                ->select('*')
-                ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
-                ->with(['primarySource.sourcePost.influencer', 'primarySource.sourcePost.mediaAssets', 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug')])
+            $pins = $this->selectPinFields(Place::query()->whereIn('id', $singletonIds))
                 ->get()
                 ->map(fn (Place $p) => $this->pin($p))
                 ->all();
@@ -202,6 +195,35 @@ class MapViewport
             'clustered' => true,
             'truncated' => $truncated ?: null,
         ], fn ($v) => $v !== null));
+    }
+
+    /**
+     * Everything {@see pin()} reads, selected in one query.
+     *
+     * Shared by both paths — the raw-pin response and the singleton cells the
+     * clustered response promotes to pins — because they render the SAME shape.
+     * When they each spelled it out, a field added to `pin()` was one edit away
+     * from being null on half the map.
+     *
+     * @template TBuilder of Builder<Place>
+     *
+     * @param  TBuilder  $query
+     * @return TBuilder
+     */
+    private function selectPinFields(Builder $query): Builder
+    {
+        return $query
+            ->select('*')
+            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
+            ->with([
+                'primarySource.sourcePost.influencer',
+                'primarySource.sourcePost.mediaAssets',
+                'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug'),
+            ])
+            // The offer badge (T-042, 03 §3.3). One EXISTS subquery for the whole
+            // page of pins, never a query per pin: the map draws hundreds at
+            // once, so this must not become an N+1.
+            ->withExists(['offers as has_active_offer' => fn ($q) => $q->active()]);
     }
 
     /**
@@ -224,7 +246,7 @@ class MapViewport
             'status' => $place->status->value,
             'tags' => $place->tags->pluck('slug')->take(8)->values()->all(),
             'source_count' => $place->shares_count,
-            'has_active_offer' => false, // M4
+            'has_active_offer' => (bool) $place->getAttribute('has_active_offer'),
             // Marker photo: a curated place-owned picture (T-084) wins — the
             // marker thumbnail, else the main image — over the primary reel's
             // poster (T-070), which still draws the Google-style photo marker when

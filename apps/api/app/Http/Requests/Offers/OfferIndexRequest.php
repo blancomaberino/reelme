@@ -1,17 +1,20 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Offers;
 
+use App\Http\Requests\PlaceIndexRequest;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
- * Validates the public place index query (T-030, 03 §2.6). `near` arrives as a
- * comma-joined `lat,lng`; it is split here into named, range-checked fields.
- * `sort=distance` is only meaningful relative to a point, so it requires `near`.
+ * Validates the public offer browse (T-042, 03 §2.12):
+ * `?place_id=&near=lat,lng&radius_m=&active=1`.
+ *
+ * `near` arrives comma-joined and is split into range-checked fields exactly as
+ * in {@see PlaceIndexRequest} — same wire format, same
+ * failure message, so a client that got one right gets the other right too.
  */
-class PlaceIndexRequest extends FormRequest
+class OfferIndexRequest extends FormRequest
 {
     public const DEFAULT_RADIUS_M = 2000;
 
@@ -20,11 +23,16 @@ class PlaceIndexRequest extends FormRequest
         return true;
     }
 
+    /**
+     * `is_string`, not `!== null`: this runs BEFORE the rules, so the
+     * `'near' => ['string']` rule does not protect it. `?near[]=1&near[]=2`
+     * hands back an array, and casting one to string raises a PHP warning that
+     * Laravel promotes to an ErrorException — a 500 on a public, unauthenticated
+     * route where a 422 belongs. Non-strings fall through untouched and the
+     * `string` rule rejects them properly.
+     */
     protected function prepareForValidation(): void
     {
-        // `is_string`, not `!== null`: this runs before the rules, so
-        // `?near[]=1&near[]=2` would cast an array to string — a PHP warning
-        // Laravel promotes to a 500 on a public route (found by review on T-042).
         $near = $this->query('near');
 
         if (is_string($near)) {
@@ -41,16 +49,16 @@ class PlaceIndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'q' => ['nullable', 'string', 'max:120'],
-            'tags' => ['nullable', 'array', 'max:10'],
-            'tags.*' => ['string', 'max:96'],
-            'card' => ['nullable', 'string', 'max:64'],
+            'place_id' => ['nullable', 'integer', 'min:1'],
             'near' => ['nullable', 'string'],
             'nearLat' => ['required_with:near', 'numeric', 'between:-90,90'],
             'nearLng' => ['required_with:near', 'numeric', 'between:-180,180'],
             'radius_m' => ['nullable', 'integer', 'between:1,50000'],
-            'influencer_id' => ['nullable', 'integer', 'min:1'],
-            'sort' => ['nullable', Rule::in(['recent', 'popular', 'distance'])],
+            'active' => ['nullable', 'boolean'],
+            // The operator's management view: every offer, every state, for the
+            // venues the caller holds a verified claim on. Requires auth, which
+            // the controller enforces (the endpoint itself is public).
+            'mine' => ['nullable', 'boolean'],
             'limit' => ['nullable', 'integer', 'between:1,100'],
             'cursor' => ['nullable', 'string', 'max:1024'],
         ];
@@ -69,10 +77,7 @@ class PlaceIndexRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
-        $validator->after(function ($v) {
-            if ($this->input('sort') === 'distance' && ! is_string($this->query('near'))) {
-                $v->errors()->add('sort', 'sort=distance requires the near parameter.');
-            }
+        $validator->after(function (Validator $v): void {
             if (is_string($this->query('near')) && ! $this->has('nearLat')) {
                 $v->errors()->add('near', 'near must be "lat,lng".');
             }
@@ -80,8 +85,6 @@ class PlaceIndexRequest extends FormRequest
     }
 
     /**
-     * The validated near point, if given.
-     *
      * @return array{lat: float, lng: float}|null
      */
     public function nearPoint(): ?array
@@ -101,9 +104,10 @@ class PlaceIndexRequest extends FormRequest
         return (int) ($this->validated('radius_m') ?? self::DEFAULT_RADIUS_M);
     }
 
-    public function sort(): string
+    /** Restrict to offers redeemable right now (`?active=1`). */
+    public function activeOnly(): bool
     {
-        return (string) ($this->validated('sort') ?? 'recent');
+        return $this->boolean('active');
     }
 
     public function limit(): int

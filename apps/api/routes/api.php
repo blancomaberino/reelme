@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\MePlacesController;
 use App\Http\Controllers\Api\V1\ModelController;
 use App\Http\Controllers\Api\V1\NotificationController;
+use App\Http\Controllers\Api\V1\OfferController;
 use App\Http\Controllers\Api\V1\PlaceClaimController;
 use App\Http\Controllers\Api\V1\PlaceController;
 use App\Http\Controllers\Api\V1\PlaceListController;
@@ -63,6 +64,13 @@ Route::prefix('v1')->group(function () {
     Route::get('/places/payment-cards', [PlaceController::class, 'paymentCards'])->middleware('throttle:map');
     Route::get('/places/{place}', [PlaceController::class, 'show'])->middleware('throttle:map');
     Route::get('/places/{place}/sources', [PlaceController::class, 'sources'])->middleware('throttle:map');
+
+    // Restaurant offers (T-042, 03 §2.12): public browse + detail. `?mine=1`
+    // turns the index into the operator's management view — the controller
+    // resolves that caller via the sanctum guard, so the route stays public.
+    // Writes are registered in the authenticated group below.
+    Route::get('/offers', [OfferController::class, 'index'])->middleware('throttle:map');
+    Route::get('/offers/{offer}', [OfferController::class, 'show'])->middleware('throttle:map');
 
     // Tags + federated search (T-031, 03 §2.11): public, same interactive
     // read limiter as the map (typing in a search box pans like a map does).
@@ -141,6 +149,16 @@ Route::prefix('v1')->group(function () {
             Route::post('/places/{place}/claim/verify', [PlaceClaimController::class, 'verify']);
         });
 
+        // Offer management (T-042, 06 §2.2). Owner-only via OfferPolicy — every
+        // check re-derives operator status from the verified place claim, so a
+        // revoked claim revokes offer control with it. DELETE archives.
+        // Same light write throttle as the other management surfaces.
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::post('/offers', [OfferController::class, 'store']);
+            Route::patch('/offers/{offer}', [OfferController::class, 'update']);
+            Route::delete('/offers/{offer}', [OfferController::class, 'destroy']);
+        });
+
         // Managing your own second factor (T-068). Acts on the authenticated
         // user only — no id in any signature. The destructive three re-ask for
         // the password inside the controller. Throttled like the other small
@@ -183,6 +201,10 @@ Route::prefix('v1')->group(function () {
         // collection so the filter chips aren't capped at the first loaded page.
         // Literal segment registered before any {place} route (see "tags" above).
         Route::get('/me/places/facets', [MePlacesController::class, 'facets'])->middleware('throttle:map');
+        // The venues I OPERATE (T-042) — a different sense of "mine" from the
+        // routes above (shared/saved): places I hold a verified claim on. Powers
+        // the restaurant offer screens' venue picker.
+        Route::get('/me/venues', [MePlacesController::class, 'venues'])->middleware('throttle:map');
         // Remove a place from my collection (soft-hide my shares + un-save).
         Route::delete('/me/places/{place}', [MePlacesController::class, 'destroy']);
 

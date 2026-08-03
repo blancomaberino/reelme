@@ -64,6 +64,12 @@ export const queryKeys = {
   influencerClaim: (id: string) => ['influencer', id, 'claim'] as const,
   /** The notification center list (T-040) — one infinite query, badge included. */
   notifications: () => ['notifications'] as const,
+  /** The operator's own offers across every venue they run (T-042). */
+  myOffers: () => ['offers', 'mine'] as const,
+  /** One offer, for the edit form. */
+  offer: (id: string) => ['offers', id] as const,
+  /** The venues the caller operates — a verified place claim each (T-041/T-042). */
+  venues: () => ['me', 'venues'] as const,
   /** The selectable analysis-model catalog (T-020). */
   analysisModels: () => ['analysis', 'models'] as const,
   /** The caller's 2FA state (T-068). Not nested under `me` — invalidating the
