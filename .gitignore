@@ -38,6 +38,8 @@ dist/
 graphify-out/
 
 # Claude Code — the shared setup (skills, agents, hooks, settings.json) IS committed;
-# these two are per-machine: personal overrides and scheduler runtime state.
+# these are per-machine: personal overrides, scheduler runtime state, and the
+# context-handoff working notes (session state, not source).
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/state/
