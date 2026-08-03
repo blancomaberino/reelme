@@ -79,6 +79,7 @@ export const en = {
   'reviewSource.count_one': '{{count}} review',
   'reviewSource.read': 'Read on {{source}}',
   'reviewSource.synced': 'Updated {{date}}',
+  'place.offers': 'Offers here',
   'place.discounts': 'Card discounts',
   'place.fromGoogle': 'From Google',
   'review.rate': 'Rate this place',

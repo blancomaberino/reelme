@@ -76,6 +76,7 @@ export const es: Record<MessageKey, string> = {
   'reviewSource.count_one': '{{count}} reseña',
   'reviewSource.read': 'Ver en {{source}}',
   'reviewSource.synced': 'Actualizado {{date}}',
+  'place.offers': 'Ofertas acá',
   'place.discounts': 'Descuentos con tarjeta',
   'place.fromGoogle': 'De Google',
   'review.rate': 'Calificá este lugar',

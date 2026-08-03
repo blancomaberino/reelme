@@ -7,6 +7,8 @@
 // ./lists.ts. What stays hand-written below is what has no schema yet (map/search
 // rows, and PlaceDetail — pending the gaps in place.json, e.g. ?include=reviews);
 // migrate each as its schema lands.
+import type { Offer } from './offers';
+
 import type {
   FeedItem as ContractFeedItem,
   InfluencerSummary as ContractInfluencerSummary,
@@ -171,6 +173,13 @@ export type PlaceDetail = {
   google_reviews?: GoogleReview[];
   reviews?: AppReview[];
   sources?: PlaceSourceItem[];
+  /**
+   * The venue's LIVE offers (T-042 `?include=offers`). The API filters to the
+   * `active()` scope, so drafts, paused promos and lapsed windows never reach
+   * here — a section built from this cannot advertise something a till would
+   * refuse. Capped server-side; the full list is the offers browse.
+   */
+  offers?: Offer[];
   /**
    * The viewer's own private tags (T-064). Present only when authenticated;
    * absent for guests, and never carries another user's labels.

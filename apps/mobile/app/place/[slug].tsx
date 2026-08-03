@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { usePlace } from '@/api/hooks/usePlace';
 import type { PlaceDetail } from '@/api/places';
 import { Chip } from '@/components/place/chip';
+import { Button } from '@/components/button';
+import { OfferCard } from '@/components/offer/offer-card';
 import { MiniMap } from '@/components/place/mini-map';
 import { ReviewComposer } from '@/components/place/review-composer';
 import { MenuSheet } from '@/components/place/menu-sheet';
@@ -154,6 +156,34 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
 
       {/* My tags — private, owner-only annotations (T-064) */}
       {authed ? <MyTags slug={place.slug} tags={place.my_tags ?? []} /> : null}
+
+      {/* Live Reelmap offers (T-047). Placed directly ABOVE the card discounts
+          so the two "what you can save here" blocks read as one idea, with the
+          actionable, time-boxed one first — a card discount is a standing fact,
+          an offer is a thing you claim before you walk in. Only ever `active`
+          ones: the API filters the embed, so this section cannot advertise a
+          promotion the till would refuse. */}
+      {place.offers && place.offers.length > 0 ? (
+        <View style={styles.block} testID="place-offers">
+          <Text style={styles.sectionTitle}>{t('place.offers')}</Text>
+          {place.offers.map((offer) => (
+            <OfferCard
+              key={offer.id}
+              offer={offer}
+              // No venue name — you are standing on the venue's page.
+              onPress={() => router.push({ pathname: '/offers/[id]/redeem', params: { id: offer.id } })}
+              actions={
+                <Button
+                  title={t('offers.browse.getCode')}
+                  size="sm"
+                  onPress={() => router.push({ pathname: '/offers/[id]/redeem', params: { id: offer.id } })}
+                  testID={`place-offer-cta-${offer.id}`}
+                />
+              }
+            />
+          ))}
+        </View>
+      ) : null}
 
       {/* Card/bank/wallet payment discounts mentioned in the reels (T-079) */}
       {place.discounts.length > 0 ? (
