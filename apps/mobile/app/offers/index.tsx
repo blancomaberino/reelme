@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useQuery } from '@tanstack/react-query';
 import { Stack, router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -15,6 +15,7 @@ import { LocationBlockedHint, MapControls, useMapCamera } from '@/components/map
 import { discountHeadline, OfferCard } from '@/components/offer/offer-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { type MessageKey, useT } from '@/i18n';
+import { type Region, regionRadiusM } from '@/lib/geo';
 import { DEFAULT_REGION, locateUser } from '@/lib/initial-region';
 import { openLocationSettings, USER_REGION_DELTA } from '@/lib/location';
 import { useSettingsStore } from '@/stores/settings';
@@ -78,7 +79,37 @@ export default function OffersBrowseScreen() {
     : (savedRegion ?? DEFAULT_REGION);
 
   const camera = useMapCamera({ initialRegion: mapRegion, initialUserRegion: at });
-  const { data: offers, isLoading, isError, refetch, isRefetching } = useNearbyOffers(at);
+
+  /*
+   * The map searches WHAT IS ON SCREEN; the list searches around you.
+   *
+   * They are different questions. "Offers near me" is a list of places I could
+   * walk to. A map I have dragged across town is a question about THERE — and
+   * a map pinned to my own position answers it with an empty screen no matter
+   * how far I pan, which is exactly what it did before this.
+   *
+   * Updated only when the region SETTLES (debounced), never per gesture frame.
+   */
+  const [mapArea, setMapArea] = useState<Region>(mapRegion);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const onRegionSettled = useCallback(
+    (region: Region) => {
+      camera.rememberRegion(region);
+      if (settle.current) clearTimeout(settle.current);
+      settle.current = setTimeout(() => setMapArea(region), 400);
+    },
+    [camera],
+  );
+
+  useEffect(() => () => {
+    if (settle.current) clearTimeout(settle.current);
+  }, []);
+
+  const searchAt = mode === 'map' ? mapArea : at;
+  const searchRadius = mode === 'map' ? regionRadiusM(mapArea) : BROWSE_RADIUS_M;
+
+  const { data: offers, isLoading, isError, refetch, isRefetching } = useNearbyOffers(searchAt, searchRadius);
 
   const mappable = useMemo(
     () => (offers ?? []).filter((o) => o.place?.lat != null && o.place?.lng != null),
@@ -109,7 +140,7 @@ export default function OffersBrowseScreen() {
         provider={PROVIDER_DEFAULT}
         style={StyleSheet.absoluteFill}
         initialRegion={mapRegion}
-        onRegionChangeComplete={camera.rememberRegion}
+        onRegionChangeComplete={onRegionSettled}
         onPress={() => setSelected(null)}
         showsUserLocation
         showsMyLocationButton={false}

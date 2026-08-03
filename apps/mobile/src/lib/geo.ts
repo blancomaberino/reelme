@@ -104,3 +104,24 @@ export function bboxToRegion(bbox: Bbox, pad = 1.3): Region {
     longitudeDelta: Math.max((maxLng - minLng) * pad, 0.002),
   };
 }
+
+/** Metres per degree of latitude — near enough at any latitude for a radius. */
+const METRES_PER_DEGREE = 111_320;
+
+/**
+ * A radius in metres that covers the whole visible region.
+ *
+ * Half the viewport's DIAGONAL, not half its height: a radius drawn from the
+ * centre to the nearest edge leaves the four corners outside, and the corner of
+ * the map is exactly where a user drags a venue they are looking for.
+ *
+ * Longitude degrees shrink toward the poles, so the horizontal span is scaled
+ * by cos(latitude) — without it a viewport in Reykjavík asks for roughly twice
+ * the area it shows.
+ */
+export function regionRadiusM(region: Region): number {
+  const latM = region.latitudeDelta * METRES_PER_DEGREE;
+  const lngM = region.longitudeDelta * METRES_PER_DEGREE * Math.cos((region.latitude * Math.PI) / 180);
+
+  return Math.round(Math.hypot(latM, lngM) / 2);
+}

@@ -237,10 +237,14 @@ jest.mock('react-native-maps', () => {
   // moves — cluster tap, quick-share fly-to, reset view. Clear it per test.
   const animateToRegion = jest.fn();
   const MapView = Object.assign(
-    React.forwardRef(({ children, ...props }: { children?: React.ReactNode }, ref: unknown) => {
-      React.useImperativeHandle(ref, () => ({ animateToRegion }));
-      return React.createElement(View, { ...props, testID: 'MapView' }, children);
-    }),
+    // Honours a caller's testID (falling back to 'MapView') — two screens now
+    // render a map, and a hardcoded id makes the second one unaddressable.
+    React.forwardRef(
+      ({ children, ...props }: { children?: React.ReactNode; testID?: string }, ref: unknown) => {
+        React.useImperativeHandle(ref, () => ({ animateToRegion }));
+        return React.createElement(View, { ...props, testID: props.testID ?? 'MapView' }, children);
+      },
+    ),
     { displayName: 'MapView' },
   );
   return {

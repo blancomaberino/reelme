@@ -7,11 +7,17 @@ import { queryKeys } from '../keys';
 import type { Offer } from '../offers';
 
 /**
- * How far out the browse looks. 2km is walking distance in a city centre —
- * far enough to be worth a list, near enough that "10% off" is still an offer
+ * How far out the LIST looks. 2km is walking distance in a city centre — far
+ * enough to be worth a list, near enough that "10% off" is still an offer
  * someone would actually cross town for.
+ *
+ * The MAP does not use this: it asks for whatever is on screen, so panning
+ * somewhere is how you see what is there.
  */
 export const BROWSE_RADIUS_M = 2000;
+
+/** The API's ceiling on `radius_m`. A wider viewport is clamped, not rejected. */
+export const MAX_RADIUS_M = 50_000;
 
 /**
  * Nearby redeemable offers (T-047, 05 screen #17).
@@ -26,12 +32,13 @@ export const BROWSE_RADIUS_M = 2000;
  */
 export function useNearbyOffers(at: Pick<Region, 'latitude' | 'longitude'> | null, radiusM = BROWSE_RADIUS_M) {
   const near = at ? `${at.latitude.toFixed(4)},${at.longitude.toFixed(4)}` : '';
+  const radius = Math.min(Math.max(Math.round(radiusM), 1), MAX_RADIUS_M);
 
   return useQuery({
-    queryKey: queryKeys.nearbyOffers(near, radiusM),
+    queryKey: queryKeys.nearbyOffers(near, radius),
     queryFn: async (): Promise<Offer[]> => {
       const { data } = await api.get<{ data: Offer[] }>('/offers', {
-        params: { near, radius_m: radiusM, active: 1, limit: 50 },
+        params: { near, radius_m: radius, active: 1, limit: 50 },
       });
       return data.data;
     },

@@ -3,6 +3,7 @@ import {
   mapQueryFor,
   padBbox,
   quantizeBbox,
+  regionRadiusM,
   regionToBbox,
   zoomBand,
   zoomFromRegion,
@@ -87,5 +88,38 @@ describe('bboxToRegion', () => {
     expect(r.latitude).toBeCloseTo(-34.9);
     expect(r.longitude).toBeCloseTo(-56.15);
     expect(r.latitudeDelta).toBeGreaterThanOrEqual(0.002);
+  });
+});
+
+/*
+ * The offers map asks the API for "what is in this viewport". Get the radius
+ * wrong and a venue the user has dragged into view is not in the answer.
+ */
+describe('regionRadiusM', () => {
+  it('covers the CORNERS of the viewport, not just the nearest edge', () => {
+    // ~11.1km tall, ~11.1km wide at the equator → half-diagonal ≈ 7.9km, which
+    // is larger than half the height (5.6km). A radius drawn to the nearest
+    // edge would leave every corner of the map unsearched.
+    const radius = regionRadiusM({ latitude: 0, longitude: 0, latitudeDelta: 0.1, longitudeDelta: 0.1 });
+
+    expect(radius).toBeGreaterThan(7_800);
+    expect(radius).toBeLessThan(8_000);
+  });
+
+  it('shrinks the longitude span toward the poles', () => {
+    const equator = regionRadiusM({ latitude: 0, longitude: 0, latitudeDelta: 0.1, longitudeDelta: 0.1 });
+    const north = regionRadiusM({ latitude: 60, longitude: 0, latitudeDelta: 0.1, longitudeDelta: 0.1 });
+
+    // A degree of longitude is half as wide at 60°N, so the same viewport
+    // covers less ground — asking for the equator's radius there would request
+    // roughly twice the area actually shown.
+    expect(north).toBeLessThan(equator);
+  });
+
+  it('grows with the viewport', () => {
+    const close = regionRadiusM({ latitude: -34.9, longitude: -56.16, latitudeDelta: 0.02, longitudeDelta: 0.02 });
+    const wide = regionRadiusM({ latitude: -34.9, longitude: -56.16, latitudeDelta: 0.5, longitudeDelta: 0.5 });
+
+    expect(wide).toBeGreaterThan(close * 20);
   });
 });

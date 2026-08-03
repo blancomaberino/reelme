@@ -206,6 +206,48 @@ describe('the map toggle', () => {
     expect(screen.queryByTestId('offers-location-blocked')).toBeNull();
   });
 
+  /*
+   * The bug this pins: the map used to be nailed to the DEVICE fix, so panning
+   * to a restaurant 19km away asked the API about your own sofa and answered
+   * with an empty map however far you dragged. A map is a question about where
+   * you are LOOKING.
+   */
+  it('re-asks the API for the region the user panned to', async () => {
+    mock.onGet('/offers').reply(200, { data: [] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('offers-toggle-map')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    await waitFor(() => expect(mock.history.get.length).toBeGreaterThan(0));
+    const before = mock.history.get.length;
+
+    // Drag to the other venue, ~19km away and far outside the 2km list radius.
+    fireEvent(screen.getByTestId('offers-map'), 'regionChangeComplete', {
+      latitude: -34.8436,
+      longitude: -55.9693,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
+    });
+
+    await waitFor(() => expect(mock.history.get.length).toBeGreaterThan(before));
+    const asked = mock.history.get[mock.history.get.length - 1].params;
+    expect(asked.near).toBe('-34.8436,-55.9693');
+    // And it asks for the whole viewport, not the list's fixed 2km.
+    expect(asked.radius_m).toBeGreaterThan(1_000);
+  });
+
+  it('keeps the list on the diner, not on wherever the map was dragged', async () => {
+    mock.onGet('/offers').reply(200, { data: [] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(mock.history.get.length).toBeGreaterThan(0));
+
+    // "Offers near you" is a list of places you could walk to — it must stay
+    // anchored to the device even after the map has been moved elsewhere.
+    expect(mock.history.get[0].params).toMatchObject({ near: '38.7223,-9.1393', radius_m: 2000 });
+  });
+
   it('places a marker per offer once the diner switches to the map', async () => {
     mock.onGet('/offers').reply(200, { data: [offer(), offer({ id: '2', place_id: '11' })] });
 
@@ -215,8 +257,6 @@ describe('the map toggle', () => {
     fireEvent.press(screen.getByTestId('offers-toggle-map'));
 
     // The discount, not a generic pin — the number is the reason to walk there.
-    // (Asserted through the marker labels: the jest mock for react-native-maps
-    // renders MapView under its own testID, so the screen's is not visible.)
     await waitFor(() => expect(screen.getAllByText('20%')).toHaveLength(2));
   });
 
