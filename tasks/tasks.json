@@ -1115,7 +1115,7 @@
       "id": "T-045",
       "title": "Stripe Connect Express: onboarding, payouts, webhooks",
       "phase": "M4",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-044",
         "T-038"
