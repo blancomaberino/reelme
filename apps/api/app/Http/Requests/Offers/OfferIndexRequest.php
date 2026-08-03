@@ -23,10 +23,20 @@ class OfferIndexRequest extends FormRequest
         return true;
     }
 
+    /**
+     * `is_string`, not `!== null`: this runs BEFORE the rules, so the
+     * `'near' => ['string']` rule does not protect it. `?near[]=1&near[]=2`
+     * hands back an array, and casting one to string raises a PHP warning that
+     * Laravel promotes to an ErrorException — a 500 on a public, unauthenticated
+     * route where a 422 belongs. Non-strings fall through untouched and the
+     * `string` rule rejects them properly.
+     */
     protected function prepareForValidation(): void
     {
-        if ($this->query('near') !== null) {
-            $parts = array_map('trim', explode(',', (string) $this->query('near')));
+        $near = $this->query('near');
+
+        if (is_string($near)) {
+            $parts = array_map('trim', explode(',', $near));
             if (count($parts) === 2) {
                 $this->merge(['nearLat' => $parts[0], 'nearLng' => $parts[1]]);
             }
@@ -68,7 +78,7 @@ class OfferIndexRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v): void {
-            if ($this->query('near') !== null && ! $this->has('nearLat')) {
+            if (is_string($this->query('near')) && ! $this->has('nearLat')) {
                 $v->errors()->add('near', 'near must be "lat,lng".');
             }
         });
@@ -79,7 +89,7 @@ class OfferIndexRequest extends FormRequest
      */
     public function nearPoint(): ?array
     {
-        if ($this->query('near') === null) {
+        if (! is_string($this->query('near'))) {
             return null;
         }
 

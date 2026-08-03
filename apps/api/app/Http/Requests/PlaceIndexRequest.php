@@ -22,8 +22,13 @@ class PlaceIndexRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if ($this->query('near') !== null) {
-            $parts = array_map('trim', explode(',', (string) $this->query('near')));
+        // `is_string`, not `!== null`: this runs before the rules, so
+        // `?near[]=1&near[]=2` would cast an array to string — a PHP warning
+        // Laravel promotes to a 500 on a public route (found by review on T-042).
+        $near = $this->query('near');
+
+        if (is_string($near)) {
+            $parts = array_map('trim', explode(',', $near));
             if (count($parts) === 2) {
                 $this->merge(['nearLat' => $parts[0], 'nearLng' => $parts[1]]);
             }
@@ -65,10 +70,10 @@ class PlaceIndexRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function ($v) {
-            if ($this->input('sort') === 'distance' && $this->query('near') === null) {
+            if ($this->input('sort') === 'distance' && ! is_string($this->query('near'))) {
                 $v->errors()->add('sort', 'sort=distance requires the near parameter.');
             }
-            if ($this->query('near') !== null && ! $this->has('nearLat')) {
+            if (is_string($this->query('near')) && ! $this->has('nearLat')) {
                 $v->errors()->add('near', 'near must be "lat,lng".');
             }
         });
@@ -81,7 +86,7 @@ class PlaceIndexRequest extends FormRequest
      */
     public function nearPoint(): ?array
     {
-        if ($this->query('near') === null) {
+        if (! is_string($this->query('near'))) {
             return null;
         }
 

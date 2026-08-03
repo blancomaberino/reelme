@@ -18,7 +18,7 @@ use Laravel\Sanctum\Sanctum;
  * promotion the restaurant stopped honouring.
  */
 
-/** A place with a live offer, an expired-but-still-`active` one, and a draft. */
+/** One offer in each state a diner-facing surface has to reason about. */
 function placeWithOfferMix(?Place $place = null): Place
 {
     $place = $place ?? Place::factory()->active()->atPoint(38.7223, -9.1393)->create();
@@ -29,6 +29,7 @@ function placeWithOfferMix(?Place $place = null): Place
     Offer::factory()->expired()->create(['place_id' => $place->id, 'created_by_user_id' => $operator->id, 'title' => 'Window lapsed']);
     Offer::factory()->create(['place_id' => $place->id, 'created_by_user_id' => $operator->id, 'title' => 'Draft']);
     Offer::factory()->paused()->create(['place_id' => $place->id, 'created_by_user_id' => $operator->id, 'title' => 'Paused']);
+    Offer::factory()->archived()->create(['place_id' => $place->id, 'created_by_user_id' => $operator->id, 'title' => 'Archived']);
 
     return $place;
 }
@@ -41,7 +42,8 @@ describe('GET /offers', function () {
 
         expect($titles)->toContain('Live one', 'Window lapsed')
             ->and($titles)->not->toContain('Draft')
-            ->and($titles)->not->toContain('Paused');
+            ->and($titles)->not->toContain('Paused')
+            ->and($titles)->not->toContain('Archived');
     });
 
     it('drops an offer whose window has lapsed when ?active=1', function () {
@@ -239,7 +241,8 @@ describe('the place-detail embed', function () {
         expect($titles)->toContain('Live one')
             ->and($titles)->not->toContain('Window lapsed')
             ->and($titles)->not->toContain('Draft')
-            ->and($titles)->not->toContain('Paused');
+            ->and($titles)->not->toContain('Paused')
+            ->and($titles)->not->toContain('Archived');
     });
 
     it('omits the offers key entirely without the include', function () {

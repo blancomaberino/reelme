@@ -158,18 +158,29 @@ class Offer extends Model
      */
     public function isRedeemable(int $issuedToday = 0): bool
     {
-        return $this->isWithinWindow()
+        return $this->isPublished()
+            && $this->isWithinWindow()
             && $this->hasTotalQuotaLeft()
             && $this->hasDailyQuotaLeft($issuedToday);
     }
 
-    /** Active intent AND inside the validity window — the scope, per row. */
+    /**
+     * The operator's intent: published, not a draft or paused.
+     *
+     * Spelled out as its own conjunct in {@see isRedeemable()} rather than
+     * hidden inside the window check. It was folded into `isWithinWindow()`
+     * before, and a reader — human or machine — following `isRedeemable()` could
+     * not see that a paused offer was excluded at all. The status is half the
+     * answer; it should be half the sentence.
+     */
+    public function isPublished(): bool
+    {
+        return $this->status === OfferStatus::Active;
+    }
+
+    /** Inside the validity window. Says nothing about status — see above. */
     public function isWithinWindow(): bool
     {
-        if ($this->status !== OfferStatus::Active) {
-            return false;
-        }
-
         $now = now();
 
         return ! $this->starts_at->isAfter($now)

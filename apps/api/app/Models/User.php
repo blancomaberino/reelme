@@ -172,8 +172,13 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     public function ownsPlace(Place $place): bool
     {
         if ($this->relationLoaded('placeClaims')) {
+            // Cast both sides: `place_claims.place_id` carries no integer cast,
+            // so its PHP type is the driver's choice. A strict comparison that
+            // silently became int-vs-string would deny a legitimate operator
+            // their own venue — and only on the paths that preload the relation,
+            // which is the hardest kind of bug to reproduce.
             return $this->placeClaims->contains(
-                fn (PlaceClaim $claim) => $claim->place_id === $place->id
+                fn (PlaceClaim $claim) => (int) $claim->place_id === (int) $place->id
                     && $claim->status === ClaimStatus::Verified,
             );
         }

@@ -365,6 +365,26 @@ describe('updating an offer', function () {
         expect($offer->fresh()->ends_at)->toBeNull();
     });
 
+    /*
+     * The mobile form deliberately sends no status on an edit, so the API must
+     * leave the stored one alone. If a PATCH without `status` ever started
+     * defaulting one, a paused offer would go back in front of diners on the
+     * next typo fix — silently, and only in production.
+     */
+    it('leaves a paused offer paused when the edit carries no status', function () {
+        $place = Place::factory()->active()->create();
+        $operator = operatorOf($place);
+        $offer = Offer::factory()->paused()->create(['place_id' => $place->id, 'created_by_user_id' => $operator->id]);
+
+        $this->actingAs($operator)
+            ->patchJson("/api/v1/offers/{$offer->id}", ['title' => 'Fixed a typo'])
+            ->assertOk()
+            ->assertJsonPath('data.status', 'paused')
+            ->assertJsonPath('data.is_redeemable', false);
+
+        expect($offer->fresh()->status)->toBe(OfferStatus::Paused);
+    });
+
     it('rejects an edit from someone who does not operate the place', function () {
         $place = Place::factory()->active()->create();
         $operator = operatorOf($place);
@@ -375,6 +395,30 @@ describe('updating an offer', function () {
             ->assertForbidden();
 
         expect($offer->fresh()->status)->toBe(OfferStatus::Active);
+    });
+
+    /*
+     * The oracle this closes: the cross-field rules read the STORED offer, so if
+     * authorization ran after validation a stranger could PATCH a lone `ends_at`
+     * and binary-search the stored `starts_at` out of the error messages — of a
+     * draft they cannot even GET. A 422 here instead of a 403 is the bug.
+     */
+    it('answers 403, not a validation error, when a non-operator sends an invalid body', function () {
+        $place = Place::factory()->active()->create();
+        $offer = Offer::factory()->create([
+            'place_id' => $place->id,
+            'created_by_user_id' => operatorOf($place)->id,
+            'starts_at' => now(),
+            'ends_at' => now()->addDays(10),
+        ]);
+
+        $res = $this->actingAs(User::factory()->create())
+            ->patchJson("/api/v1/offers/{$offer->id}", ['ends_at' => now()->addDays(500)->toIso8601String()])
+            ->assertForbidden();
+
+        // Nothing about the stored window comes back.
+        expect($res->json('error.details'))->toBe([])
+            ->and($res->content())->not->toContain('90 days');
     });
 
     /*

@@ -125,6 +125,25 @@ describe('the form', () => {
    * the API an open-ended offer, which is the one shape 06 §2.2's 90-day cap
    * exists to prevent.
    */
+  /*
+   * A deep link (a push, a restored route) can land here without `placeId`. An
+   * operator with one venue gets no picker, so the form would be permanently
+   * unsubmittable and silent about why.
+   */
+  it('falls back to the operator\'s sole venue when the route omits placeId', async () => {
+    mockRouter.params = {};
+    mock.onPost('/offers').reply(201, { data: {} });
+
+    render(<OfferFormScreen />, { wrapper });
+
+    fireEvent.changeText(await screen.findByTestId('offer-value'), '10');
+    fireEvent.changeText(screen.getByTestId('offer-title'), 'No placeId in the link');
+    fireEvent.press(screen.getByTestId('offer-submit'));
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(JSON.parse(mock.history.post[0].data).place_id).toBe('10');
+  });
+
   it('sends a bounded window even when no run length is touched', async () => {
     mock.onPost('/offers').reply(201, { data: {} });
 
@@ -152,8 +171,11 @@ describe('the form', () => {
 
     expect(screen.queryByText('0%')).toBeNull();
     expect(screen.getByText('—')).toBeTruthy();
-    // ...and never "no end date", which would contradict the 90-day cap.
-    expect(screen.queryByText(/3 ago 2026 → no end date/)).toBeNull();
+    // ...and never "no end date", which would contradict the 90-day cap the
+    // form enforces. Matched on the end-date phrase ALONE — pinning it to a
+    // rendered date would make the assertion pass for the wrong reason on every
+    // day but the one it was written on.
+    expect(screen.queryByText(/no end date/)).toBeNull();
   });
 
   it('converts a fixed amount to minor units on the wire', async () => {
@@ -333,6 +355,16 @@ describe('editing an existing offer', () => {
 
     await waitFor(() => expect(mock.history.patch).toHaveLength(1));
     expect(JSON.parse(mock.history.patch[0].data)).not.toHaveProperty('status');
+  });
+
+  it('offers a retry instead of an empty form when the offer cannot be fetched', async () => {
+    mock.onGet('/offers/7').reply(500);
+
+    render(<OfferFormScreen />, { wrapper });
+
+    expect(await screen.findByText('Try again')).toBeTruthy();
+    // The empty create-style form must NOT be what an operator sees here.
+    expect(screen.queryByTestId('offer-submit')).toBeNull();
   });
 
   it('previews a paused offer as paused, not as live', async () => {

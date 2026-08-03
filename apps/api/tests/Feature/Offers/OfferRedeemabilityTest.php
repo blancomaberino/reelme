@@ -40,10 +40,17 @@ describe('the validity window', function () {
         expect($offer->isRedeemable())->toBeTrue();
     });
 
-    it('is not redeemable while paused or in draft', function (OfferStatus $status) {
+    /*
+     * The status gate is its OWN conjunct of isRedeemable(), not a clause hidden
+     * inside the window check — so an unpublished offer whose window is wide
+     * open still fails, and a reader of isRedeemable() can see why.
+     */
+    it('is not redeemable in any status but active, however open the window', function (OfferStatus $status) {
         $offer = Offer::factory()->active()->make(['status' => $status]);
 
-        expect($offer->isRedeemable())->toBeFalse();
+        expect($offer->isWithinWindow())->toBeTrue()
+            ->and($offer->isPublished())->toBeFalse()
+            ->and($offer->isRedeemable())->toBeFalse();
     })->with([OfferStatus::Draft, OfferStatus::Paused, OfferStatus::Archived]);
 });
 

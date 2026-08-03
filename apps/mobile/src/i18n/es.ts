@@ -520,7 +520,7 @@ export const es: Record<MessageKey, string> = {
   'offers.redeemedCount': '{{count}} canjes',
   'offers.redeemedCount_one': '{{count}} canje',
   'offers.redeemedCount_other': '{{count}} canjes',
-  'offers.redeemedOfQuota': '{{used}} de {{total}} canjeadas',
+  'offers.redeemedOfQuota': '{{used}} de {{total}} canjeados',
   'offers.state.live': 'Activa',
   'offers.state.scheduled': 'Programada',
   'offers.state.soldOut': 'Agotada',

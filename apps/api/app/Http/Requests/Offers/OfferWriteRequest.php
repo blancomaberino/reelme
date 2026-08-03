@@ -151,7 +151,13 @@ abstract class OfferWriteRequest extends FormRequest
             return;
         }
 
-        if ($startsAt->diffInDays($endsAt) > self::MAX_WINDOW_DAYS) {
+        // Calendar days, not elapsed hours. Carbon 3's diffInDays() returns a
+        // signed FLOAT, so a window of exactly 90 days that crosses a DST
+        // boundary measures 90.04 and would be rejected — while the boundary
+        // itself is deliberately allowed (it is what an omitted end date
+        // defaults to). Comparing dates answers the question actually being
+        // asked: "how many days apart are these two calendar days?"
+        if ($startsAt->copy()->startOfDay()->diffInDays($endsAt->copy()->startOfDay()) > self::MAX_WINDOW_DAYS) {
             $v->errors()->add('ends_at', 'An offer may run for at most '.self::MAX_WINDOW_DAYS.' days.');
         }
     }

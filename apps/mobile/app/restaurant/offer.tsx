@@ -45,13 +45,21 @@ export default function OfferFormScreen() {
   const editing = offerId !== null;
 
   const { data: venues } = useVenues();
-  const { data: existing, isLoading } = useOffer(offerId);
+  const { data: existing, isLoading, isError, refetch } = useOffer(offerId);
   const create = useCreateOffer();
   const update = useUpdateOffer();
   const pending = create.isPending || update.isPending;
   const { fieldErrors, generalError } = formErrors(create.error ?? update.error);
 
   const [placeId, setPlaceId] = useState<string | null>(params.placeId ?? null);
+  /**
+   * An operator with exactly one venue gets no picker (there is nothing to
+   * pick), so without this a deep link that omits `placeId` leaves the form
+   * permanently unsubmittable with nothing on screen explaining why. The list
+   * screen passes it; a link, a notification or a restored route may not.
+   */
+  const soleVenue = venues?.length === 1 ? venues[0].id : null;
+  const targetPlaceId = placeId ?? soleVenue;
   const [title, setTitle] = useState('');
   const [discountType, setDiscountType] = useState<DiscountType>('percent');
   const [value, setValue] = useState('');
@@ -91,7 +99,7 @@ export default function OfferFormScreen() {
   const numericValue = toDiscountValue(discountType, value);
   const preview = previewOffer({
     existing,
-    placeId: placeId ?? '0',
+    placeId: targetPlaceId ?? '0',
     title: title.trim(),
     discountType,
     discountValue: numericValue,
@@ -101,7 +109,7 @@ export default function OfferFormScreen() {
     quotaPerDay: toNullableInt(quotaPerDay),
   });
 
-  const canSubmit = !!placeId && title.trim().length > 0 && numericValue > 0 && !pending;
+  const canSubmit = !!targetPlaceId && title.trim().length > 0 && numericValue > 0 && !pending;
 
   function submit(status: 'draft' | 'active') {
     if (!canSubmit) return;
@@ -135,17 +143,26 @@ export default function OfferFormScreen() {
     }
 
     create.mutate(
-      { place_id: placeId as string, ...body, status, starts_at: startsAt, ends_at: endsAt },
+      { place_id: targetPlaceId as string, ...body, status, starts_at: startsAt, ends_at: endsAt },
       { onSuccess: () => router.back() },
     );
   }
 
-  if (editing && isLoading) {
+  if (editing && (isLoading || isError)) {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         <Stack.Screen options={{ headerShown: false }} />
         <ScreenHeader title={t('offers.form.editTitle')} />
-        <ActivityIndicator color={c.primary} style={styles.loading} accessibilityLabel={t('common.loading')} />
+        {isError ? (
+          /* Without this the screen falls through to an EMPTY create-style form
+             under an "Edit offer" title: unsubmittable, and silent about why. */
+          <View style={styles.fetchError}>
+            <Text style={styles.hint}>{t('common.error.general')}</Text>
+            <Button title={t('common.tryAgain')} variant="secondary" onPress={() => void refetch()} />
+          </View>
+        ) : (
+          <ActivityIndicator color={c.primary} style={styles.loading} accessibilityLabel={t('common.loading')} />
+        )}
       </SafeAreaView>
     );
   }
@@ -493,4 +510,5 @@ const makeStyles = (c: Palette) =>
     chipTextOn: { color: c.primary, fontWeight: '700' },
 
     footer: { gap: space.sm },
+    fetchError: { alignItems: 'center', gap: space.sm, padding: space.xl },
   });

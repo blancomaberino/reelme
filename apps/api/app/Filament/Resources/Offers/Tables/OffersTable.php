@@ -82,8 +82,14 @@ class OffersTable
                     ->icon('heroicon-o-play-circle')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->modalDescription('Resume this offer. It becomes visible to diners again if its validity window is still open.')
-                    ->visible(fn (Offer $record): bool => $record->status === OfferStatus::Paused)
+                    ->modalDescription('Resume this offer. It becomes visible to diners again immediately.')
+                    // Hidden once the window has closed. Resuming there would set
+                    // `status = active`, which is what the diner browse filters
+                    // on — so an ended promotion would reappear in the list while
+                    // `is_redeemable` said false. Re-run it by editing the dates
+                    // instead, which is the operator's call, not a moderator's.
+                    ->visible(fn (Offer $record): bool => $record->status === OfferStatus::Paused
+                        && ($record->ends_at === null || ! $record->ends_at->isPast()))
                     ->action(function (Offer $record): void {
                         $record->status = OfferStatus::Active;
                         $record->save();
