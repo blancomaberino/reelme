@@ -1090,7 +1090,7 @@
       "id": "T-044",
       "title": "Double-entry ledger service + entries on redemption",
       "phase": "M4",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-043"
       ],
