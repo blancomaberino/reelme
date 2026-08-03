@@ -106,6 +106,20 @@ describe('recording a transaction', function () {
         ]))->toThrow(UnbalancedTransaction::class);
     })->with([0, -300]);
 
+    it('exposes the subledger owner as a relation', function () {
+        $earner = User::factory()->create();
+
+        $tx = ledger()->record('test:owner', [
+            LedgerLine::debit(LedgerAccount::RestaurantReceivable, 150, 'EUR'),
+            LedgerLine::credit(LedgerAccount::InfluencerEarnings, 150, 'EUR', userId: $earner->id),
+        ]);
+
+        expect($tx->entries->last()->user->is($earner))->toBeTrue()
+            // The debit side belongs to no party — that is not the same as
+            // belonging to nobody in particular.
+            ->and($tx->entries->first()->user)->toBeNull();
+    });
+
     it('records the reference as a short morph name, not a class name', function () {
         $user = User::factory()->create();
 
@@ -129,6 +143,26 @@ describe('idempotency', function () {
         expect($second->uuid)->toBe($first->uuid)
             ->and($second->replayed)->toBeTrue()
             ->and(LedgerEntry::query()->count())->toBe(2);
+    });
+
+    /*
+     * `_` and `%` are LIKE wildcards. An unescaped prefix containing one would
+     * match a DIFFERENT posting's keys — and this lookup's answer is "has this
+     * already been paid", so a false match suppresses a real fee.
+     */
+    it('does not treat an underscore in a key as a wildcard', function () {
+        ledger()->record('test:a_b:capture', balancedLines());
+
+        // Would match under an unescaped LIKE (`_` matches any character).
+        expect(ledger()->findByPrefix('test:axb:capture'))->toBeNull()
+            ->and(ledger()->findByPrefix('test:a_b:capture'))->not->toBeNull();
+    });
+
+    it('does not confuse an id that is a prefix of another', function () {
+        ledger()->record('redemption:1:capture', balancedLines());
+
+        // `redemption:1:capture:%` must not match `redemption:12:...`.
+        expect(ledger()->findByPrefix('redemption:12:capture'))->toBeNull();
     });
 
     it('keeps distinct prefixes distinct', function () {

@@ -87,21 +87,6 @@ class LedgerEntry extends Model
     }
 
     /**
-     * The signed contribution of this line to its account's balance.
-     *
-     * Positive when the line moves the account in its normal direction. This is
-     * where the sign convention lives — the `amount` column is always positive,
-     * because a negative amount would make a row a debit or a credit depending
-     * on who read it.
-     */
-    public function signedAmount(): int
-    {
-        return $this->direction === $this->account->normalDirection()
-            ? $this->amount
-            : -$this->amount;
-    }
-
-    /**
      * Escrow: earnings owed to an influencer identity nobody has claimed yet
      * (06 §5.3). The money is owed; we do not yet know to whom.
      *

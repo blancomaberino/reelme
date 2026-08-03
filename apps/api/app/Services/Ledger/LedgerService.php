@@ -215,8 +215,6 @@ class LedgerService
             ->values()
             ->all();
 
-        $first = $transaction->entries->first();
-
         return $this->record(
             $idempotencyKeyPrefix,
             $lines,
@@ -270,8 +268,14 @@ class LedgerService
     /** The transaction a prefix already produced, or null. */
     public function findByPrefix(string $idempotencyKeyPrefix): ?LedgerTransaction
     {
+        // Escaped: `_` and `%` are LIKE wildcards, so an unescaped prefix
+        // containing one would match keys belonging to a DIFFERENT posting —
+        // and this method's answer is "has this already been paid". A false
+        // match here suppresses a real fee; a false miss double-charges.
+        $pattern = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $idempotencyKeyPrefix).':%';
+
         $entries = LedgerEntry::query()
-            ->where('idempotency_key', 'like', $idempotencyKeyPrefix.':%')
+            ->where('idempotency_key', 'like', $pattern)
             ->orderBy('id')
             ->get();
 

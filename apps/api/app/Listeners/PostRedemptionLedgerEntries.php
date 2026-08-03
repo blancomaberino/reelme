@@ -8,7 +8,7 @@ use App\Models\Influencer;
 use App\Models\Redemption;
 use App\Services\Ledger\LedgerLine;
 use App\Services\Ledger\LedgerService;
-use App\Services\Ledger\LedgerTransaction;
+use App\Services\Ledger\RedemptionLedgerKeys;
 use RuntimeException;
 
 /**
@@ -45,7 +45,7 @@ class PostRedemptionLedgerEntries
         // dispatch), but a fee already posted is still checked here: this
         // listener is the last thing standing between a retry and a double
         // charge, and it must not depend on a caller upstream getting it right.
-        $prefix = $this->keyPrefix($redemption);
+        $prefix = RedemptionLedgerKeys::capture($redemption);
 
         if ($this->ledger->findByPrefix($prefix) !== null) {
             return;
@@ -97,17 +97,6 @@ class PostRedemptionLedgerEntries
         // a code was in a diner's pocket must bill the rate in force when they
         // actually walked in. T-043 leaves both columns null for exactly this.
         $redemption->forceFill(['fee_amount' => $fee, 'currency' => $currency])->save();
-    }
-
-    /**
-     * The stable identity of "the fee for this redemption".
-     *
-     * Keyed on the redemption id, so any number of retries — client, queue,
-     * a Filament re-run — collapse onto one posting.
-     */
-    private function keyPrefix(Redemption $redemption): string
-    {
-        return 'redemption:'.$redemption->id.':capture';
     }
 
     /**
@@ -169,11 +158,5 @@ class PostRedemptionLedgerEntries
         $influencer = Influencer::query()->find($redemption->attributed_influencer_id);
 
         return $influencer?->claimed_by_user_id;
-    }
-
-    /** The posting for a redemption, if it has one. Used by the void path. */
-    public function existingTransaction(Redemption $redemption): ?LedgerTransaction
-    {
-        return $this->ledger->findByPrefix($this->keyPrefix($redemption));
     }
 }

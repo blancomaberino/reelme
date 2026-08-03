@@ -43,7 +43,7 @@ class RedemptionVoider
         }
 
         return DB::transaction(function () use ($redemption, $reason): ?LedgerTransaction {
-            $original = $this->ledger->findByPrefix('redemption:'.$redemption->id.':capture');
+            $original = $this->ledger->findByPrefix(RedemptionLedgerKeys::capture($redemption));
 
             // The status flip happens whether or not there is a posting to
             // reverse: a redemption verified before T-044 shipped has no ledger
@@ -53,7 +53,7 @@ class RedemptionVoider
                 ? null
                 : $this->ledger->reverse(
                     $original,
-                    'redemption:'.$redemption->id.':void',
+                    RedemptionLedgerKeys::void($redemption),
                     "Void: {$reason}",
                 );
 

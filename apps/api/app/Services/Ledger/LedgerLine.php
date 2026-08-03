@@ -48,20 +48,4 @@ final readonly class LedgerLine
     ): self {
         return new self($account, LedgerDirection::Credit, $amount, $currency, $userId, $memo);
     }
-
-    /**
-     * The same line, both sides flipped — the only legal way to undo a posting
-     * (02 §3.15: no updates, no deletes).
-     */
-    public function reversed(?string $memo = null): self
-    {
-        return new self(
-            $this->account,
-            $this->direction->opposite(),
-            $this->amount,
-            $this->currency,
-            $this->userId,
-            $memo ?? $this->memo,
-        );
-    }
 }
