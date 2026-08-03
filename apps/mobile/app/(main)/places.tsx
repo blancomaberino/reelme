@@ -9,13 +9,12 @@ import { useMyPlaces, useMyPlacesFacets } from '@/api/hooks/useMyPlaces';
 import { useRemoveFromMap } from '@/api/hooks/useRemoveFromMap';
 import type { MyPlacesFilters as Filters } from '@/api/keys';
 import type { PlaceSummary } from '@/api/places';
-import { MyPlaceCard } from '@/components/place/my-place-card';
+import { MyPlaceCard, MyPlaceCardSkeleton } from '@/components/place/my-place-card';
 import { MyPlacesFilters } from '@/components/place/my-places-filters';
-import { Skeleton, SkeletonGroup } from '@/components/skeleton';
+import { SkeletonGroup } from '@/components/skeleton';
 import { type MessageKey, useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
-import { radius } from '@/theme/tokens';
 
 type T = (key: MessageKey) => string;
 
@@ -145,23 +144,20 @@ function Separator() {
 }
 const styles12 = { height: 12 } as const;
 
+/** Enough placeholder rows to fill a phone screen, without pretending to know the real count. */
+const SKELETON_ROWS = 6;
+
 /**
- * Placeholder rows while the first page loads (T-108) — the same card shell,
- * padding and 72pt thumbnail as {@link MyPlaceCard}, so each row is exactly the
- * 96pt the real card will be and the list doesn't reflow underneath the user.
- * Six rows fills a phone screen without pretending to know the real count.
+ * Placeholder rows while the first page loads (T-108). The row itself is
+ * {@link MyPlaceCardSkeleton}, which shares the real card's styles — here we
+ * only reproduce the list's gutters and its 12pt separator.
  */
 function MyPlacesSkeleton({ styles }: { styles: Styles }) {
   return (
     <SkeletonGroup style={styles.list} testID="my-places-skeleton">
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <View key={i} style={[styles.skelCard, i > 0 && styles.skelCardGap]}>
-          <Skeleton height={72} width={72} shape="block" style={styles.skelThumb} />
-          <View style={styles.skelBody}>
-            <Skeleton height={17} width="66%" />
-            <Skeleton height={13} width="44%" />
-            <Skeleton height={15} width={58} />
-          </View>
+      {Array.from({ length: SKELETON_ROWS }, (_, i) => (
+        <View key={i} style={i > 0 ? styles.skelRowGap : undefined}>
+          <MyPlaceCardSkeleton />
         </View>
       ))}
     </SkeletonGroup>
@@ -248,19 +244,6 @@ const makeStyles = (c: Palette) =>
       borderColor: c.primary,
     },
     retryText: { color: c.primary, fontWeight: '600', fontSize: 15 },
-    // Mirrors MyPlaceCard's shell exactly (padding 12, gap 12, radius 16,
-    // hairline) plus the list's 12pt separator, so swapping in the real rows
-    // moves nothing.
-    skelCard: {
-      flexDirection: 'row',
-      gap: 12,
-      padding: 12,
-      backgroundColor: c.surface,
-      borderRadius: 16,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.border,
-    },
-    skelCardGap: { marginTop: 12 },
-    skelThumb: { borderRadius: radius.md },
-    skelBody: { flex: 1, gap: 4, justifyContent: 'center' },
+    // The same 12pt the list puts between real rows (see `Separator`).
+    skelRowGap: { marginTop: 12 },
   });

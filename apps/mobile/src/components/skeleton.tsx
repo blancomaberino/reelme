@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View, type DimensionValue, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useT } from '@/i18n';
 import { useReduceMotion } from '@/lib/use-reduce-motion';
-import { type Palette, useColors } from '@/theme/colors';
+import { useColors } from '@/theme/colors';
 import { radius } from '@/theme/tokens';
 
 /**
@@ -89,7 +89,6 @@ type SkeletonProps = {
  */
 export function Skeleton({ width, height, shape = 'bar', style, testID }: SkeletonProps) {
   const c = useColors();
-  const styles = useMemo(() => makeStyles(c), [c]);
   const pulse = usePulse();
 
   return (
@@ -101,9 +100,8 @@ export function Skeleton({ width, height, shape = 'bar', style, testID }: Skelet
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
-        styles.block,
-        shape === 'block' ? styles.blockRadius : styles.barRadius,
-        { height, opacity: pulse },
+        shape === 'block' ? shapes.block : shapes.bar,
+        { backgroundColor: c.skeleton, height, opacity: pulse },
         // A circle is defined by its height — width follows, and the radius has
         // to be half of it rather than the pill constant, which RN would clamp
         // to a stadium if width ever exceeded height.
@@ -116,7 +114,7 @@ export function Skeleton({ width, height, shape = 'bar', style, testID }: Skelet
 
 type GroupProps = {
   children: React.ReactNode;
-  /** Overrides the default "Loading…" announcement. */
+  /** Overrides the default "Loading" announcement. */
   label?: string;
   style?: StyleProp<ViewStyle>;
   testID?: string;
@@ -148,9 +146,11 @@ export function SkeletonGroup({ children, label, style, testID }: GroupProps) {
   );
 }
 
-const makeStyles = (c: Palette) =>
-  StyleSheet.create({
-    block: { backgroundColor: c.skeleton },
-    barRadius: { borderRadius: radius.pill },
-    blockRadius: { borderRadius: radius.lg },
-  });
+// Only the fill is palette-dependent, so the radii are built once for the whole
+// app rather than per block through a `makeStyles(c)` — a screen mounts a dozen
+// of these, and the usual per-component factory would rebuild each one's
+// StyleSheet on every scheme change for two static values.
+const shapes = StyleSheet.create({
+  bar: { borderRadius: radius.pill },
+  block: { borderRadius: radius.lg },
+});
