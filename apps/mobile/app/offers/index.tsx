@@ -11,15 +11,19 @@ import { BROWSE_RADIUS_M, useNearbyOffers } from '@/api/hooks/useNearbyOffers';
 import { queryKeys } from '@/api/keys';
 import type { Offer } from '@/api/offers';
 import { Button } from '@/components/button';
-import { OfferCard } from '@/components/offer/offer-card';
+import { discountHeadline, OfferCard } from '@/components/offer/offer-card';
 import { ScreenHeader } from '@/components/screen-header';
-import { useT } from '@/i18n';
+import { type MessageKey, useT } from '@/i18n';
 import { locateUser } from '@/lib/initial-region';
 import { openLocationSettings, USER_REGION_DELTA } from '@/lib/location';
+import { useSettingsStore } from '@/stores/settings';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
 type Mode = 'list' | 'map';
+
+/** The `t()` from {@link useT} — passed to the pure label helper below. */
+type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 
 /**
  * Nearby offers (T-047, 05 screen #17).
@@ -37,6 +41,8 @@ export default function OffersBrowseScreen() {
   const c = useColors();
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  const currency = useSettingsStore((s) => s.currency);
 
   const [mode, setMode] = useState<Mode>('list');
   const [selected, setSelected] = useState<string | null>(null);
@@ -130,7 +136,7 @@ export default function OffersBrowseScreen() {
                   {/* The discount, not a generic pin — on a map of ten venues
                       the number IS the reason to walk to one of them. */}
                   <View style={[styles.pin, selected === offer.id && styles.pinSelected]}>
-                    <Text style={styles.pinText}>{shortHeadline(offer)}</Text>
+                    <Text style={styles.pinText}>{shortHeadline(offer, currency, t)}</Text>
                   </View>
                 </Marker>
               ))}
@@ -222,15 +228,20 @@ export default function OffersBrowseScreen() {
 }
 
 /**
- * The map pin's text. A marker is read at a glance across a whole city block of
- * pins, so it carries the number alone — the units and the title are in the
- * card that opens when it is tapped.
+ * The map pin's text.
+ *
+ * Reuses the CARD's formatter for everything it can, so a pin and the card it
+ * opens can never state different discounts. Only `free_item` is abbreviated —
+ * "2 free items" does not fit a marker, while "×2" beside a restaurant does.
+ *
+ * Rounding was the trap here: a pin is short, but "€3.50 off" abbreviated to
+ * "€4" promises more than the offer gives, and the diner finds out at the till.
+ * Shorter is allowed; wrong is not.
  */
-function shortHeadline(offer: Offer): string {
-  if (offer.discount_type === 'percent') return `${offer.discount_value}%`;
-  if (offer.discount_type === 'free_item') return `×${offer.discount_value}`;
-
-  return `${Math.round(offer.discount_value / 100)}`;
+function shortHeadline(offer: Offer, currencySymbol: string, t: Translate): string {
+  return offer.discount_type === 'free_item'
+    ? `×${offer.discount_value}`
+    : discountHeadline(offer, currencySymbol, t);
 }
 
 const makeStyles = (c: Palette) =>

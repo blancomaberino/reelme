@@ -650,6 +650,7 @@ export const en = {
   // Restaurant verify — the till (T-047, screen #20).
   'scan.title': 'Check a code',
   'scan.noVenue': 'Claim your restaurant first — then you can verify codes here.',
+  'scan.venue': 'Verifying for',
   'scan.orType': 'Or type the code',
   'scan.check': 'Check code',
   'scan.cameraNeeded': 'Allow the camera to scan a customer’s QR. You can always type the code instead.',

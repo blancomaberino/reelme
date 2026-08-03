@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useIssueRedemption, useRedemption } from '@/api/hooks/useRedemptions';
+import { useIssueRedemption, useLiveRedemptionForOffer, useRedemption } from '@/api/hooks/useRedemptions';
 import { codeState, formatRemaining, refusalReason, secondsRemaining } from '@/api/redemptions';
 import { Button } from '@/components/button';
 import { RedemptionCode } from '@/components/offer/redemption-code';
@@ -39,7 +39,21 @@ export default function RedeemScreen() {
   const offerId = params.id;
 
   const issue = useIssueRedemption();
-  const [redemptionId, setRedemptionId] = useState<string | null>(params.redemptionId ?? null);
+  const [claimedId, setClaimedId] = useState<string | null>(params.redemptionId ?? null);
+
+  /*
+   * "You already have a code" is only useful if the code is reachable. The
+   * refusal does not name it — the anti-fraud unique index has no reason to —
+   * so we look it up and show it. Without this, a diner whose request timed out
+   * on restaurant wifi is told they hold something they cannot see, while
+   * standing at the counter.
+   */
+  const refusedAsDuplicate = issue.isError && refusalReason(issue.error) === 'already_issued';
+  const existing = useLiveRedemptionForOffer(offerId, { enabled: refusedAsDuplicate && claimedId === null });
+
+  // Derived, not mirrored into state by an effect: the adopted id IS a function
+  // of "what we claimed" and "what the lookup found".
+  const redemptionId = claimedId ?? (refusedAsDuplicate ? (existing.data?.id ?? null) : null);
   const { data: redemption, isLoading } = useRedemption(redemptionId, { poll: focused });
 
   // Raised while a live code is on screen, restored on blur. A dim phone in a
@@ -65,7 +79,7 @@ export default function RedeemScreen() {
   const claim = () =>
     issue.mutate(
       { offerId, shareId: params.shareId ?? null },
-      { onSuccess: (created) => setRedemptionId(created.id) },
+      { onSuccess: (created) => setClaimedId(created.id) },
     );
 
   return (
@@ -85,7 +99,7 @@ export default function RedeemScreen() {
               loading={issue.isPending}
               testID="redeem-cta"
             />
-            {issue.isError ? (
+            {issue.isError && !existing.isFetching && !existing.data ? (
               <Text style={styles.error} testID="redeem-error">
                 {t(issueErrorKey(issue.error))}
               </Text>
@@ -129,7 +143,7 @@ export default function RedeemScreen() {
             <Button
               title={t('redeem.getAnother')}
               onPress={() => {
-                setRedemptionId(null);
+                setClaimedId(null);
                 issue.reset();
               }}
               testID="redeem-again"

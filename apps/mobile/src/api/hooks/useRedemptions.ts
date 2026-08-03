@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '../client';
 import { queryKeys } from '../keys';
-import { refusalReason, type Redemption, type VerifyFailureReason, type VerifyOutcome } from '../redemptions';
+import {
+  codeState,
+  refusalReason,
+  type Redemption,
+  type VerifyFailureReason,
+  type VerifyOutcome,
+} from '../redemptions';
 import { ValidationError } from '../types';
 
 /**
@@ -13,9 +19,12 @@ import { ValidationError } from '../types';
  * the route rather than guessing server-side is the whole reason the influencer
  * who actually sent someone gets paid.
  *
- * Carries an `Idempotency-Key`: a phone on restaurant wifi retries, and without
- * it the retry is either a second code or a confusing "you already have one"
- * for a code the diner never saw.
+ * Carries an `Idempotency-Key` per 03 §1. Note the ISSUE endpoint does not read
+ * it today — the anti-fraud unique index on (offer_id, user_id) is what stops a
+ * retry minting a second code, and it reports that as `already_issued`. The
+ * header is sent so the endpoint can honour it without a client release; the
+ * screen's recovery is {@see useLiveRedemptionForOffer}, which turns that
+ * refusal back into the code the diner already holds.
  */
 export function useIssueRedemption() {
   const qc = useQueryClient();
@@ -37,6 +46,32 @@ export function useIssueRedemption() {
       qc.setQueryData(queryKeys.redemption(redemption.id), redemption);
       void qc.invalidateQueries({ queryKey: queryKeys.myRedemptions() });
     },
+  });
+}
+
+/**
+ * The caller's still-live code for one offer, if they already hold one.
+ *
+ * The server refuses a second code with `already_issued` and does NOT say which
+ * one — the anti-fraud unique index has no reason to. Without this the diner is
+ * told "you already have a code" and given no way to reach it, which is a dead
+ * end at the exact moment they are standing in the restaurant. Enabled only
+ * once that refusal actually happens, so the normal path costs nothing.
+ */
+export function useLiveRedemptionForOffer(offerId: string, options: { enabled: boolean }) {
+  return useQuery({
+    queryKey: [...queryKeys.myRedemptions(), 'live', offerId],
+    queryFn: async (): Promise<Redemption | null> => {
+      const { data } = await api.get<{ data: Redemption[] }>('/me/redemptions', { params: { limit: 50 } });
+
+      return (
+        data.data.find(
+          (row) => row.offer_id === offerId && row.status === 'issued' && codeState(row) === 'active',
+        ) ?? null
+      );
+    },
+    enabled: options.enabled,
+    staleTime: 0,
   });
 }
 

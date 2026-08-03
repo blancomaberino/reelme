@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 
 import VerifyScreen from '../verify';
 import { api } from '@/api/client';
+import { mockCameraPermission } from '@/../jest.setup';
 import type { Venue } from '@/api/offers';
 import type { Redemption } from '@/api/redemptions';
 
@@ -60,6 +61,8 @@ function serveVenues(venues: Venue[] = [VENUE]) {
 beforeEach(() => {
   mock = new AxiosMockAdapter(api);
   qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  mockCameraPermission.state = { granted: true, canAskAgain: true };
+  mockCameraPermission.request.mockClear();
 });
 
 afterEach(() => {
@@ -202,5 +205,85 @@ describe('when the account runs no venue', () => {
 
     await waitFor(() => expect(screen.getByText(/Claim your restaurant first/)).toBeTruthy());
     expect(screen.queryByTestId('verify-camera')).toBeNull();
+  });
+});
+
+/*
+ * A camera is the fast path, not the only path. Every branch here still leaves
+ * the typed code reachable — a restaurant that cannot honour an offer because
+ * of a lens is a restaurant that stops running offers.
+ */
+describe('without the camera', () => {
+  it('asks for permission and still accepts a typed code', async () => {
+    mockCameraPermission.state = { granted: false, canAskAgain: true };
+    serveVenues();
+
+    render(<VerifyScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('verify-permission-cta')).toBeTruthy());
+    expect(screen.getByTestId('verify-manual-input')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('verify-permission-cta'));
+    expect(mockCameraPermission.request).toHaveBeenCalled();
+  });
+
+  it('sends a permanently-denied operator to Settings instead of re-prompting', async () => {
+    mockCameraPermission.state = { granted: false, canAskAgain: false };
+    serveVenues();
+
+    render(<VerifyScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByText('Open Settings')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('verify-permission-cta'));
+    // Re-prompting is a button that visibly does nothing — the OS will not ask.
+    expect(mockCameraPermission.request).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * A code is bound to the place its offer belongs to. An operator running two
+ * restaurants who is silently defaulted to the wrong one has every code at the
+ * second venue refused as `wrong_place` — a failure that reads as fraud and is
+ * really a picker that was never offered.
+ */
+describe('an operator running more than one restaurant', () => {
+  const SECOND: Venue = { ...VENUE, id: '11', name: 'Cervejaria Ramiro', slug: 'cervejaria-ramiro' };
+
+  it('verifies against the venue the operator picked, not the first one loaded', async () => {
+    serveVenues([VENUE, SECOND]);
+    mock.onPost('/redemptions/verify').reply(200, { data: REDEEMED, meta: { replayed: false } });
+
+    render(<VerifyScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('verify-venue-picker')).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId('verify-venue-11'));
+    fireEvent.changeText(screen.getByTestId('verify-manual-input'), '7F3K92QXAB');
+    fireEvent.press(screen.getByTestId('verify-submit'));
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(JSON.parse(mock.history.post[0].data)).toMatchObject({ place_id: 11 });
+  });
+
+  it('names the venue on the result so staff can catch a mis-set picker', async () => {
+    serveVenues([VENUE, SECOND]);
+    mock.onPost('/redemptions/verify').reply(200, { data: REDEEMED, meta: { replayed: false } });
+
+    render(<VerifyScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('verify-venue-picker')).toBeTruthy());
+
+    fireEvent.changeText(screen.getByTestId('verify-manual-input'), '7F3K92QXAB');
+    fireEvent.press(screen.getByTestId('verify-submit'));
+
+    await waitFor(() => expect(screen.getByTestId('verify-result-success')).toBeTruthy());
+    expect(screen.getByText('Taberna do Bairro')).toBeTruthy();
+  });
+
+  it('shows no picker at all for a single-venue operator', async () => {
+    serveVenues([VENUE]);
+
+    render(<VerifyScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('verify-manual-input')).toBeTruthy());
+    expect(screen.queryByTestId('verify-venue-picker')).toBeNull();
   });
 });

@@ -96,7 +96,6 @@ describe('claiming a code', () => {
    * what teaches a diner to keep tapping the button.
    */
   it.each([
-    [409, 'already_issued', 'You already have a code for this offer — check your codes.'],
     [422, 'user_quota_reached', 'You have already used this offer.'],
     [429, 'velocity_exceeded', 'You have claimed a lot of offers today. Try again tomorrow.'],
     [422, 'cooldown', 'You redeemed here recently. Come back in a few days.'],
@@ -108,6 +107,48 @@ describe('claiming a code', () => {
     fireEvent.press(screen.getByTestId('redeem-cta'));
 
     await waitFor(() => expect(screen.getByTestId('redeem-error')).toHaveTextContent(copy));
+  });
+
+  /*
+   * The server refuses a duplicate without naming the code it already issued.
+   * Telling the diner "you already have one" and stopping there is a dead end
+   * at the exact moment they are standing at the counter — so we find it and
+   * show it.
+   */
+  it('shows the code the diner already holds instead of dead-ending on already_issued', async () => {
+    mock.onPost('/redemptions').reply(409, { error: { details: { reason: 'already_issued' } } });
+    mock.onGet('/me/redemptions').reply(200, {
+      data: [
+        // A different offer's code, and a spent one for THIS offer — neither is
+        // the live code we are looking for.
+        redemption({ id: '90', offer_id: '99' }),
+        redemption({ id: '91', status: 'redeemed', redeemed_at: new Date().toISOString() }),
+        redemption({ id: '55' }),
+      ],
+    });
+    mock.onGet('/redemptions/55').reply(200, { data: redemption() });
+
+    render(<RedeemScreen />, { wrapper });
+    fireEvent.press(screen.getByTestId('redeem-cta'));
+
+    await waitFor(() => expect(screen.getByTestId('redeem-active')).toBeTruthy());
+    expect(screen.getByText('7F3K-92QX-AB')).toBeTruthy();
+    // And the refusal copy is gone — it would contradict the code on screen.
+    expect(screen.queryByTestId('redeem-error')).toBeNull();
+  });
+
+  it('still explains the refusal when no live code can be found', async () => {
+    mock.onPost('/redemptions').reply(409, { error: { details: { reason: 'already_issued' } } });
+    mock.onGet('/me/redemptions').reply(200, { data: [] });
+
+    render(<RedeemScreen />, { wrapper });
+    fireEvent.press(screen.getByTestId('redeem-cta'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('redeem-error')).toHaveTextContent(
+        'You already have a code for this offer — check your codes.',
+      ),
+    );
   });
 
   it('falls back to the generic message for a reason it has no copy for', async () => {

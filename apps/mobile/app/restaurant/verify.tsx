@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { Stack } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useVenues } from '@/api/hooks/useOffers';
@@ -39,11 +39,22 @@ export default function VerifyScreen() {
 
   const [manualCode, setManualCode] = useState('');
   const [outcome, setOutcome] = useState<VerifyOutcome | null>(null);
+  const [venueId, setVenueId] = useState<string | null>(null);
   // A ref, not state: the camera can fire again before React re-renders, and a
   // state flag would let the second read through.
   const locked = useRef(false);
 
-  const placeId = venues?.[0]?.id ?? null;
+  /*
+   * WHICH venue is being verified against, not "the first one we loaded".
+   *
+   * A code is bound to the place its offer belongs to, so an operator running
+   * two restaurants who is defaulted to the wrong one has every code at their
+   * second venue refused as `wrong_place` — a failure that looks like fraud and
+   * is actually a picker that was never offered. With one venue there is
+   * nothing to choose and no picker is shown.
+   */
+  const placeId = venueId ?? venues?.[0]?.id ?? null;
+  const selectedVenue = venues?.find((venue) => venue.id === placeId) ?? null;
 
   const submit = useCallback(
     async (code: string) => {
@@ -105,13 +116,41 @@ export default function VerifyScreen() {
   if (outcome !== null) {
     return (
       <Shell styles={styles} title={t('scan.title')}>
-        <ResultSheet outcome={outcome} styles={styles} c={c} onNext={reset} />
+        <ResultSheet
+          outcome={outcome}
+          styles={styles}
+          c={c}
+          onNext={reset}
+          venueName={venues !== undefined && venues.length > 1 ? selectedVenue?.name : null}
+        />
       </Shell>
     );
   }
 
   return (
     <Shell styles={styles} title={t('scan.title')}>
+      {venues !== undefined && venues.length > 1 ? (
+        <View style={styles.venues} testID="verify-venue-picker">
+          <Text style={styles.manualLabel}>{t('scan.venue')}</Text>
+          <View style={styles.venueRow}>
+            {venues.map((venue) => (
+              <Pressable
+                key={venue.id}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: venue.id === placeId }}
+                onPress={() => setVenueId(venue.id)}
+                style={[styles.venueChip, venue.id === placeId && styles.venueChipActive]}
+                testID={`verify-venue-${venue.id}`}
+              >
+                <Text style={[styles.venueLabel, venue.id === placeId && styles.venueLabelActive]}>
+                  {venue.name}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.cameraWrap}>
         {permission?.granted ? (
           <CameraView
@@ -203,11 +242,14 @@ function ResultSheet({
   styles,
   c,
   onNext,
+  venueName,
 }: {
   outcome: VerifyOutcome;
   styles: ReturnType<typeof makeStyles>;
   c: Palette;
   onNext: () => void;
+  /** Only passed when the operator runs more than one venue — otherwise noise. */
+  venueName?: string | null;
 }) {
   const t = useT();
 
@@ -228,6 +270,7 @@ function ResultSheet({
         {outcome.redemption.offer?.terms ? (
           <Text style={styles.terms}>{outcome.redemption.offer.terms}</Text>
         ) : null}
+        {venueName ? <Text style={styles.terms}>{venueName}</Text> : null}
         <Button title={t('scan.scanNext')} onPress={onNext} testID="verify-next" />
       </View>
     );
@@ -297,6 +340,20 @@ const makeStyles = (c: Palette) =>
     cameraWrap: { aspectRatio: 1, borderRadius: radius.lg, overflow: 'hidden', backgroundColor: c.surface2 },
     camera: { flex: 1 },
     cameraFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.sm, padding: space.md },
+
+    venues: { gap: space.xs },
+    venueRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
+    venueChip: {
+      paddingHorizontal: space.sm,
+      paddingVertical: space.xs,
+      borderRadius: radius.pill,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.line2,
+      backgroundColor: c.surface,
+    },
+    venueChipActive: { backgroundColor: c.text, borderColor: c.text },
+    venueLabel: { ...type.bodySm, color: c.ink2 },
+    venueLabelActive: { color: c.background, fontWeight: '600' },
 
     manual: { gap: space.sm },
     manualLabel: { ...type.caption, color: c.muted, textTransform: 'uppercase', letterSpacing: 0.6 },

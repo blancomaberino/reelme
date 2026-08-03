@@ -149,6 +149,24 @@ describe('without a location fix', () => {
   });
 });
 
+describe('when the request fails', () => {
+  it('offers a retry rather than an empty list that looks like "nothing nearby"', async () => {
+    mock.onGet('/offers').reply(500);
+
+    render(<OffersBrowseScreen />, { wrapper });
+
+    await waitFor(() => expect(screen.getByText('Something went wrong. Please try again.')).toBeTruthy());
+    // Critically NOT the empty state — "no offers here" and "we could not ask"
+    // are different facts, and the first one sends the diner somewhere else.
+    expect(screen.queryByTestId('offers-empty')).toBeNull();
+
+    mock.onGet('/offers').reply(200, { data: [offer()] });
+    fireEvent.press(screen.getByText('Try again'));
+
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+  });
+});
+
 describe('the map toggle', () => {
   it('places a marker per offer once the diner switches to the map', async () => {
     mock.onGet('/offers').reply(200, { data: [offer(), offer({ id: '2', place_id: '11' })] });
@@ -162,6 +180,43 @@ describe('the map toggle', () => {
     // (Asserted through the marker labels: the jest mock for react-native-maps
     // renders MapView under its own testID, so the screen's is not visible.)
     await waitFor(() => expect(screen.getAllByText('20%')).toHaveLength(2));
+  });
+
+  /*
+   * "3" on a pin over a restaurant is not a shorter way of saying "€3 off" —
+   * it is a number with no promise attached. A pin may abbreviate; it may not
+   * misstate what the offer is.
+   */
+  it.each([
+    // NOT "$4" — abbreviating a discount upward promises more than the offer
+    // gives, and the diner only finds out at the counter.
+    [{ discount_type: 'fixed_amount' as const, discount_value: 350 }, '$3.50'],
+    [{ discount_type: 'free_item' as const, discount_value: 2 }, '×2'],
+  ])('keeps the unit on the marker for %o', async (discount, label) => {
+    mock.onGet('/offers').reply(200, { data: [offer(discount)] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    await waitFor(() => expect(screen.getByText(label)).toBeTruthy());
+  });
+
+  it('opens the offer card when a marker is tapped', async () => {
+    mock.onGet('/offers').reply(200, { data: [offer({ id: '42' })] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByText('Two-for-one pastéis')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    fireEvent.press(await screen.findByText('20%'));
+
+    // The pin carries the number; the sheet carries what it is and how to take
+    // it — a marker alone cannot say "Dine-in only".
+    await waitFor(() => expect(screen.getByTestId('offers-map-sheet')).toBeTruthy());
+    fireEvent.press(screen.getByText('Get code'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/offers/[id]/redeem', params: { id: '42' } });
   });
 
   /*

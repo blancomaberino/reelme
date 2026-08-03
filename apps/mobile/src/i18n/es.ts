@@ -639,6 +639,7 @@ export const es: Record<MessageKey, string> = {
   // Verificación en el restaurante (T-047).
   'scan.title': 'Verificar un código',
   'scan.noVenue': 'Primero reclamá tu restaurante — después vas a poder verificar códigos acá.',
+  'scan.venue': 'Verificando para',
   'scan.orType': 'O escribí el código',
   'scan.check': 'Verificar',
   'scan.cameraNeeded': 'Permití la cámara para escanear el QR del cliente. Siempre podés escribir el código.',

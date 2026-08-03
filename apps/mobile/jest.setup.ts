@@ -319,6 +319,12 @@ jest.mock('react-native-safe-area-context', () => {
 // exposes its `onBarcodeScanned` through a testID, so a suite can fire a scan
 // without a camera — the scanner's duplicate-read lock is the behaviour worth
 // pinning and it is unreachable otherwise.
+// Mutable so a test can exercise the denied / permanently-blocked branches —
+// the manual-entry fallback only matters when the camera is unavailable.
+export const mockCameraPermission = {
+  state: { granted: true, canAskAgain: true },
+  request: jest.fn(),
+};
 jest.mock('expo-camera', () => {
   const React = require('react');
   const { View } = require('react-native');
@@ -326,7 +332,7 @@ jest.mock('expo-camera', () => {
   return {
     CameraView: ({ children, ...props }: { children?: React.ReactNode; testID?: string }) =>
       React.createElement(View, { ...props, testID: props.testID ?? 'CameraView' }, children),
-    useCameraPermissions: () => [{ granted: true, canAskAgain: true }, jest.fn()],
+    useCameraPermissions: () => [mockCameraPermission.state, mockCameraPermission.request],
   };
 });
 
