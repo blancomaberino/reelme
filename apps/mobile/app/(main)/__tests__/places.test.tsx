@@ -101,6 +101,67 @@ it('shows the empty state when the collection is empty', async () => {
   expect(await screen.findByText('No places yet')).toBeOnTheScreen();
 });
 
+describe('loading state (T-108)', () => {
+  it('shows placeholder rows while the first page loads, then the real ones', async () => {
+    // Deferred up front: the reply handler does not run synchronously.
+    let release!: (v: [number, unknown]) => void;
+    const pending = new Promise<[number, unknown]>((resolve) => (release = resolve));
+    mock.onGet('/me/places').reply(() => pending);
+
+    render(<MyPlacesScreen />, { wrapper: Providers });
+
+    const skeleton = screen.getByTestId('my-places-skeleton');
+    expect(skeleton.props.accessibilityLabel).toBe('Loading');
+    // Loading must not be mistaken for "you have nothing" or "it broke" — the
+    // three states stay visually distinct (T-103 + B7).
+    expect(screen.queryByText('No places yet')).toBeNull();
+    expect(screen.queryByTestId('my-places-error')).toBeNull();
+    expect(screen.queryByTestId('my-places-offline')).toBeNull();
+
+    release([200, page([place('1')])]);
+
+    expect(await screen.findByText('Place 1')).toBeOnTheScreen();
+    expect(screen.queryByTestId('my-places-skeleton')).toBeNull();
+  });
+
+  it('gives way to the empty state, not a permanent skeleton, on an empty collection', async () => {
+    mock.onGet('/me/places').reply(200, page([]));
+
+    render(<MyPlacesScreen />, { wrapper: Providers });
+
+    expect(await screen.findByText('No places yet')).toBeOnTheScreen();
+    expect(screen.queryByTestId('my-places-skeleton')).toBeNull();
+  });
+
+  it('gives way to the error state on failure', async () => {
+    mock.onGet('/me/places').reply(500);
+
+    render(<MyPlacesScreen />, { wrapper: Providers });
+
+    expect(await screen.findByTestId('my-places-error')).toBeOnTheScreen();
+    expect(screen.queryByTestId('my-places-skeleton')).toBeNull();
+  });
+
+  it('keeps the filter bar mounted alongside the skeleton', async () => {
+    // The skeleton replaces the LIST, not the screen — a facet refetch must not
+    // tear down an open filter sheet mid-selection.
+    let release!: (v: [number, unknown]) => void;
+    const pending = new Promise<[number, unknown]>((resolve) => (release = resolve));
+    mock.onGet('/me/places/facets').reply(200, { data: { countries: ['UY'], types: [] } });
+    mock.onGet('/me/places').reply(() => pending);
+
+    render(<MyPlacesScreen />, { wrapper: Providers });
+
+    expect(screen.getByTestId('my-places-skeleton')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Filters')).toBeOnTheScreen();
+
+    // Always settle the request — a promise left pending outlives the test and
+    // hangs the worker.
+    release([200, page([])]);
+    expect(await screen.findByText('No places yet')).toBeOnTheScreen();
+  });
+});
+
 it('re-fetches with country filter when a facet chip is toggled', async () => {
   mock.onGet('/me/places', { params: { limit: 20, sort: 'recent' } }).reply(200, page([place('1', { country_code: 'PT' })]));
   mock

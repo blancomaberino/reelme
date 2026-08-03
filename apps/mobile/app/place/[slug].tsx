@@ -16,6 +16,7 @@ import { ReviewSources } from '@/components/place/review-sources';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { SourceCard } from '@/components/place/source-card';
 import { Thumbnail } from '@/components/place/thumbnail';
+import { Skeleton, SkeletonGroup } from '@/components/skeleton';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { summarizeHours } from '@/lib/opening-hours';
@@ -44,7 +45,7 @@ export default function PlaceDetailScreen() {
         c={c}
       />
       {isLoading ? (
-        <PlaceSkeleton styles={styles} />
+        <PlaceSkeleton styles={styles} authed={authed} />
       ) : isError || !place ? (
         <ErrorState styles={styles} c={c} onRetry={() => void refetch()} />
       ) : (
@@ -429,14 +430,65 @@ function ReviewRow({
   );
 }
 
-function PlaceSkeleton({ styles }: { styles: Styles }) {
+/**
+ * Stands in for {@link PlaceBody} above the fold (T-108). Every block matches
+ * the real element's height, so landing content settles in place instead of
+ * shoving the page around: hero 190, title 27pt, three info rows at 33, the
+ * 160pt mini-map, and the 48pt action pair.
+ *
+ * `authed` is not decoration: the my-tags block only renders for a signed-in
+ * viewer, and leaving it out shifted everything below the chips by ~90pt on the
+ * exact screens most people see.
+ *
+ * Scrollable for the same reason {@link PlaceBody} is: signed in, this comes to
+ * ~835pt, which overflows a 4.7" viewport — as a plain View the mini-map and the
+ * action pair were simply clipped, and the placeholder stopped describing the
+ * page it stands in for.
+ */
+function PlaceSkeleton({ styles, authed }: { styles: Styles; authed: boolean }) {
   return (
-    <View style={styles.scroll} testID="place-skeleton">
-      <View style={[styles.skelBlock, { height: 28, width: '70%' }]} />
-      <View style={[styles.skelBlock, { height: 16, width: '45%' }]} />
-      <View style={[styles.skelBlock, { height: 160, borderRadius: 16 }]} />
-      <View style={[styles.skelBlock, { height: 90, borderRadius: 16 }]} />
-    </View>
+    <ScrollView showsVerticalScrollIndicator={false} testID="place-skeleton-scroll">
+      <SkeletonGroup style={styles.scroll} testID="place-skeleton">
+        <Skeleton height={190} shape="block" style={styles.skelHero} />
+
+        {/* Name, meta line, tag chips */}
+        <View style={styles.block}>
+          <Skeleton height={26} width="72%" />
+          <Skeleton height={15} width="46%" />
+          <View style={styles.chips}>
+            <Skeleton height={28} width={86} />
+            <Skeleton height={28} width={64} />
+            <Skeleton height={28} width={74} />
+          </View>
+        </View>
+
+        {/* My tags: heading, hint, and the add-a-tag field */}
+        {authed ? (
+          <View style={styles.block}>
+            <Skeleton height={20} width="42%" />
+            <Skeleton height={14} width="62%" />
+            <Skeleton height={44} shape="block" />
+          </View>
+        ) : null}
+
+        {/* Address / hours / phone — icon plus its line */}
+        <View style={styles.block}>
+          {(['82%', '54%', '64%'] as const).map((w) => (
+            <View key={w} style={styles.skelRow}>
+              <Skeleton height={18} shape="circle" />
+              <Skeleton height={15} width={w} />
+            </View>
+          ))}
+        </View>
+
+        <Skeleton height={160} shape="block" />
+
+        <View style={styles.actions}>
+          <Skeleton height={48} shape="block" style={styles.skelAction} />
+          <Skeleton height={48} shape="block" style={styles.skelAction} />
+        </View>
+      </SkeletonGroup>
+    </ScrollView>
   );
 }
 
@@ -541,5 +593,9 @@ const makeStyles = (c: Palette) =>
       borderColor: c.primary,
     },
     retryText: { color: c.primary, fontWeight: '600', fontSize: 15 },
-    skelBlock: { backgroundColor: c.surface, borderRadius: 8, marginBottom: 16 },
+    // Skeleton geometry that mirrors `hero`'s trailing gap, the info `row`, and
+    // an `action` sharing the row equally.
+    skelHero: { marginBottom: 4 },
+    skelRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
+    skelAction: { flex: 1 },
   });

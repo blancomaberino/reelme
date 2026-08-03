@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "file": ".claude/state/HANDOFF.md",
+  "snapshotFile": ".claude/state/SNAPSHOT.md",
+  "git": true,
+  "transcriptBackup": false,
+  "maxBytes": 16384
+}

@@ -9,8 +9,9 @@ import { useMyPlaces, useMyPlacesFacets } from '@/api/hooks/useMyPlaces';
 import { useRemoveFromMap } from '@/api/hooks/useRemoveFromMap';
 import type { MyPlacesFilters as Filters } from '@/api/keys';
 import type { PlaceSummary } from '@/api/places';
-import { MyPlaceCard } from '@/components/place/my-place-card';
+import { MyPlaceCard, MyPlaceCardSkeleton } from '@/components/place/my-place-card';
 import { MyPlacesFilters } from '@/components/place/my-places-filters';
+import { SkeletonGroup } from '@/components/skeleton';
 import { type MessageKey, useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
@@ -108,9 +109,7 @@ export default function MyPlacesScreen() {
             onChange={onChange}
           />
           {isLoading ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={c.primary} />
-            </View>
+            <MyPlacesSkeleton styles={styles} />
           ) : (
             <FlashList
               data={items}
@@ -144,6 +143,26 @@ function Separator() {
   return <View style={styles12} />;
 }
 const styles12 = { height: 12 } as const;
+
+/** Enough placeholder rows to fill a phone screen, without pretending to know the real count. */
+const SKELETON_ROWS = 6;
+
+/**
+ * Placeholder rows while the first page loads (T-108). The row itself is
+ * {@link MyPlaceCardSkeleton}, which shares the real card's styles — here we
+ * only reproduce the list's gutters and its 12pt separator.
+ */
+function MyPlacesSkeleton({ styles }: { styles: Styles }) {
+  return (
+    <SkeletonGroup style={styles.list} testID="my-places-skeleton">
+      {Array.from({ length: SKELETON_ROWS }, (_, i) => (
+        <View key={i} style={i > 0 ? styles.skelRowGap : undefined}>
+          <MyPlaceCardSkeleton />
+        </View>
+      ))}
+    </SkeletonGroup>
+  );
+}
 
 function EmptyState({ styles, c, t, filtered }: { styles: Styles; c: Palette; t: T; filtered: boolean }) {
   return (
@@ -225,4 +244,6 @@ const makeStyles = (c: Palette) =>
       borderColor: c.primary,
     },
     retryText: { color: c.primary, fontWeight: '600', fontSize: 15 },
+    // The same 12pt the list puts between real rows (see `Separator`).
+    skelRowGap: { marginTop: 12 },
   });

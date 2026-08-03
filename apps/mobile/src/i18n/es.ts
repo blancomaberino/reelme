@@ -8,6 +8,7 @@ export const es: Record<MessageKey, string> = {
   'common.continue': 'Continuar',
   'common.close': 'Cerrar',
   'common.back': 'Volver',
+  'common.loading': 'Cargando',
   'common.error.general': 'Algo salió mal. Inténtalo de nuevo.',
   'common.error.offline': 'Sin conexión. Revisa tu red e inténtalo de nuevo.',
 

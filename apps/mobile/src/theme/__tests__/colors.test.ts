@@ -92,6 +92,30 @@ describe('scheme integrity', () => {
     }
   });
 
+  it('keeps the skeleton fill perceptible on every canvas it lands on', () => {
+    // T-108. `skeleton` carries no text, so AA does not apply — but it is the
+    // whole content of a loading screen, and a fill that blends into the paper
+    // is a blank screen with extra steps. It has to read on BOTH canvases:
+    // place detail draws skeletons on `background`, my-places inside a `surface`
+    // card. 1.25:1 is where the block stops being a shape and starts being a
+    // smudge; the shipped values sit at 1.33–1.52.
+    for (const palette of Object.values(schemes)) {
+      for (const canvas of ['background', 'surface'] as const) {
+        expect(contrastRatio(palette.skeleton, palette[canvas])).toBeGreaterThanOrEqual(1.25);
+      }
+    }
+  });
+
+  it('keeps the skeleton fill quieter than body text, so it never reads as content', () => {
+    // The failure this guards is a skeleton darkened until the placeholder bars
+    // look like real, unreadable text.
+    for (const palette of Object.values(schemes)) {
+      expect(contrastRatio(palette.skeleton, palette.background)).toBeLessThan(
+        contrastRatio(palette.muted, palette.background),
+      );
+    }
+  });
+
   it('keeps placeholder no louder than the caption colour it sits beneath', () => {
     // Hierarchy check: AA compresses `muted` and `placeholder` toward each other,
     // and it would be easy to overshoot and leave placeholders *louder* than

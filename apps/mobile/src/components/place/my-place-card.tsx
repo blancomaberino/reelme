@@ -5,6 +5,7 @@ import { RectButton, Swipeable } from 'react-native-gesture-handler';
 
 import type { PlaceSummary } from '@/api/places';
 import { Thumbnail } from '@/components/place/thumbnail';
+import { Skeleton } from '@/components/skeleton';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
@@ -114,6 +115,28 @@ function MyPlaceCardBase({ place, onPress, onRemove }: Props) {
 }
 
 export const MyPlaceCard = memo(MyPlaceCardBase);
+
+/**
+ * The card's loading twin (T-108). It lives here, next to the real card, on
+ * purpose: it reuses the very same `card` and `thumb` styles, so a row is
+ * exactly as tall as the card it stands in for and the two cannot drift apart
+ * when someone changes the padding or the corner radius.
+ */
+export function MyPlaceCardSkeleton() {
+  const c = useColors();
+  const styles = useMemo(() => makeStyles(c), [c]);
+
+  return (
+    <View style={styles.card}>
+      <Skeleton height={72} width={72} shape="block" style={styles.thumb} />
+      <View style={styles.body}>
+        <Skeleton height={17} width="66%" />
+        <Skeleton height={13} width="44%" />
+        <Skeleton height={15} width={58} />
+      </View>
+    </View>
+  );
+}
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({

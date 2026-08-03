@@ -42,6 +42,16 @@ export type Palette = {
   line2: string;
   /** Text that sits on top of the accent color. */
   onPrimary: string;
+  /**
+   * Skeleton-placeholder fill (T-108) — kraft paper, one step deeper than the
+   * canvas. Its own token rather than a borrowed `border`/`surface2`: it is the
+   * only value that has to stay legible on BOTH `background` and `surface`
+   * (place detail draws skeletons straight onto the canvas, my-places draws
+   * them inside a card), which is a constraint no hairline token carries.
+   * Carries no text, so it is exempt from AA — but `colors.test.ts` does hold
+   * it to a perceptibility floor against both canvases in both schemes.
+   */
+  skeleton: string;
 };
 
 // T-101 — every token that carries TEXT was moved to clear WCAG AA (4.5:1) on
@@ -79,6 +89,7 @@ const light: Palette = {
   border: '#E6DBC8',
   line2: '#D8CBB4',
   onPrimary: '#FFFFFF',
+  skeleton: '#E0D1B7', // 1.33:1 on background, 1.50:1 on surface
 };
 
 // Dark needed far less work — light-on-dark starts with more headroom. Only the
@@ -105,6 +116,7 @@ const dark: Palette = {
   border: '#332A1C',
   line2: '#41361F',
   onPrimary: '#1A1206',
+  skeleton: '#3D3323', // 1.52:1 on background, 1.35:1 on surface
 };
 
 /** Font families. Georgia ships on iOS; Android falls back to its serif. */
