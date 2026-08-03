@@ -7,6 +7,7 @@ import { Linking, Share } from 'react-native';
 import PlaceDetailScreen from '../[slug]';
 import { api } from '@/api/client';
 import type { PlaceDetail } from '@/api/places';
+import { useSessionStore } from '@/stores/session';
 
 import { mockRouter } from '../../../jest.setup';
 
@@ -77,6 +78,7 @@ afterEach(() => {
   mock.restore();
   qc.clear();
   jest.restoreAllMocks();
+  useSessionStore.setState({ user: null, status: 'guest' });
 });
 
 it('renders the place name, cuisine, rating and address', async () => {
@@ -177,6 +179,62 @@ it('shows the not-found state on a 404', async () => {
   render(<PlaceDetailScreen />, { wrapper: Providers });
 
   expect(await screen.findByText('Place not found')).toBeOnTheScreen();
+});
+
+describe('loading state (T-108)', () => {
+  it('shows the skeleton while the place is in flight, then swaps in the real body', async () => {
+    // Held open so the loading state is observable rather than a race. The
+    // deferred is built up front — the reply handler doesn't run synchronously,
+    // so capturing `resolve` inside it would still be undefined down here.
+    let release!: (v: [number, unknown]) => void;
+    const pending = new Promise<[number, unknown]>((resolve) => (release = resolve));
+    mock.onGet(`/places/${PLACE.slug}`).reply(() => pending);
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    const skeleton = screen.getByTestId('place-skeleton');
+    expect(skeleton).toBeOnTheScreen();
+    // It announces itself as loading — the spinner it replaces said nothing.
+    expect(skeleton.props.accessibilityLabel).toBe('Loading');
+    // Loading is NOT the error state: no retry affordance, nothing gone wrong.
+    expect(screen.queryByText('Place not found')).toBeNull();
+    expect(screen.queryByText('Try again')).toBeNull();
+
+    release([200, { data: PLACE }]);
+
+    expect(await screen.findByText('1921 Restaurant')).toBeOnTheScreen();
+    expect(screen.queryByTestId('place-skeleton')).toBeNull();
+  });
+
+  it('reserves the my-tags block only for a signed-in viewer', async () => {
+    // My tags renders only when authed, so a skeleton that always (or never)
+    // reserved it would shift everything below the chips by ~90pt for half the
+    // users. Count the placeholder blocks with and without a session.
+    const pending = new Promise<[number, unknown]>(() => {});
+    mock.onGet(`/places/${PLACE.slug}`).reply(() => pending);
+    const blocks = () =>
+      screen.getByTestId('place-skeleton', { includeHiddenElements: true }).children.length;
+
+    const guest = render(<PlaceDetailScreen />, { wrapper: Providers });
+    const asGuest = blocks();
+    guest.unmount();
+
+    useSessionStore.setState({ user: null, status: 'authed' });
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    // Exactly one extra child: the my-tags group.
+    expect(blocks()).toBe(asGuest + 1);
+  });
+
+  it('replaces the skeleton with the error state on failure, not with both', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(500);
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    expect(await screen.findByText('Place not found')).toBeOnTheScreen();
+    expect(screen.queryByTestId('place-skeleton')).toBeNull();
+    expect(screen.getByText('Try again')).toBeOnTheScreen();
+  });
 });
 
 it('renders app + Google reviews with names, stars and text', async () => {

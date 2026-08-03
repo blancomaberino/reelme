@@ -8,6 +8,8 @@ export const en = {
   'common.continue': 'Continue',
   'common.close': 'Close',
   'common.back': 'Go back',
+  // Announced once while a screen's skeleton placeholders are up (T-108).
+  'common.loading': 'Loading',
   'common.error.general': 'Something went wrong. Please try again.',
   'common.error.offline': 'No connection. Check your network and try again.',
 
