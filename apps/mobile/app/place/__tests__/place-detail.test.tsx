@@ -206,6 +206,18 @@ describe('loading state (T-108)', () => {
     expect(screen.queryByTestId('place-skeleton')).toBeNull();
   });
 
+  it('scrolls, so a tall skeleton is not clipped on a short screen', async () => {
+    // Signed in, the skeleton is ~835pt — taller than a 4.7" viewport. As a
+    // plain View the mini-map and the action pair were silently cut off.
+    const pending = new Promise<[number, unknown]>(() => {});
+    mock.onGet(`/places/${PLACE.slug}`).reply(() => pending);
+    useSessionStore.setState({ user: null, status: 'authed' });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    expect(screen.getByTestId('place-skeleton-scroll')).toBeOnTheScreen();
+  });
+
   it('reserves the my-tags block only for a signed-in viewer', async () => {
     // My tags renders only when authed, so a skeleton that always (or never)
     // reserved it would shift everything below the chips by ~90pt for half the

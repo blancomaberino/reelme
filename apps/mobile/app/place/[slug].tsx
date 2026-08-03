@@ -439,49 +439,56 @@ function ReviewRow({
  * `authed` is not decoration: the my-tags block only renders for a signed-in
  * viewer, and leaving it out shifted everything below the chips by ~90pt on the
  * exact screens most people see.
+ *
+ * Scrollable for the same reason {@link PlaceBody} is: signed in, this comes to
+ * ~835pt, which overflows a 4.7" viewport — as a plain View the mini-map and the
+ * action pair were simply clipped, and the placeholder stopped describing the
+ * page it stands in for.
  */
 function PlaceSkeleton({ styles, authed }: { styles: Styles; authed: boolean }) {
   return (
-    <SkeletonGroup style={styles.scroll} testID="place-skeleton">
-      <Skeleton height={190} shape="block" style={styles.skelHero} />
+    <ScrollView showsVerticalScrollIndicator={false} testID="place-skeleton-scroll">
+      <SkeletonGroup style={styles.scroll} testID="place-skeleton">
+        <Skeleton height={190} shape="block" style={styles.skelHero} />
 
-      {/* Name, meta line, tag chips */}
-      <View style={styles.block}>
-        <Skeleton height={26} width="72%" />
-        <Skeleton height={15} width="46%" />
-        <View style={styles.chips}>
-          <Skeleton height={28} width={86} />
-          <Skeleton height={28} width={64} />
-          <Skeleton height={28} width={74} />
-        </View>
-      </View>
-
-      {/* My tags: heading, hint, and the add-a-tag field */}
-      {authed ? (
+        {/* Name, meta line, tag chips */}
         <View style={styles.block}>
-          <Skeleton height={20} width="42%" />
-          <Skeleton height={14} width="62%" />
-          <Skeleton height={44} shape="block" />
-        </View>
-      ) : null}
-
-      {/* Address / hours / phone — icon plus its line */}
-      <View style={styles.block}>
-        {(['82%', '54%', '64%'] as const).map((w) => (
-          <View key={w} style={styles.skelRow}>
-            <Skeleton height={18} shape="circle" />
-            <Skeleton height={15} width={w} />
+          <Skeleton height={26} width="72%" />
+          <Skeleton height={15} width="46%" />
+          <View style={styles.chips}>
+            <Skeleton height={28} width={86} />
+            <Skeleton height={28} width={64} />
+            <Skeleton height={28} width={74} />
           </View>
-        ))}
-      </View>
+        </View>
 
-      <Skeleton height={160} shape="block" />
+        {/* My tags: heading, hint, and the add-a-tag field */}
+        {authed ? (
+          <View style={styles.block}>
+            <Skeleton height={20} width="42%" />
+            <Skeleton height={14} width="62%" />
+            <Skeleton height={44} shape="block" />
+          </View>
+        ) : null}
 
-      <View style={styles.actions}>
-        <Skeleton height={48} shape="block" style={styles.skelAction} />
-        <Skeleton height={48} shape="block" style={styles.skelAction} />
-      </View>
-    </SkeletonGroup>
+        {/* Address / hours / phone — icon plus its line */}
+        <View style={styles.block}>
+          {(['82%', '54%', '64%'] as const).map((w) => (
+            <View key={w} style={styles.skelRow}>
+              <Skeleton height={18} shape="circle" />
+              <Skeleton height={15} width={w} />
+            </View>
+          ))}
+        </View>
+
+        <Skeleton height={160} shape="block" />
+
+        <View style={styles.actions}>
+          <Skeleton height={48} shape="block" style={styles.skelAction} />
+          <Skeleton height={48} shape="block" style={styles.skelAction} />
+        </View>
+      </SkeletonGroup>
+    </ScrollView>
   );
 }
 
