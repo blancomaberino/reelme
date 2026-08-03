@@ -3,6 +3,7 @@
 use App\Enums\RedemptionStatus;
 use App\Events\RedemptionVerified;
 use App\Exceptions\RedemptionInvalid;
+use App\Listeners\NotifyOnRedemptionVerified;
 use App\Models\Offer;
 use App\Models\Place;
 use App\Models\PlaceClaim;
@@ -12,6 +13,7 @@ use App\Notifications\RedemptionConfirmed;
 use App\Services\Redemptions\RedemptionCode;
 use App\Services\Redemptions\RedemptionGuards;
 use App\Services\Redemptions\RedemptionVerifier;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 
@@ -331,5 +333,41 @@ describe('the diner is told', function () {
         // A second "your offer was redeemed" for one visit reads as a second
         // charge to the diner.
         Notification::assertSentToTimes($diner, RedemptionConfirmed::class, 1);
+    });
+
+    it('undoes the whole verify when the caller rolls back', function () {
+        [$place, $operator] = venueWithOperator();
+        liveCode($place);
+
+        try {
+            DB::transaction(function () use ($operator, $place) {
+                app(RedemptionVerifier::class)->verify($operator, 'ABCD1234EF', $place);
+
+                throw new RuntimeException('caller failed after the verify');
+            });
+        } catch (RuntimeException) {
+            // expected — the whole verify is undone
+        }
+
+        // Nothing was redeemed, so nothing is billable. T-044's ledger listener
+        // rides the same transaction and is undone with it.
+        expect(Redemption::firstOrFail()->status)->toBe(RedemptionStatus::Issued);
+    });
+
+    /*
+     * A characterization test, not a behavioural one — and deliberately so.
+     *
+     * The event fires INSIDE the verify transaction (T-044's ledger listener
+     * must be atomic with the state flip), the queue is Redis with
+     * `after_commit` off, so WITHOUT `$afterCommit` the push is enqueued the
+     * instant the event fires and survives a rollback — telling a diner their
+     * offer was redeemed when it was not, in a message that cannot be recalled.
+     *
+     * `Queue::fake()` records pushes directly and never runs the deferral logic,
+     * so no fake-based test can prove the real behaviour. What CAN regress
+     * silently is someone deleting the property; that is what this pins.
+     */
+    it('defers the push until the verify transaction commits', function () {
+        expect((new NotifyOnRedemptionVerified)->afterCommit)->toBeTrue();
     });
 });

@@ -22,6 +22,18 @@ use Illuminate\Support\Facades\Notification;
  */
 class NotifyOnRedemptionVerified implements ShouldQueue
 {
+    /**
+     * Do not queue this until the verify transaction COMMITS.
+     *
+     * The event is dispatched inside that transaction (deliberately — T-044's
+     * ledger listener must be atomic with the state flip), and the queue
+     * connection is Redis with `after_commit` off, so without this the job is
+     * pushed the instant the event fires. A transaction that then rolls back
+     * leaves the job standing, and the diner is told "your offer was redeemed"
+     * for a redemption that never happened — a message that cannot be recalled.
+     */
+    public bool $afterCommit = true;
+
     public function handle(RedemptionVerified $event): void
     {
         $diner = $event->redemption->user;

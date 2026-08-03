@@ -66,7 +66,13 @@ class RedemptionGuards
     {
         $issuedToday = Redemption::query()
             ->where('offer_id', $offer->id)
-            ->whereDate('issued_at', now()->toDateString())
+            // An explicit UTC day window, not `whereDate`: the column is
+            // timestamptz, so `whereDate` would compare in whatever the session
+            // timezone happens to be, and a deployment that changed it would
+            // silently move every restaurant's daily reset. "Day" here means UTC
+            // day — a known simplification (06 §2.2 does not specify a venue
+            // timezone), stated here rather than left to infer.
+            ->whereBetween('issued_at', [now()->utc()->startOfDay(), now()->utc()->endOfDay()])
             // A voided or expired code returns its slot; counting one would let
             // a run of cancellations retire an offer for the rest of the day.
             ->whereIn('status', RedemptionStatus::holdingQuota())
