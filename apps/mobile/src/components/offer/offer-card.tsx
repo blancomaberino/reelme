@@ -51,8 +51,8 @@ function OfferCardBase({ offer, venueName, onPress, actions, placeholder }: Prop
   const currency = useSettingsStore((s) => s.currency);
   const styles = useMemo(() => makeStyles(c), [c]);
 
-  const state = offerState(offer);
-  const stubColor = STUB[state](c);
+  const look = STATE[offerState(offer)];
+  const accent = look.accent(c);
   const unfilled = placeholder === true && offer.discount_value <= 0;
   const headline = unfilled ? '—' : discountHeadline(offer, currency, t);
 
@@ -68,7 +68,7 @@ function OfferCardBase({ offer, venueName, onPress, actions, placeholder }: Prop
 
   const body = (
     <>
-      <View style={[styles.stub, { backgroundColor: stubColor }]} />
+      <View style={[styles.stub, { backgroundColor: accent }]} />
       <View style={styles.body}>
         {venueName ? (
           <Text style={styles.venue} numberOfLines={1}>
@@ -84,8 +84,8 @@ function OfferCardBase({ offer, venueName, onPress, actions, placeholder }: Prop
           >
             {headline}
           </Text>
-          <View style={[styles.pill, { backgroundColor: PILL_BG[state](c) }]}>
-            <Text style={[styles.pillText, { color: stubColor }]}>{t(STATE_LABEL[state])}</Text>
+          <View style={[styles.pill, { backgroundColor: look.fill(c) }]}>
+            <Text style={[styles.pillText, { color: accent }]}>{t(look.label)}</Text>
           </View>
         </View>
 
@@ -160,36 +160,22 @@ export function discountHeadline(
   }
 }
 
-/** The state's accent — the stub, and the badge's text. */
-const STUB: Record<OfferState, (c: Palette) => string> = {
-  live: (c) => c.green,
-  scheduled: (c) => c.secondary,
-  soldOut: (c) => c.gold,
-  draft: (c) => c.muted,
-  paused: (c) => c.gold,
-  ended: (c) => c.ink2,
-  archived: (c) => c.muted,
+/**
+ * How each state looks and reads: accent, badge fill, label.
+ *
+ * One entry per state rather than three parallel maps keyed by the same union —
+ * those had to be edited in lockstep, and a state added to two of the three is
+ * a crash (`undefined(c)`) rather than a visible gap.
+ */
+const STATE: Record<OfferState, { accent: (c: Palette) => string; fill: (c: Palette) => string; label: MessageKey }> = {
+  live: { accent: (c) => c.green, fill: (c) => c.greenSoft, label: 'offers.state.live' },
+  scheduled: { accent: (c) => c.secondary, fill: (c) => c.secondarySoft, label: 'offers.state.scheduled' },
+  soldOut: { accent: (c) => c.gold, fill: (c) => c.goldSoft, label: 'offers.state.soldOut' },
+  paused: { accent: (c) => c.gold, fill: (c) => c.goldSoft, label: 'offers.state.paused' },
+  draft: { accent: (c) => c.muted, fill: (c) => c.surface2, label: 'offers.state.draft' },
+  ended: { accent: (c) => c.ink2, fill: (c) => c.surface2, label: 'offers.state.ended' },
+  archived: { accent: (c) => c.muted, fill: (c) => c.surface2, label: 'offers.state.archived' },
 };
-
-const PILL_BG: Record<OfferState, (c: Palette) => string> = {
-  live: (c) => c.greenSoft,
-  scheduled: (c) => c.secondarySoft,
-  soldOut: (c) => c.goldSoft,
-  draft: (c) => c.surface2,
-  paused: (c) => c.goldSoft,
-  ended: (c) => c.surface2,
-  archived: (c) => c.surface2,
-};
-
-const STATE_LABEL = {
-  live: 'offers.state.live',
-  scheduled: 'offers.state.scheduled',
-  soldOut: 'offers.state.soldOut',
-  draft: 'offers.state.draft',
-  paused: 'offers.state.paused',
-  ended: 'offers.state.ended',
-  archived: 'offers.state.archived',
-} as const;
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({

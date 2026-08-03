@@ -41,6 +41,12 @@ export function useVenues() {
  * Every offer for every venue the caller operates, in every state — `?mine=1`.
  * Drafts and paused offers are deliberately included: this is the management
  * view, not the diner browse.
+ *
+ * Bounded at the API's maximum page (100) and deliberately NOT paginated: an
+ * offer is created one at a time by a person, and 100 live+draft+paused offers
+ * across one operator's venues is far past what the grouped list is readable
+ * at. If that ever stops being true the fix is an infinite query here, not a
+ * larger limit — the API already refuses anything above 100.
  */
 export function useMyOffers() {
   return useQuery({

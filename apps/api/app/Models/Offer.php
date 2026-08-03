@@ -64,18 +64,31 @@ class Offer extends Model
         'status' => OfferStatus::Draft->value,
     ];
 
+    /**
+     * Exactly the fields an operator may set. The four the SYSTEM grants are
+     * absent by design, following the same rule `User` states for its role
+     * flags — they are assigned in code, never mass-assigned:
+     *
+     * - `place_id` / `created_by_user_id` — set from the AUTHORIZED place and
+     *   the authenticated caller. Fillable, they would let a body re-point an
+     *   offer at a venue the caller does not operate.
+     * - `influencer_share_bps` — the platform's revenue split (06 §4.1). An
+     *   operator setting their own share is the whole payout model inverted.
+     * - `redemptions_count` — a counter cache the redemption pipeline (T-043)
+     *   maintains. A body that could set it could reset a quota.
+     *
+     * The controller additionally passes an explicit `only()` allowlist, so
+     * both the model and the write site have to agree before a column moves.
+     *
+     * @var list<string>
+     */
     protected $fillable = [
-        'place_id', 'created_by_user_id', 'title', 'description',
-        'discount_type', 'discount_value', 'terms', 'starts_at', 'ends_at',
-        'quota_total', 'quota_per_user', 'quota_per_day',
-        'influencer_share_bps', 'status',
+        'title', 'description', 'discount_type', 'discount_value', 'terms',
+        'starts_at', 'ends_at', 'quota_total', 'quota_per_user', 'quota_per_day',
+        'status',
     ];
 
     /**
-     * `redemptions_count` is deliberately NOT fillable: it is a counter cache
-     * maintained by the redemption pipeline (T-043), and a request body that
-     * could set it would be a request body that could reset a quota.
-     *
      * @return array<string, string>
      */
     protected function casts(): array

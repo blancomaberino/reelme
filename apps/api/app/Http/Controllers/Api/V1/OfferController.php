@@ -4,20 +4,19 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\ClaimStatus;
 use App\Enums\OfferStatus;
-use App\Enums\PlaceStatus;
 use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Offers\OfferIndexRequest;
 use App\Http\Requests\Offers\StoreOfferRequest;
 use App\Http\Requests\Offers\UpdateOfferRequest;
 use App\Http\Resources\OfferResource;
+use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Offer;
 use App\Models\Place;
 use App\Models\User;
 use App\Support\KeysetCursor;
 use App\Support\KeysetPage;
 use Illuminate\Contracts\Database\Query\Builder as QueryBuilder;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +38,21 @@ class OfferController extends Controller
 {
     /** Cursor namespace — a cursor minted here is rejected by other endpoints. */
     private const CURSOR = 'offers';
+
+    /**
+     * The fields a write may set, in one place rather than once per verb.
+     *
+     * Create and update MUST allow exactly the same set — a column writable on
+     * one and not the other is a rule that exists only in whichever verb the
+     * next reader happens to open. `place_id` is absent on purpose: it comes
+     * from the authorized place on create and can never change afterwards.
+     *
+     * @var list<string>
+     */
+    private const WRITABLE = [
+        'title', 'description', 'discount_type', 'discount_value', 'terms',
+        'starts_at', 'quota_total', 'quota_per_user', 'quota_per_day', 'status',
+    ];
 
     /**
      * Diner browse + the operator's management list.
@@ -64,15 +78,24 @@ class OfferController extends Controller
             $query->whereIn('place_id', $this->operatedPlaceIds($viewer));
         } else {
             // Diners never see an offer whose venue is hidden, merged, or
-            // tombstoned — the place index's visibility rule, applied through
-            // the relation so it cannot be forgotten here.
+            // tombstoned. Delegated to the place browse's own rule rather than
+            // re-spelled here, so the two can never disagree about what is
+            // visible.
+            // The closure is annotated rather than typed: `whereHas()` declares
+            // `Builder<Place>`, but Place::newEloquentBuilder() hands over a
+            // PlaceQueryBuilder at runtime (ADR-106) — the same shape the other
+            // call sites in the app use.
             $query->publiclyVisible()
-                ->whereHas('place', fn (Builder $q) => $q->whereNull('merged_into_place_id')
-                    ->whereIn('status', [PlaceStatus::Pending, PlaceStatus::Active]));
+                ->whereHas('place', function ($q): void {
+                    /** @var PlaceQueryBuilder $q */
+                    $q->publiclyVisible();
+                });
+        }
 
-            if ($request->activeOnly()) {
-                $query->active();
-            }
+        // Applies to BOTH audiences: an operator filtering their list down to
+        // "what a diner can redeem right now" means the same thing a diner does.
+        if ($request->activeOnly()) {
+            $query->active();
         }
 
         if (($placeId = $request->validated('place_id')) !== null) {
@@ -81,10 +104,13 @@ class OfferController extends Controller
 
         if (($near = $request->nearPoint()) !== null) {
             $radius = $request->radiusM();
-            $query->whereHas('place', fn (Builder $q) => $q->whereRaw(
-                'ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
-                [$near['lng'], $near['lat'], $radius],
-            ));
+            $query->whereHas('place', function ($q) use ($near, $radius): void {
+                /** @var PlaceQueryBuilder $q */
+                $q->whereRaw(
+                    'ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
+                    [$near['lng'], $near['lat'], $radius],
+                );
+            });
         }
 
         // Newest first, id-keyed: offers are created one at a time by hand, so
@@ -129,10 +155,7 @@ class OfferController extends Controller
         /** @var Place $place */
         $place = $request->place();
 
-        $offer = new Offer($request->safe()->only([
-            'title', 'description', 'discount_type', 'discount_value', 'terms',
-            'starts_at', 'quota_total', 'quota_per_user', 'quota_per_day', 'status',
-        ]));
+        $offer = new Offer($request->safe()->only(self::WRITABLE));
         $offer->place_id = $place->id;
         $offer->created_by_user_id = (int) $this->requireUser($request)->id;
         // Defaulted rather than echoed: an omitted end date becomes the longest
@@ -152,10 +175,7 @@ class OfferController extends Controller
         // it, so its terms must stay exactly what the diner agreed to.
         abort_unless($offer->status->isEditable(), 409, 'An archived offer can no longer be edited.');
 
-        $offer->fill($request->safe()->only([
-            'title', 'description', 'discount_type', 'discount_value', 'terms',
-            'starts_at', 'quota_total', 'quota_per_user', 'quota_per_day', 'status',
-        ]));
+        $offer->fill($request->safe()->only(self::WRITABLE));
 
         // Only when the client actually touched the window: resolvedEndsAt()
         // would otherwise re-default a deliberately open-ended row on every
@@ -201,12 +221,8 @@ class OfferController extends Controller
     /** Is this offer on a diner-facing surface at all? */
     private function isPubliclyVisible(Offer $offer): bool
     {
-        $place = $offer->place;
-
         return $offer->status === OfferStatus::Active
-            && $place !== null
-            && $place->merged_into_place_id === null
-            && in_array($place->status, [PlaceStatus::Pending, PlaceStatus::Active], true);
+            && $offer->place?->isPubliclyVisible() === true;
     }
 
     private function requireUser(Request $request): User

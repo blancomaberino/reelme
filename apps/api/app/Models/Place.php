@@ -210,6 +210,22 @@ class Place extends Model
     }
 
     /**
+     * The per-row twin of {@see PlaceQueryBuilder::publiclyVisible()} — the same
+     * rule asked of a place already in hand rather than of a query.
+     *
+     * The two must agree: a place the browse index returns and this one calls
+     * hidden (or the reverse) is a surface that lists something its own detail
+     * route 404s. Written once here so a caller cannot spell the rule slightly
+     * differently, which is how the inline `in_array($status, [...])` checks
+     * elsewhere in the app already drifted apart.
+     */
+    public function isPubliclyVisible(): bool
+    {
+        return $this->merged_into_place_id === null
+            && in_array($this->status->value, PlaceStatus::matchable(), true);
+    }
+
+    /**
      * Restaurant offers (T-042) in every state — drafts and archived rows
      * included. Diner-facing surfaces constrain this with `active()` or
      * `publiclyVisible()`; nothing here decides that for them.

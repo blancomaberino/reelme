@@ -317,6 +317,33 @@ describe('editing an existing offer', () => {
     expect(await screen.findByText('12 of 100 redeemed')).toBeTruthy();
   });
 
+  /*
+   * The defect this pins: `submit()` used to always send a status, and the
+   * primary button passes 'active'. An operator who paused an offer, fixed a
+   * typo in its terms and pressed Save had silently put it back in front of
+   * diners. Lifecycle belongs to the list screen's explicit one-tap actions.
+   */
+  it('never changes the offer status on a save', async () => {
+    mock.onGet('/offers/7').reply(200, { data: { ...STORED, status: 'paused', is_redeemable: false } });
+
+    render(<OfferFormScreen />, { wrapper });
+
+    fireEvent.changeText(await screen.findByTestId('offer-title'), 'Fixed a typo');
+    fireEvent.press(screen.getByTestId('offer-submit'));
+
+    await waitFor(() => expect(mock.history.patch).toHaveLength(1));
+    expect(JSON.parse(mock.history.patch[0].data)).not.toHaveProperty('status');
+  });
+
+  it('previews a paused offer as paused, not as live', async () => {
+    mock.onGet('/offers/7').reply(200, { data: { ...STORED, status: 'paused', is_redeemable: false } });
+
+    render(<OfferFormScreen />, { wrapper });
+
+    expect(await screen.findByText('Paused')).toBeTruthy();
+    expect(screen.queryByText('Live')).toBeNull();
+  });
+
   it('does not offer "save as draft" on an offer that is already published', async () => {
     render(<OfferFormScreen />, { wrapper });
     await screen.findByTestId('offer-submit');

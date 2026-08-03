@@ -113,7 +113,6 @@ export default function OfferFormScreen() {
       terms: terms.trim() || null,
       quota_total: toNullableInt(quotaTotal),
       quota_per_day: toNullableInt(quotaPerDay),
-      status,
     };
 
     if (editing) {
@@ -121,6 +120,10 @@ export default function OfferFormScreen() {
         {
           id: offerId,
           ...body,
+          // NO `status` on an edit. Pausing, resuming and publishing live on the
+          // list screen, where they are deliberate one-tap acts. Sending one
+          // here would mean an operator who paused an offer, fixed a typo in its
+          // terms and pressed Save had silently put it back in front of diners.
           // Only when the operator actually re-picked a run length — otherwise
           // a rename would silently re-base the window from today.
           ...(durationDays === null ? {} : { starts_at: startsAt, ends_at: endsAt }),
@@ -132,7 +135,7 @@ export default function OfferFormScreen() {
     }
 
     create.mutate(
-      { place_id: placeId as string, ...body, starts_at: startsAt, ends_at: endsAt },
+      { place_id: placeId as string, ...body, status, starts_at: startsAt, ends_at: endsAt },
       { onSuccess: () => router.back() },
     );
   }
@@ -443,8 +446,10 @@ function previewOffer(input: {
     quota_per_day: input.quotaPerDay,
     redemptions_count: redeemed,
     remaining_quota: input.quotaTotal === null ? null : Math.max(0, input.quotaTotal - redeemed),
-    status: 'active',
-    is_redeemable: true,
+    // The stored state when editing — a paused offer must not preview as live,
+    // or the card promises a diner something the offer is not currently doing.
+    status: input.existing?.status ?? 'active',
+    is_redeemable: (input.existing?.status ?? 'active') === 'active',
     created_at: null,
     updated_at: null,
   };

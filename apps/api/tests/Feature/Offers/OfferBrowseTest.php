@@ -161,6 +161,27 @@ describe('the operator view (?mine=1)', function () {
         expect($titles)->toContain('Mine')->and($titles)->not->toContain('Not mine');
     });
 
+    /*
+     * `?active=1` used to be ignored in the operator branch, so an operator
+     * asking "what can a diner redeem right now" got their drafts back too —
+     * the one question the flag exists to answer.
+     */
+    it('honours ?active=1 for the operator too', function () {
+        $place = Place::factory()->active()->create();
+        $operator = User::factory()->create();
+        PlaceClaim::factory()->verified()->create(['place_id' => $place->id, 'user_id' => $operator->id]);
+        Offer::factory()->create(['place_id' => $place->id, 'title' => 'Draft']);
+        Offer::factory()->expired()->create(['place_id' => $place->id, 'title' => 'Window lapsed']);
+        Offer::factory()->active()->create(['place_id' => $place->id, 'title' => 'Live']);
+
+        Sanctum::actingAs($operator);
+        $titles = collect($this->getJson('/api/v1/offers?mine=1&active=1')->assertOk()->json('data'))->pluck('title');
+
+        expect($titles)->toContain('Live')
+            ->and($titles)->not->toContain('Draft')
+            ->and($titles)->not->toContain('Window lapsed');
+    });
+
     it('401s for an anonymous caller', function () {
         $this->getJson('/api/v1/offers?mine=1')->assertUnauthorized();
     });
