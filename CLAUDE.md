@@ -83,7 +83,14 @@ So, before any UI task is called done:
 
 5. **Generated native dirs are stale until proven otherwise.** `ios/` and `android/` are git-ignored build output, and `expo run:*` does **not** re-run prebuild over an existing one. Any change to `app.config.ts` plugins or permissions needs `npx expo prebuild --clean` before anything observed on the device means a thing.
 
-6. **Leave no residue in the dev environment.** Verifying on the simulator changes state the owner then inherits: a deep link becomes the app's launch URL (so their next Cmd+R lands on *your* test screen), `simctl location set` persists until overwritten (`clear` does not work), and flying the map somewhere persists the viewport. **Restore it before reporting: end on `reelmap://map`, put the simulated location back to the dev-data city (Montevideo, `-34.9011,-56.1645`), and say what you changed.** The owner should never discover your debugging session by tripping over it.
+6. **Do NOT use `simctl openurl` to navigate. Navigate with Maestro.**
+
+   `simctl openurl` sets the app's *launch URL*, and Expo Router replays it on every reload — so the owner's next **Cmd+R lands on whatever screen you were testing**, not home. This has been reported three separate times ("stuck in offers", "stuck in new offer", "STUCK ON THE WRONG PAGE"), each time caused by an agent's own verification. Remembering to clean up afterwards demonstrably does not work; the fix is to stop creating the state.
+
+   - **Navigate:** `~/.maestro/bin/maestro test` with `launchApp` + `tapOn`. A plain launch carries no URL, so nothing is left behind.
+   - **`openurl` is only acceptable** to reach a screen that genuinely has no in-app path (deep-link handling itself). When you must, finish with `terminate` + plain `launch` — a URL-less launch is what actually clears it (verified: Cmd+R afterwards lands on home).
+   - Other residue to restore: `simctl location set` persists until overwritten (**`clear` is a no-op**) — put it back to Montevideo `-34.9011,-56.1645`; and flying the map persists the viewport.
+   - **Verify the restore, don't assert it.** Send Cmd+R yourself and screenshot where it lands. Twice this was reported "fixed" without that check, and twice it wasn't.
 
 7. **Never describe a path you haven't walked.** The [task completion report](#task-completion-report) click-path is a claim about the running app. Walk it on the device before writing it down. If a state couldn't be reached (no fix, no seed data, a control that won't take a synthetic tap), say so explicitly — an unverified step reported as verified is worse than an admitted gap.
 
