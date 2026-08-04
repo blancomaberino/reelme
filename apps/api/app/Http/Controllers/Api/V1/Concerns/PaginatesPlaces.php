@@ -60,6 +60,13 @@ trait PaginatesPlaces
             $query->allTagSlugs($tags);
         }
 
+        // Always selected, not only when filtering, so the card can badge it.
+        $query->withActiveOfferFlag();
+
+        if ($request->validated('has_offers')) {
+            $query->havingActiveOffer();
+        }
+
         if (($q = (string) ($request->validated('q') ?? '')) !== '') {
             $normalized = Place::normalizeName($q);
             if ($normalized !== '') {

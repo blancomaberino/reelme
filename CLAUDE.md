@@ -8,7 +8,8 @@ Guidance for any agent (or human) working in this repository. These rules are **
 2. **Before opening any PR**, run **`/coderabbit`** — it orchestrates the full pre-PR pass (quality gates → **`/simplify`** → **`/security-review`** → a grounded line-by-line review) and records the approval the PR gate requires. Fix every 🔴/🟡 it surfaces before the PR goes up.
 3. **Any UI/frontend work uses the `/frontend-design` skill** — mobile screens, Filament customizations, any web UI.
 4. **Every change ships with meaningful tests + coverage + E2E.** No trivial or placeholder tests.
-5. **Finish every task with a completion summary** — see [Task completion report](#task-completion-report). Whenever you finish working on a task, end with: what task, what it's about, and how to manually test it (admin dashboard or simulator).
+5. **Check the wiring, not just the code** — see [Wiring & seams](#wiring--seams-enforced--this-is-where-the-real-bugs-are). A screen nobody can reach, a second copy of an existing component, an interaction that never re-queries, and a mock that hides a crash all pass their own tests. Restore the dev environment before reporting.
+6. **Finish every task with a completion summary** — see [Task completion report](#task-completion-report). Whenever you finish working on a task, end with: what task, what it's about, and how to manually test it (admin dashboard or simulator).
 
 ## Agent orchestration (teams vs subagents)
 
@@ -65,6 +66,33 @@ Pick whichever surface(s) actually exercise the change — don't invent an admin
   - Mobile: Maestro flows (see task T-053).
   - A feature is not "done" until its end-to-end path is green.
 - Tests must run in **CI without network** — use fakes, fixtures, and recorded responses, never live third-party calls.
+
+## Wiring & seams (enforced — this is where the real bugs are)
+
+Every foundational bug that has shipped green on this project shared one shape: **it lived in the seam between the new code and the rest of the app, while the tests only ever looked inside the new code.** A screen with no way to reach it. A second map that shared nothing with the first. A map that never re-queried when panned. A native permission missing because `ios/` was stale. A hook that crashed on device, hidden by a stub written to make the test pass. Each rendered perfectly in isolation.
+
+So, before any UI task is called done:
+
+1. **Reachability.** A new screen is not done until a user can reach it from a screen they are already on, and a test presses that control. A deep link is not an entry point, and `render(<Screen/>)` in a test bypasses navigation entirely — neither is evidence anyone can get there.
+
+2. **Sibling first.** Before building a second map / list / form / sheet / picker, find the existing one and reuse it. If it can't be reused as-is, **extract the shared part** — never re-implement. Two implementations of the same thing always diverge, and the newer one is always the worse one.
+
+3. **Test the loop, not the first paint.** For anything with a viewport, a query, a cursor, or a filter: assert that the primary interaction (pan, scroll, type, refresh, toggle) actually **re-asks**. "It rendered" is not "it works" — a screen pinned to its initial query looks completely correct in a screenshot.
+
+4. **A mock that silences a problem IS the problem.** If a test needs a stub to stop something throwing, find out why it throws on device *first*. Never stub a hook the app cannot legally call. Never let a mock invent an identity (testID, id, route) the real component doesn't have — that makes the real one dead and hides every behaviour behind it.
+
+5. **Generated native dirs are stale until proven otherwise.** `ios/` and `android/` are git-ignored build output, and `expo run:*` does **not** re-run prebuild over an existing one. Any change to `app.config.ts` plugins or permissions needs `npx expo prebuild --clean` before anything observed on the device means a thing.
+
+6. **Do NOT use `simctl openurl` to navigate. Navigate with Maestro.** *(enforced — `.claude/hooks/guard-simulator-deeplink.sh` denies it)*
+
+   `simctl openurl` sets the app's *launch URL*, and Expo Router replays it on every reload — so the owner's next **Cmd+R lands on whatever screen you were testing**, not home. This has been reported three separate times ("stuck in offers", "stuck in new offer", "STUCK ON THE WRONG PAGE"), each time caused by an agent's own verification. Remembering to clean up afterwards demonstrably does not work; the fix is to stop creating the state.
+
+   - **Navigate:** `~/.maestro/bin/maestro test` with `launchApp` + `tapOn`. A plain launch carries no URL, so nothing is left behind.
+   - **`openurl` is only acceptable** to reach a screen that genuinely has no in-app path (deep-link handling itself). When you must, finish with `terminate` + plain `launch` — a URL-less launch is what actually clears it (verified: Cmd+R afterwards lands on home).
+   - Other residue to restore: `simctl location set` persists until overwritten (**`clear` is a no-op**) — put it back to Montevideo `-34.9011,-56.1645`; and flying the map persists the viewport.
+   - **Verify the restore, don't assert it.** Send Cmd+R yourself and screenshot where it lands. Twice this was reported "fixed" without that check, and twice it wasn't.
+
+7. **Never describe a path you haven't walked.** The [task completion report](#task-completion-report) click-path is a claim about the running app. Walk it on the device before writing it down. If a state couldn't be reached (no fix, no seed data, a control that won't take a synthetic tap), say so explicitly — an unverified step reported as verified is worse than an admitted gap.
 
 ## UI / frontend
 

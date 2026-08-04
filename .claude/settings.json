@@ -9,6 +9,11 @@
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard-destructive-db.sh\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard-simulator-deeplink.sh\"",
+            "timeout": 10
           }
         ]
       }
@@ -21,13 +26,13 @@
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/contracts-regenerate.sh\"",
             "timeout": 120,
-            "statusMessage": "Regenerating contracts…"
+            "statusMessage": "Regenerating contracts\u2026"
           },
           {
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/pint-format.sh\"",
             "timeout": 60,
-            "statusMessage": "Running Pint…"
+            "statusMessage": "Running Pint\u2026"
           }
         ]
       }

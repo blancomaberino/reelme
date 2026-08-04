@@ -6,7 +6,10 @@ import type { PlaceDetail } from '../places';
 
 export async function fetchPlace(slug: string): Promise<PlaceDetail> {
   const { data } = await api.get<{ data: PlaceDetail }>(`/places/${encodeURIComponent(slug)}`, {
-    params: { include: 'sources,reviews' },
+    // `offers` rides along rather than being a second request: the section sits
+    // above the fold on a screen people open to decide whether to go, and a
+    // separate fetch would pop it in after they had already scrolled past.
+    params: { include: 'sources,reviews,offers' },
   });
   return data.data;
 }

@@ -5,6 +5,7 @@ namespace App\Models\Builders;
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
 use App\Models\HiddenPlace;
+use App\Models\Offer;
 use App\Models\Place;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -73,6 +74,59 @@ class PlaceQueryBuilder extends Builder
      * `PlaceAggregations::discountCard()` computes for display, so the map/index
      * filter and the shown chips agree. Case-insensitive; a blank token is a no-op.
      */
+    /**
+     * Select `has_active_offer` — whether the place has something redeemable
+     * RIGHT NOW (T-042 badge, T-047 filter).
+     *
+     * One EXISTS subquery for the whole page, never a query per row: the map
+     * draws hundreds of pins at once, so this must not become an N+1.
+     *
+     * Gated on the `active()` scope rather than the status column, because
+     * nothing rewrites that column when a window closes overnight — a badge
+     * built on the column alone promises an offer the till would refuse.
+     */
+    public function withActiveOfferFlag(): self
+    {
+        return $this->withExists(['offers as has_active_offer' => self::onlyActiveOffers(...)]);
+    }
+
+    /** Narrow to places running an offer right now — the same gate as above. */
+    public function havingActiveOffer(): self
+    {
+        return $this->whereHas('offers', self::onlyActiveOffers(...));
+    }
+
+    /**
+     * The single definition of "an offer you could redeem right now", shared by
+     * the badge and the filter so they cannot drift apart.
+     *
+     * A named method rather than an inline closure purely so the relation's
+     * builder can be typed — `Offer::scopeActive()` is invisible to static
+     * analysis through a bare `fn ($q)`.
+     *
+     * @param  Builder<Offer>  $query
+     */
+    private static function onlyActiveOffers(Builder $query): void
+    {
+        $query
+            ->active()
+            // ...and not SOLD OUT. `active()` answers "live right now" from the
+            // status and window alone, which is the right question for T-043's
+            // issue gate but not for a badge: an offer whose lifetime quota is
+            // spent is live and un-redeemable, so advertising it sends someone
+            // to a counter for a refusal.
+            //
+            // The per-USER and per-DAY quotas deliberately stay out of this.
+            // Both depend on who is asking and on today's count, so they cannot
+            // be a shared, cacheable property of the place — this flag means
+            // "this venue has an offer running", not "you personally may redeem
+            // it". {@see Offer::isRedeemable()} is still the only gate on
+            // issuing.
+            ->where(fn (Builder $q) => $q
+                ->whereNull('quota_total')
+                ->orWhereColumn('redemptions_count', '<', 'quota_total'));
+    }
+
     public function withPaymentCard(string $card): self
     {
         $card = mb_strtolower(trim($card));

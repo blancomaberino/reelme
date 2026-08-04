@@ -176,6 +176,11 @@ jest.mock('expo-router', () => {
       return null;
     },
     Stack: Object.assign(() => null, { Screen: () => null }),
+    // Runs the effect on mount and cleans up on unmount — the real hook adds
+    // re-running on focus changes, which a single-screen render never has.
+    useFocusEffect: (effect: () => (() => void) | void) => {
+      React.useEffect(effect, [effect]);
+    },
     Tabs: Object.assign(
       ({ children, initialRouteName }: { children?: React.ReactNode; initialRouteName?: string }) => {
         mockRouter.initialRouteName = initialRouteName ?? null;
@@ -232,10 +237,14 @@ jest.mock('react-native-maps', () => {
   // moves — cluster tap, quick-share fly-to, reset view. Clear it per test.
   const animateToRegion = jest.fn();
   const MapView = Object.assign(
-    React.forwardRef(({ children, ...props }: { children?: React.ReactNode }, ref: unknown) => {
-      React.useImperativeHandle(ref, () => ({ animateToRegion }));
-      return React.createElement(View, { ...props, testID: 'MapView' }, children);
-    }),
+    // Honours a caller's testID (falling back to 'MapView') — two screens now
+    // render a map, and a hardcoded id makes the second one unaddressable.
+    React.forwardRef(
+      ({ children, ...props }: { children?: React.ReactNode; testID?: string }, ref: unknown) => {
+        React.useImperativeHandle(ref, () => ({ animateToRegion }));
+        return React.createElement(View, { ...props, testID: props.testID ?? 'MapView' }, children);
+      },
+    ),
     { displayName: 'MapView' },
   );
   return {
@@ -312,5 +321,46 @@ jest.mock('react-native-safe-area-context', () => {
       React.createElement(require('react-native').View, props, children),
     useSafeAreaInsets: () => inset,
     useSafeAreaFrame: () => ({ x: 0, y: 0, width: 390, height: 844 }),
+  };
+});
+
+// expo-camera is native (T-047). `CameraView` renders as a plain View that
+// exposes its `onBarcodeScanned` through a testID, so a suite can fire a scan
+// without a camera — the scanner's duplicate-read lock is the behaviour worth
+// pinning and it is unreachable otherwise.
+// Mutable so a test can exercise the denied / permanently-blocked branches —
+// the manual-entry fallback only matters when the camera is unavailable.
+export const mockCameraPermission = {
+  state: { granted: true, canAskAgain: true },
+  request: jest.fn(),
+};
+jest.mock('expo-camera', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    CameraView: ({ children, ...props }: { children?: React.ReactNode; testID?: string }) =>
+      React.createElement(View, { ...props, testID: props.testID ?? 'CameraView' }, children),
+    useCameraPermissions: () => [mockCameraPermission.state, mockCameraPermission.request],
+  };
+});
+
+// expo-brightness is native. Every call is best-effort in the app (a failure
+// must never break the code screen), so resolving is the honest default.
+jest.mock('expo-brightness', () => ({
+  getBrightnessAsync: jest.fn(async () => 0.4),
+  setBrightnessAsync: jest.fn(async () => undefined),
+  restoreSystemBrightnessAsync: jest.fn(async () => undefined),
+}));
+
+// react-native-qrcode-svg draws through react-native-svg — native, and the
+// pixels are not what any assertion here is about.
+jest.mock('react-native-qrcode-svg', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  return {
+    __esModule: true,
+    default: (props: { testID?: string }) => React.createElement(View, { ...props, testID: 'QRCode' }),
   };
 });

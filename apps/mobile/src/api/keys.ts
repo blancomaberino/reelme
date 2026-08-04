@@ -7,6 +7,8 @@ export type MyPlacesFilters = {
   /** cuisine_primary ("type"), or null for all. */
   type?: string | null;
   tags?: string[];
+  /** Only places running an offer you could redeem right now (T-047). */
+  hasOffers?: boolean;
   sort?: 'recent' | 'popular';
 };
 
@@ -70,6 +72,20 @@ export const queryKeys = {
   offer: (id: string) => ['offers', id] as const,
   /** The venues the caller operates — a verified place claim each (T-041/T-042). */
   venues: () => ['me', 'venues'] as const,
+  /** One redemption, polled while it is live (T-047). */
+  redemption: (id: string) => ['redemptions', id] as const,
+  /** The diner's own codes. */
+  myRedemptions: () => ['redemptions', 'mine'] as const,
+  /** A venue's redemption log (T-047 verify invalidates it). */
+  placeRedemptions: () => ['redemptions', 'place'] as const,
+  /**
+   * The device's own position (T-047). Cached as a query so the offers browse
+   * does not re-prompt for a fix on every visit, and so the retry after a
+   * refusal is a refetch rather than a second code path.
+   */
+  deviceLocation: () => ['device', 'location'] as const,
+  /** Nearby active offers for the diner browse (T-047). */
+  nearbyOffers: (near: string, radiusM: number) => ['offers', 'nearby', near, radiusM] as const,
   /** Balance, Connect state and recent entries (T-046). Never cached — money. */
   wallet: () => ['wallet'] as const,
   walletLedger: () => ['wallet', 'ledger'] as const,

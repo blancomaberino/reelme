@@ -59,6 +59,16 @@ class PlaceSummaryResource extends JsonResource
                 ],
             ),
             'source_count' => (int) $this->shares_count,
+            /*
+             * Present only when the query asked for it (`withActiveOfferFlag()`).
+             * Absent — not false — otherwise: a hard `false` on a listing that
+             * never looked would tell the client "no offers here" about a place
+             * that may well have one.
+             */
+            'has_active_offer' => $this->when(
+                $this->getAttribute('has_active_offer') !== null,
+                fn () => (bool) $this->getAttribute('has_active_offer'),
+            ),
             'rating' => [
                 'google' => [
                     'value' => $this->google_rating !== null ? (float) $this->google_rating : null,

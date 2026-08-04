@@ -286,3 +286,18 @@ it('offers save (not remove-from-list) on the personal map with no active list',
   expect(screen.getByLabelText('Save to a list')).toBeOnTheScreen();
   expect(screen.queryByLabelText('Remove from list')).toBeNull();
 });
+
+/*
+ * The offers browse ships as a screen but is only worth anything if a diner can
+ * reach it. It was deep-link-only when T-047 first went up — the screen worked
+ * and nothing in the app pointed at it.
+ */
+describe('the offers entry point', () => {
+  it('opens the nearby-offers browse from the map header', () => {
+    render(<MapScreen />);
+
+    fireEvent.press(screen.getByTestId('map-offers'));
+
+    expect(mockRouter.push).toHaveBeenCalledWith('/offers');
+  });
+});

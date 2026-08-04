@@ -318,3 +318,38 @@ it('appends the next page when the list reaches its end', async () => {
   fireEvent.press(screen.getByTestId('flash-list-end'));
   expect(await screen.findByText('Place 2')).toBeOnTheScreen();
 });
+
+/*
+ * "Only places I can save money at right now" (T-047).
+ *
+ * The param is sent ONLY when on — `has_offers=0` and an absent param mean the
+ * same thing to the API, and sending the former would make two identical
+ * requests look like different cache entries.
+ */
+it('filters my places to those with a live offer, and stops when turned off', async () => {
+  mock.onGet('/me/places/facets').reply(200, { data: { countries: [], types: [] } });
+  mock.onGet('/me/places').reply(200, page([place('1')]));
+
+  render(<MyPlacesScreen />, { wrapper: Providers });
+  await screen.findByText('Place 1');
+  expect(mock.history.get.every((r) => r.params?.has_offers === undefined)).toBe(true);
+
+  fireEvent.press(screen.getByLabelText('Filters'));
+  fireEvent.press(await screen.findByText('Has an offer now'));
+
+  await waitFor(() =>
+    expect(mock.history.get.some((r) => r.url === '/me/places' && r.params?.has_offers === 1)).toBe(true),
+  );
+
+  // Once on it appears twice by design: the pill inside the sheet, and a
+  // removable chip on the trigger bar so it can be undone without reopening.
+  expect(screen.getAllByText('Has an offer now')).toHaveLength(2);
+
+  // Off again via the chip — the param disappears rather than becoming
+  // has_offers=0, which would be a second cache entry for an identical query.
+  const before = mock.history.get.length;
+  fireEvent.press(screen.getByLabelText('Remove Has an offer now filter'));
+
+  await waitFor(() => expect(mock.history.get.length).toBeGreaterThan(before));
+  expect(mock.history.get[mock.history.get.length - 1].params?.has_offers).toBeUndefined();
+});

@@ -72,7 +72,7 @@ it('sends the panned pin as a manual coordinate', async () => {
   render(<ReviewScreen />, { wrapper: Providers });
   await screen.findByLabelText('Name');
   // Drag the map under the crosshair — the settled center becomes the pin.
-  fireEvent(screen.getByTestId('MapView'), 'regionChangeComplete', {
+  fireEvent(screen.getByTestId('pin-map'), 'regionChangeComplete', {
     latitude: -34.5,
     longitude: -56.0,
     latitudeDelta: 0.01,
@@ -109,7 +109,7 @@ it('attaches to a chosen dedupe candidate instead of a new pin', async () => {
   const body = lastPatchBody();
   expect(body.place_candidate).toEqual({ place_id: 42 });
   // picking a candidate hides the manual pin adjuster
-  expect(screen.queryByTestId('MapView')).toBeNull();
+  expect(screen.queryByTestId('pin-map')).toBeNull();
 });
 
 it('folds edited price, vibe tags and dishes into the payload', async () => {

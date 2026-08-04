@@ -62,9 +62,8 @@ class MapViewport
      *
      * @param  array{minLng: float, minLat: float, maxLng: float, maxLat: float}  $bbox
      * @param  (Closure(PlaceQueryBuilder): mixed)|null  $constrain
-     * @return Builder<Place>
      */
-    private function baseQuery(MapPlacesRequest $request, array $bbox, ?Closure $constrain): Builder
+    private function baseQuery(MapPlacesRequest $request, array $bbox, ?Closure $constrain): PlaceQueryBuilder
     {
         $query = Place::query()
             ->publiclyVisible()
@@ -204,13 +203,8 @@ class MapViewport
      * clustered response promotes to pins — because they render the SAME shape.
      * When they each spelled it out, a field added to `pin()` was one edit away
      * from being null on half the map.
-     *
-     * @template TBuilder of Builder<Place>
-     *
-     * @param  TBuilder  $query
-     * @return TBuilder
      */
-    private function selectPinFields(Builder $query): Builder
+    private function selectPinFields(PlaceQueryBuilder $query): PlaceQueryBuilder
     {
         return $query
             ->select('*')
@@ -220,10 +214,9 @@ class MapViewport
                 'primarySource.sourcePost.mediaAssets',
                 'tags' => fn ($q) => $q->orderByDesc('place_tag.confidence')->orderBy('slug'),
             ])
-            // The offer badge (T-042, 03 §3.3). One EXISTS subquery for the whole
-            // page of pins, never a query per pin: the map draws hundreds at
-            // once, so this must not become an N+1.
-            ->withExists(['offers as has_active_offer' => fn ($q) => $q->active()]);
+            // The offer badge (T-042, 03 §3.3) — shared with the my-places list
+            // so the two can never disagree about what "has an offer" means.
+            ->withActiveOfferFlag();
     }
 
     /**

@@ -383,3 +383,63 @@ it('omits the discounts section when there are none', async () => {
   await screen.findByText('1921 Restaurant');
   expect(screen.queryByText('Card discounts')).toBeNull();
 });
+
+/*
+ * The venue's live offers (T-047). A restaurant page is where someone decides
+ * whether to go, so the reason to go belongs on it — the API has embedded these
+ * since T-042 and the screen simply never asked for them.
+ */
+describe('the offers section', () => {
+  const liveOffer = {
+    id: '42',
+    place_id: '1',
+    title: 'Two-for-one pastéis',
+    description: null,
+    discount_type: 'percent' as const,
+    discount_value: 20,
+    terms: null,
+    starts_at: '2020-01-01T00:00:00Z',
+    ends_at: null,
+    quota_total: null,
+    quota_per_user: 1,
+    quota_per_day: null,
+    redemptions_count: 0,
+    remaining_quota: null,
+    status: 'active' as const,
+    is_redeemable: true,
+    created_at: null,
+    updated_at: null,
+  };
+
+  it('asks the API to embed them — the section cannot render what was never fetched', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    expect(mock.history.get[0].params.include).toContain('offers');
+  });
+
+  it('shows each live offer with a way to claim it', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: { ...PLACE, offers: [liveOffer] } });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    expect(await screen.findByTestId('place-offers')).toBeTruthy();
+    expect(screen.getByText('Two-for-one pastéis')).toBeTruthy();
+    expect(screen.getByText('20%')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('place-offer-cta-42'));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/offers/[id]/redeem', params: { id: '42' } });
+  });
+
+  it('renders no section at all for a venue with nothing running', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: { ...PLACE, offers: [] } });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    // Not an empty "no offers" block — absence of a promotion is not news.
+    expect(screen.queryByTestId('place-offers')).toBeNull();
+  });
+});
