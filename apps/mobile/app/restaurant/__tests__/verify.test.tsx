@@ -325,6 +325,35 @@ describe('an operator running more than one restaurant', () => {
     expect(screen.getByText('Taberna do Bairro')).toBeTruthy();
   });
 
+  /*
+   * The picker stays live while a request is in flight. An operator who switches
+   * venues mid-verify must still be told which restaurant the code was checked
+   * against — naming the newly-picked one would hide exactly the mistake the
+   * venue label exists to reveal.
+   */
+  it('names the venue the code was actually checked against, not the one now picked', async () => {
+    serveVenues([VENUE, SECOND]);
+    let release!: (v: [number, unknown]) => void;
+    mock.onPost('/redemptions/verify').reply(
+      () => new Promise((resolve) => { release = resolve; }),
+    );
+
+    render(<VerifyScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('verify-venue-picker')).toBeTruthy());
+
+    fireEvent.changeText(screen.getByTestId('verify-manual-input'), '7F3K92QXAB');
+    fireEvent.press(screen.getByTestId('verify-submit'));
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+
+    // Switch venues while the verify is still in flight.
+    fireEvent.press(screen.getByTestId('verify-venue-11'));
+    release([200, { data: REDEEMED, meta: { replayed: false } }]);
+
+    await waitFor(() => expect(screen.getByTestId('verify-result-success')).toBeTruthy());
+    expect(screen.getByText('Taberna do Bairro')).toBeTruthy();
+    expect(screen.queryByText('Cervejaria Ramiro')).toBeNull();
+  });
+
   it('shows no picker at all for a single-venue operator', async () => {
     serveVenues([VENUE]);
 

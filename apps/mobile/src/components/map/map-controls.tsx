@@ -34,7 +34,9 @@ export function useMapCamera(input: {
   const t = useT();
   const mapRef = useRef<MapView>(null);
   const regionRef = useRef<Region>(input.initialRegion);
-  const userRegionRef = useRef<Region | null>(input.initialUserRegion ?? null);
+  // Where "locate me" last put us. Null until it is tapped — the caller's own
+  // fix is the other source, consulted at call time below.
+  const userRegionRef = useRef<Region | null>(null);
 
   const [locating, setLocating] = useState(false);
   const [locateBlocked, setLocateBlocked] = useState(false);
@@ -62,12 +64,20 @@ export function useMapCamera(input: {
     [moveMap],
   );
 
-  // "Home" is the user's own position when we have one this session, and only
-  // otherwise the seed city — resetting to a city the user has never been to is
-  // not a reset.
+  /*
+   * "Home" is the user's own position when we have one this session, and only
+   * otherwise the seed city — resetting to a city the user has never visited is
+   * not a reset.
+   *
+   * Both sources are read AT CALL TIME rather than captured at mount: the
+   * caller's fix is a query that often resolves after the first render, and a
+   * snapshot left "reset" pointing at the seed city for the whole session. A
+   * tap on "locate me" is the fresher answer, so it wins.
+   */
+  const initialUserRegion = input.initialUserRegion ?? null;
   const resetView = useCallback(() => {
-    moveMap(userRegionRef.current ?? DEFAULT_REGION, 350);
-  }, [moveMap]);
+    moveMap(userRegionRef.current ?? initialUserRegion ?? DEFAULT_REGION, 350);
+  }, [moveMap, initialUserRegion]);
 
   /**
    * "Locate me". Prompts on first tap, flies to the user on success, and

@@ -212,6 +212,28 @@ describe('the map toggle', () => {
    * with an empty map however far you dragged. A map is a question about where
    * you are LOOKING.
    */
+  /*
+   * `at` is null on the first render — the fix is a query — so anything that
+   * snapshots the region at mount freezes the map on the seed city, and map
+   * mode then lists offers there while the list tab correctly follows the user.
+   */
+  it('adopts the device fix when it resolves after mount', async () => {
+    let resolveFix!: (v: { ok: true; region: typeof REGION }) => void;
+    locate.mockReturnValue(new Promise((r) => { resolveFix = r; }));
+    mock.onGet('/offers').reply(200, { data: [] });
+
+    render(<OffersBrowseScreen />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('offers-toggle-map')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('offers-toggle-map'));
+
+    // Fix lands only now, with the map already on screen.
+    resolveFix({ ok: true, region: REGION });
+
+    await waitFor(() =>
+      expect(mock.history.get.some((r) => r.params?.near === '38.7223,-9.1393')).toBe(true),
+    );
+  });
+
   it('re-asks the API for the region the user panned to', async () => {
     mock.onGet('/offers').reply(200, { data: [] });
 

@@ -108,7 +108,23 @@ class PlaceQueryBuilder extends Builder
      */
     private static function onlyActiveOffers(Builder $query): void
     {
-        $query->active();
+        $query
+            ->active()
+            // ...and not SOLD OUT. `active()` answers "live right now" from the
+            // status and window alone, which is the right question for T-043's
+            // issue gate but not for a badge: an offer whose lifetime quota is
+            // spent is live and un-redeemable, so advertising it sends someone
+            // to a counter for a refusal.
+            //
+            // The per-USER and per-DAY quotas deliberately stay out of this.
+            // Both depend on who is asking and on today's count, so they cannot
+            // be a shared, cacheable property of the place — this flag means
+            // "this venue has an offer running", not "you personally may redeem
+            // it". {@see Offer::isRedeemable()} is still the only gate on
+            // issuing.
+            ->where(fn (Builder $q) => $q
+                ->whereNull('quota_total')
+                ->orWhereColumn('redemptions_count', '<', 'quota_total'));
     }
 
     public function withPaymentCard(string $card): self

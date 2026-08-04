@@ -94,14 +94,23 @@ export default function OffersBrowseScreen() {
    *
    * Updated only when the region SETTLES (debounced), never per gesture frame.
    */
-  const [mapArea, setMapArea] = useState<Region>(mapRegion);
+  /*
+   * DERIVED, not snapshotted. `at` is null on the first render (the fix is a
+   * query), so seeding state with `mapRegion` froze the search on the fallback
+   * city: the fix would land, the list would follow it, and map mode would go
+   * on asking about the seed region until the user panned. Falling back to
+   * `mapRegion` until an actual pan happens means the fix is picked up for
+   * free, and the pan then wins for good.
+   */
+  const [pannedTo, setPannedTo] = useState<Region | null>(null);
+  const mapArea = pannedTo ?? mapRegion;
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const onRegionSettled = useCallback(
     (region: Region) => {
       camera.rememberRegion(region);
       if (settle.current) clearTimeout(settle.current);
-      settle.current = setTimeout(() => setMapArea(region), 400);
+      settle.current = setTimeout(() => setPannedTo(region), 400);
     },
     [camera],
   );
@@ -144,6 +153,14 @@ export default function OffersBrowseScreen() {
         provider={PROVIDER_DEFAULT}
         style={StyleSheet.absoluteFill}
         initialRegion={mapRegion}
+        /*
+         * Remounted once, when the first fix arrives, because an uncontrolled
+         * MapView reads `initialRegion` exactly once. Without this a map opened
+         * before the fix resolved stays on the seed city. `at` only goes
+         * null→set, so this can happen at most once, and never after a pan
+         * (the user's own region is what `initialRegion` then holds).
+         */
+        key={at ? 'located' : 'fallback'}
         onRegionChangeComplete={onRegionSettled}
         onPress={onBackgroundPress}
         showsUserLocation

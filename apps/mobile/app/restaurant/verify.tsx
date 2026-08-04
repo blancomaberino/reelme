@@ -38,7 +38,14 @@ export default function VerifyScreen() {
   const verify = useVerifyRedemption();
 
   const [manualCode, setManualCode] = useState('');
-  const [outcome, setOutcome] = useState<VerifyOutcome | null>(null);
+  /*
+   * The outcome carries the venue it was VERIFIED AGAINST, not whatever the
+   * picker happens to show now. The picker stays live during the location
+   * lookup and the request, so an operator who switches venues mid-flight would
+   * otherwise get a result sheet naming the wrong restaurant — the one failure
+   * this screen exists to make visible.
+   */
+  const [outcome, setOutcome] = useState<{ result: VerifyOutcome; venueName: string | null } | null>(null);
   const [venueId, setVenueId] = useState<string | null>(null);
   // A ref, not state: the camera can fire again before React re-renders, and a
   // state flag would let the second read through.
@@ -54,7 +61,6 @@ export default function VerifyScreen() {
    * nothing to choose and no picker is shown.
    */
   const placeId = venueId ?? venues?.[0]?.id ?? null;
-  const selectedVenue = venues?.find((venue) => venue.id === placeId) ?? null;
 
   /**
    * One verify, start to finish.
@@ -71,6 +77,8 @@ export default function VerifyScreen() {
       if (placeId === null || code.trim() === '') return;
 
       locked.current = true;
+      // Captured with the request, before any await can let the picker move.
+      const submittedVenueName = venues?.find((venue) => venue.id === placeId)?.name ?? null;
 
       try {
         // Best-effort AND time-boxed, through the shared helper: a phone that
@@ -81,21 +89,21 @@ export default function VerifyScreen() {
         const region =
           (await getLocationPermission()).state === 'granted' ? await getUserRegion(FIX_BUDGET_MS) : null;
 
-        setOutcome(
-          await verify.mutateAsync({
-            code: code.trim(),
-            placeId,
-            lat: region?.latitude,
-            lng: region?.longitude,
-          }),
-        );
+        const result = await verify.mutateAsync({
+          code: code.trim(),
+          placeId,
+          lat: region?.latitude,
+          lng: region?.longitude,
+        });
+
+        setOutcome({ result, venueName: submittedVenueName });
       } catch {
         // `useVerifyRedemption` returns refusals as data, so reaching here means
         // something unexpected broke. Unlock rather than strand the scanner.
         locked.current = false;
       }
     },
-    [placeId, verify],
+    [placeId, venues, verify],
   );
 
   const onScan = useCallback(({ data }: { data: string }) => void submit(data), [submit]);
@@ -126,11 +134,11 @@ export default function VerifyScreen() {
     return (
       <Shell styles={styles} title={t('scan.title')}>
         <ResultSheet
-          outcome={outcome}
+          outcome={outcome.result}
           styles={styles}
           c={c}
           onNext={reset}
-          venueName={venues !== undefined && venues.length > 1 ? selectedVenue?.name : null}
+          venueName={venues !== undefined && venues.length > 1 ? outcome.venueName : null}
         />
       </Shell>
     );

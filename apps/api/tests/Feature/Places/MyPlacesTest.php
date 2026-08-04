@@ -371,6 +371,15 @@ it('filters my places down to those running an offer right now', function () {
 
     Offer::factory()->active()->create(['place_id' => $withLive->id]);
     Offer::factory()->create(['place_id' => $withDraft->id, 'status' => OfferStatus::Draft]);
+    // Live by status and window, but its lifetime quota is spent — advertising
+    // it sends someone to a counter for a refusal.
+    $soldOut = myPlace('Sold out');
+    publishedShare($soldOut, sharer: $me);
+    Offer::factory()->active()->create([
+        'place_id' => $soldOut->id,
+        'quota_total' => 5,
+        'redemptions_count' => 5,
+    ]);
     // Still `active` in the column — the sweep has not caught up — but over.
     Offer::factory()->active()->create([
         'place_id' => $withLapsed->id,
@@ -385,6 +394,7 @@ it('filters my places down to those running an offer right now', function () {
     expect($names)->toContain('Has a live offer')
         ->not->toContain('Only a draft')
         ->not->toContain('Window closed last night')
+        ->not->toContain('Sold out')
         ->not->toContain('Nothing running');
 });
 
