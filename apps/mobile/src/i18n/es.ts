@@ -157,6 +157,8 @@ export const es: Record<MessageKey, string> = {
   'filters.tagSearch': 'Buscar etiquetas…',
   'filters.tagClear': 'Borrar búsqueda de etiquetas',
   'filters.tagNoResults': 'Sin etiquetas para «{{query}}»',
+  'filters.offers': 'Ofertas',
+  'filters.hasOffers': 'Con oferta ahora',
   'filters.country': 'País',
   'filters.cuisine': 'Cocina',
   'filters.sort': 'Ordenar por',

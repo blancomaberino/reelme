@@ -161,6 +161,8 @@ export const en = {
   'filters.tagSearch': 'Search tags…',
   'filters.tagClear': 'Clear tag search',
   'filters.tagNoResults': 'No tags for “{{query}}”',
+  'filters.offers': 'Offers',
+  'filters.hasOffers': 'Has an offer now',
   'filters.country': 'Country',
   'filters.cuisine': 'Cuisine',
   'filters.sort': 'Sort by',

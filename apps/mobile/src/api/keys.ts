@@ -7,6 +7,8 @@ export type MyPlacesFilters = {
   /** cuisine_primary ("type"), or null for all. */
   type?: string | null;
   tags?: string[];
+  /** Only places running an offer you could redeem right now (T-047). */
+  hasOffers?: boolean;
   sort?: 'recent' | 'popular';
 };
 

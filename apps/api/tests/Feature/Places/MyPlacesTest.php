@@ -1,7 +1,9 @@
 <?php
 
+use App\Enums\OfferStatus;
 use App\Enums\PlaceStatus;
 use App\Models\HiddenPlace;
+use App\Models\Offer;
 use App\Models\Place;
 use App\Models\PlaceList;
 use App\Models\PlaceSource;
@@ -346,4 +348,72 @@ it('rejects a malformed cursor with the validation envelope, not a 500', functio
     $this->getJson('/api/v1/me/places?cursor='.urlencode($bad))
         ->assertStatus(422)
         ->assertJsonPath('error.details.cursor.0', 'The cursor is malformed.');
+});
+
+/*
+ * "Only places with something I could redeem right now" (T-047).
+ *
+ * The gate is the `active()` scope, never the status column: nothing rewrites
+ * that column when a window closes overnight, so a filter built on it would
+ * keep listing a promotion the till has already stopped honouring.
+ */
+it('filters my places down to those running an offer right now', function () {
+    $me = User::factory()->create();
+
+    $withLive = myPlace('Has a live offer');
+    $withDraft = myPlace('Only a draft');
+    $withLapsed = myPlace('Window closed last night');
+    $withNone = myPlace('Nothing running');
+
+    foreach ([$withLive, $withDraft, $withLapsed, $withNone] as $place) {
+        publishedShare($place, sharer: $me);
+    }
+
+    Offer::factory()->active()->create(['place_id' => $withLive->id]);
+    Offer::factory()->create(['place_id' => $withDraft->id, 'status' => OfferStatus::Draft]);
+    // Still `active` in the column — the sweep has not caught up — but over.
+    Offer::factory()->active()->create([
+        'place_id' => $withLapsed->id,
+        'starts_at' => now()->subDays(30),
+        'ends_at' => now()->subDay(),
+    ]);
+
+    Sanctum::actingAs($me);
+    $names = collect($this->getJson('/api/v1/me/places?has_offers=1')->assertOk()->json('data'))
+        ->pluck('name');
+
+    expect($names)->toContain('Has a live offer')
+        ->not->toContain('Only a draft')
+        ->not->toContain('Window closed last night')
+        ->not->toContain('Nothing running');
+});
+
+it('leaves the list alone when the filter is off', function () {
+    $me = User::factory()->create();
+    publishedShare(myPlace('No offers here'), sharer: $me);
+
+    Sanctum::actingAs($me);
+
+    expect(collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))->pluck('name'))
+        ->toContain('No offers here');
+});
+
+/*
+ * The flag rides along unfiltered so the card can badge it — the filter and the
+ * badge must agree, which they only do by construction if one query answers both.
+ */
+it('flags each row with whether it has a live offer', function () {
+    $me = User::factory()->create();
+    $withLive = myPlace('Live');
+    $withNone = myPlace('Quiet');
+    publishedShare($withLive, sharer: $me);
+    publishedShare($withNone, sharer: $me);
+    Offer::factory()->active()->create(['place_id' => $withLive->id]);
+
+    Sanctum::actingAs($me);
+    $rows = collect($this->getJson('/api/v1/me/places')->assertOk()->json('data'))
+        ->keyBy('name');
+
+    expect($rows['Live']['has_active_offer'])->toBeTrue()
+        ->and($rows['Quiet']['has_active_offer'])->toBeFalse();
 });

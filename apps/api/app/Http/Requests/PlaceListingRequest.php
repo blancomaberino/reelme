@@ -42,6 +42,8 @@ class PlaceListingRequest extends FormRequest
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'sort' => ['nullable', Rule::in(['recent', 'popular'])],
+            // "Only places running an offer I could redeem right now" (T-047).
+            'has_offers' => ['nullable', 'boolean'],
             'limit' => ['nullable', 'integer', 'between:1,100'],
             'cursor' => ['nullable', 'string', 'max:1024'],
         ];

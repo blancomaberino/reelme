@@ -12,6 +12,10 @@ async function fetchMyPlacesPage(filters: MyPlacesFilters, cursor: string | null
   if (filters.country) params.country = filters.country;
   if (filters.type) params.type = filters.type;
   if (filters.tags && filters.tags.length > 0) params['tags[]'] = filters.tags;
+  // Sent only when ON: `has_offers=0` and an absent param mean the same thing
+  // to the API, and omitting it keeps the cache key (and the URL) honest about
+  // what was actually asked.
+  if (filters.hasOffers) params.has_offers = 1;
   if (filters.sort) params.sort = filters.sort;
   if (cursor) params.cursor = cursor;
 

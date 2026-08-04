@@ -22,6 +22,10 @@ export interface PlaceSummary {
     saved: boolean;
   };
   source_count: number;
+  /**
+   * Whether the place has an offer redeemable RIGHT NOW (T-047). Present only on listings that selected it (my-places, map pins); absent — not false — elsewhere, since a listing that never looked must not claim there is nothing. Gated on the active() scope, never the status column, which nothing rewrites when a window closes.
+   */
+  has_active_offer?: boolean;
   rating: {
     google: RatingBlock;
   };

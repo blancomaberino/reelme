@@ -5,6 +5,7 @@ namespace App\Models\Builders;
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
 use App\Models\HiddenPlace;
+use App\Models\Offer;
 use App\Models\Place;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -73,6 +74,43 @@ class PlaceQueryBuilder extends Builder
      * `PlaceAggregations::discountCard()` computes for display, so the map/index
      * filter and the shown chips agree. Case-insensitive; a blank token is a no-op.
      */
+    /**
+     * Select `has_active_offer` — whether the place has something redeemable
+     * RIGHT NOW (T-042 badge, T-047 filter).
+     *
+     * One EXISTS subquery for the whole page, never a query per row: the map
+     * draws hundreds of pins at once, so this must not become an N+1.
+     *
+     * Gated on the `active()` scope rather than the status column, because
+     * nothing rewrites that column when a window closes overnight — a badge
+     * built on the column alone promises an offer the till would refuse.
+     */
+    public function withActiveOfferFlag(): self
+    {
+        return $this->withExists(['offers as has_active_offer' => self::onlyActiveOffers(...)]);
+    }
+
+    /** Narrow to places running an offer right now — the same gate as above. */
+    public function havingActiveOffer(): self
+    {
+        return $this->whereHas('offers', self::onlyActiveOffers(...));
+    }
+
+    /**
+     * The single definition of "an offer you could redeem right now", shared by
+     * the badge and the filter so they cannot drift apart.
+     *
+     * A named method rather than an inline closure purely so the relation's
+     * builder can be typed — `Offer::scopeActive()` is invisible to static
+     * analysis through a bare `fn ($q)`.
+     *
+     * @param  Builder<Offer>  $query
+     */
+    private static function onlyActiveOffers(Builder $query): void
+    {
+        $query->active();
+    }
+
     public function withPaymentCard(string $card): self
     {
         $card = mb_strtolower(trim($card));

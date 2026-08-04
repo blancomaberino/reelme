@@ -20,7 +20,7 @@ type Props = {
 
 /** Active facet filters (country + type + tags); sort is always set, so excluded. */
 function facetCount(f: Filters): number {
-  return (f.country ? 1 : 0) + (f.type ? 1 : 0) + (f.tags?.length ?? 0);
+  return (f.country ? 1 : 0) + (f.type ? 1 : 0) + (f.hasOffers ? 1 : 0) + (f.tags?.length ?? 0);
 }
 
 /**
@@ -58,6 +58,10 @@ export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, f
   // Applied facets as removable chips: country → type → tags.
   const chips = useMemo<AppliedChip[]>(() => {
     const out: AppliedChip[] = [];
+    // First: it narrows the list hardest, so it should be the easiest to undo.
+    if (filters.hasOffers) {
+      out.push({ key: 'offers', label: t('filters.hasOffers'), onRemove: () => onChange({ hasOffers: false }) });
+    }
     if (filters.country) out.push({ key: 'country', label: filters.country, onRemove: () => onChange({ country: null }) });
     if (filters.type) out.push({ key: 'type', label: fmt.tag(filters.type), onRemove: () => onChange({ type: null }) });
     for (const slug of activeTags) {
@@ -68,7 +72,7 @@ export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, f
       });
     }
     return out;
-  }, [filters.country, filters.type, activeTags, tags, fmt, onChange]);
+  }, [filters.hasOffers, filters.country, filters.type, activeTags, tags, fmt, t, onChange]);
 
   const toggleTag = (slug: string) =>
     onChange({ tags: activeTags.includes(slug) ? activeTags.filter((s) => s !== slug) : [...activeTags, slug] });
@@ -81,8 +85,19 @@ export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, f
         visible={open}
         onClose={() => setOpen(false)}
         activeCount={facetCount(filters)}
-        onClear={() => onChange({ country: null, type: null, tags: [] })}
+        onClear={() => onChange({ country: null, type: null, tags: [], hasOffers: false })}
       >
+        {/* Above sort, because "somewhere I can save money tonight" is a
+            stronger intent than an ordering preference. */}
+        <FilterGroup label={t('filters.offers')}>
+          <OptionPill
+            label={t('filters.hasOffers')}
+            icon="pricetag-outline"
+            selected={filters.hasOffers === true}
+            onPress={() => onChange({ hasOffers: !filters.hasOffers })}
+          />
+        </FilterGroup>
+
         <FilterGroup label={t('filters.sort')}>
           <OptionPill
             label={t('myPlaces.sort.recent')}
