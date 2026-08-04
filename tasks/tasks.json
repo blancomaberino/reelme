@@ -1165,7 +1165,7 @@
       "id": "T-047",
       "title": "Mobile: offers, redemption display, restaurant QR-verify screens",
       "phase": "M4",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-043"
       ],
@@ -1183,7 +1183,8 @@
         "Restaurant: camera QR scan (expo-camera) or manual code entry → verify → success/failure states",
         "Geolocation permission for geofence check at verify"
       ],
-      "agent": "executor"
+      "agent": "executor",
+      "completed_at": "2026-08-04"
     },
     {
       "id": "T-048",
