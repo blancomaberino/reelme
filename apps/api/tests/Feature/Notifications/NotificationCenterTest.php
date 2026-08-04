@@ -1,11 +1,16 @@
 <?php
 
 use App\Models\Influencer;
+use App\Models\Payout;
+use App\Models\Redemption;
 use App\Models\Share;
 use App\Models\User;
 use App\Notifications\Channels\ExpoChannel;
 use App\Notifications\InfluencerClaimRejected;
 use App\Notifications\NewFollower;
+use App\Notifications\PayoutPaid;
+use App\Notifications\RedemptionConfirmed;
+use App\Notifications\ShareFailed;
 use App\Notifications\SharePublished;
 use App\Notifications\ShareReviewNeeded;
 use Illuminate\Support\Facades\DB;
@@ -211,11 +216,15 @@ describe('POST /notifications/read', function () {
 });
 
 /**
- * Table-driven: every M3 notification type must persist a row the center can
+ * Table-driven: every notification type must persist a row the center can
  * render — `type` for the switch, `url` for the tap, `title`/`body` for the
  * text. A class that writes only routing data lists as a blank line.
+ *
+ * Kept EXHAUSTIVE deliberately. It covered only the four M3 types while M4
+ * added three more, and the gap is exactly where `redemption.verified` shipped
+ * pointing at `/redemptions/{id}` — a path the mobile app has no route for.
  */
-it('persists a renderable database row for every M3 notification type', function () {
+it('persists a renderable database row for every notification type', function () {
     // No faking needed: `toDatabase()` is a pure payload builder, so this
     // asserts the CONTRACT of each class without dispatching anything.
     $owner = User::factory()->create();
@@ -224,8 +233,11 @@ it('persists a renderable database row for every M3 notification type', function
     $cases = [
         'share.published' => new SharePublished($share),
         'share.review_needed' => new ShareReviewNeeded($share),
+        'share.failed' => new ShareFailed($share),
         'social.follow' => new NewFollower(User::factory()->create()),
         'influencer.claim_rejected' => new InfluencerClaimRejected(Influencer::factory()->create()),
+        'redemption.verified' => new RedemptionConfirmed(Redemption::factory()->redeemed()->create()),
+        'wallet.payout' => new PayoutPaid(Payout::factory()->create()),
     ];
 
     foreach ($cases as $expectedType => $notification) {

@@ -2,6 +2,7 @@
 
 use App\Exceptions\ApiExceptionRenderer;
 use App\Http\Middleware\AssignRequestId;
+use App\Http\Middleware\RememberUserLocale;
 use App\Support\Observability\ErrorReporter;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
@@ -25,6 +26,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // First in the API stack: every request (and any job it dispatches, and
         // every log it writes) carries one correlation id (T-092).
         $middleware->prependToGroup('api', AssignRequestId::class);
+
+        // Records the language the client is running in, so a push composed
+        // later in a worker can be written in it. Terminable — it costs the
+        // response nothing.
+        $middleware->appendToGroup('api', RememberUserLocale::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

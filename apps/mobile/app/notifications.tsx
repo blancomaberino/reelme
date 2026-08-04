@@ -9,6 +9,8 @@ import { useMarkRead, useNotifications } from '@/api/hooks/useNotifications';
 import type { NotificationRow } from '@/api/notifications';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
+import { elapsedSince } from '@/lib/format';
+import { notificationCopy } from '@/notifications/copy';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
@@ -22,6 +24,12 @@ import { radius, space, type } from '@/theme/tokens';
  * Rows route through `data.url` — the identical path the push tap handler uses
  * (05 §5.2). One routing contract, no per-type switch, which is what keeps a
  * type M4 adds working here before this screen knows about it.
+ *
+ * Copy is resolved by {@see notificationCopy} from `type` + the params on the
+ * row, NOT read off the row's stored `title`/`body`. Those are written once by
+ * a worker in whatever language the account was set to that day and then frozen;
+ * rendering them meant the list mixed languages and printed the raw machine
+ * string for any row that predated them.
  */
 
 /** Icon per known type; anything else falls back to a neutral bell. */
@@ -97,10 +105,18 @@ export default function NotificationsScreen() {
       item.kind === 'header' ? (
         <Text style={styles.sectionHeader}>{item.label}</Text>
       ) : (
-        <NotificationCard item={item.item} styles={styles} c={c} onPress={onPressRow} />
+        <NotificationCard item={item.item} styles={styles} c={c} t={t} onPress={onPressRow} />
       ),
-    [styles, c, onPressRow],
+    [styles, c, t, onPressRow],
   );
+
+  /*
+   * Two row shapes, so FlashList must be told which is which. Without it the
+   * recycler hands a header's view to a notification card (and back), because
+   * it assumes one homogeneous type — the failure looks like rows rendering at
+   * the wrong height or briefly showing the wrong content while scrolling.
+   */
+  const getItemType = useCallback((row: Row) => row.kind, []);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -137,6 +153,7 @@ export default function NotificationsScreen() {
         <FlashList
           data={rows}
           renderItem={renderItem}
+          getItemType={getItemType}
           keyExtractor={(row) => (row.kind === 'header' ? `h-${row.label}` : row.item.id)}
           contentContainerStyle={styles.list}
           onEndReached={onEndReached}
@@ -161,19 +178,30 @@ function NotificationCard({
   item,
   styles,
   c,
+  t,
   onPress,
 }: {
   item: NotificationRow;
   styles: Styles;
   c: Palette;
+  t: ReturnType<typeof useT>;
   onPress: (item: NotificationRow) => void;
 }) {
   const unread = item.read_at === null;
+  // Resolved in the CURRENT language from `type` + params — an unknown type from
+  // a newer server still renders, falling back to the copy that server sent.
+  const { title, body } = notificationCopy(t, item);
+  const elapsed = elapsedSince(item.created_at);
+  const when = elapsed
+    ? elapsed.unit === 'now'
+      ? t('time.now')
+      : t(`time.${elapsed.unit}`, { count: elapsed.value })
+    : null;
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={item.title ?? item.type}
+      accessibilityLabel={body ? `${title}. ${body}` : title}
       accessibilityState={{ selected: unread }}
       onPress={() => onPress(item)}
       style={({ pressed }) => [styles.row, unread && styles.rowUnread, pressed && styles.pressed]}
@@ -181,17 +209,18 @@ function NotificationCard({
     >
       <Ionicons name={ICONS[item.type] ?? 'notifications'} size={22} color={tintFor(c, item.type)} />
       <View style={styles.rowBody}>
-        {/* An unknown type from a newer server still renders: title and body
-            are the payload, the type only picks an icon. */}
         <Text style={styles.rowTitle} numberOfLines={1}>
-          {item.title ?? item.type}
+          {title}
         </Text>
-        {item.body ? (
+        {body ? (
           <Text style={styles.rowText} numberOfLines={2}>
-            {item.body}
+            {body}
           </Text>
         ) : null}
       </View>
+      {/* "3d" answers the question every notification list gets asked — is this
+          new, or have I already dealt with it? The unread dot alone doesn't. */}
+      {when ? <Text style={styles.rowWhen}>{when}</Text> : null}
       {unread ? <View style={styles.dot} testID="unread-dot" /> : null}
     </Pressable>
   );
@@ -203,7 +232,9 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
     loading: { paddingVertical: space.xl },
-    list: { paddingHorizontal: space.md, paddingBottom: space.lg },
+    // xxl, matching the offers list: `edges` covers only the top, so the last
+    // row needs room to clear the home indicator instead of ending under it.
+    list: { paddingHorizontal: space.md, paddingBottom: space.xxl },
     markAll: { ...type.bodySm, color: c.primary, fontWeight: '700' },
     sectionHeader: {
       ...type.caption,
@@ -226,6 +257,7 @@ const makeStyles = (c: Palette) =>
     rowBody: { flex: 1, gap: space.xxs },
     rowTitle: { ...type.bodyLg, color: c.text },
     rowText: { ...type.bodySm, color: c.muted },
+    rowWhen: { ...type.caption, color: c.muted },
     dot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: c.primary },
     footer: { paddingVertical: space.md },
     empty: { alignItems: 'center', gap: space.xs, paddingTop: space.xxl, paddingHorizontal: space.xl },

@@ -480,6 +480,36 @@ export const en = {
   'notifications.markAll': 'Mark all read',
   'notifications.empty': 'Nothing yet. Share a post and we’ll tell you when it lands.',
   'notifications.error': 'Couldn’t load your notifications',
+
+  // Per-notification copy, keyed by the server's `data.type`. See the Spanish
+  // file for why the center renders these instead of the strings on the row.
+  // Mirrors apps/api/lang/en/notifications.php, which writes the push.
+  'notif.share.published.title': 'Place added!',
+  'notif.share.published.body': '{{place}} is on your map now.',
+  'notif.share.published.bodyFallback': 'Your place is on the map now.',
+  'notif.share.reviewNeeded.title': 'Check your place',
+  'notif.share.reviewNeeded.body': 'Confirm a few details to finish adding it.',
+  'notif.share.failed.title': 'We couldn’t process your link',
+  'notif.share.failed.body': 'Tap to see what happened and try again.',
+  'notif.social.follow.title': 'New follower',
+  'notif.social.follow.body': '@{{username}} started following you.',
+  'notif.influencer.claimRejected.title': 'Claim not approved',
+  'notif.influencer.claimRejected.body': 'Your claim on @{{handle}} was not approved.',
+  'notif.redemption.verified.title': 'Offer redeemed',
+  'notif.redemption.verified.body': 'Your offer was redeemed at {{place}}. Enjoy!',
+  'notif.redemption.verified.bodyFallback': 'Your offer was redeemed. Enjoy!',
+  'notif.wallet.payout.title': 'Payout sent',
+  'notif.wallet.payout.body': 'We sent you {{amount}}. It lands in your account in a few business days.',
+  'notif.unknown.title': 'Update',
+
+  // Compact elapsed-time suffixes for list rows.
+  'time.now': 'Just now',
+  'time.minute': '{{count}}m',
+  'time.hour': '{{count}}h',
+  'time.day': '{{count}}d',
+  'time.week': '{{count}}w',
+  'time.month': '{{count}}mo',
+  'time.year': '{{count}}y',
   'settings.security': 'Security',
   'settings.twoFactor': 'Two-step verification',
   'settings.twoFactorOn': 'On',

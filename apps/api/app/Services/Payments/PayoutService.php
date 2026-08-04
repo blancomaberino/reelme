@@ -7,6 +7,7 @@ use App\Enums\PayoutStatus;
 use App\Exceptions\PayoutFailed;
 use App\Models\Payout;
 use App\Models\User;
+use App\Notifications\PayoutPaid;
 use App\Services\Ledger\LedgerLine;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -245,5 +246,11 @@ class PayoutService
         }
 
         $payout->forceFill(['status' => PayoutStatus::Paid, 'paid_at' => now()])->save();
+
+        // After the save, and only on the real pending/processing → paid
+        // transition (both early returns above have already left): the two
+        // guards make this exactly-once per payout, so a webhook Stripe
+        // redelivers cannot notify the same user twice about one transfer.
+        $payout->user?->notify(new PayoutPaid($payout));
     }
 }

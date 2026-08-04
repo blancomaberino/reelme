@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import NotificationsScreen from '../notifications';
 import { api } from '@/api/client';
 import type { NotificationRow } from '@/api/notifications';
+import { useSettingsStore } from '@/stores/settings';
 
 import { mockRouter } from '../../jest.setup';
 
@@ -58,13 +59,31 @@ afterEach(() => {
   qc.clear();
 });
 
-it('renders a notification with its title and body', async () => {
-  mock.onGet('/notifications').reply(200, page([row()]));
+it('renders a notification from its type and params, not the stored strings', async () => {
+  // The server's own `title`/`body` are deliberately nonsense here: the row is
+  // rendered from `type` + `data`, so the screen must ignore them entirely for
+  // a type it knows. That is what lets a row written in Spanish months ago read
+  // in English once the user flips the language toggle.
+  mock.onGet('/notifications').reply(
+    200,
+    page([row({ title: 'STALE', body: 'STALE', data: { place_name: 'Bar Tinta' } })]),
+  );
 
   render(<NotificationsScreen />, { wrapper: Providers });
 
-  expect(await screen.findByText('Published')).toBeTruthy();
-  expect(screen.getByText('Bar Tinta is on your map.')).toBeTruthy();
+  expect(await screen.findByText('Place added!')).toBeTruthy();
+  expect(screen.getByText('Bar Tinta is on your map now.')).toBeTruthy();
+  expect(screen.queryByText('STALE')).toBeNull();
+});
+
+it('follows the language toggle', async () => {
+  mock.onGet('/notifications').reply(200, page([row({ data: { place_name: 'Bar Tinta' } })]));
+  useSettingsStore.setState({ locale: 'es' });
+
+  render(<NotificationsScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('¡Lugar añadido!')).toBeTruthy();
+  expect(screen.getByText('Bar Tinta ya está en tu mapa.')).toBeTruthy();
 });
 
 it('separates unread from already-seen', async () => {
@@ -181,12 +200,36 @@ it('renders an unknown type generically instead of dropping it', async () => {
   expect(screen.getByText('Happened.')).toBeTruthy();
 });
 
-it('falls back to the type string when a row has no title', async () => {
-  mock.onGet('/notifications').reply(200, page([row({ title: null, body: null })]));
+/**
+ * The bug this screen actually shipped with.
+ *
+ * Rows written before the server stored `title`/`body` at all carry only
+ * `{type, url, share_id}`, and the fallback was `item.type` — so twenty legacy
+ * rows rendered as a column reading "share.published", with no body, inside an
+ * otherwise Spanish app. A machine string is never a sentence.
+ */
+it('renders legacy rows that carry no copy at all', async () => {
+  mock.onGet('/notifications').reply(200, page([row({ title: null, body: null, data: {} })]));
 
   render(<NotificationsScreen />, { wrapper: Providers });
 
-  expect(await screen.findByText('share.published')).toBeTruthy();
+  // The type still resolves the copy; the missing `place_name` only picks the
+  // un-named variant of the body.
+  expect(await screen.findByText('Place added!')).toBeTruthy();
+  expect(screen.getByText('Your place is on the map now.')).toBeTruthy();
+  expect(screen.queryByText('share.published')).toBeNull();
+});
+
+it('never shows a raw machine string, even for an unknown type with no copy', async () => {
+  mock.onGet('/notifications').reply(
+    200,
+    page([row({ type: 'something.invented.later', title: null, body: null, data: {} })]),
+  );
+
+  render(<NotificationsScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Update')).toBeTruthy();
+  expect(screen.queryByText('something.invented.later')).toBeNull();
 });
 
 it('shows an empty state rather than a blank screen', async () => {

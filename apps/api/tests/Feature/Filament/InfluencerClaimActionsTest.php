@@ -26,9 +26,13 @@ it('lets an admin reject a pending claim and notifies the claimant', function ()
     Notification::assertSentTo($claimant, InfluencerClaimRejected::class, function (InfluencerClaimRejected $n) use ($claim) {
         $payload = $n->toDatabase($claim->user);
 
+        // `/influencer/` SINGULAR — the Expo Router segment is
+        // `app/influencer/[id]/index.tsx`. This asserted the plural for as long
+        // as the notification emitted it, which is how a deep-link that always
+        // landed on the unmatched-route screen stayed green.
         return $payload['type'] === 'influencer.claim_rejected'
             && $payload['influencer_handle'] === $claim->influencer->handle
-            && $payload['url'] === '/influencers/'.$claim->influencer_id;
+            && $payload['url'] === '/influencer/'.$claim->influencer_id;
     });
 });
 

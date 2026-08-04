@@ -25,17 +25,26 @@ class SharePublished extends ShareNotification
             : '/shares/'.$this->share->id.'/status';
     }
 
-    protected function title(): string
+    /**
+     * @return array<string, mixed>
+     */
+    protected function params(): array
     {
-        return '¡Lugar añadido!';
+        return ['place_name' => $this->placeName()];
     }
 
+    /**
+     * Names the place when we have one. The fallback is a SEPARATE string, not
+     * the same one with an empty placeholder — "ya está en tu mapa." reads like
+     * a truncated sentence, and Spanish and English drop the subject
+     * differently, so it has to be translatable as a whole phrase.
+     */
     protected function body(): string
     {
         $name = $this->placeName();
 
         return $name !== null
-            ? $name.' ya está en tu mapa.'
-            : 'Tu lugar ya está en el mapa.';
+            ? (string) __('notifications.share.published.body', ['place' => $name])
+            : (string) __('notifications.share.published.body_fallback');
     }
 }
