@@ -87,12 +87,22 @@ class PayoutPaid extends Notification implements ShouldQueue
     /**
      * Money for the PUSH only, where there is no client to format it.
      *
-     * Minor units → major with two decimals. Deliberately not `Number::currency`
-     * / `intl`: the container's ICU data is not pinned, and a push that renders
-     * "EUR 12.00" on one host and "€12,00" on another is a support ticket.
+     * Mirrors the mobile `formatMoney()` exactly — same symbol table, same
+     * `symbol + two decimals` shape. It has to: the banner and the notification
+     * center row describe one payout, and "EUR 60,00" on the lock screen above
+     * "€60.00" in the list reads like two different amounts.
+     *
+     * Deliberately not `Number::currency` / `intl`: the container's ICU data is
+     * not pinned, so the same payout would render differently per host.
      */
     private function formatAmount(): string
     {
-        return mb_strtoupper($this->payout->currency).' '.number_format($this->payout->amount / 100, 2, ',', '.');
+        $symbol = match (mb_strtoupper($this->payout->currency)) {
+            'EUR' => '€',
+            'GBP' => '£',
+            default => '$',
+        };
+
+        return $symbol.number_format($this->payout->amount / 100, 2, '.', '');
     }
 }

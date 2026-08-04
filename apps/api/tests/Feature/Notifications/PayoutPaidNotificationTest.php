@@ -85,5 +85,7 @@ it('carries a wallet deep-link and machine-readable money', function () {
         // setting instead of re-parsing a formatted string.
         ->and($payload['amount_minor'])->toBe(4500)
         ->and($payload['currency'])->toBe('EUR')
-        ->and($payload['body'])->toContain('45,00');
+        // Byte-for-byte what the mobile `formatMoney()` produces, so the push
+        // banner and the center row show one amount, not two spellings of it.
+        ->and($payload['body'])->toContain('€45.00');
 });

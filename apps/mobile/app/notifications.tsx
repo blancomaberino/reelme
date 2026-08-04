@@ -192,11 +192,10 @@ function NotificationCard({
   // a newer server still renders, falling back to the copy that server sent.
   const { title, body } = notificationCopy(t, item);
   const elapsed = elapsedSince(item.created_at);
-  const when = elapsed
-    ? elapsed.unit === 'now'
-      ? t('time.now')
-      : t(`time.${elapsed.unit}`, { count: elapsed.value })
-    : null;
+  // `now` needs no count, but passing one is harmless — `time.now` has no
+  // placeholder to fill — so the unit maps straight to its key with no special
+  // case.
+  const when = elapsed ? t(`time.${elapsed.unit}`, { count: elapsed.value }) : null;
 
   return (
     <Pressable

@@ -150,6 +150,45 @@ it('stores the interpolation params the center needs to re-render each type', fu
 });
 
 /**
+ * The push and the center row must say the SAME thing.
+ *
+ * Every class builds both from one payload, and every docblock claims the two
+ * "cannot drift" — but only `SharePublished`'s push payload was ever asserted,
+ * so for the other five that claim rested on nobody having edited one method
+ * without the other. A banner reading one thing and the row underneath it
+ * reading another is the exact failure this is here to catch.
+ */
+it('sends the same copy and routing on the push as it stores for the center', function () {
+    $user = userSpeaking('es');
+
+    $notifications = [
+        new SharePublished(Share::factory()->create()),
+        new ShareReviewNeeded(Share::factory()->create()),
+        new ShareFailed(Share::factory()->create()),
+        new NewFollower(User::factory()->create(['username' => 'ana'])),
+        new InfluencerClaimRejected(Influencer::factory()->create()),
+        new RedemptionConfirmed(Redemption::factory()->redeemed()->create()),
+        new PayoutPaid(Payout::factory()->create()),
+    ];
+
+    foreach ($notifications as $notification) {
+        withLocaleOf($user, function () use ($user, $notification) {
+            $row = $notification->toDatabase($user);
+            $push = $notification->toExpo($user);
+
+            expect($push['title'])->toBe($row['title'])
+                ->and($push['body'])->toBe($row['body'])
+                // `data.{type,url}` IS the routing contract — the tap handler
+                // passes `url` straight to the router, exactly as the row does.
+                ->and($push['data']['type'])->toBe($row['type'])
+                ->and($push['data']['url'])->toBe($row['url'])
+                ->and($push['sound'])->toBe('default')
+                ->and($push['channelId'])->toBe('default');
+        });
+    }
+});
+
+/**
  * The deep-link half of the contract.
  *
  * `url` is handed straight to the mobile router by BOTH the center row and the

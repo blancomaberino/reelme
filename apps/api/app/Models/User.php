@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ClaimStatus;
+use App\Support\RequestLocale;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
@@ -47,9 +48,14 @@ use Laravel\Scout\Searchable;
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable implements FilamentUser, HasLocalePreference, MustVerifyEmailContract
 {
-    /** The languages the app ships; anything else falls back to {@see DEFAULT_LOCALE}. */
-    public const SUPPORTED_LOCALES = ['es', 'en'];
-
+    /**
+     * The language used when the stored one isn't one the app ships.
+     *
+     * The shipped SET is {@see RequestLocale::SUPPORTED}, deliberately not
+     * redeclared here: that constant already gates what gets WRITTEN to the
+     * column, and a second copy would let the write allowlist and the read
+     * guard drift apart — the exact pair that must agree.
+     */
     public const DEFAULT_LOCALE = 'es';
 
     /** @use HasFactory<UserFactory> */
@@ -85,7 +91,7 @@ class User extends Authenticatable implements FilamentUser, HasLocalePreference,
      */
     public function preferredLocale(): string
     {
-        return in_array($this->locale, self::SUPPORTED_LOCALES, true)
+        return in_array($this->locale, RequestLocale::SUPPORTED, true)
             ? $this->locale
             : self::DEFAULT_LOCALE;
     }
