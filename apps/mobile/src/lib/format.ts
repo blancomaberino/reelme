@@ -54,7 +54,10 @@ export function elapsedSince(iso: string | null | undefined, now: Date = new Dat
   if (weeks < 5) return { unit: 'week', value: weeks };
   const months = Math.floor(days / 30);
   if (months < 12) return { unit: 'month', value: months };
-  return { unit: 'year', value: Math.floor(days / 365) };
+  // Years come from the SAME 30-day month the line above uses, not from 365.
+  // Mixing the two leaves a five-day hole: 360–364 days is already 12 months,
+  // so it falls through here, and `days / 365` truncates it to "0 y".
+  return { unit: 'year', value: Math.floor(months / 12) };
 }
 
 /** English suffix per unit — the shape {@see relativeTime} has always emitted. */

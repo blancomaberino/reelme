@@ -48,6 +48,27 @@ it('notifies once even when Stripe redelivers the webhook', function () {
     Notification::assertSentToTimes($user, PayoutPaid::class, 1);
 });
 
+it('notifies once when two workers both see the payout in flight', function () {
+    Notification::fake();
+
+    $user = User::factory()->create();
+    $payout = Payout::factory()->processing()->create(['user_id' => $user->id]);
+
+    // The real race, which the sequential replay above does NOT reproduce: two
+    // webhook workers each hold their own model, both loaded while the row was
+    // still `processing`, so both pass the in-memory guards. Only the one whose
+    // conditional UPDATE actually changes a row may notify.
+    $first = Payout::query()->findOrFail($payout->id);
+    $second = Payout::query()->findOrFail($payout->id);
+
+    $service = app(PayoutService::class);
+    $service->markPaid($first);
+    $service->markPaid($second);
+
+    Notification::assertSentToTimes($user, PayoutPaid::class, 1);
+    expect($payout->fresh()->status)->toBe(PayoutStatus::Paid);
+});
+
 it('stays silent for a paid event that arrives after a failure', function () {
     Notification::fake();
     Log::spy();

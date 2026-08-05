@@ -505,7 +505,13 @@ export const es: Record<MessageKey, string> = {
   'time.hour': '{{count}} h',
   'time.day': '{{count}} d',
   'time.week': '{{count}} sem',
-  'time.month': '{{count}} mes',
+  // The only unit here that is a WORD rather than an abbreviation, so the only
+  // one that inflects: "3 mes" is wrong, "3 meses" is not. `translate()` picks
+  // the `_one`/`_other` variant whenever a `count` param is present; the base
+  // key stays because it is what the call site names.
+  'time.month': '{{count}} meses',
+  'time.month_one': '{{count}} mes',
+  'time.month_other': '{{count}} meses',
   'time.year': '{{count}} a',
   'settings.security': 'Seguridad',
   'settings.twoFactor': 'Verificación en dos pasos',

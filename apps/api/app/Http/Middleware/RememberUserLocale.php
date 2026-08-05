@@ -47,13 +47,29 @@ class RememberUserLocale
         // English on the first call from anything that omits the header.
         $locale = RequestLocale::explicit($request);
 
-        if ($locale === null || $user->locale === $locale) {
+        if ($locale === null) {
             return;
         }
 
-        // `update` on a fresh query, not `$user->save()`: the in-memory model
-        // may be mid-request-lifecycle with other dirty attributes, and this
-        // must persist exactly one column and nothing else.
-        User::query()->whereKey($user->getKey())->update(['locale' => $locale]);
+        /*
+         * The "only write on change" test lives in the WHERE, not in PHP.
+         *
+         * Reading `$user->locale` to decide would compare against a value
+         * loaded at the start of the request: two requests from two devices in
+         * different languages can both load `es`, the `en` one writes, and the
+         * `es` one then skips on its stale copy — leaving the account in the
+         * language of the request that finished FIRST. Conditioning the
+         * statement keeps the write cheap (no row matches when nothing changed)
+         * while letting the later request win, which is the one the user acted
+         * on most recently.
+         *
+         * `update` on a fresh query, not `$user->save()`: the in-memory model
+         * may be mid-request-lifecycle with other dirty attributes, and this
+         * must persist exactly one column and nothing else.
+         */
+        User::query()
+            ->whereKey($user->getKey())
+            ->where('locale', '!=', $locale)
+            ->update(['locale' => $locale]);
     }
 }

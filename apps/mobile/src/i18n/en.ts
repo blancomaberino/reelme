@@ -509,7 +509,12 @@ export const en = {
   'time.hour': '{{count}}h',
   'time.day': '{{count}}d',
   'time.week': '{{count}}w',
+  // "mo" does not inflect, but the variants have to exist here too: `MessageKey`
+  // is `keyof typeof en`, so a key Spanish needs and English lacks does not
+  // typecheck.
   'time.month': '{{count}}mo',
+  'time.month_one': '{{count}}mo',
+  'time.month_other': '{{count}}mo',
   'time.year': '{{count}}y',
   'settings.security': 'Security',
   'settings.twoFactor': 'Two-step verification',
