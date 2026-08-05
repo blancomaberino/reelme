@@ -80,8 +80,41 @@ export default function NotificationsScreen() {
    * sections re-settle on a pull-to-refresh, which is the one moment the user
    * has asked for the list to be rebuilt and expects it to move.
    */
-  const settled = useRef(new Set<string>());
-  const wasUnread = useRef(new Set<string>());
+  const [frozen, setFrozen] = useState<Record<string, boolean>>({});
+  const [lastItems, setLastItems] = useState(items);
+
+  /*
+   * React's "adjust state while rendering" pattern, not an effect: the classify
+   * step has to run BEFORE the rows are built, and doing it in an effect would
+   * render one frame of wrong sections and then re-render — which is the jump
+   * this whole mechanism exists to remove.
+   */
+  if (items !== lastItems) {
+    setLastItems(items);
+    setFrozen((prev) => {
+      let next: Record<string, boolean> | null = null;
+      for (const item of items) {
+        if (item.id in prev) continue;
+        next ??= { ...prev };
+        next[item.id] = item.read_at === null;
+      }
+
+      // Returning `prev` unchanged when nothing is new is what keeps this from
+      // looping — React bails out of a re-render when the state is identical.
+      return next ?? prev;
+    });
+  }
+
+  /**
+   * An id not yet in the map is being rendered for the very first time, and on
+   * that frame its live `read_at` IS the value about to be frozen — so the
+   * fallback is not an approximation, and there is no flicker before the effect
+   * catches up.
+   */
+  const startedUnread = useCallback(
+    (item: NotificationRow) => frozen[item.id] ?? item.read_at === null,
+    [frozen],
+  );
 
   /**
    * Two sections — "New" and "Earlier" — flattened into one list rather than a
@@ -89,16 +122,8 @@ export default function NotificationsScreen() {
    * cheap and a section header is just another row type.
    */
   const rows = useMemo<Row[]>(() => {
-    // Classify each row once, on first sight — including rows that arrive later
-    // from a next-page fetch.
-    for (const item of items) {
-      if (settled.current.has(item.id)) continue;
-      settled.current.add(item.id);
-      if (item.read_at === null) wasUnread.current.add(item.id);
-    }
-
-    const newOnes = items.filter((i) => wasUnread.current.has(i.id));
-    const earlier = items.filter((i) => !wasUnread.current.has(i.id));
+    const newOnes = items.filter(startedUnread);
+    const earlier = items.filter((i) => !startedUnread(i));
     const out: Row[] = [];
     if (newOnes.length > 0) {
       out.push({ kind: 'header', label: t('notifications.new') });
@@ -109,7 +134,7 @@ export default function NotificationsScreen() {
       out.push(...earlier.map((item) => ({ kind: 'row' as const, item })));
     }
     return out;
-  }, [items, t]);
+  }, [items, startedUnread, t]);
 
   const onPressRow = useCallback(
     (item: NotificationRow) => {
@@ -140,8 +165,7 @@ export default function NotificationsScreen() {
    * into "Earlier" is the expected result rather than a jump they didn't cause.
    */
   const onRefresh = useCallback(() => {
-    settled.current.clear();
-    wasUnread.current.clear();
+    setFrozen({});
     void refetch();
   }, [refetch]);
 
@@ -268,14 +292,14 @@ function NotificationCard({
    * the page and the dot fades with them, leaving the text exactly where it
    * was. Nothing below it moves.
    */
-  const progress = useRef(new Animated.Value(unread ? 0 : 1)).current;
-  // Kept mounted across the fade so the dot can fade out rather than vanish.
-  const [showDot, setShowDot] = useState(unread);
+  // `useState`, not `useRef`: an Animated.Value is read during render to build
+  // the interpolations below, and a ref read at render time is exactly what the
+  // lint rule (rightly) forbids. The lazy initialiser still constructs it once.
+  const [progress] = useState(() => new Animated.Value(unread ? 0 : 1));
 
   useEffect(() => {
     if (unread) {
       progress.setValue(0);
-      setShowDot(true);
 
       return;
     }
@@ -285,7 +309,6 @@ function NotificationCard({
     // of motion the setting exists to prevent.
     if (reduceMotion !== false) {
       progress.setValue(1);
-      setShowDot(false);
 
       return;
     }
@@ -296,9 +319,7 @@ function NotificationCard({
       // Colours cannot be driven natively.
       useNativeDriver: false,
     });
-    animation.start(({ finished }) => {
-      if (finished) setShowDot(false);
-    });
+    animation.start();
 
     return () => animation.stop();
   }, [unread, reduceMotion, progress]);
@@ -394,25 +415,27 @@ function NotificationCard({
           invisible to a screen reader and undiscoverable to most people, so it
           can be the shortcut but never the only way in.
 
-          It stays mounted for the length of the fade so it can fade WITH the
-          card, but stops being a button the instant the row is read — an
-          invisible control that still answers taps is worse than no control.
+          Once the row is read the button is gone — an invisible control that
+          still answers taps is worse than no control — and a non-interactive
+          ghost takes its place purely to finish the fade, so the dot dissolves
+          with the card instead of blinking out from under it.
         */}
-        {showDot ? (
+        {unread ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={markLabel}
             onPress={markRead}
-            disabled={!unread}
-            accessibilityElementsHidden={!unread}
-            importantForAccessibility={unread ? 'yes' : 'no-hide-descendants'}
             hitSlop={12}
             style={styles.dotHit}
             testID={`mark-read-${item.id}`}
           >
-            <Animated.View style={[styles.dot, { opacity: chrome.dot }]} testID="unread-dot" />
+            <View style={styles.dot} testID="unread-dot" />
           </Pressable>
-        ) : null}
+        ) : (
+          <View style={styles.dotHit} pointerEvents="none">
+            <Animated.View style={[styles.dot, { opacity: chrome.dot }]} />
+          </View>
+        )}
       </Pressable>
     </Animated.View>
   );
