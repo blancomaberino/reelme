@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { Stack, router } from 'expo-router';
-import { useCallback, useMemo } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef } from 'react';
+import { ActivityIndicator, Animated, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { RectButton, Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useMarkRead, useNotifications } from '@/api/hooks/useNotifications';
@@ -96,6 +97,14 @@ export default function NotificationsScreen() {
     [markRead],
   );
 
+  /** Clear one row's unread state without opening it. */
+  const onMarkRead = useCallback(
+    (item: NotificationRow) => {
+      markRead.mutate({ ids: [item.id] });
+    },
+    [markRead],
+  );
+
   const onEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
@@ -105,18 +114,34 @@ export default function NotificationsScreen() {
       item.kind === 'header' ? (
         <Text style={styles.sectionHeader}>{item.label}</Text>
       ) : (
-        <NotificationCard item={item.item} styles={styles} c={c} t={t} onPress={onPressRow} />
+        <NotificationCard
+          item={item.item}
+          styles={styles}
+          c={c}
+          t={t}
+          onPress={onPressRow}
+          onMarkRead={onMarkRead}
+        />
       ),
-    [styles, c, t, onPressRow],
+    [styles, c, t, onPressRow, onMarkRead],
   );
 
   /*
-   * Two row shapes, so FlashList must be told which is which. Without it the
-   * recycler hands a header's view to a notification card (and back), because
-   * it assumes one homogeneous type — the failure looks like rows rendering at
-   * the wrong height or briefly showing the wrong content while scrolling.
+   * THREE row shapes, and the recycler has to know all three apart: a section
+   * header, an unread row (wrapped in a `Swipeable`), and a read row (a bare
+   * `Pressable`). Anything the recycler considers one type it will hand another
+   * item's view to.
+   *
+   * Splitting unread from read is not cosmetic: an unread row is a `Swipeable`
+   * wrapping a `Pressable`, a read row is the `Pressable` alone. Handing the
+   * recycler one where it expects the other makes it reconcile two different
+   * trees in a reused cell — and marking a row read flips it from one shape to
+   * the other, so this happens on the most ordinary interaction the screen has.
    */
-  const getItemType = useCallback((row: Row) => row.kind, []);
+  const getItemType = useCallback(
+    (row: Row) => (row.kind === 'header' ? 'header' : row.item.read_at === null ? 'row-unread' : 'row-read'),
+    [],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -154,6 +179,9 @@ export default function NotificationsScreen() {
           data={rows}
           renderItem={renderItem}
           getItemType={getItemType}
+          // 12pt, the same separator the my-places list uses — unread rows are
+          // cards, and without a gap they fused into one continuous slab.
+          ItemSeparatorComponent={Separator}
           keyExtractor={(row) => (row.kind === 'header' ? `h-${row.label}` : row.item.id)}
           contentContainerStyle={styles.list}
           onEndReached={onEndReached}
@@ -174,20 +202,65 @@ export default function NotificationsScreen() {
   );
 }
 
+/** The gap between rows. A component because FlashList wants an element type. */
+function Separator() {
+  return <View style={separatorStyle} />;
+}
+const separatorStyle = { height: space.sm } as const;
+
 function NotificationCard({
   item,
   styles,
   c,
   t,
   onPress,
+  onMarkRead,
 }: {
   item: NotificationRow;
   styles: Styles;
   c: Palette;
   t: ReturnType<typeof useT>;
   onPress: (item: NotificationRow) => void;
+  onMarkRead: (item: NotificationRow) => void;
 }) {
   const unread = item.read_at === null;
+  const swipeRef = useRef<Swipeable>(null);
+  const markLabel = t('notifications.markRead');
+
+  const markRead = () => {
+    swipeRef.current?.close();
+    onMarkRead(item);
+  };
+
+  /**
+   * Left-swipe reveals "mark read", mirroring the my-places card (T-071) —
+   * same `Swipeable` mechanics, same friction and threshold — but in `primary`
+   * rather than `danger`, because clearing a badge is not a destructive act and
+   * should not borrow the colour that means "this deletes something".
+   */
+  const renderRightActions = (
+    _progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>,
+  ) => {
+    // Same interpolation ranges as the my-places card, so the two swipes feel
+    // identical under the thumb rather than merely looking alike.
+    const scale = dragX.interpolate({ inputRange: [-96, -24, 0], outputRange: [1, 0.86, 0.4], extrapolate: 'clamp' });
+    const opacity = dragX.interpolate({ inputRange: [-72, -24, 0], outputRange: [1, 0.5, 0], extrapolate: 'clamp' });
+
+    return (
+      <RectButton
+        accessibilityLabel={markLabel}
+        onPress={markRead}
+        style={styles.swipeAction}
+        testID={`mark-read-swipe-${item.id}`}
+      >
+        <Animated.View style={[styles.swipeInner, { opacity, transform: [{ scale }] }]}>
+          <Ionicons name="mail-open-outline" size={22} color={c.onPrimary} />
+          <Text style={styles.swipeText}>{markLabel}</Text>
+        </Animated.View>
+      </RectButton>
+    );
+  };
   // Resolved in the CURRENT language from `type` + params — an unknown type from
   // a newer server still renders, falling back to the copy that server sent.
   const { title, body } = notificationCopy(t, item);
@@ -197,7 +270,7 @@ function NotificationCard({
   // case.
   const when = elapsed ? t(`time.${elapsed.unit}`, { count: elapsed.value }) : null;
 
-  return (
+  const card = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={body ? `${title}. ${body}` : title}
@@ -220,8 +293,50 @@ function NotificationCard({
       {/* "3d" answers the question every notification list gets asked — is this
           new, or have I already dealt with it? The unread dot alone doesn't. */}
       {when ? <Text style={styles.rowWhen}>{when}</Text> : null}
-      {unread ? <View style={styles.dot} testID="unread-dot" /> : null}
+      {/*
+        The dot is both the unread indicator and the button that clears it —
+        tapping the thing that means "unread" to make it not-unread needs no
+        explaining. It is also the accessible route to the action: a swipe is
+        invisible to a screen reader and undiscoverable to most people, so it
+        can be the shortcut but never the only way in.
+      */}
+      {unread ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={markLabel}
+          onPress={markRead}
+          hitSlop={12}
+          style={styles.dotHit}
+          testID={`mark-read-${item.id}`}
+        >
+          <View style={styles.dot} testID="unread-dot" />
+        </Pressable>
+      ) : null}
     </Pressable>
+  );
+
+  // A read row has nothing to mark, so it gets no swipe — an action that
+  // silently does nothing is worse than no action.
+  if (!unread) return card;
+
+  return (
+    <Swipeable
+      /*
+       * Keyed by the row id so a recycled cell gets a FRESH Swipeable rather
+       * than one carrying another notification's gesture state. `Swipeable`
+       * keeps open/closed position internally, and FlashList reuses cells as
+       * you scroll — without this, a row can inherit a half-open offset from
+       * whichever item last used that cell.
+       */
+      key={item.id}
+      ref={swipeRef}
+      friction={2}
+      rightThreshold={44}
+      overshootRight={false}
+      renderRightActions={renderRightActions}
+    >
+      {card}
+    </Swipeable>
   );
 }
 
@@ -240,8 +355,9 @@ const makeStyles = (c: Palette) =>
       color: c.muted,
       textTransform: 'uppercase',
       letterSpacing: 0.4,
-      paddingTop: space.md,
-      paddingBottom: space.xs,
+      // No bottom padding: the 12pt separator already sits between the header
+      // and its first row, so adding both stacked 20pt in there.
+      paddingTop: space.sm,
     },
     row: {
       flexDirection: 'row',
@@ -251,13 +367,32 @@ const makeStyles = (c: Palette) =>
       paddingHorizontal: space.sm,
       borderRadius: radius.md,
     },
-    rowUnread: { backgroundColor: c.surface },
+    // The hairline is what makes a separated row read as a CARD rather than as
+    // a floating patch of white — the same treatment the my-places card uses.
+    rowUnread: {
+      backgroundColor: c.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
+    },
     pressed: { opacity: 0.6 },
     rowBody: { flex: 1, gap: space.xxs },
     rowTitle: { ...type.bodyLg, color: c.text },
     rowText: { ...type.bodySm, color: c.muted },
     rowWhen: { ...type.caption, color: c.muted },
+    // The visual dot stays 8pt; the padding around it is what makes the tap
+    // target reachable without the indicator growing into a blob.
+    dotHit: { padding: space.xs },
     dot: { width: 8, height: 8, borderRadius: radius.pill, backgroundColor: c.primary },
+    swipeAction: {
+      width: 108,
+      marginLeft: space.xs,
+      borderRadius: radius.md,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    swipeInner: { alignItems: 'center', gap: space.xxs, paddingHorizontal: space.xs },
+    swipeText: { ...type.caption, color: c.onPrimary, fontWeight: '700', textAlign: 'center' },
     footer: { paddingVertical: space.md },
     empty: { alignItems: 'center', gap: space.xs, paddingTop: space.xxl, paddingHorizontal: space.xl },
     emptyText: { ...type.body, color: c.muted, textAlign: 'center' },

@@ -110,6 +110,61 @@ it('deep-links through data.url — the same contract as a push tap', async () =
   expect(mockRouter.push).toHaveBeenCalledWith('/shares/12/review');
 });
 
+describe('per-row mark as read', () => {
+  it('clears the row without opening it', async () => {
+    // The distinction that matters: opening a notification marks it read as a
+    // side effect, but the dot must be able to clear it WITHOUT navigating —
+    // otherwise dismissing a badge costs you a trip into a screen you did not
+    // want.
+    mock.onGet('/notifications').reply(200, page([row({ url: '/place/bar-tinta' })]));
+    mock.onPost('/notifications/read').reply(200, { data: { unread_count: 0 } });
+
+    render(<NotificationsScreen />, { wrapper: Providers });
+    fireEvent.press(await screen.findByTestId('mark-read-n1'));
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(JSON.parse(mock.history.post[0].data)).toEqual({ ids: ['n1'] });
+    expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+
+  it('drops the dot optimistically, before the request resolves', async () => {
+    mock.onGet('/notifications').reply(200, page([row()]));
+    // Hold the response open so "optimistic" is actually observable — with an
+    // instant reply this would pass even for a non-optimistic implementation.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mock.onPost('/notifications/read').reply(async () => {
+      await held;
+      return [200, { data: { unread_count: 0 } }];
+    });
+
+    render(<NotificationsScreen />, { wrapper: Providers });
+    expect(await screen.findByTestId('unread-dot')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('mark-read-n1'));
+
+    // The POST landing in history is the exact moment "in flight" begins, and
+    // the reply above is still held, so this assertion is by definition
+    // pre-response.
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(screen.queryByTestId('unread-dot')).toBeNull();
+
+    release();
+  });
+
+  it('offers no mark-read control on a row that is already read', async () => {
+    // An action that silently does nothing is worse than no action.
+    mock.onGet('/notifications').reply(200, page([row({ read_at: '2026-07-30T09:00:00Z' })]));
+
+    render(<NotificationsScreen />, { wrapper: Providers });
+    await screen.findByTestId('notification-n1');
+
+    expect(screen.queryByTestId('mark-read-n1')).toBeNull();
+  });
+});
+
 it('marks a row read when it is opened', async () => {
   mock.onGet('/notifications').reply(200, page([row()]));
   mock.onPost('/notifications/read').reply(200, { data: { unread_count: 0 } });

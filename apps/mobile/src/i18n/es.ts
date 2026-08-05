@@ -470,6 +470,7 @@ export const es: Record<MessageKey, string> = {
   'notifications.new': 'Nuevas',
   'notifications.earlier': 'Anteriores',
   'notifications.markAll': 'Marcar todo leído',
+  'notifications.markRead': 'Marcar leído',
   'notifications.empty': 'Nada todavía. Compartí un post y te avisamos cuando se publique.',
   'notifications.error': 'No pudimos cargar tus notificaciones',
 

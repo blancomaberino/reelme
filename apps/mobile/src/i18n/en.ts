@@ -478,6 +478,7 @@ export const en = {
   'notifications.new': 'New',
   'notifications.earlier': 'Earlier',
   'notifications.markAll': 'Mark all read',
+  'notifications.markRead': 'Mark read',
   'notifications.empty': 'Nothing yet. Share a post and we’ll tell you when it lands.',
   'notifications.error': 'Couldn’t load your notifications',
 
