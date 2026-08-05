@@ -154,6 +154,31 @@ describe('per-row mark as read', () => {
     release();
   });
 
+  it('leaves the row where it is instead of re-sorting it into Earlier', async () => {
+    /*
+     * The reported bug. Sectioning used to split on live `read_at`, so clearing
+     * a row moved it under "Earlier" that same frame and every row below it
+     * jumped up by a row height — under the thumb that had just tapped. It
+     * reads as the list scrolling itself.
+     *
+     * Both rows start unread, so a correct implementation shows no "Earlier"
+     * section at all after one is cleared.
+     */
+    mock.onGet('/notifications').reply(200, page([row({ id: 'a' }), row({ id: 'b' })]));
+    mock.onPost('/notifications/read').reply(200, { data: { unread_count: 1 } });
+
+    render(<NotificationsScreen />, { wrapper: Providers });
+    expect(await screen.findByText('New')).toBeTruthy();
+    expect(screen.queryByText('Earlier')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('mark-read-a'));
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(screen.queryByText('Earlier')).toBeNull();
+    // Still present, still in the same section — cleared, not relocated.
+    expect(screen.getByTestId('notification-a')).toBeTruthy();
+  });
+
   it('offers no mark-read control on a row that is already read', async () => {
     // An action that silently does nothing is worse than no action.
     mock.onGet('/notifications').reply(200, page([row({ read_at: '2026-07-30T09:00:00Z' })]));

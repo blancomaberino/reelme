@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { Stack, router } from 'expo-router';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { RectButton, Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import type { NotificationRow } from '@/api/notifications';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { elapsedSince } from '@/lib/format';
+import { useReduceMotion } from '@/lib/use-reduce-motion';
 import { notificationCopy } from '@/notifications/copy';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
@@ -67,13 +68,37 @@ export default function NotificationsScreen() {
   const unread = data?.pages[0]?.meta.unread_count ?? 0;
 
   /**
+   * Which rows were unread when this screen first laid eyes on them.
+   *
+   * Sectioning reads from THIS, not from live `read_at`, and that is the whole
+   * point: splitting on the live value meant clearing a row re-sorted it into
+   * "Earlier" on the spot, so everything below jumped up by a row height under
+   * the user's thumb. You tap a dot and the list moves — which reads as the
+   * screen scrolling itself.
+   *
+   * Freezing it means marking read is a purely visual change in place. The
+   * sections re-settle on a pull-to-refresh, which is the one moment the user
+   * has asked for the list to be rebuilt and expects it to move.
+   */
+  const settled = useRef(new Set<string>());
+  const wasUnread = useRef(new Set<string>());
+
+  /**
    * Two sections — "New" and "Earlier" — flattened into one list rather than a
    * SectionList, because FlashList's recycling is what keeps a long history
    * cheap and a section header is just another row type.
    */
   const rows = useMemo<Row[]>(() => {
-    const newOnes = items.filter((i) => i.read_at === null);
-    const earlier = items.filter((i) => i.read_at !== null);
+    // Classify each row once, on first sight — including rows that arrive later
+    // from a next-page fetch.
+    for (const item of items) {
+      if (settled.current.has(item.id)) continue;
+      settled.current.add(item.id);
+      if (item.read_at === null) wasUnread.current.add(item.id);
+    }
+
+    const newOnes = items.filter((i) => wasUnread.current.has(i.id));
+    const earlier = items.filter((i) => !wasUnread.current.has(i.id));
     const out: Row[] = [];
     if (newOnes.length > 0) {
       out.push({ kind: 'header', label: t('notifications.new') });
@@ -108,6 +133,17 @@ export default function NotificationsScreen() {
   const onEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  /**
+   * A pull-to-refresh is the moment the frozen sections are allowed to move:
+   * the user asked for the list to be rebuilt, so rows they cleared settling
+   * into "Earlier" is the expected result rather than a jump they didn't cause.
+   */
+  const onRefresh = useCallback(() => {
+    settled.current.clear();
+    wasUnread.current.clear();
+    void refetch();
+  }, [refetch]);
 
   const renderItem = useCallback(
     ({ item }: { item: Row }) =>
@@ -186,9 +222,7 @@ export default function NotificationsScreen() {
           contentContainerStyle={styles.list}
           onEndReached={onEndReached}
           onEndReachedThreshold={0.5}
-          refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={() => void refetch()} tintColor={c.primary} />
-          }
+          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={c.primary} />}
           ListEmptyComponent={
             <View style={styles.empty} testID="notifications-empty">
               <Ionicons name="notifications-outline" size={40} color={c.muted} />
@@ -226,6 +260,60 @@ function NotificationCard({
   const unread = item.read_at === null;
   const swipeRef = useRef<Swipeable>(null);
   const markLabel = t('notifications.markRead');
+  const reduceMotion = useReduceMotion();
+
+  /**
+   * 0 = unread, 1 = read. Clearing a row is a CROSS-FADE in place, not a
+   * disappearance and not a re-sort: the card's surface and border melt into
+   * the page and the dot fades with them, leaving the text exactly where it
+   * was. Nothing below it moves.
+   */
+  const progress = useRef(new Animated.Value(unread ? 0 : 1)).current;
+  // Kept mounted across the fade so the dot can fade out rather than vanish.
+  const [showDot, setShowDot] = useState(unread);
+
+  useEffect(() => {
+    if (unread) {
+      progress.setValue(0);
+      setShowDot(true);
+
+      return;
+    }
+
+    // `reduceMotion !== false`, never `!reduceMotion` — it is `undefined` until
+    // the OS setting has been read, and treating that as "animate" is the flash
+    // of motion the setting exists to prevent.
+    if (reduceMotion !== false) {
+      progress.setValue(1);
+      setShowDot(false);
+
+      return;
+    }
+
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 240,
+      // Colours cannot be driven natively.
+      useNativeDriver: false,
+    });
+    animation.start(({ finished }) => {
+      if (finished) setShowDot(false);
+    });
+
+    return () => animation.stop();
+  }, [unread, reduceMotion, progress]);
+
+  const chrome = useMemo(
+    () => ({
+      // Fades to the PAGE colour rather than to `transparent`: interpolating to
+      // transparent runs through rgba(0,0,0,0), so the card darkens on its way
+      // out instead of dissolving.
+      background: progress.interpolate({ inputRange: [0, 1], outputRange: [c.surface, c.background] }),
+      border: progress.interpolate({ inputRange: [0, 1], outputRange: [c.border, c.background] }),
+      dot: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+    }),
+    [progress, c],
+  );
 
   const markRead = () => {
     swipeRef.current?.close();
@@ -271,48 +359,62 @@ function NotificationCard({
   const when = elapsed ? t(`time.${elapsed.unit}`, { count: elapsed.value }) : null;
 
   const card = (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={body ? `${title}. ${body}` : title}
-      accessibilityState={{ selected: unread }}
-      onPress={() => onPress(item)}
-      style={({ pressed }) => [styles.row, unread && styles.rowUnread, pressed && styles.pressed]}
-      testID={`notification-${item.id}`}
+    <Animated.View
+      style={[
+        styles.rowChrome,
+        { backgroundColor: chrome.background, borderColor: chrome.border },
+      ]}
     >
-      <Ionicons name={ICONS[item.type] ?? 'notifications'} size={22} color={tintFor(c, item.type)} />
-      <View style={styles.rowBody}>
-        <Text style={styles.rowTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        {body ? (
-          <Text style={styles.rowText} numberOfLines={2}>
-            {body}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={body ? `${title}. ${body}` : title}
+        accessibilityState={{ selected: unread }}
+        onPress={() => onPress(item)}
+        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+        testID={`notification-${item.id}`}
+      >
+        <Ionicons name={ICONS[item.type] ?? 'notifications'} size={22} color={tintFor(c, item.type)} />
+        <View style={styles.rowBody}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {title}
           </Text>
+          {body ? (
+            <Text style={styles.rowText} numberOfLines={2}>
+              {body}
+            </Text>
+          ) : null}
+        </View>
+        {/* "3d" answers the question every notification list gets asked — is this
+            new, or have I already dealt with it? The unread dot alone doesn't. */}
+        {when ? <Text style={styles.rowWhen}>{when}</Text> : null}
+        {/*
+          The dot is both the unread indicator and the button that clears it —
+          tapping the thing that means "unread" to make it not-unread needs no
+          explaining. It is also the accessible route to the action: a swipe is
+          invisible to a screen reader and undiscoverable to most people, so it
+          can be the shortcut but never the only way in.
+
+          It stays mounted for the length of the fade so it can fade WITH the
+          card, but stops being a button the instant the row is read — an
+          invisible control that still answers taps is worse than no control.
+        */}
+        {showDot ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={markLabel}
+            onPress={markRead}
+            disabled={!unread}
+            accessibilityElementsHidden={!unread}
+            importantForAccessibility={unread ? 'yes' : 'no-hide-descendants'}
+            hitSlop={12}
+            style={styles.dotHit}
+            testID={`mark-read-${item.id}`}
+          >
+            <Animated.View style={[styles.dot, { opacity: chrome.dot }]} testID="unread-dot" />
+          </Pressable>
         ) : null}
-      </View>
-      {/* "3d" answers the question every notification list gets asked — is this
-          new, or have I already dealt with it? The unread dot alone doesn't. */}
-      {when ? <Text style={styles.rowWhen}>{when}</Text> : null}
-      {/*
-        The dot is both the unread indicator and the button that clears it —
-        tapping the thing that means "unread" to make it not-unread needs no
-        explaining. It is also the accessible route to the action: a swipe is
-        invisible to a screen reader and undiscoverable to most people, so it
-        can be the shortcut but never the only way in.
-      */}
-      {unread ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={markLabel}
-          onPress={markRead}
-          hitSlop={12}
-          style={styles.dotHit}
-          testID={`mark-read-${item.id}`}
-        >
-          <View style={styles.dot} testID="unread-dot" />
-        </Pressable>
-      ) : null}
-    </Pressable>
+      </Pressable>
+    </Animated.View>
   );
 
   // A read row has nothing to mark, so it gets no swipe — an action that
@@ -359,20 +461,23 @@ const makeStyles = (c: Palette) =>
       // and its first row, so adding both stacked 20pt in there.
       paddingTop: space.sm,
     },
+    /*
+     * The card's SKIN, split from its layout because only the skin animates.
+     * The hairline is what makes a separated row read as a card rather than a
+     * floating patch of white — the same treatment the my-places card uses —
+     * and it is always present, fading its colour to the page rather than
+     * toggling `borderWidth`, which would shift the content by a pixel.
+     */
+    rowChrome: {
+      borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+    },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: space.sm,
       paddingVertical: space.sm,
       paddingHorizontal: space.sm,
-      borderRadius: radius.md,
-    },
-    // The hairline is what makes a separated row read as a CARD rather than as
-    // a floating patch of white — the same treatment the my-places card uses.
-    rowUnread: {
-      backgroundColor: c.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.border,
     },
     pressed: { opacity: 0.6 },
     rowBody: { flex: 1, gap: space.xxs },
