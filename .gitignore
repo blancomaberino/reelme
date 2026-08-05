@@ -43,3 +43,6 @@ graphify-out/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/state/
+
+# Maestro E2E screenshot output (apps/mobile/.maestro flows write here).
+build/maestro/

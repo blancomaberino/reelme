@@ -68,53 +68,28 @@ export default function NotificationsScreen() {
   const unread = data?.pages[0]?.meta.unread_count ?? 0;
 
   /**
-   * Which rows were unread when this screen first laid eyes on them.
+   * Rows that have been cleared and are playing their exit animation.
    *
-   * Sectioning reads from THIS, not from live `read_at`, and that is the whole
-   * point: splitting on the live value meant clearing a row re-sorted it into
-   * "Earlier" on the spot, so everything below jumped up by a row height under
-   * the user's thumb. You tap a dot and the list moves — which reads as the
-   * screen scrolling itself.
+   * A cleared row does not teleport. It stays in "New" — where the user is
+   * looking — long enough to collapse and fade out of it, and only then does it
+   * re-section into "Earlier". So the sequence the user sees is: the row shrinks
+   * away, the list closes the gap, and the row is now in the other section.
    *
-   * Freezing it means marking read is a purely visual change in place. The
-   * sections re-settle on a pull-to-refresh, which is the one moment the user
-   * has asked for the list to be rebuilt and expects it to move.
+   * Membership is by id and lives only for the length of the animation, which
+   * is why this cannot get stuck: {@link onExited} clears it from the
+   * animation's own completion callback.
    */
-  const [frozen, setFrozen] = useState<Record<string, boolean>>({});
-  const [lastItems, setLastItems] = useState(items);
+  const [exiting, setExiting] = useState<Record<string, true>>({});
 
-  /*
-   * React's "adjust state while rendering" pattern, not an effect: the classify
-   * step has to run BEFORE the rows are built, and doing it in an effect would
-   * render one frame of wrong sections and then re-render — which is the jump
-   * this whole mechanism exists to remove.
-   */
-  if (items !== lastItems) {
-    setLastItems(items);
-    setFrozen((prev) => {
-      let next: Record<string, boolean> | null = null;
-      for (const item of items) {
-        if (item.id in prev) continue;
-        next ??= { ...prev };
-        next[item.id] = item.read_at === null;
-      }
+  const onExited = useCallback((id: string) => {
+    setExiting((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
 
-      // Returning `prev` unchanged when nothing is new is what keeps this from
-      // looping — React bails out of a re-render when the state is identical.
-      return next ?? prev;
+      return next;
     });
-  }
-
-  /**
-   * An id not yet in the map is being rendered for the very first time, and on
-   * that frame its live `read_at` IS the value about to be frozen — so the
-   * fallback is not an approximation, and there is no flicker before the effect
-   * catches up.
-   */
-  const startedUnread = useCallback(
-    (item: NotificationRow) => frozen[item.id] ?? item.read_at === null,
-    [frozen],
-  );
+  }, []);
 
   /**
    * Two sections — "New" and "Earlier" — flattened into one list rather than a
@@ -122,8 +97,9 @@ export default function NotificationsScreen() {
    * cheap and a section header is just another row type.
    */
   const rows = useMemo<Row[]>(() => {
-    const newOnes = items.filter(startedUnread);
-    const earlier = items.filter((i) => !startedUnread(i));
+    const isNew = (i: NotificationRow) => i.read_at === null || i.id in exiting;
+    const newOnes = items.filter(isNew);
+    const earlier = items.filter((i) => !isNew(i));
     const out: Row[] = [];
     if (newOnes.length > 0) {
       out.push({ kind: 'header', label: t('notifications.new') });
@@ -134,7 +110,7 @@ export default function NotificationsScreen() {
       out.push(...earlier.map((item) => ({ kind: 'row' as const, item })));
     }
     return out;
-  }, [items, startedUnread, t]);
+  }, [items, exiting, t]);
 
   const onPressRow = useCallback(
     (item: NotificationRow) => {
@@ -147,9 +123,14 @@ export default function NotificationsScreen() {
     [markRead],
   );
 
-  /** Clear one row's unread state without opening it. */
+  /**
+   * Clear one row's unread state without opening it. Marking it `exiting` FIRST
+   * is what holds it in "New" while it animates; the mutation's optimistic
+   * update lands on the same frame and would otherwise re-section it instantly.
+   */
   const onMarkRead = useCallback(
     (item: NotificationRow) => {
+      setExiting((prev) => ({ ...prev, [item.id]: true }));
       markRead.mutate({ ids: [item.id] });
     },
     [markRead],
@@ -159,13 +140,9 @@ export default function NotificationsScreen() {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  /**
-   * A pull-to-refresh is the moment the frozen sections are allowed to move:
-   * the user asked for the list to be rebuilt, so rows they cleared settling
-   * into "Earlier" is the expected result rather than a jump they didn't cause.
-   */
+  /** A refresh rebuilds the list, so any in-flight exit animation is moot. */
   const onRefresh = useCallback(() => {
-    setFrozen({});
+    setExiting({});
     void refetch();
   }, [refetch]);
 
@@ -179,11 +156,13 @@ export default function NotificationsScreen() {
           styles={styles}
           c={c}
           t={t}
+          exiting={item.item.id in exiting}
           onPress={onPressRow}
           onMarkRead={onMarkRead}
+          onExited={onExited}
         />
       ),
-    [styles, c, t, onPressRow, onMarkRead],
+    [styles, c, t, exiting, onPressRow, onMarkRead, onExited],
   );
 
   /*
@@ -239,9 +218,6 @@ export default function NotificationsScreen() {
           data={rows}
           renderItem={renderItem}
           getItemType={getItemType}
-          // 12pt, the same separator the my-places list uses — unread rows are
-          // cards, and without a gap they fused into one continuous slab.
-          ItemSeparatorComponent={Separator}
           keyExtractor={(row) => (row.kind === 'header' ? `h-${row.label}` : row.item.id)}
           contentContainerStyle={styles.list}
           onEndReached={onEndReached}
@@ -260,26 +236,24 @@ export default function NotificationsScreen() {
   );
 }
 
-/** The gap between rows. A component because FlashList wants an element type. */
-function Separator() {
-  return <View style={separatorStyle} />;
-}
-const separatorStyle = { height: space.sm } as const;
-
 function NotificationCard({
   item,
   styles,
   c,
   t,
   onPress,
+  exiting,
   onMarkRead,
+  onExited,
 }: {
   item: NotificationRow;
   styles: Styles;
   c: Palette;
   t: ReturnType<typeof useT>;
+  exiting: boolean;
   onPress: (item: NotificationRow) => void;
   onMarkRead: (item: NotificationRow) => void;
+  onExited: (id: string) => void;
 }) {
   const unread = item.read_at === null;
   const swipeRef = useRef<Swipeable>(null);
@@ -287,54 +261,53 @@ function NotificationCard({
   const reduceMotion = useReduceMotion();
 
   /**
-   * 0 = unread, 1 = read. Clearing a row is a CROSS-FADE in place, not a
-   * disappearance and not a re-sort: the card's surface and border melt into
-   * the page and the dot fades with them, leaving the text exactly where it
-   * was. Nothing below it moves.
+   * 1 = fully present, 0 = gone. Clearing a row COLLAPSES it out of the unread
+   * list — it fades and its height shrinks to nothing, so the rows below slide
+   * up to close the gap — and only when that finishes does it re-appear under
+   * "Earlier". The row is never yanked from under the finger that tapped it.
    */
-  // `useState`, not `useRef`: an Animated.Value is read during render to build
-  // the interpolations below, and a ref read at render time is exactly what the
-  // lint rule (rightly) forbids. The lazy initialiser still constructs it once.
-  const [progress] = useState(() => new Animated.Value(unread ? 0 : 1));
+  // `useState`, not `useRef`: an Animated.Value read during render to build the
+  // interpolations below, and a ref read at render time is what the lint rule
+  // (rightly) forbids. The lazy initialiser still constructs it once.
+  const [presence] = useState(() => new Animated.Value(1));
+  // Measured once from a real layout pass — a height animation needs a number
+  // to count down from, and `auto` is not one.
+  const [naturalHeight, setNaturalHeight] = useState(0);
 
   useEffect(() => {
-    if (unread) {
-      progress.setValue(0);
+    if (!exiting) return;
 
-      return;
-    }
-
-    // `reduceMotion !== false`, never `!reduceMotion` — it is `undefined` until
-    // the OS setting has been read, and treating that as "animate" is the flash
-    // of motion the setting exists to prevent.
-    if (reduceMotion !== false) {
-      progress.setValue(1);
-
-      return;
-    }
-
-    const animation = Animated.timing(progress, {
-      toValue: 1,
-      duration: 240,
-      // Colours cannot be driven natively.
+    /*
+     * Duration 0 under reduce-motion rather than an early `onExited()` call:
+     * the completion callback is asynchronous either way, so the row still
+     * leaves through exactly one code path, and there is no `setState` in an
+     * effect body for the lint rule to (correctly) object to.
+     */
+    const animation = Animated.timing(presence, {
+      toValue: 0,
+      duration: reduceMotion === false && naturalHeight > 0 ? 260 : 0,
+      // Height cannot be driven natively.
       useNativeDriver: false,
     });
-    animation.start();
+    animation.start(({ finished }) => {
+      if (finished) onExited(item.id);
+    });
 
     return () => animation.stop();
-  }, [unread, reduceMotion, progress]);
+  }, [exiting, reduceMotion, naturalHeight, presence, onExited, item.id]);
 
-  const chrome = useMemo(
-    () => ({
-      // Fades to the PAGE colour rather than to `transparent`: interpolating to
-      // transparent runs through rgba(0,0,0,0), so the card darkens on its way
-      // out instead of dissolving.
-      background: progress.interpolate({ inputRange: [0, 1], outputRange: [c.surface, c.background] }),
-      border: progress.interpolate({ inputRange: [0, 1], outputRange: [c.border, c.background] }),
-      dot: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-    }),
-    [progress, c],
-  );
+  /**
+   * Applied only while leaving. A row at rest keeps `height: auto`, because
+   * pinning every row to a measured pixel height would make a two-line body
+   * that later wraps to three clip itself.
+   */
+  const exitStyle = exiting
+    ? {
+        opacity: presence,
+        height: naturalHeight > 0 ? presence.interpolate({ inputRange: [0, 1], outputRange: [0, naturalHeight] }) : undefined,
+        marginBottom: presence.interpolate({ inputRange: [0, 1], outputRange: [0, space.sm] }),
+      }
+    : null;
 
   const markRead = () => {
     swipeRef.current?.close();
@@ -380,20 +353,19 @@ function NotificationCard({
   const when = elapsed ? t(`time.${elapsed.unit}`, { count: elapsed.value }) : null;
 
   const card = (
-    <Animated.View
-      style={[
-        styles.rowChrome,
-        { backgroundColor: chrome.background, borderColor: chrome.border },
-      ]}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={body ? `${title}. ${body}` : title}
-        accessibilityState={{ selected: unread }}
-        onPress={() => onPress(item)}
-        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-        testID={`notification-${item.id}`}
+    <Animated.View style={[styles.rowOuter, exitStyle]}>
+      <View
+        style={[styles.rowChrome, unread && styles.rowChromeUnread]}
+        onLayout={(e) => setNaturalHeight(e.nativeEvent.layout.height)}
       >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={body ? `${title}. ${body}` : title}
+          accessibilityState={{ selected: unread }}
+          onPress={() => onPress(item)}
+          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          testID={`notification-${item.id}`}
+        >
         <Ionicons name={ICONS[item.type] ?? 'notifications'} size={22} color={tintFor(c, item.type)} />
         <View style={styles.rowBody}>
           <Text style={styles.rowTitle} numberOfLines={1}>
@@ -407,18 +379,21 @@ function NotificationCard({
         </View>
         {/* "3d" answers the question every notification list gets asked — is this
             new, or have I already dealt with it? The unread dot alone doesn't. */}
-        {when ? <Text style={styles.rowWhen}>{when}</Text> : null}
+          {when ? <Text style={styles.rowWhen}>{when}</Text> : null}
+        </Pressable>
+
         {/*
+          A SIBLING of the card's own pressable, never a child of it.
+
+          Nested, the two overlap and a tap near the dot can fall through to the
+          card underneath — which navigates. "I tapped the circle and it opened
+          a different screen" is exactly that. As siblings there is no ambiguity
+          left to get wrong: the dot's box is the dot's, the rest is the card's.
+
           The dot is both the unread indicator and the button that clears it —
           tapping the thing that means "unread" to make it not-unread needs no
-          explaining. It is also the accessible route to the action: a swipe is
-          invisible to a screen reader and undiscoverable to most people, so it
-          can be the shortcut but never the only way in.
-
-          Once the row is read the button is gone — an invisible control that
-          still answers taps is worse than no control — and a non-interactive
-          ghost takes its place purely to finish the fade, so the dot dissolves
-          with the card instead of blinking out from under it.
+          explaining — and it is the accessible route to the action, since a
+          swipe is invisible to a screen reader.
         */}
         {unread ? (
           <Pressable
@@ -432,11 +407,11 @@ function NotificationCard({
             <View style={styles.dot} testID="unread-dot" />
           </Pressable>
         ) : (
-          <View style={styles.dotHit} pointerEvents="none">
-            <Animated.View style={[styles.dot, { opacity: chrome.dot }]} />
-          </View>
+          // Holds the dot's width so a read row's timestamp stays on the same
+          // vertical line as an unread one's.
+          <View style={styles.dotHit} pointerEvents="none" />
         )}
-      </Pressable>
+      </View>
     </Animated.View>
   );
 
@@ -484,23 +459,31 @@ const makeStyles = (c: Palette) =>
       // and its first row, so adding both stacked 20pt in there.
       paddingTop: space.sm,
     },
+    // The animating shell: height/opacity/margin live here so the card's own
+    // padding and corners never have to take part in the collapse.
+    rowOuter: { marginBottom: space.sm, overflow: 'hidden' },
     /*
-     * The card's SKIN, split from its layout because only the skin animates.
-     * The hairline is what makes a separated row read as a card rather than a
-     * floating patch of white — the same treatment the my-places card uses —
-     * and it is always present, fading its colour to the page rather than
-     * toggling `borderWidth`, which would shift the content by a pixel.
+     * The card's SKIN and the row axis. The hairline is what makes a spaced row
+     * read as a card rather than a floating patch of white — the same treatment
+     * the my-places card uses — and the border is always present, transparent
+     * when read, so switching states cannot shift the content by a pixel.
      */
     rowChrome: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingRight: space.xs,
       borderRadius: radius.md,
       borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'transparent',
     },
+    rowChromeUnread: { backgroundColor: c.surface, borderColor: c.border },
     row: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       gap: space.sm,
       paddingVertical: space.sm,
-      paddingHorizontal: space.sm,
+      paddingLeft: space.sm,
     },
     pressed: { opacity: 0.6 },
     rowBody: { flex: 1, gap: space.xxs },

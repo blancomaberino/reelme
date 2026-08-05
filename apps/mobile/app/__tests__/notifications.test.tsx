@@ -154,18 +154,27 @@ describe('per-row mark as read', () => {
     release();
   });
 
-  it('leaves the row where it is instead of re-sorting it into Earlier', async () => {
+  it('animates the row out of New and lands it under Earlier', async () => {
     /*
-     * The reported bug. Sectioning used to split on live `read_at`, so clearing
-     * a row moved it under "Earlier" that same frame and every row below it
-     * jumped up by a row height — under the thumb that had just tapped. It
-     * reads as the list scrolling itself.
+     * The behaviour the owner asked for, and the reason the row cannot simply
+     * flip sections on the spot: doing that yanked it out from under the finger
+     * that tapped it and shunted every row below up by a row height.
      *
-     * Both rows start unread, so a correct implementation shows no "Earlier"
-     * section at all after one is cleared.
+     * So it leaves in two beats — still in "New" while it collapses and fades,
+     * then gone from "New" and present under "Earlier".
      */
-    mock.onGet('/notifications').reply(200, page([row({ id: 'a' }), row({ id: 'b' })]));
-    mock.onPost('/notifications/read').reply(200, { data: { unread_count: 1 } });
+    // A fake server that actually REMEMBERS the write — the mutation settles
+    // into a refetch, and a GET that kept replying "unread" would resurrect the
+    // row and hide the very transition under test.
+    const readAt: Record<string, string | null> = { a: null, b: null };
+    mock.onGet('/notifications').reply(() => [
+      200,
+      page([row({ id: 'a', read_at: readAt.a }), row({ id: 'b', read_at: readAt.b })]),
+    ]);
+    mock.onPost('/notifications/read').reply(() => {
+      readAt.a = '2026-08-01T00:00:00Z';
+      return [200, { data: { unread_count: 1 } }];
+    });
 
     render(<NotificationsScreen />, { wrapper: Providers });
     expect(await screen.findByText('New')).toBeTruthy();
@@ -174,9 +183,19 @@ describe('per-row mark as read', () => {
     fireEvent.press(screen.getByTestId('mark-read-a'));
 
     await waitFor(() => expect(mock.history.post).toHaveLength(1));
-    expect(screen.queryByText('Earlier')).toBeNull();
-    // Still present, still in the same section — cleared, not relocated.
+
+    /*
+     * The END state is what this level can honestly assert. The intermediate
+     * beat — the row holding its place in "New" while it collapses — depends on
+     * a real layout pass and real frame timing, neither of which the test
+     * renderer has (`onLayout` never fires, so the animation runs at zero
+     * duration). `.maestro/notifications-mark-read.yaml` pins that half on a
+     * device.
+     */
+    await waitFor(() => expect(screen.getByText('Earlier')).toBeTruthy());
     expect(screen.getByTestId('notification-a')).toBeTruthy();
+    // The other row never left.
+    expect(screen.getByTestId('notification-b')).toBeTruthy();
   });
 
   it('offers no mark-read control on a row that is already read', async () => {
