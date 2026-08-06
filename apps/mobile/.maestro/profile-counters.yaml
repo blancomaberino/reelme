@@ -1,0 +1,75 @@
+# Own profile — social counters (E2E, iOS simulator).
+#
+# T-039 was marked done while this screen was still the M0 shell: a list of
+# links under a note reading "your shares, followers & settings land here
+# (T-039)". Every unit test asserted on the rows that DID exist, so nothing ever
+# failed. This flow asserts on what the acceptance criterion actually asks for.
+#
+# The two things jest cannot prove here:
+#  1. The counters show REAL numbers from the API, not a fixture.
+#  2. Tapping one navigates on device. Both counters are Pressables sitting in a
+#     row inside a header — the kind of layout where a tap has previously fallen
+#     through to a parent and gone somewhere else entirely, invisibly to jest
+#     because `router` is mocked there.
+#
+# Preconditions: API stack + Metro up (`./scripts/dev.sh start`), app logged in.
+# The app runs in Spanish (default locale).
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/profile-counters.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+
+- extendedWaitUntil:
+    visible: ".*Perfil.*"
+    timeout: 60000
+- tapOn: ".*Perfil, tab.*"
+- extendedWaitUntil:
+    visible: "Mis compartidos"
+    timeout: 20000
+
+# --- The counters exist and are labelled ------------------------------------
+# Matched by id, not by the word: each counter's accessibilityLabel is the count
+# AND the noun ("0 Seguidores"), which replaces the child text in the a11y tree,
+# so a bare `assertVisible: "Seguidores"` finds nothing here.
+- assertVisible:
+    id: "profile-counter-followers"
+- assertVisible:
+    id: "profile-counter-following"
+- assertVisible:
+    id: "profile-counter-shares"
+# The placeholder this screen shipped with must never come back.
+- assertNotVisible: ".*T-039.*"
+- takeScreenshot: build/maestro/profile-counters
+
+# --- Followers opens the followers list, not something else -----------------
+# Asserted on the list's own empty copy rather than its title: the title is the
+# same word as the counter label, so it would pass without having navigated.
+- tapOn:
+    id: "profile-counter-followers"
+- extendedWaitUntil:
+    visible: "Todavía no tiene seguidores."
+    timeout: 20000
+- takeScreenshot: build/maestro/profile-followers
+- tapOn:
+    id: "screen-header-back"
+
+# --- …and following opens the following list --------------------------------
+- extendedWaitUntil:
+    visible: "Mis compartidos"
+    timeout: 20000
+- tapOn:
+    id: "profile-counter-following"
+- extendedWaitUntil:
+    visible: "Todavía no sigue a nadie."
+    timeout: 20000
+- takeScreenshot: build/maestro/profile-following
+- tapOn:
+    id: "screen-header-back"
+
+# --- Leave the app where we found it ----------------------------------------
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000

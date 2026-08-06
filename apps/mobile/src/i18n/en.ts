@@ -172,7 +172,6 @@ export const en = {
   'quickShare.submit': 'Add',
 
   'profile.title': 'Profile',
-  'profile.note': 'Your shares, followers & settings land here (T-039).',
   'profile.settings': 'Settings',
   'profile.edit': 'Edit profile',
   'profile.lists': 'My lists',

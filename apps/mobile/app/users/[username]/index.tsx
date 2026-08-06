@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFollow, useProfile, useUserLists, useUserPlaces } from '@/api/hooks/useProfile';
 import { Button } from '@/components/button';
 import { MyPlaceCard } from '@/components/place/my-place-card';
+import { ProfileCounters } from '@/components/profile/profile-counters';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
@@ -68,30 +69,7 @@ export default function UserProfileScreen() {
             {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
           </View>
 
-          <View style={styles.counters}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${profile.counters.followers} ${t('profileUser.followers')}`}
-              onPress={() => router.push({ pathname: '/users/[username]/followers', params: { username: profile.username } })}
-              style={styles.counter}
-            >
-              <Text style={styles.counterValue}>{profile.counters.followers}</Text>
-              <Text style={styles.counterLabel}>{t('profileUser.followers')}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${profile.counters.following} ${t('profileUser.following')}`}
-              onPress={() => router.push({ pathname: '/users/[username]/following', params: { username: profile.username } })}
-              style={styles.counter}
-            >
-              <Text style={styles.counterValue}>{profile.counters.following}</Text>
-              <Text style={styles.counterLabel}>{t('profileUser.following')}</Text>
-            </Pressable>
-            <View style={styles.counter}>
-              <Text style={styles.counterValue}>{profile.counters.published_shares}</Text>
-              <Text style={styles.counterLabel}>{t('profileUser.shares')}</Text>
-            </View>
-          </View>
+          <ProfileCounters username={profile.username} counters={profile.counters} />
 
           {authed && !isSelf && viewer ? (
             <Button
@@ -203,10 +181,6 @@ const makeStyles = (c: Palette) =>
     name: { fontSize: 24, fontWeight: '700', color: c.text },
     username: { fontSize: 15, color: c.muted },
     bio: { fontSize: 14, color: c.ink2, textAlign: 'center', marginTop: 4 },
-    counters: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 8 },
-    counter: { alignItems: 'center', gap: 2 },
-    counterValue: { fontSize: 18, fontWeight: '700', color: c.text },
-    counterLabel: { fontSize: 12, color: c.muted },
     mapButton: {
       flexDirection: 'row',
       alignItems: 'center',

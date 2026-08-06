@@ -168,7 +168,6 @@ export const es: Record<MessageKey, string> = {
   'quickShare.submit': 'Agregar',
 
   'profile.title': 'Perfil',
-  'profile.note': 'Tus publicaciones, seguidores y ajustes aparecerán acá (T-039).',
   'profile.settings': 'Ajustes',
   'profile.edit': 'Editar perfil',
   'profile.lists': 'Mis listas',
