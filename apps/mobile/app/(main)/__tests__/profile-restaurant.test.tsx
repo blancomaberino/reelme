@@ -52,7 +52,12 @@ function wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   mock = new AxiosMockAdapter(api);
-  mock.onGet('/notifications').reply(200, { data: [], meta: { unread_count: 0 } });
+  // `pagination` is NOT optional padding: useNotifications' getNextPageParam
+  // reads meta.pagination.next_cursor on every render, so a fixture without
+  // it throws inside the screen the moment ANY other query re-renders it.
+  mock
+    .onGet('/notifications')
+    .reply(200, { data: [], meta: { unread_count: 0, pagination: { next_cursor: null } } });
   mockRouter.push.mockClear();
 });
 

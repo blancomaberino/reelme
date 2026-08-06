@@ -5,7 +5,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLogout } from '@/api/hooks/useAuth';
+import { useProfile } from '@/api/hooks/useProfile';
 import { Button } from '@/components/button';
+import { ProfileCounters } from '@/components/profile/profile-counters';
 import { VerifyEmailBanner } from '@/components/verify-email-banner';
 import { useT } from '@/i18n';
 import { useUnreadCount } from '@/api/hooks/useNotifications';
@@ -20,6 +22,20 @@ export default function ProfileScreen() {
   const authed = useSessionStore((s) => s.status === 'authed');
   const unread = useUnreadCount();
   const logout = useLogout();
+
+  /*
+   * The social counters come from the PUBLIC profile endpoint, not `/me`.
+   *
+   * 05 §3 sketched them as new fields on `GET /me`, but `UserResource` is
+   * returned from six places (login, refresh, verify-email, analysis
+   * preference, me, me/update) and a count that isn't eager-loaded at each of
+   * them renders a confident `0` — a silently wrong number is worse than a
+   * missing one. `GET /users/{username}` already computes exactly these three,
+   * and a private profile 404s for everyone EXCEPT its owner, so this works
+   * whether or not the account is public. Same numbers others see, one code
+   * path, no new API surface. (Deviation recorded on T-039 in the plan.)
+   */
+  const { data: publicProfile } = useProfile(user?.username ?? null);
 
   function onLogout() {
     logout.mutate(undefined, { onSuccess: () => router.replace('/(auth)/welcome') });
@@ -57,6 +73,12 @@ export default function ProfileScreen() {
           </Pressable>
         ) : null}
       </View>
+      {/* Rendered only once the numbers are in: a counter row that flashes 0 → 12
+          reads as "you lost your followers" for the frame it is wrong. */}
+      {user && publicProfile?.profile ? (
+        <ProfileCounters username={user.username} counters={publicProfile.profile.counters} />
+      ) : null}
+
       <View style={styles.body}>
         <VerifyEmailBanner />
         <Pressable
@@ -140,7 +162,6 @@ export default function ProfileScreen() {
           <Text style={styles.settingsLabel}>{t('profile.settings')}</Text>
           <Ionicons name="chevron-forward" size={18} color={c.muted} />
         </Pressable>
-        <Text style={styles.note}>{t('profile.note')}</Text>
       </View>
       <View style={styles.footer}>
         <Button title={t('profile.logout')} variant="secondary" onPress={onLogout} loading={logout.isPending} />
@@ -191,6 +212,5 @@ const makeStyles = (c: Palette) =>
     },
     settingsLabel: { flex: 1, fontSize: 16, color: c.text, fontWeight: '600' },
     pressed: { opacity: 0.6 },
-    note: { marginTop: 24, textAlign: 'center', color: c.muted },
     footer: { gap: 12 },
   });

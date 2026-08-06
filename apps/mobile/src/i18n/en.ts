@@ -172,7 +172,6 @@ export const en = {
   'quickShare.submit': 'Add',
 
   'profile.title': 'Profile',
-  'profile.note': 'Your shares, followers & settings land here (T-039).',
   'profile.settings': 'Settings',
   'profile.edit': 'Edit profile',
   'profile.lists': 'My lists',
@@ -719,6 +718,41 @@ export const en = {
   'scan.fail.velocityBody': 'This account has checked a lot of codes in the last hour. Try again shortly.',
   'scan.fail.unknown': 'Could not check that code',
   'scan.fail.unknownBody': 'Something went wrong. Try again in a moment.',
+
+  // Privacy & data (T-039, 05 screen #16). The copy IS the feature here: two
+  // rights, each stated in terms of what actually happens to the user's stuff.
+  'settings.privacy': 'Privacy & data',
+  'privacy.title': 'Privacy & data',
+  'privacy.intro':
+    'Your account holds your profile, the posts you’ve shared, the places you saved and the reviews you wrote. Here’s what you can ask us to do with all of it.',
+  'privacy.pending': 'Not available yet',
+  'privacy.pendingBody':
+    'Both actions below are coming in a later update — neither works from the app yet.',
+  'privacy.signedOut': 'Sign in to use these',
+  'privacy.signedOutBody':
+    'Both actions below act on your account, so you need to be signed in first.',
+  'privacy.export.title': 'Get a copy of my data',
+  'privacy.export.body':
+    'We gather everything tied to your account — profile, shares, saved places, lists and reviews — into one file and email you a link to download it.',
+  'privacy.export.action': 'Request my data',
+  'privacy.export.doneTitle': 'Your copy is on its way',
+  'privacy.export.doneBody':
+    'We’ll email you a download link once the file is ready. This can take a few hours.',
+  'privacy.delete.title': 'Delete my account',
+  // The last sentence is not boilerplate: T-050 holds payment records back from
+  // the purge because retention law overrides erasure there, and for an
+  // influencer or a restaurant owner that is the material fact about deleting
+  // their account. A diner never has these rows and can read past it.
+  'privacy.delete.body':
+    'Deletes your account, your shares, your saved places, your lists and your reviews for good. Places other people found through you stay on the map, credited to nobody. Payment and redemption records are kept for as long as the law requires.',
+  // Shorter than the heading above it on purpose: the heading names the right,
+  // the button names the act, and the confirm dialog carries the full weight.
+  'privacy.delete.action': 'Delete account',
+  'privacy.delete.confirmTitle': 'Delete your account?',
+  'privacy.delete.confirmBody':
+    'This can’t be undone, and it signs you out of this device right away.',
+  'privacy.delete.confirmCta': 'Delete everything',
+  'privacy.delete.failedTitle': 'Couldn’t delete your account',
 } as const;
 
 export type MessageKey = keyof typeof en;

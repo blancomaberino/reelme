@@ -146,6 +146,19 @@ export default function SettingsScreen() {
                 <Ionicons name="chevron-forward" size={18} color={c.muted} />
               </View>
             </Pressable>
+
+            {/* Privacy & data (T-039). Authed-only alongside two-step: both
+                rows act on an account, and a guest has none. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('settings.privacy')}
+              onPress={() => router.push('/settings/privacy')}
+              style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+              testID="settings-privacy"
+            >
+              <Text style={styles.optionLabel}>{t('settings.privacy')}</Text>
+              <Ionicons name="chevron-forward" size={18} color={c.muted} />
+            </Pressable>
           </View>
         </View>
       ) : null}

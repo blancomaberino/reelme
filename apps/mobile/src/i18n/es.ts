@@ -168,7 +168,6 @@ export const es: Record<MessageKey, string> = {
   'quickShare.submit': 'Agregar',
 
   'profile.title': 'Perfil',
-  'profile.note': 'Tus publicaciones, seguidores y ajustes aparecerán acá (T-039).',
   'profile.settings': 'Ajustes',
   'profile.edit': 'Editar perfil',
   'profile.lists': 'Mis listas',
@@ -713,4 +712,32 @@ export const es: Record<MessageKey, string> = {
   'scan.fail.velocityBody': 'Esta cuenta verificó muchos códigos en la última hora. Probá en un rato.',
   'scan.fail.unknown': 'No se pudo verificar',
   'scan.fail.unknownBody': 'Algo salió mal. Probá de nuevo en un momento.',
+
+  // Privacidad y datos (T-039, 05 pantalla #16).
+  'settings.privacy': 'Privacidad y datos',
+  'privacy.title': 'Privacidad y datos',
+  'privacy.intro':
+    'Tu cuenta guarda tu perfil, los posts que compartiste, los lugares que guardaste y las reseñas que escribiste. Esto es lo que podés pedirnos que hagamos con todo eso.',
+  'privacy.pending': 'Todavía no disponible',
+  'privacy.pendingBody':
+    'Las dos acciones de abajo llegan en una próxima actualización — por ahora ninguna funciona desde la app.',
+  'privacy.signedOut': 'Iniciá sesión para usarlas',
+  'privacy.signedOutBody':
+    'Las dos acciones de abajo actúan sobre tu cuenta, así que primero tenés que iniciar sesión.',
+  'privacy.export.title': 'Obtener una copia de mis datos',
+  'privacy.export.body':
+    'Juntamos todo lo que está asociado a tu cuenta — perfil, compartidos, lugares guardados, listas y reseñas — en un archivo y te mandamos por mail un link para descargarlo.',
+  'privacy.export.action': 'Pedir mis datos',
+  'privacy.export.doneTitle': 'Tu copia está en camino',
+  'privacy.export.doneBody':
+    'Te mandamos por mail el link de descarga cuando el archivo esté listo. Puede tardar unas horas.',
+  'privacy.delete.title': 'Eliminar mi cuenta',
+  'privacy.delete.body':
+    'Elimina para siempre tu cuenta, tus compartidos, tus lugares guardados, tus listas y tus reseñas. Los lugares que otras personas descubrieron gracias a vos siguen en el mapa, sin atribución a nadie. Los registros de pagos y canjes se conservan durante el plazo que exige la ley.',
+  'privacy.delete.action': 'Eliminar cuenta',
+  'privacy.delete.confirmTitle': '¿Eliminar tu cuenta?',
+  'privacy.delete.confirmBody':
+    'Esto no se puede deshacer, y cierra tu sesión en este dispositivo de inmediato.',
+  'privacy.delete.confirmCta': 'Eliminar todo',
+  'privacy.delete.failedTitle': 'No se pudo eliminar tu cuenta',
 };
