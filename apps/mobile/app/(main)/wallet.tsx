@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useOnboardingLink, useRequestPayout, useWallet, useWalletLedger } from '@/api/hooks/useWallet';
@@ -192,6 +193,26 @@ export default function WalletScreen() {
               </Text>
             ) : null}
 
+            {/* The other half of the same question (T-048): this screen says
+                how much, the dashboard says which posts earned it. Placed above
+                the statement because "where did this come from" is the thought
+                the balance provokes, and a per-entry ledger answers it one
+                euro at a time. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('earnings.entry')}
+              onPress={() => router.push('/influencer/dashboard')}
+              style={({ pressed }) => [styles.earningsRow, pressed && styles.earningsRowPressed]}
+              testID="wallet-earnings-entry"
+            >
+              <Ionicons name="stats-chart-outline" size={20} color={c.primary} />
+              <View style={styles.earningsText}>
+                <Text style={styles.earningsTitle}>{t('earnings.entry')}</Text>
+                <Text style={styles.earningsHint}>{t('earnings.entryHint')}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={c.muted} />
+            </Pressable>
+
             <Text style={styles.sectionTitle}>{t('wallet.history')}</Text>
           </View>
         }
@@ -313,6 +334,22 @@ const makeStyles = (c: Palette) =>
     entryAmount: { ...type.bodyLg },
     entryCredit: { color: c.green },
     entryDebit: { color: c.ink2 },
+
+    earningsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: space.sm,
+      backgroundColor: c.surface,
+      borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
+      paddingHorizontal: space.md,
+      paddingVertical: space.sm,
+    },
+    earningsRowPressed: { opacity: 0.6 },
+    earningsText: { flex: 1, gap: space.xxs },
+    earningsTitle: { ...type.body, color: c.text, fontWeight: '600' },
+    earningsHint: { ...type.caption, color: c.muted },
 
     empty: { alignItems: 'center', gap: space.sm, paddingTop: space.xl, paddingHorizontal: space.xl },
     emptyText: { ...type.body, color: c.muted, textAlign: 'center' },
