@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Http\Middleware\RememberUserLocale;
 use App\Http\Resources\TagResource;
 use Illuminate\Http\Request;
 
@@ -17,6 +18,21 @@ final class RequestLocale
     public const SUPPORTED = ['es', 'en'];
 
     public static function resolve(Request $request): string
+    {
+        return self::explicit($request) ?? self::normalize((string) config('app.locale')) ?? 'en';
+    }
+
+    /**
+     * The locale the CLIENT actually asked for, or null if it expressed no
+     * supported preference.
+     *
+     * Distinct from {@see resolve()} precisely because the default is not a
+     * preference. {@see RememberUserLocale} persists this
+     * value, and treating "no `Accept-Language` at all" as a request for the
+     * app default would let one header-less call (a curl, a webhook replay, an
+     * older build) silently flip a Spanish-speaking user's account to English.
+     */
+    public static function explicit(Request $request): ?string
     {
         $param = self::normalize((string) $request->query('locale', ''));
         if ($param !== null) {
@@ -45,7 +61,7 @@ final class RequestLocale
             return (string) array_key_first($ranked);
         }
 
-        return self::normalize((string) config('app.locale')) ?? 'en';
+        return null;
     }
 
     private static function normalize(string $tag): ?string

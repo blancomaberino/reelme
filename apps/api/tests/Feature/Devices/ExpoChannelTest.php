@@ -32,11 +32,19 @@ function publishedShareFor(User $user): Share
 
 it('sends one Expo message per device with the 05 §5.2 payload shape', function () {
     Bus::fake();
-    $user = User::factory()->create();
+    $user = User::factory()->create(['locale' => 'es']);
     Device::factory()->for($user)->create(['expo_push_token' => 'tok-ok']);
     $share = publishedShareFor($user);
 
     Http::fake(['exp.host/*' => Http::response(['data' => [['status' => 'ok', 'id' => 'r-1']]])]);
+
+    // Copy is translated, so the language has to come from somewhere. In
+    // delivery that is Laravel's NotificationSender, which switches the app
+    // locale to the notifiable's `preferredLocale()` before touching a channel;
+    // calling the channel directly skips it, so do what the sender does. The
+    // app default is `en`, so the Spanish assertion below is only reachable via
+    // the RECIPIENT's preference.
+    app()->setLocale($user->preferredLocale());
 
     app(ExpoChannel::class)->send($user, new SharePublished($share));
 

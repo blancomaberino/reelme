@@ -470,8 +470,49 @@ export const es: Record<MessageKey, string> = {
   'notifications.new': 'Nuevas',
   'notifications.earlier': 'Anteriores',
   'notifications.markAll': 'Marcar todo leído',
+  'notifications.markRead': 'Marcar leído',
   'notifications.empty': 'Nada todavía. Compartí un post y te avisamos cuando se publique.',
   'notifications.error': 'No pudimos cargar tus notificaciones',
+
+  // Per-notification copy, keyed by the server's `data.type` (`share.published`
+  // → `notif.share.published.*`). The center renders from these rather than the
+  // strings stored on the row, so the list follows the language toggle. Keep
+  // them in step with apps/api/lang/es/notifications.php, which writes the same
+  // copy into the PUSH — the banner and the row describe one event.
+  'notif.share.published.title': '¡Lugar añadido!',
+  'notif.share.published.body': '{{place}} ya está en tu mapa.',
+  'notif.share.published.bodyFallback': 'Tu lugar ya está en el mapa.',
+  'notif.share.reviewNeeded.title': 'Revisá tu lugar',
+  'notif.share.reviewNeeded.body': 'Confirmá algunos datos para terminar de agregarlo.',
+  'notif.share.failed.title': 'No pudimos procesar tu enlace',
+  'notif.share.failed.body': 'Tocá para ver qué pasó y volver a intentar.',
+  'notif.social.follow.title': 'Nuevo seguidor',
+  'notif.social.follow.body': '@{{username}} empezó a seguirte.',
+  'notif.influencer.claimRejected.title': 'Reclamo no aprobado',
+  'notif.influencer.claimRejected.body': 'Tu reclamo sobre @{{handle}} no fue aprobado.',
+  'notif.redemption.verified.title': 'Oferta canjeada',
+  'notif.redemption.verified.body': 'Canjeaste tu oferta en {{place}}. ¡Que lo disfrutes!',
+  'notif.redemption.verified.bodyFallback': 'Canjeaste tu oferta. ¡Que lo disfrutes!',
+  'notif.wallet.payout.title': 'Pago enviado',
+  'notif.wallet.payout.body': 'Te enviamos {{amount}}. Llega a tu cuenta en unos días hábiles.',
+  // Last resort: a row with no copy and a type this build doesn't know. Never
+  // show the machine string — "share.published" is not a sentence.
+  'notif.unknown.title': 'Novedad',
+
+  // Compact elapsed-time suffixes for list rows.
+  'time.now': 'Ahora',
+  'time.minute': '{{count}} min',
+  'time.hour': '{{count}} h',
+  'time.day': '{{count}} d',
+  'time.week': '{{count}} sem',
+  // The only unit here that is a WORD rather than an abbreviation, so the only
+  // one that inflects: "3 mes" is wrong, "3 meses" is not. `translate()` picks
+  // the `_one`/`_other` variant whenever a `count` param is present; the base
+  // key stays because it is what the call site names.
+  'time.month': '{{count}} meses',
+  'time.month_one': '{{count}} mes',
+  'time.month_other': '{{count}} meses',
+  'time.year': '{{count}} a',
   'settings.security': 'Seguridad',
   'settings.twoFactor': 'Verificación en dos pasos',
   'settings.twoFactorOn': 'Activada',

@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Enums\ClaimStatus;
+use App\Support\RequestLocale;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
+use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -33,6 +35,7 @@ use Laravel\Scout\Searchable;
  * @property list<string>|null $favorite_foods
  * @property string|null $avatar_path
  * @property bool $is_public
+ * @property string $locale
  * @property bool $is_influencer
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $stripe_connect_onboarded_at
@@ -43,8 +46,18 @@ use Laravel\Scout\Searchable;
  */
 #[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'birthdate', 'favorite_topics', 'favorite_foods', 'is_public', 'preferred_analysis_model'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
-class User extends Authenticatable implements FilamentUser, MustVerifyEmailContract
+class User extends Authenticatable implements FilamentUser, HasLocalePreference, MustVerifyEmailContract
 {
+    /**
+     * The language used when the stored one isn't one the app ships.
+     *
+     * The shipped SET is {@see RequestLocale::SUPPORTED}, deliberately not
+     * redeclared here: that constant already gates what gets WRITTEN to the
+     * column, and a second copy would let the write allowlist and the read
+     * guard drift apart — the exact pair that must agree.
+     */
+    public const DEFAULT_LOCALE = 'es';
+
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, Searchable, SoftDeletes;
 
@@ -60,6 +73,27 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmailContr
     public function canAccessPanel(Panel $panel): bool
     {
         return (bool) $this->is_admin;
+    }
+
+    /**
+     * The language to compose this user's notifications in (HasLocalePreference).
+     *
+     * Laravel honours this automatically for every queued notification, which is
+     * the whole reason for the contract: the string is built in a worker long
+     * after the request that triggered it, where there is no `Accept-Language`
+     * and no session to read a language off. Returning it here means no
+     * notification class has to remember to pass a locale.
+     *
+     * Guarded rather than returned raw: a column value outside the shipped set
+     * (a stale row, a client that sent `pt-BR`) would resolve to no translation
+     * file at all and render the raw `notifications.share.published.title` key
+     * to a user. Falling back to Spanish is always readable.
+     */
+    public function preferredLocale(): string
+    {
+        return in_array($this->locale, RequestLocale::SUPPORTED, true)
+            ? $this->locale
+            : self::DEFAULT_LOCALE;
     }
 
     /**

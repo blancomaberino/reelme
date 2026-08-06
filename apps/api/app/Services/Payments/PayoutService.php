@@ -7,6 +7,7 @@ use App\Enums\PayoutStatus;
 use App\Exceptions\PayoutFailed;
 use App\Models\Payout;
 use App\Models\User;
+use App\Notifications\PayoutPaid;
 use App\Services\Ledger\LedgerLine;
 use App\Services\Ledger\LedgerService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -244,6 +245,27 @@ class PayoutService
             return;
         }
 
-        $payout->forceFill(['status' => PayoutStatus::Paid, 'paid_at' => now()])->save();
+        /*
+         * The UPDATE is the claim, not just the write.
+         *
+         * The checks above are in-memory, so two workers handling a redelivered
+         * `transfer.paid` can both read `processing`, both pass, and both
+         * notify — one transfer, two "we sent you €60" pushes. Conditioning the
+         * statement on the pre-transition states means the database decides the
+         * winner: exactly one worker changes a row, and only that worker
+         * notifies. Same shape as the pending → processing claim in `send()`.
+         */
+        $claimed = Payout::query()
+            ->whereKey($payout->id)
+            ->whereIn('status', [PayoutStatus::Pending, PayoutStatus::Processing])
+            ->update(['status' => PayoutStatus::Paid, 'paid_at' => now(), 'updated_at' => now()]);
+
+        if ($claimed === 0) {
+            return;
+        }
+
+        $payout->refresh();
+
+        $payout->user?->notify(new PayoutPaid($payout));
     }
 }

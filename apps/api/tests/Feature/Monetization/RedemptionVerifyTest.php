@@ -338,8 +338,14 @@ describe('the diner is told', function () {
 
             // One payload, both channels — the center row and the push cannot
             // drift into different copy for the same event (T-040).
+            //
+            // The url is the diner's own code screen (T-047), opened ON this
+            // redemption. It used to be `/redemptions/{id}`, which this line
+            // asserted and which the mobile app has never had a route for — so
+            // both the push tap and the center row dead-ended.
             return $payload['type'] === 'redemption.verified'
-                && str_starts_with($payload['url'], '/redemptions/');
+                && str_starts_with($payload['url'], '/offers/')
+                && str_contains($payload['url'], '/redeem?redemptionId=');
         });
     });
 

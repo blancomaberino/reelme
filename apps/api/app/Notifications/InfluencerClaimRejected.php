@@ -3,14 +3,18 @@
 namespace App\Notifications;
 
 use App\Models\Influencer;
+use App\Notifications\Channels\ExpoChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
 /**
- * An admin rejected your claim over an influencer identity (T-038). Database
- * channel now; the Expo push channel joins via the shared notifications queue
- * (T-027). The payload shape mirrors the other social notifications (05 §5.2).
+ * An admin rejected your claim over an influencer identity (T-038).
+ *
+ * Dual-channel like every other notification since T-040. It was database-only,
+ * which made it the one outcome a user could never learn about without opening
+ * the app and going looking — the worst candidate for silence, since a rejected
+ * claim is precisely what someone is waiting on an answer for.
  */
 class InfluencerClaimRejected extends Notification implements ShouldQueue
 {
@@ -23,11 +27,11 @@ class InfluencerClaimRejected extends Notification implements ShouldQueue
     }
 
     /**
-     * @return list<string>
+     * @return list<string|class-string>
      */
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', ExpoChannel::class];
     }
 
     /**
@@ -35,12 +39,41 @@ class InfluencerClaimRejected extends Notification implements ShouldQueue
      */
     public function toDatabase(object $notifiable): array
     {
+        return $this->payload();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toExpo(object $notifiable): array
+    {
+        $payload = $this->payload();
+
+        return [
+            'title' => $payload['title'],
+            'body' => $payload['body'],
+            'sound' => 'default',
+            'channelId' => 'default',
+            'data' => ['type' => $payload['type'], 'url' => $payload['url']],
+        ];
+    }
+
+    /**
+     * @return array{type: string, url: string, title: string, body: string, influencer_handle: string, platform: string}
+     */
+    private function payload(): array
+    {
         return [
             'type' => 'influencer.claim_rejected',
-            'url' => '/influencers/'.$this->influencer->id,
-            // The center renders from these; see ShareNotification (T-040).
-            'title' => 'Claim not approved',
-            'body' => 'Your claim on @'.$this->influencer->handle.' was not approved.',
+            // `/influencer/` SINGULAR — the Expo Router segment is
+            // `app/influencer/[id]/index.tsx`. The plural spelling this used to
+            // emit matched no route, so tapping the notification dead-ended on
+            // the unmatched-route screen.
+            'url' => '/influencer/'.$this->influencer->id,
+            'title' => (string) __('notifications.influencer.claim_rejected.title'),
+            'body' => (string) __('notifications.influencer.claim_rejected.body', [
+                'handle' => $this->influencer->handle,
+            ]),
             'influencer_handle' => $this->influencer->handle,
             'platform' => $this->influencer->platform->value,
         ];

@@ -1,4 +1,4 @@
-import { cuisinePriceLine, platformIcon, priceGlyphs, relativeTime } from '../format';
+import { cuisinePriceLine, elapsedSince, platformIcon, priceGlyphs, relativeTime } from '../format';
 
 describe('priceGlyphs', () => {
   it('maps 1–4 to currency glyphs (defaults to $)', () => {
@@ -37,6 +37,43 @@ describe('relativeTime', () => {
   it('returns empty for null / invalid', () => {
     expect(relativeTime(null, now)).toBe('');
     expect(relativeTime('not-a-date', now)).toBe('');
+  });
+
+  /**
+   * The month→year handover used to straddle two different definitions of a
+   * month: the month branch divides by 30, the year branch divided by 365. That
+   * leaves 360–364 days belonging to neither — already 12 months, not yet a
+   * year — and it rendered as "0y".
+   */
+  it('never reports zero of a unit at the month/year boundary', () => {
+    const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000).toISOString();
+
+    expect(relativeTime(daysAgo(359), now)).toBe('11mo');
+    expect(relativeTime(daysAgo(360), now)).toBe('1y');
+    expect(relativeTime(daysAgo(364), now)).toBe('1y');
+    expect(relativeTime(daysAgo(400), now)).toBe('1y');
+    expect(relativeTime(daysAgo(760), now)).toBe('2y');
+  });
+});
+
+describe('elapsedSince', () => {
+  const now = new Date(2026, 6, 15, 12, 0, 0);
+
+  it('reports the unit and count separately so callers can translate it', () => {
+    expect(elapsedSince(new Date(now.getTime() - 30_000).toISOString(), now)).toEqual({ unit: 'now', value: 0 });
+    expect(elapsedSince(new Date(now.getTime() - 5 * 60_000).toISOString(), now)).toEqual({
+      unit: 'minute',
+      value: 5,
+    });
+    expect(elapsedSince(new Date(now.getTime() - 3 * 86_400_000).toISOString(), now)).toEqual({
+      unit: 'day',
+      value: 3,
+    });
+  });
+
+  it('returns null for null / invalid, so the caller can omit the label', () => {
+    expect(elapsedSince(null, now)).toBeNull();
+    expect(elapsedSince('not-a-date', now)).toBeNull();
   });
 });
 

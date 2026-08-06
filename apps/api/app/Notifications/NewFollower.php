@@ -13,6 +13,10 @@ use Illuminate\Notifications\Notification;
  * backs the notification center, the Expo push reaches a user who is not in the
  * app. Both carry the same `{type, url, title, body}` payload (05 §5.2), so a
  * tapped push and a tapped center row route through one path.
+ *
+ * Copy is translated into the RECIPIENT's language — `User` implements
+ * `HasLocalePreference` and this is queued, so Laravel has already switched the
+ * locale by the time `payload()` runs.
  */
 class NewFollower extends Notification implements ShouldQueue
 {
@@ -61,6 +65,9 @@ class NewFollower extends Notification implements ShouldQueue
      * One payload, both channels — so the center and the push can never drift
      * into showing different copy for the same event.
      *
+     * `follower_username` is what lets the CENTER re-render this line in the
+     * user's current language instead of the language it was sent in.
+     *
      * @return array{type: string, url: string, title: string, body: string, follower_username: string}
      */
     private function payload(): array
@@ -68,8 +75,8 @@ class NewFollower extends Notification implements ShouldQueue
         return [
             'type' => 'social.follow',
             'url' => '/users/'.$this->follower->username,
-            'title' => 'New follower',
-            'body' => '@'.$this->follower->username.' started following you.',
+            'title' => (string) __('notifications.social.follow.title'),
+            'body' => (string) __('notifications.social.follow.body', ['username' => $this->follower->username]),
             'follower_username' => $this->follower->username,
         ];
     }

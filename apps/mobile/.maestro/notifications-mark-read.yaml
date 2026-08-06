@@ -1,0 +1,70 @@
+# Notification centre — clearing a row (E2E, iOS simulator).
+#
+# Covers the two things unit tests cannot: that the mark-read control is
+# REACHABLE from a screen the user is already on, and that tapping it clears the
+# row WITHOUT navigating anywhere. Both have been wrong in this screen before —
+# a tap on the dot fell through to the card underneath and opened the place
+# screen, and jest never saw it because `router` is mocked there.
+#
+# Preconditions: the API stack and Metro are up (`./scripts/dev.sh start`), the
+# app is logged in, and the account has at least one UNREAD notification. Seed
+# one with:
+#   docker compose exec laravel.test php artisan tinker --execute="\
+#     DB::table('notifications')->where('notifiable_id', 2)->update(['read_at' => null]);"
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/notifications-mark-read.yaml
+#
+# Navigation is by tapping real controls, never `simctl openurl` — a deep link
+# sets the app's launch URL and strands the next reload on this screen, and it
+# would also skip the reachability check that is half the point.
+appId: pet.one.reelmap
+---
+- launchApp
+
+# --- Reachability: the centre is reached from the profile tab, by its badge ---
+# Tab labels come through as "Perfil, tab, 6 of 6", so match loosely.
+- extendedWaitUntil:
+    visible: ".*Perfil.*"
+    timeout: 60000
+- tapOn: ".*Perfil, tab.*"
+- tapOn:
+    id: "notifications-bell"
+- extendedWaitUntil:
+    visible: ".*Notificaciones.*"
+    timeout: 20000
+
+# The unread section must exist, or the rest of this flow proves nothing.
+- assertVisible: "NUEVAS"
+
+# --- Clearing a row -------------------------------------------------------
+# Tap the FIRST row's dot. `mark-read-*` is per-row and unique; the bare label
+# would also match every other row's dot and Maestro would take the first.
+- tapOn:
+    id: "mark-read-.*"
+    index: 0
+- takeScreenshot: build/maestro/notifications-after-mark-read
+
+# It must NOT have navigated. This is the regression: the dot used to sit
+# INSIDE the card's pressable, so a tap could fall through and deep-link.
+- assertVisible: ".*Notificaciones.*"
+
+# And the row must have left the unread list for "Anteriores" once its exit
+# animation finished. `extendedWaitUntil` covers the animation's duration
+# without pinning the test to a specific frame count.
+- extendedWaitUntil:
+    visible: "ANTERIORES"
+    timeout: 10000
+
+# --- The swipe route to the same action -----------------------------------
+- swipe:
+    from:
+      id: "notification-.*"
+      index: 0
+    direction: LEFT
+- assertVisible:
+    id: "mark-read-swipe-.*"
+- takeScreenshot: build/maestro/notifications-swipe-revealed
+- tapOn:
+    id: "mark-read-swipe-.*"
+    index: 0
+- assertVisible: ".*Notificaciones.*"

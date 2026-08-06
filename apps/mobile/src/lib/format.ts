@@ -22,24 +22,65 @@ export function platformIcon(platform: string): 'logo-instagram' | 'logo-tiktok'
   }
 }
 
-/** Coarse relative time ("3h", "2d", "Just now") from an ISO timestamp. */
-export function relativeTime(iso: string | null | undefined, now: Date = new Date()): string {
-  if (!iso) return '';
+/** The largest whole unit that has elapsed since `iso`. */
+export type ElapsedUnit = 'now' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
+
+export type Elapsed = { unit: ElapsedUnit; value: number };
+
+/**
+ * Coarse elapsed time, as a unit and a count — no words.
+ *
+ * Split out from {@see relativeTime} so a caller that needs the label in the
+ * user's language can translate it. The suffixes are not the same everywhere
+ * ("w" vs "sem", "mo" vs "mes"), and a Spanish screen reading "Just now" is the
+ * kind of thing that only shows up on a device.
+ *
+ * Returns null for a missing or unparseable timestamp so the caller can omit
+ * the label entirely rather than print a placeholder.
+ */
+export function elapsedSince(iso: string | null | undefined, now: Date = new Date()): Elapsed | null {
+  if (!iso) return null;
   const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '';
+  if (Number.isNaN(then)) return null;
   const secs = Math.max(0, Math.floor((now.getTime() - then) / 1000));
-  if (secs < 60) return 'Just now';
+  if (secs < 60) return { unit: 'now', value: 0 };
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m`;
+  if (mins < 60) return { unit: 'minute', value: mins };
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
+  if (hours < 24) return { unit: 'hour', value: hours };
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
+  if (days < 7) return { unit: 'day', value: days };
   const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks}w`;
+  if (weeks < 5) return { unit: 'week', value: weeks };
   const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo`;
-  return `${Math.floor(days / 365)}y`;
+  if (months < 12) return { unit: 'month', value: months };
+  // Years come from the SAME 30-day month the line above uses, not from 365.
+  // Mixing the two leaves a five-day hole: 360–364 days is already 12 months,
+  // so it falls through here, and `days / 365` truncates it to "0 y".
+  return { unit: 'year', value: Math.floor(months / 12) };
+}
+
+/** English suffix per unit — the shape {@see relativeTime} has always emitted. */
+const EN_SUFFIX: Record<Exclude<ElapsedUnit, 'now'>, string> = {
+  minute: 'm',
+  hour: 'h',
+  day: 'd',
+  week: 'w',
+  month: 'mo',
+  year: 'y',
+};
+
+/**
+ * Coarse relative time ("3h", "2d", "Just now") from an ISO timestamp.
+ *
+ * English-only; for anything user-facing on a localized screen use
+ * {@see elapsedSince} and translate the unit.
+ */
+export function relativeTime(iso: string | null | undefined, now: Date = new Date()): string {
+  const elapsed = elapsedSince(iso, now);
+  if (!elapsed) return '';
+
+  return elapsed.unit === 'now' ? 'Just now' : `${elapsed.value}${EN_SUFFIX[elapsed.unit]}`;
 }
 
 /**

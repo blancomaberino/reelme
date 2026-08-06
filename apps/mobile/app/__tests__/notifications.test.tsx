@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import NotificationsScreen from '../notifications';
 import { api } from '@/api/client';
 import type { NotificationRow } from '@/api/notifications';
+import { useSettingsStore } from '@/stores/settings';
 
 import { mockRouter } from '../../jest.setup';
 
@@ -58,13 +59,31 @@ afterEach(() => {
   qc.clear();
 });
 
-it('renders a notification with its title and body', async () => {
-  mock.onGet('/notifications').reply(200, page([row()]));
+it('renders a notification from its type and params, not the stored strings', async () => {
+  // The server's own `title`/`body` are deliberately nonsense here: the row is
+  // rendered from `type` + `data`, so the screen must ignore them entirely for
+  // a type it knows. That is what lets a row written in Spanish months ago read
+  // in English once the user flips the language toggle.
+  mock.onGet('/notifications').reply(
+    200,
+    page([row({ title: 'STALE', body: 'STALE', data: { place_name: 'Bar Tinta' } })]),
+  );
 
   render(<NotificationsScreen />, { wrapper: Providers });
 
-  expect(await screen.findByText('Published')).toBeTruthy();
-  expect(screen.getByText('Bar Tinta is on your map.')).toBeTruthy();
+  expect(await screen.findByText('Place added!')).toBeTruthy();
+  expect(screen.getByText('Bar Tinta is on your map now.')).toBeTruthy();
+  expect(screen.queryByText('STALE')).toBeNull();
+});
+
+it('follows the language toggle', async () => {
+  mock.onGet('/notifications').reply(200, page([row({ data: { place_name: 'Bar Tinta' } })]));
+  useSettingsStore.setState({ locale: 'es' });
+
+  render(<NotificationsScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('¡Lugar añadido!')).toBeTruthy();
+  expect(screen.getByText('Bar Tinta ya está en tu mapa.')).toBeTruthy();
 });
 
 it('separates unread from already-seen', async () => {
@@ -89,6 +108,105 @@ it('deep-links through data.url — the same contract as a push tap', async () =
   fireEvent.press(await screen.findByTestId('notification-n1'));
 
   expect(mockRouter.push).toHaveBeenCalledWith('/shares/12/review');
+});
+
+describe('per-row mark as read', () => {
+  it('clears the row without opening it', async () => {
+    // The distinction that matters: opening a notification marks it read as a
+    // side effect, but the dot must be able to clear it WITHOUT navigating —
+    // otherwise dismissing a badge costs you a trip into a screen you did not
+    // want.
+    mock.onGet('/notifications').reply(200, page([row({ url: '/place/bar-tinta' })]));
+    mock.onPost('/notifications/read').reply(200, { data: { unread_count: 0 } });
+
+    render(<NotificationsScreen />, { wrapper: Providers });
+    fireEvent.press(await screen.findByTestId('mark-read-n1'));
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(JSON.parse(mock.history.post[0].data)).toEqual({ ids: ['n1'] });
+    expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+
+  it('drops the dot optimistically, before the request resolves', async () => {
+    mock.onGet('/notifications').reply(200, page([row()]));
+    // Hold the response open so "optimistic" is actually observable — with an
+    // instant reply this would pass even for a non-optimistic implementation.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mock.onPost('/notifications/read').reply(async () => {
+      await held;
+      return [200, { data: { unread_count: 0 } }];
+    });
+
+    render(<NotificationsScreen />, { wrapper: Providers });
+    expect(await screen.findByTestId('unread-dot')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('mark-read-n1'));
+
+    // The POST landing in history is the exact moment "in flight" begins, and
+    // the reply above is still held, so this assertion is by definition
+    // pre-response.
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(screen.queryByTestId('unread-dot')).toBeNull();
+
+    release();
+  });
+
+  it('animates the row out of New and lands it under Earlier', async () => {
+    /*
+     * The behaviour the owner asked for, and the reason the row cannot simply
+     * flip sections on the spot: doing that yanked it out from under the finger
+     * that tapped it and shunted every row below up by a row height.
+     *
+     * So it leaves in two beats — still in "New" while it collapses and fades,
+     * then gone from "New" and present under "Earlier".
+     */
+    // A fake server that actually REMEMBERS the write — the mutation settles
+    // into a refetch, and a GET that kept replying "unread" would resurrect the
+    // row and hide the very transition under test.
+    const readAt: Record<string, string | null> = { a: null, b: null };
+    mock.onGet('/notifications').reply(() => [
+      200,
+      page([row({ id: 'a', read_at: readAt.a }), row({ id: 'b', read_at: readAt.b })]),
+    ]);
+    mock.onPost('/notifications/read').reply(() => {
+      readAt.a = '2026-08-01T00:00:00Z';
+      return [200, { data: { unread_count: 1 } }];
+    });
+
+    render(<NotificationsScreen />, { wrapper: Providers });
+    expect(await screen.findByText('New')).toBeTruthy();
+    expect(screen.queryByText('Earlier')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('mark-read-a'));
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+
+    /*
+     * The END state is what this level can honestly assert. The intermediate
+     * beat — the row holding its place in "New" while it collapses — depends on
+     * a real layout pass and real frame timing, neither of which the test
+     * renderer has (`onLayout` never fires, so the animation runs at zero
+     * duration). `.maestro/notifications-mark-read.yaml` pins that half on a
+     * device.
+     */
+    await waitFor(() => expect(screen.getByText('Earlier')).toBeTruthy());
+    expect(screen.getByTestId('notification-a')).toBeTruthy();
+    // The other row never left.
+    expect(screen.getByTestId('notification-b')).toBeTruthy();
+  });
+
+  it('offers no mark-read control on a row that is already read', async () => {
+    // An action that silently does nothing is worse than no action.
+    mock.onGet('/notifications').reply(200, page([row({ read_at: '2026-07-30T09:00:00Z' })]));
+
+    render(<NotificationsScreen />, { wrapper: Providers });
+    await screen.findByTestId('notification-n1');
+
+    expect(screen.queryByTestId('mark-read-n1')).toBeNull();
+  });
 });
 
 it('marks a row read when it is opened', async () => {
@@ -181,12 +299,36 @@ it('renders an unknown type generically instead of dropping it', async () => {
   expect(screen.getByText('Happened.')).toBeTruthy();
 });
 
-it('falls back to the type string when a row has no title', async () => {
-  mock.onGet('/notifications').reply(200, page([row({ title: null, body: null })]));
+/**
+ * The bug this screen actually shipped with.
+ *
+ * Rows written before the server stored `title`/`body` at all carry only
+ * `{type, url, share_id}`, and the fallback was `item.type` — so twenty legacy
+ * rows rendered as a column reading "share.published", with no body, inside an
+ * otherwise Spanish app. A machine string is never a sentence.
+ */
+it('renders legacy rows that carry no copy at all', async () => {
+  mock.onGet('/notifications').reply(200, page([row({ title: null, body: null, data: {} })]));
 
   render(<NotificationsScreen />, { wrapper: Providers });
 
-  expect(await screen.findByText('share.published')).toBeTruthy();
+  // The type still resolves the copy; the missing `place_name` only picks the
+  // un-named variant of the body.
+  expect(await screen.findByText('Place added!')).toBeTruthy();
+  expect(screen.getByText('Your place is on the map now.')).toBeTruthy();
+  expect(screen.queryByText('share.published')).toBeNull();
+});
+
+it('never shows a raw machine string, even for an unknown type with no copy', async () => {
+  mock.onGet('/notifications').reply(
+    200,
+    page([row({ type: 'something.invented.later', title: null, body: null, data: {} })]),
+  );
+
+  render(<NotificationsScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Update')).toBeTruthy();
+  expect(screen.queryByText('something.invented.later')).toBeNull();
 });
 
 it('shows an empty state rather than a blank screen', async () => {

@@ -11,9 +11,19 @@ use Illuminate\Notifications\Notification;
 /**
  * Shared plumbing for the three pipeline-outcome pushes (T-027): a share moving
  * into `published` / `review` / `failed` notifies its owner via the database
- * channel (M3 notification center reads it) and Expo push (deep-link recovery
- * for a user who left the app). Subclasses supply the copy, `data.type`, and the
- * in-app deep-link path — the payload shape (05 §5.2) stays uniform.
+ * channel (the notification center reads it) and Expo push (deep-link recovery
+ * for a user who left the app). Subclasses supply `data.type` and the in-app
+ * deep-link path — the payload shape (05 §5.2) stays uniform.
+ *
+ * Copy is TRANSLATED, keyed off `data.type`: `share.published` reads
+ * `notifications.share.published.{title,body}`. One string, no per-class copy,
+ * and a new type cannot ship with copy in only one language without the
+ * key-parity test noticing.
+ *
+ * Because the notification is queued and `User` implements
+ * `HasLocalePreference`, Laravel has already switched the app locale to the
+ * RECIPIENT's language by the time these run — so `__()` here composes in their
+ * language, not the language of whoever triggered the event.
  */
 abstract class ShareNotification extends Notification implements ShouldQueue
 {
@@ -26,15 +36,11 @@ abstract class ShareNotification extends Notification implements ShouldQueue
         $this->onQueue('notifications');
     }
 
-    /** `data.type` per 05 §5.2 (e.g. `share.published`). */
+    /** `data.type` per 05 §5.2 (e.g. `share.published`) AND the lang key path. */
     abstract protected function type(): string;
 
     /** In-app deep-link path the tap handler passes straight to `router.push`. */
     abstract protected function url(): string;
-
-    abstract protected function title(): string;
-
-    abstract protected function body(): string;
 
     /**
      * @return list<string|class-string>
@@ -52,13 +58,14 @@ abstract class ShareNotification extends Notification implements ShouldQueue
         return [
             'type' => $this->type(),
             'url' => $this->url(),
-            // title/body are the same strings the push carries. The center
-            // renders from the stored row, so without them a notification that
-            // arrived while the app was closed would list as a blank line
-            // (T-040). One payload convention, both channels.
+            // Stored in the recipient's language at SEND time. The center
+            // re-renders from `type` + the params below so it follows a later
+            // language switch, but these stay the fallback for a row whose type
+            // the client doesn't recognise (and for any older build).
             'title' => $this->title(),
             'body' => $this->body(),
             'share_id' => $this->share->id,
+            ...$this->params(),
         ];
     }
 
@@ -84,6 +91,28 @@ abstract class ShareNotification extends Notification implements ShouldQueue
                 'share_id' => $this->share->id,
             ],
         ];
+    }
+
+    /**
+     * Structured values the CENTER interpolates into its own translation of this
+     * notification. Anything a body string interpolates has to appear here, or
+     * the client can only fall back to the frozen server copy.
+     *
+     * @return array<string, mixed>
+     */
+    protected function params(): array
+    {
+        return [];
+    }
+
+    protected function title(): string
+    {
+        return (string) __('notifications.'.$this->type().'.title');
+    }
+
+    protected function body(): string
+    {
+        return (string) __('notifications.'.$this->type().'.body');
     }
 
     /**

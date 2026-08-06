@@ -60,7 +60,7 @@ class RedemptionConfirmed extends Notification implements ShouldQueue
     }
 
     /**
-     * @return array{type: string, url: string, title: string, body: string, redemption_id: string}
+     * @return array{type: string, url: string, title: string, body: string, redemption_id: string, place_name: string|null}
      */
     private function payload(): array
     {
@@ -71,14 +71,27 @@ class RedemptionConfirmed extends Notification implements ShouldQueue
         // obvious spelling, but the FK chain makes `place` non-null to static
         // analysis, which then flags it as unnecessary.)
         $place = $this->redemption->offer?->place;
-        $placeName = $place instanceof Place ? $place->name : 'the restaurant';
+        $placeName = $place instanceof Place ? $place->name : null;
 
         return [
             'type' => 'redemption.verified',
-            'url' => '/redemptions/'.$this->redemption->id,
-            'title' => 'Offer redeemed',
-            'body' => 'Your offer was redeemed at '.$placeName.'. Enjoy!',
+            /*
+             * The diner's own code screen, WITH the redemption id so it opens on
+             * this redemption rather than issuing a new code.
+             *
+             * This used to be `/redemptions/{id}` — a path with no route behind
+             * it in the mobile app, so both the push tap and the center row
+             * landed on Expo Router's unmatched-route screen. `/offers/{id}/redeem`
+             * is the real screen (T-047), and it renders the verified state,
+             * which is exactly the receipt this notification is announcing.
+             */
+            'url' => '/offers/'.$this->redemption->offer_id.'/redeem?redemptionId='.$this->redemption->id,
+            'title' => (string) __('notifications.redemption.verified.title'),
+            'body' => $placeName !== null
+                ? (string) __('notifications.redemption.verified.body', ['place' => $placeName])
+                : (string) __('notifications.redemption.verified.body_fallback'),
             'redemption_id' => (string) $this->redemption->id,
+            'place_name' => $placeName,
         ];
     }
 }
