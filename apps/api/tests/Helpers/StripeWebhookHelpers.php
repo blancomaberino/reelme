@@ -15,6 +15,8 @@
 | verification works, and a mock would only assert that we called something.
 */
 
+use Illuminate\Testing\TestResponse;
+
 const WEBHOOK_SECRET = 'whsec_test_secret_for_signing';
 
 /** Sign a payload the way Stripe does, so the endpoint's real verifier runs. */
@@ -49,7 +51,7 @@ function stripeEventPayload(string $type, array $object, string $id = 'evt_test_
  *
  * @param  array<string, mixed>  $object
  */
-function postWebhook(string $type, array $object, string $id = 'evt_test_1', ?string $signature = null)
+function postWebhook(string $type, array $object, string $id = 'evt_test_1', ?string $signature = null): TestResponse
 {
     $payload = stripeEventPayload($type, $object, $id);
 

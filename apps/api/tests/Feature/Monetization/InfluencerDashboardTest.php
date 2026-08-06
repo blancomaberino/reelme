@@ -185,9 +185,15 @@ describe('the period window', function () {
         dashboardCode($place, $influencer, RedemptionStatus::Issued, $operator, 'AAAAAAAAAA', now());
         dashboardCode($place, $influencer, RedemptionStatus::Issued, $operator, 'BBBBBBBBBB', now()->subDays(45));
 
-        $recent = $this->actingAs($user)->getJson('/api/v1/me/influencer/dashboard?period=30d')->json('data.funnel.issued');
-        $wider = $this->actingAs($user)->getJson('/api/v1/me/influencer/dashboard?period=90d')->json('data.funnel.issued');
-        $all = $this->actingAs($user)->getJson('/api/v1/me/influencer/dashboard?period=all')->json('data.funnel.issued');
+        // assertOk() before reading the body: without it a 500 yields `null`
+        // and the failure reads as "expected 1, got null" — a window bug rather
+        // than the broken endpoint it actually is.
+        $issued = fn (string $period) => $this->actingAs($user)
+            ->getJson("/api/v1/me/influencer/dashboard?period={$period}")
+            ->assertOk()
+            ->json('data.funnel.issued');
+
+        [$recent, $wider, $all] = [$issued('30d'), $issued('90d'), $issued('all')];
 
         expect($recent)->toBe(1)->and($wider)->toBe(2)->and($all)->toBe(2);
     });

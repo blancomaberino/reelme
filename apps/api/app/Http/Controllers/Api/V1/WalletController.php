@@ -15,6 +15,7 @@ use App\Services\Payments\PayoutService;
 use App\Services\Payments\StripeConnect;
 use App\Support\KeysetCursor;
 use App\Support\KeysetPage;
+use App\Support\Money;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -257,7 +258,7 @@ class WalletController extends Controller
      */
     private function money(int $amount, string $currency): array
     {
-        return ['amount' => $amount, 'currency' => $currency];
+        return Money::minor($amount, $currency);
     }
 
     private function eligibleUser(Request $request): User

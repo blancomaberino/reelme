@@ -8,8 +8,8 @@ use App\Enums\RedemptionStatus;
 use App\Models\Influencer;
 use App\Models\LedgerEntry;
 use App\Models\Redemption;
-use App\Models\User;
 use App\Services\Redemptions\RedemptionAttribution;
+use App\Support\Money;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 
@@ -177,12 +177,7 @@ class DashboardMetrics
         $rows = $this->scopedRedemptions($influencer, $period)
             ->join('offers', 'offers.id', '=', 'redemptions.offer_id')
             ->join('places', 'places.id', '=', 'offers.place_id')
-            ->leftJoin('ledger_entries', function ($join) use ($currency): void {
-                $join->on('ledger_entries.reference_id', '=', 'redemptions.id')
-                    ->where('ledger_entries.reference_type', '=', 'redemption')
-                    ->where('ledger_entries.account', '=', LedgerAccount::InfluencerEarnings->value)
-                    ->where('ledger_entries.currency', '=', $currency);
-            })
+            ->leftJoin('ledger_entries', $this->joinEarnings($currency))
             ->groupBy('places.id', 'places.slug', 'places.name')
             ->select('places.id', 'places.slug', 'places.name')
             ->selectRaw('count(DISTINCT redemptions.id) AS issued')
@@ -190,11 +185,7 @@ class DashboardMetrics
                 'count(DISTINCT redemptions.id) FILTER (WHERE redemptions.status = ?) AS redeemed',
                 [RedemptionStatus::Redeemed->value],
             )
-            ->selectRaw(
-                'coalesce(sum(CASE WHEN ledger_entries.direction = ? THEN ledger_entries.amount '.
-                'WHEN ledger_entries.direction IS NULL THEN 0 ELSE -ledger_entries.amount END), 0) AS earned',
-                [$normal],
-            )
+            ->selectRaw($this->netEarningsSql(), [$normal])
             ->orderByRaw('earned DESC, count(DISTINCT redemptions.id) DESC, places.id ASC')
             ->get();
 
@@ -223,12 +214,7 @@ class DashboardMetrics
         $rows = $this->scopedRedemptions($influencer, $period)
             ->leftJoin('shares', 'shares.id', '=', 'redemptions.attributed_share_id')
             ->leftJoin('source_posts', 'source_posts.id', '=', 'shares.source_post_id')
-            ->leftJoin('ledger_entries', function ($join) use ($currency): void {
-                $join->on('ledger_entries.reference_id', '=', 'redemptions.id')
-                    ->where('ledger_entries.reference_type', '=', 'redemption')
-                    ->where('ledger_entries.account', '=', LedgerAccount::InfluencerEarnings->value)
-                    ->where('ledger_entries.currency', '=', $currency);
-            })
+            ->leftJoin('ledger_entries', $this->joinEarnings($currency))
             ->groupBy('redemptions.attributed_share_id', 'source_posts.id', 'source_posts.url', 'source_posts.platform')
             ->select('redemptions.attributed_share_id AS share_id', 'source_posts.url', 'source_posts.platform')
             ->selectRaw('count(DISTINCT redemptions.id) AS issued')
@@ -236,12 +222,11 @@ class DashboardMetrics
                 'count(DISTINCT redemptions.id) FILTER (WHERE redemptions.status = ?) AS redeemed',
                 [RedemptionStatus::Redeemed->value],
             )
-            ->selectRaw(
-                'coalesce(sum(CASE WHEN ledger_entries.direction = ? THEN ledger_entries.amount '.
-                'WHEN ledger_entries.direction IS NULL THEN 0 ELSE -ledger_entries.amount END), 0) AS earned',
-                [$normal],
-            )
-            ->orderByRaw('earned DESC, count(DISTINCT redemptions.id) DESC')
+            ->selectRaw($this->netEarningsSql(), [$normal])
+            // NULLS LAST + the frozen share id: without a stable tiebreaker two
+            // equal-earning posts swap places between builds, and because this
+            // payload is CACHED the list visibly reshuffles on refresh.
+            ->orderByRaw('earned DESC, count(DISTINCT redemptions.id) DESC, redemptions.attributed_share_id ASC NULLS LAST')
             ->get();
 
         return $rows->map(fn ($row) => [
@@ -285,9 +270,37 @@ class DashboardMetrics
             ->count('place_sources.share_id');
     }
 
+    /**
+     * The join that hangs this identity's earnings off each redemption.
+     *
+     * Spelled once because `by_place` and `by_source` must agree to the cent:
+     * two hand-written copies of a four-condition join is two chances to omit
+     * the currency filter and have one breakdown quietly disagree with the other.
+     */
+    private function joinEarnings(string $currency): callable
+    {
+        return function ($join) use ($currency): void {
+            $join->on('ledger_entries.reference_id', '=', 'redemptions.id')
+                ->where('ledger_entries.reference_type', '=', 'redemption')
+                ->where('ledger_entries.account', '=', LedgerAccount::InfluencerEarnings->value)
+                ->where('ledger_entries.currency', '=', $currency);
+        };
+    }
+
+    /**
+     * Net earnings over the joined entries, signed against the account's normal
+     * direction — so a void's reversal subtracts, and a redemption with no
+     * entries at all (still `issued`) contributes 0 rather than NULL.
+     */
+    private function netEarningsSql(): string
+    {
+        return 'coalesce(sum(CASE WHEN ledger_entries.direction = ? THEN ledger_entries.amount '.
+            'WHEN ledger_entries.direction IS NULL THEN 0 ELSE -ledger_entries.amount END), 0) AS earned';
+    }
+
     /** @return array{amount: int, currency: string} */
     private function money(int $amount, string $currency): array
     {
-        return ['amount' => $amount, 'currency' => $currency];
+        return Money::minor($amount, $currency);
     }
 }

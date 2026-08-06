@@ -20,7 +20,6 @@ use App\Services\Payments\FakeStripeConnect;
 use App\Services\Payments\StripeConnect;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * The M4 phase gate (ROADMAP §M4 exit criteria, 06 §2–§5).
@@ -107,10 +106,13 @@ function assertBooksBalance(string $after): void
 
 beforeEach(function (): void {
     Carbon::setTestNow('2026-08-06 12:00:00');
-    // T-043's velocity limiters are per-user Redis counters that outlive a
-    // single test. Without this the SECOND loop in the file trips the 3/day
-    // issue cap and fails as "fraud", which looks exactly like a real bug.
-    RateLimiter::clear('redemptions:issue');
+    // NOTE on T-043's velocity limiters: they are keyed PER DINER
+    // ('redemption:issue:day:{id}' and ':week:{id}'), so clearing a guessed
+    // prefix does nothing — this file previously did exactly that, which is
+    // decorative code pretending to be a safeguard. What actually keeps the
+    // 3/day cap out of the way is that every test takes a fresh diner from
+    // loopScenario(). A test that issues 4+ codes to the SAME diner must clear
+    // those two real keys itself, or it fails as "fraud" and reads as a bug.
     // Must be the secret `postWebhook()` signs with, or every event is rejected
     // for a bad signature — which surfaces as "the payout never reached paid"
     // rather than as anything to do with signing.
@@ -343,13 +345,15 @@ it('accrues an unclaimed influencer’s share to escrow, then releases it on cla
 
     // --- the claim --------------------------------------------------------
     $claimant = User::factory()->create(['is_influencer' => true]);
+    // Persist the claim BEFORE firing, which is the order InfluencerClaimService
+    // uses. Firing against a still-unclaimed row would let this pass even if the
+    // listener depended on the claim already being committed.
+    $s['influencer']->forceFill(['claimed_by_user_id' => $claimant->id])->save();
     event(new InfluencerClaimed($s['influencer']->refresh(), $claimant));
 
     expect($ledger->balance(LedgerAccount::InfluencerEarnings, $claimant))->toBe($share)
         ->and($ledger->escrowBalance($s['influencer']))->toBe(0);
     assertBooksBalance('escrow release');
-
-    $s['influencer']->forceFill(['claimed_by_user_id' => $claimant->id])->save();
 
     // The release must NOT read as new earnings: it references the influencer,
     // not a redemption, so the funnel still shows the one visit that earned it.

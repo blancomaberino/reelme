@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Influencers\DashboardMetrics;
 use App\Services\Payments\PayoutService;
 use App\Services\Payments\StripeConnect;
+use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -69,8 +70,8 @@ class InfluencerDashboardController extends Controller
                 'platform' => $influencer->platform,
             ],
             'money' => [
-                'available' => $this->money($payouts->availableBalance($user, $currency), $currency),
-                'threshold' => $this->money($payouts->threshold(), $currency),
+                'available' => Money::minor($payouts->availableBalance($user, $currency), $currency),
+                'threshold' => Money::minor($payouts->threshold(), $currency),
             ],
             'connect' => [
                 'onboarded' => $status->accountId !== null,
@@ -93,11 +94,5 @@ class InfluencerDashboardController extends Controller
         abort_if($influencer === null, 403, 'This account has no claimed influencer profile.');
 
         return $influencer;
-    }
-
-    /** @return array{amount: int, currency: string} */
-    private function money(int $amount, string $currency): array
-    {
-        return ['amount' => $amount, 'currency' => $currency];
     }
 }
