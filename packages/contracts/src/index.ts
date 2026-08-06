@@ -20,3 +20,4 @@ export type { PlaceListDetail } from './generated/place-list-detail';
 export type { Offer } from './generated/offer';
 export type { Redemption } from './generated/redemption';
 export type { Notification } from './generated/notification';
+export type { InfluencerDashboard } from './generated/influencer-dashboard';

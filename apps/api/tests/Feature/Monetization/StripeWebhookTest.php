@@ -21,55 +21,14 @@ use App\Services\Payments\StripeConnect;
  * attempt to get past it, or a check that a legitimate event moves money exactly
  * once no matter how many times it is delivered.
  */
-const WEBHOOK_SECRET = 'whsec_test_secret_for_signing';
-
 beforeEach(function () {
     config()->set('services.stripe.webhook_secret', WEBHOOK_SECRET);
 });
 
-/**
- * Sign a payload the way Stripe does, so the endpoint's real verifier runs.
- *
- * Not a mocked `Webhook::constructEvent` — the point of these tests is that our
- * verification works, and a mock would assert only that we called something.
- */
-function stripeSignature(string $payload, ?int $timestamp = null, string $secret = WEBHOOK_SECRET): string
-{
-    $timestamp ??= time();
-    $signature = hash_hmac('sha256', $timestamp.'.'.$payload, $secret);
-
-    return "t={$timestamp},v1={$signature}";
-}
-
-/**
- * @param  array<string, mixed>  $object
- */
-function stripeEventPayload(string $type, array $object, string $id = 'evt_test_1'): string
-{
-    return json_encode([
-        'id' => $id,
-        'object' => 'event',
-        'type' => $type,
-        'created' => time(),
-        'data' => ['object' => $object],
-    ], JSON_THROW_ON_ERROR);
-}
-
-/**
- * @param  array<string, mixed>  $object
- */
-function postWebhook(string $type, array $object, string $id = 'evt_test_1', ?string $signature = null)
-{
-    $payload = stripeEventPayload($type, $object, $id);
-
-    return test()->call(
-        'POST',
-        '/api/v1/webhooks/stripe',
-        [], [], [],
-        ['HTTP_STRIPE_SIGNATURE' => $signature ?? stripeSignature($payload), 'CONTENT_TYPE' => 'application/json'],
-        $payload,
-    );
-}
+// `WEBHOOK_SECRET`, `stripeSignature()`, `stripeEventPayload()` and
+// `postWebhook()` live in tests/Helpers/StripeWebhookHelpers.php — the M4 loop
+// test needs them too, and a helper declared in a test file only exists once
+// that file has been compiled.
 
 describe('signature verification', function () {
     it('rejects a missing signature', function () {

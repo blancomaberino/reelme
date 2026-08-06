@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/influencer-dashboard.json",
+  "title": "InfluencerDashboard",
+  "description": "The influencer earnings funnel (T-048, 06 §5.2) — GET /me/influencer/dashboard. Answers 'which of my posts actually made money' in one payload, deliberately: the visits and the euros have to be read in the same glance, and two requests could disagree on screen while both were individually correct. Every count is derived from the FROZEN attribution on `redemptions` (`attributed_influencer_id`/`attributed_share_id`), never re-walked through shares, so a deleted or re-analysed share cannot change what a past period earned. Requires a CLAIMED influencer identity; 403 otherwise.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["period", "influencer", "funnel", "by_place", "by_source", "top_places", "money", "connect"],
+  "properties": {
+    "period": {
+      "description": "The window these figures cover. Echoed back so a cached client render can't mislabel itself.",
+      "enum": ["30d", "90d", "all"]
+    },
+    "influencer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "handle", "platform"],
+      "properties": {
+        "id": { "type": "string" },
+        "handle": { "type": "string" },
+        "platform": { "type": "string" }
+      }
+    },
+    "funnel": {
+      "description": "One COHORT, scoped by the redemption's issue date — `issued`, `redeemed` and `earnings` all describe the same set of codes, so a conversion rate computed from them is meaningful. Note there is no `offer_taps` stage: the app has no tap event, and emitting the issued count twice under two names would read as a step that never loses anyone.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shares", "views", "views_tracked_since", "issued", "redeemed", "earnings"],
+      "properties": {
+        "shares": {
+          "description": "How many of this identity's posts currently back a place on the map. Current reach, NOT a period figure.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "views": {
+          "description": "Attributed place-page views. `null` means NOT TRACKED — distinct from 0, which would claim nobody looked. No view tracking exists yet.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "views_tracked_since": {
+          "description": "The date from which `views` is real. `null` while untracked, so a chart is never read as historical truth.",
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "issued": {
+          "description": "Codes handed out. Includes expired and voided ones — a code really was issued.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "redeemed": {
+          "description": "Codes honoured at the till. The only billable state (06 §2.3); expired and void are never counted here.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "earnings": { "$ref": "#/definitions/money" }
+      }
+    },
+    "by_place": {
+      "description": "Every place that earned, best first. The per-place amounts sum to `funnel.earnings`.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/placeRow" }
+    },
+    "top_places": {
+      "description": "The first five of `by_place`, for the headline block.",
+      "type": "array",
+      "maxItems": 5,
+      "items": { "$ref": "#/definitions/placeRow" }
+    },
+    "by_source": {
+      "description": "The same breakdown per originating post, keyed by the frozen `attributed_share_id`. A row whose share was deleted survives with `post: null` rather than vanishing — losing it would quietly shrink a historical total.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["share_id", "post", "issued", "redeemed", "earnings"],
+        "properties": {
+          "share_id": { "type": ["string", "null"] },
+          "post": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["url", "platform"],
+            "properties": {
+              "url": { "type": "string" },
+              "platform": { "type": "string" }
+            }
+          },
+          "issued": { "type": "integer", "minimum": 0 },
+          "redeemed": { "type": "integer", "minimum": 0 },
+          "earnings": { "$ref": "#/definitions/money" }
+        }
+      }
+    },
+    "money": {
+      "description": "Read LIVE from the ledger, never from the cached funnel — a stale balance is a cash-out button that lies.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "threshold"],
+      "properties": {
+        "available": {
+          "description": "Cashable right now. Signed, so a post-payout void (06 §4.4) can leave this negative — carried against future earnings, since v1 has no clawback transfers.",
+          "$ref": "#/definitions/money"
+        },
+        "threshold": {
+          "description": "What the balance must reach before a payout can be requested (06 §4.3).",
+          "$ref": "#/definitions/money"
+        }
+      }
+    },
+    "connect": {
+      "description": "Stripe Connect state, read live from Stripe rather than a cached flag — Stripe re-verifies and requirements reappear.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["onboarded", "payouts_enabled"],
+      "properties": {
+        "onboarded": { "type": "boolean" },
+        "payouts_enabled": { "type": "boolean" }
+      }
+    }
+  },
+  "definitions": {
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": {
+          "description": "MINOR units (cents). Never a float — these are multiplied by basis points and summed across a month.",
+          "type": "integer"
+        },
+        "currency": { "type": "string", "minLength": 3, "maxLength": 3 }
+      }
+    },
+    "placeRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["place", "issued", "redeemed", "earnings"],
+      "properties": {
+        "place": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "slug", "name"],
+          "properties": {
+            "id": { "type": "string" },
+            "slug": { "type": "string" },
+            "name": { "type": "string" }
+          }
+        },
+        "issued": { "type": "integer", "minimum": 0 },
+        "redeemed": { "type": "integer", "minimum": 0 },
+        "earnings": { "$ref": "#/definitions/money" }
+      }
+    }
+  }
+}
