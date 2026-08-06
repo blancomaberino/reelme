@@ -90,6 +90,11 @@ export const queryKeys = {
   wallet: () => ['wallet'] as const,
   walletLedger: () => ['wallet', 'ledger'] as const,
   walletPayouts: () => ['wallet', 'payouts'] as const,
+  /**
+   * The influencer earnings funnel (T-048), keyed by its window — the three
+   * periods are three different answers, so they must not share a cache entry.
+   */
+  influencerDashboard: (period: string) => ['wallet', 'dashboard', period] as const,
   /** The selectable analysis-model catalog (T-020). */
   analysisModels: () => ['analysis', 'models'] as const,
   /** The caller's 2FA state (T-068). Not nested under `me` — invalidating the

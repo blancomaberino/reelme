@@ -1,0 +1,78 @@
+# Influencer earnings dashboard — reachability and the period switch (E2E, iOS).
+#
+# Two things jest cannot prove here:
+#  1. That an influencer can GET to this screen. The API shipped a release
+#     before any UI existed, so "the endpoint works" was never the question —
+#     "can anyone see it" was.
+#  2. That the period switch actually RE-ASKS. A segmented control that moves
+#     but leaves the numbers alone looks completely correct in a screenshot,
+#     and unit tests assert on a mocked client rather than a real round trip.
+#
+# Preconditions: API stack + Metro up (`./scripts/dev.sh start`), app logged in
+# as a user holding a CLAIMED influencer identity with at least one redemption.
+# On this dev DB that is user1 ↔ influencer 3 (datagastro.ba):
+#   docker compose exec laravel.test php artisan tinker --execute="\
+#     App\Models\Influencer::find(3)->forceFill(['claimed_by_user_id'=>2])->save(); \
+#     App\Models\User::find(2)->forceFill(['is_influencer'=>true])->save(); \
+#     App\Models\Redemption::find(2)->forceFill(['created_at'=>now()->subDays(60)])->save();"
+#
+# The backdated redemption is what makes the period switch OBSERVABLE: 30 days
+# sees one code, all-time sees two. Without differing data the only thing this
+# flow could assert is that the funnel is still on screen, which stays true even
+# if the switch does nothing at all.
+#
+# Undo all of it afterwards:
+#   docker compose exec laravel.test php artisan tinker --execute="\
+#     App\Models\Influencer::find(3)->forceFill(['claimed_by_user_id'=>null])->save(); \
+#     App\Models\User::find(2)->forceFill(['is_influencer'=>false])->save(); \
+#     App\Models\Redemption::find(2)->forceFill(['created_at'=>now()])->save();"
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/influencer-dashboard.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+
+# --- Reachability: the wallet tab owns the entry point ----------------------
+- extendedWaitUntil:
+    visible: ".*Billetera.*"
+    timeout: 60000
+- tapOn: ".*Billetera, tab.*"
+- extendedWaitUntil:
+    visible: "Disponible"
+    timeout: 20000
+- tapOn:
+    id: "wallet-earnings-entry"
+
+- extendedWaitUntil:
+    visible: "Mis ganancias"
+    timeout: 20000
+- assertVisible:
+    id: "earnings-funnel"
+- assertVisible:
+    id: "earnings-views-untracked"
+- takeScreenshot: build/maestro/influencer-dashboard
+
+# --- The period switch must RE-ASK, not just re-style -----------------------
+# Asserted on the NUMBERS, not on the funnel still being present: "the funnel is
+# visible" stays true when the control does nothing, which is exactly the
+# failure this is here to catch (CLAUDE.md: test the loop, not the first paint).
+# 30 days sees one code; all-time sees the backdated second one.
+- assertVisible: "código tomado"
+- tapOn:
+    id: "earnings-period-all"
+- extendedWaitUntil:
+    visible: "códigos tomados"
+    timeout: 20000
+- takeScreenshot: build/maestro/influencer-dashboard-all
+- tapOn:
+    id: "earnings-period-30d"
+- extendedWaitUntil:
+    visible: "código tomado"
+    timeout: 20000
+
+# --- Leave the app where we found it ----------------------------------------
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000

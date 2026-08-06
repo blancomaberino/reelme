@@ -753,6 +753,37 @@ export const en = {
     'This can’t be undone, and it signs you out of this device right away.',
   'privacy.delete.confirmCta': 'Delete everything',
   'privacy.delete.failedTitle': 'Couldn’t delete your account',
+
+  // Influencer earnings dashboard (T-048, 06 §5.2). The funnel's job is to make
+  // "which reel made money" answerable at a glance, so the labels name the real
+  // events (codes, visits) rather than analytics words nobody uses out loud.
+  'earnings.title': 'My earnings',
+  'earnings.entry': 'My earnings',
+  'earnings.entryHint': 'See which of your posts drove paid visits',
+  'earnings.period.30d': '30 days',
+  'earnings.period.90d': '90 days',
+  'earnings.period.all': 'All time',
+  'earnings.reach': '{{count}} posts on the map',
+  'earnings.reach_one': '{{count}} post on the map',
+  'earnings.reach_other': '{{count}} posts on the map',
+  'earnings.funnel.issued': 'codes taken',
+  'earnings.funnel.issued_one': 'code taken',
+  'earnings.funnel.issued_other': 'codes taken',
+  'earnings.funnel.redeemed': 'visits paid',
+  'earnings.funnel.redeemed_one': 'visit paid',
+  'earnings.funnel.redeemed_other': 'visits paid',
+  'earnings.funnel.earned': 'earned',
+  'earnings.views.untracked': 'Views aren’t measured yet — we’ll add them here once they are.',
+  'earnings.topPlaces': 'Your best places',
+  'earnings.bySource': 'By post',
+  'earnings.place.detail': '{{redeemed}} of {{issued}} codes redeemed',
+  'earnings.place.detail_one': '{{redeemed}} of {{issued}} code redeemed',
+  'earnings.place.detail_other': '{{redeemed}} of {{issued}} codes redeemed',
+  'earnings.post.deleted': 'Post no longer available',
+  'earnings.empty.title': 'No earnings yet',
+  'earnings.empty.body': 'When someone redeems an offer at a place you put on the map, it shows up here.',
+  'earnings.forbidden.title': 'For claimed profiles',
+  'earnings.forbidden.body': 'Claim your influencer profile to see which of your posts drive visits.',
 } as const;
 
 export type MessageKey = keyof typeof en;
