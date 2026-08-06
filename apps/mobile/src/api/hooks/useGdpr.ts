@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { unregisterPush } from '@/notifications/push';
+import { registerForPush, unregisterPush } from '@/notifications/push';
 
 import { api } from '../client';
 import { clearLocalSession } from './useAuth';
@@ -52,5 +52,11 @@ export function useDeleteAccount() {
       await api.delete('/me');
     },
     onSuccess: () => clearLocalSession(qc),
+    // Step 1 already ran by the time we get here, so "leave the account intact"
+    // is not automatic — without this, a user who tapped delete and got a 500
+    // stays signed in but silently stops receiving notifications. Re-registering
+    // is silent when permission is already granted (no second OS prompt) and is
+    // best-effort internally, so this cannot turn one failure into two.
+    onError: () => registerForPush(),
   });
 }

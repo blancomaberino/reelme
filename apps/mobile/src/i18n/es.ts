@@ -722,6 +722,9 @@ export const es: Record<MessageKey, string> = {
   'privacy.pending': 'Todavía no disponible',
   'privacy.pendingBody':
     'Las dos acciones de abajo llegan en una próxima actualización — por ahora ninguna funciona desde la app.',
+  'privacy.signedOut': 'Iniciá sesión para usarlas',
+  'privacy.signedOutBody':
+    'Las dos acciones de abajo actúan sobre tu cuenta, así que primero tenés que iniciar sesión.',
   'privacy.export.title': 'Obtener una copia de mis datos',
   'privacy.export.body':
     'Juntamos todo lo que está asociado a tu cuenta — perfil, compartidos, lugares guardados, listas y reseñas — en un archivo y te mandamos por mail un link para descargarlo.',

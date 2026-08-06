@@ -729,6 +729,9 @@ export const en = {
   'privacy.pending': 'Not available yet',
   'privacy.pendingBody':
     'Both actions below are coming in a later update — neither works from the app yet.',
+  'privacy.signedOut': 'Sign in to use these',
+  'privacy.signedOutBody':
+    'Both actions below act on your account, so you need to be signed in first.',
   'privacy.export.title': 'Get a copy of my data',
   'privacy.export.body':
     'We gather everything tied to your account — profile, shares, saved places, lists and reviews — into one file and email you a link to download it.',

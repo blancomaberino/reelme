@@ -7,6 +7,7 @@ import { Alert } from 'react-native';
 import PrivacyScreen from '../privacy';
 import { api } from '@/api/client';
 import { setToken } from '@/api/token';
+import { registerForPush, unregisterPush } from '@/notifications/push';
 import { useSessionStore } from '@/stores/session';
 
 import { mockRouter } from '../../../jest.setup';
@@ -24,7 +25,10 @@ jest.mock('@/lib/feature-flags', () => ({ featureFlags: { gdprSelfService: true 
 // The delete path unregisters this device's push token first (an authed call
 // that has to happen while the account still exists). Its own coverage lives in
 // the push tests; here it only needs to not reach the network.
-jest.mock('@/notifications/push', () => ({ unregisterPush: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('@/notifications/push', () => ({
+  unregisterPush: jest.fn().mockResolvedValue(undefined),
+  registerForPush: jest.fn().mockResolvedValue(undefined),
+}));
 
 let qc: QueryClient;
 let mock: AxiosMockAdapter;
@@ -64,6 +68,19 @@ it('hides the "not available yet" notice once the flag is on', () => {
 
   expect(screen.queryByTestId('privacy-pending')).toBeNull();
   expect(screen.getByTestId('privacy-export-action').props.accessibilityState.disabled).toBe(false);
+});
+
+it('tells a signed-out visitor why the actions are off, rather than just greying them', () => {
+  // Reachable by deep link even though the settings row is authed-only. Without
+  // this branch, flipping the flag for T-050 would hand a guest two dead
+  // buttons and no explanation — the exact thing this screen exists to avoid.
+  useSessionStore.setState({ user: null, status: 'guest' });
+
+  render(<PrivacyScreen />, { wrapper: Providers });
+
+  expect(screen.getByTestId('privacy-signedOut')).toBeOnTheScreen();
+  expect(screen.getByText('Sign in to use these')).toBeOnTheScreen();
+  expect(screen.getByTestId('privacy-delete-action').props.accessibilityState.disabled).toBe(true);
 });
 
 it('requests the export and then says where the copy is going', async () => {
@@ -131,4 +148,10 @@ it('keeps the session when the server refuses the delete', async () => {
   await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Couldn’t delete your account', expect.any(String)));
   expect(useSessionStore.getState().status).toBe('authed');
   expect(mockRouter.replace).not.toHaveBeenCalled();
+
+  // "Intact" has to include the push token: it is unregistered BEFORE the
+  // delete (it must go while the account still exists), so a failure that
+  // stopped here would leave a signed-in user silently push-deaf.
+  expect(unregisterPush).toHaveBeenCalled();
+  await waitFor(() => expect(registerForPush).toHaveBeenCalled());
 });
