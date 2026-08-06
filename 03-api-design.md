@@ -162,6 +162,7 @@ Legend — Auth: `public`, `user` (Sanctum token), `restaurant` (user with verif
 | GET | `/api/v1/wallet/payouts` | Payout history + statuses | user | M4 |
 | POST | `/api/v1/wallet/connect/onboarding-link` | Create/refresh Stripe Connect Express account link; returns hosted onboarding URL | user | M4 |
 | GET | `/api/v1/wallet/connect/status` | Connect account status (`onboarded`, `payouts_enabled`, requirements due) | user | M4 |
+| GET | `/api/v1/me/influencer/dashboard` | Influencer earnings funnel (shares → views → issued → redeemed → earnings), per place and per source post, + balance/threshold/Connect status. `?period=30d\|90d\|all`. Counts derive from the FROZEN `redemptions.attributed_*`, never a share→source_post walk. Schema: `influencer-dashboard.json` | user (claimed influencer; 403 otherwise) | M4 |
 
 ### 2.15 Notifications & Devices
 
