@@ -69,6 +69,10 @@ it('explains both rights even though neither is actionable yet', () => {
   expect(screen.getByText('Delete my account')).toBeOnTheScreen();
   expect(screen.getByText(/one file and email you a link/)).toBeOnTheScreen();
   expect(screen.getByText(/credited to nobody/)).toBeOnTheScreen();
+  // Retention law keeps payment records out of the purge (T-050), so deletion
+  // copy that promised "everything, for good" would be a false statement to the
+  // exact users who have those rows — influencers and restaurant owners.
+  expect(screen.getByText(/Payment and redemption records are kept/)).toBeOnTheScreen();
   // ...and says, once, why the buttons don't work.
   expect(screen.getByTestId('privacy-pending')).toBeOnTheScreen();
 });

@@ -739,8 +739,12 @@ export const en = {
   'privacy.export.doneBody':
     'We’ll email you a download link once the file is ready. This can take a few hours.',
   'privacy.delete.title': 'Delete my account',
+  // The last sentence is not boilerplate: T-050 holds payment records back from
+  // the purge because retention law overrides erasure there, and for an
+  // influencer or a restaurant owner that is the material fact about deleting
+  // their account. A diner never has these rows and can read past it.
   'privacy.delete.body':
-    'Deletes your account, your shares, your saved places, your lists and your reviews for good. Places other people found through you stay on the map, credited to nobody.',
+    'Deletes your account, your shares, your saved places, your lists and your reviews for good. Places other people found through you stay on the map, credited to nobody. Payment and redemption records are kept for as long as the law requires.',
   // Shorter than the heading above it on purpose: the heading names the right,
   // the button names the act, and the confirm dialog carries the full weight.
   'privacy.delete.action': 'Delete account',

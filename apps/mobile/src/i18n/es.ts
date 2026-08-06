@@ -733,7 +733,7 @@ export const es: Record<MessageKey, string> = {
     'Te mandamos por mail el link de descarga cuando el archivo esté listo. Puede tardar unas horas.',
   'privacy.delete.title': 'Eliminar mi cuenta',
   'privacy.delete.body':
-    'Elimina para siempre tu cuenta, tus compartidos, tus lugares guardados, tus listas y tus reseñas. Los lugares que otras personas descubrieron gracias a vos siguen en el mapa, sin atribución a nadie.',
+    'Elimina para siempre tu cuenta, tus compartidos, tus lugares guardados, tus listas y tus reseñas. Los lugares que otras personas descubrieron gracias a vos siguen en el mapa, sin atribución a nadie. Los registros de pagos y canjes se conservan durante el plazo que exige la ley.',
   'privacy.delete.action': 'Eliminar cuenta',
   'privacy.delete.confirmTitle': '¿Eliminar tu cuenta?',
   'privacy.delete.confirmBody':
