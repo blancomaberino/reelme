@@ -43,18 +43,28 @@ class DashboardMetrics
     private const TOP_PLACES = 5;
 
     /**
+     * Scoped to the INFLUENCER identity, not to the user holding it — the
+     * claiming user is the door (the controller checks it), not a filter.
+     * Taking a `$user` here would imply these numbers change per viewer, which
+     * would be the wrong mental model for the escrow case, where the identity
+     * has earnings before any user owns it.
+     *
      * @return array<string, mixed>
      */
-    public function build(User $user, Influencer $influencer, DashboardPeriod $period): array
+    public function build(Influencer $influencer, DashboardPeriod $period): array
     {
         $currency = (string) config('monetization.currency');
+        $byPlace = $this->byPlace($influencer, $period, $currency);
 
         return [
             'period' => $period->key(),
             'funnel' => $this->funnel($influencer, $period, $currency),
-            'by_place' => $this->byPlace($influencer, $period, $currency),
+            'by_place' => $byPlace,
             'by_source' => $this->bySource($influencer, $period, $currency),
-            'top_places' => $this->byPlace($influencer, $period, $currency, self::TOP_PLACES),
+            // A slice, not a second query: `by_place` is already ordered by
+            // earnings, and re-running that aggregate to take five rows would
+            // double the dashboard's cost for a list it has in hand.
+            'top_places' => array_slice($byPlace, 0, self::TOP_PLACES),
         ];
     }
 
@@ -160,7 +170,7 @@ class DashboardMetrics
      *
      * @return list<array<string, mixed>>
      */
-    private function byPlace(Influencer $influencer, DashboardPeriod $period, string $currency, ?int $limit = null): array
+    private function byPlace(Influencer $influencer, DashboardPeriod $period, string $currency): array
     {
         $normal = LedgerAccount::InfluencerEarnings->normalDirection()->value;
 
@@ -186,7 +196,6 @@ class DashboardMetrics
                 [$normal],
             )
             ->orderByRaw('earned DESC, count(DISTINCT redemptions.id) DESC, places.id ASC')
-            ->when($limit !== null, fn ($q) => $q->limit($limit))
             ->get();
 
         return $rows->map(fn ($row) => [

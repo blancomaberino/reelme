@@ -57,7 +57,7 @@ class InfluencerDashboardController extends Controller
         $funnel = Cache::remember(
             "influencer-dashboard:{$influencer->id}:{$period->key()}:{$currency}",
             self::CACHE_SECONDS,
-            fn () => $metrics->build($user, $influencer, $period),
+            fn () => $metrics->build($influencer, $period),
         );
 
         $status = $stripe->accountStatus($user);
