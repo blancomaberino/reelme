@@ -1190,7 +1190,7 @@
       "id": "T-048",
       "title": "Influencer dashboard metrics + M4 loop integration test",
       "phase": "M4",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-046",
         "T-047"
