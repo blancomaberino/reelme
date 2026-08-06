@@ -67,3 +67,16 @@ appId: pet.one.reelmap
 - assertNotVisible: "Tu copia está en camino"
 - assertVisible: "Privacidad y datos"
 - takeScreenshot: build/maestro/privacy-after-taps
+
+# --- Leave the app where we found it ---------------------------------------
+# CLAUDE.md asks for the restore to be VERIFIED, not asserted, and twice it has
+# been reported fixed without that check. Doing it here makes the guarantee part
+# of the flow instead of a step someone has to remember: stop, launch with no
+# URL (what Cmd+R replays), and confirm we land on the map — not back on this
+# screen.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000
+- assertNotVisible: "Privacidad y datos"

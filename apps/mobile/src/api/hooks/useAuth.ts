@@ -87,20 +87,42 @@ export function useResendVerification() {
  * particular must clear strictly MORE than sign-out, never less.
  */
 export async function clearLocalSession(qc: ReturnType<typeof useQueryClient>): Promise<void> {
-  await clearToken();
+  // In-memory and infallible, so they go FIRST: if one of the persistent wipes
+  // below throws, the app must still stop presenting itself as signed in.
   useSessionStore.getState().clear();
   // Drop any authed-only map scope (following/mine) so the now-guest map
   // doesn't send a filter that 401s (T-039).
   useMapStore.getState().clearFilters();
-  // Forget the remembered viewport (T-100) — it is coarse location data, so
-  // the next person to sign in on this device must not open on the previous
-  // user's last map position.
-  await useViewportStore.getState().clear();
   qc.clear();
-  // …and the on-disk copy of it (T-103): the persisted cache is this
-  // account's private collection in plaintext, so it must not survive
-  // sign-out for the next person to use the device.
-  await clearPersistedQueryCache();
+
+  // Each remaining step reaches a DIFFERENT persistent store (Keychain,
+  // AsyncStorage), and one being unreachable must not strand the others. This
+  // used to be a straight `await` chain, so a throwing `clearToken()` skipped
+  // everything after it — leaving both the token in the Keychain (the next
+  // launch reads it back and signs you in again) and the on-disk query cache,
+  // which is this account's private collection in plaintext, for whoever picks
+  // up the device next.
+  //
+  // Sequential rather than Promise.allSettled: the persisted-cache wipe has to
+  // stay AFTER `qc.clear()` so it cannot race a persist write scheduled by it.
+  const wipes: (() => Promise<void>)[] = [
+    clearToken,
+    // Forget the remembered viewport (T-100) — it is coarse location data, so
+    // the next person to sign in on this device must not open on the previous
+    // user's last map position.
+    () => useViewportStore.getState().clear(),
+    // …and the on-disk copy of the cache (T-103).
+    clearPersistedQueryCache,
+  ];
+
+  for (const wipe of wipes) {
+    try {
+      await wipe();
+    } catch {
+      // Best-effort per store: a wipe we cannot perform must not cancel the
+      // wipes we can.
+    }
+  }
 }
 
 export function useLogout() {
