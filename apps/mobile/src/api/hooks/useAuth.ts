@@ -77,6 +77,32 @@ export function useResendVerification() {
   });
 }
 
+/**
+ * Wipe every trace of the signed-in account from this device.
+ *
+ * Shared by sign-out and account deletion (T-039 privacy screen) rather than
+ * copied: the list below is not obvious — it grew one incident at a time (push
+ * token, map scope, remembered viewport, on-disk query cache) — and a second
+ * copy would inherit today's list and none of tomorrow's additions. Deletion in
+ * particular must clear strictly MORE than sign-out, never less.
+ */
+export async function clearLocalSession(qc: ReturnType<typeof useQueryClient>): Promise<void> {
+  await clearToken();
+  useSessionStore.getState().clear();
+  // Drop any authed-only map scope (following/mine) so the now-guest map
+  // doesn't send a filter that 401s (T-039).
+  useMapStore.getState().clearFilters();
+  // Forget the remembered viewport (T-100) — it is coarse location data, so
+  // the next person to sign in on this device must not open on the previous
+  // user's last map position.
+  await useViewportStore.getState().clear();
+  qc.clear();
+  // …and the on-disk copy of it (T-103): the persisted cache is this
+  // account's private collection in plaintext, so it must not survive
+  // sign-out for the next person to use the device.
+  await clearPersistedQueryCache();
+}
+
 export function useLogout() {
   const qc = useQueryClient();
   return useMutation({
@@ -92,21 +118,6 @@ export function useLogout() {
         // ignore — we clear the session regardless
       }
     },
-    onSuccess: async () => {
-      await clearToken();
-      useSessionStore.getState().clear();
-      // Drop any authed-only map scope (following/mine) so the now-guest map
-      // doesn't send a filter that 401s (T-039).
-      useMapStore.getState().clearFilters();
-      // Forget the remembered viewport (T-100) — it is coarse location data, so
-      // the next person to sign in on this device must not open on the previous
-      // user's last map position.
-      await useViewportStore.getState().clear();
-      qc.clear();
-      // …and the on-disk copy of it (T-103): the persisted cache is this
-      // account's private collection in plaintext, so it must not survive
-      // sign-out for the next person to use the device.
-      await clearPersistedQueryCache();
-    },
+    onSuccess: () => clearLocalSession(qc),
   });
 }

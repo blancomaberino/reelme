@@ -1,0 +1,69 @@
+# Privacy & data — reachability and the disabled actions (E2E, iOS simulator).
+#
+# Two things jest cannot prove about this screen:
+#
+#  1. That a user can GET here. `render(<PrivacyScreen/>)` bypasses navigation
+#     entirely, so a screen with no row pointing at it passes every unit test.
+#  2. That the disabled destructive button really is inert ON DEVICE. In jest a
+#     `disabled` Pressable still receives the synthetic press and the handler is
+#     simply not called; on device the question is whether the tap lands on the
+#     button at all, or falls through to something behind it. "Delete my
+#     account" is the last control in the app that should be ambiguous about it.
+#
+# The app runs in Spanish (the default locale), so the labels below are the es
+# strings, not the en ones the unit tests assert on.
+#
+# Preconditions: API stack + Metro up (`./scripts/dev.sh start`) and the app
+# logged in — the Privacy row is authed-only, so a signed-out run proves nothing
+# and will fail at the "Seguridad" step.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/privacy-entry-points.yaml
+#
+# Navigation is by tapping real controls, never `simctl openurl` — a deep link
+# sets the app's launch URL and strands the next Cmd+R on this screen.
+appId: pet.one.reelmap
+---
+- launchApp
+
+# --- Reachability: profile tab -> Ajustes -> Privacidad y datos -------------
+- extendedWaitUntil:
+    visible: ".*Perfil.*"
+    timeout: 60000
+- tapOn: ".*Perfil, tab.*"
+- tapOn: "Ajustes"
+- extendedWaitUntil:
+    visible: "Seguridad"
+    timeout: 20000
+
+# The row sits under Seguridad, below the fold on a 6.9" screen — and Maestro
+# does NOT scroll on its own for `tapOn`. Scrolling here is part of the
+# reachability claim, not test scaffolding: this is what the user does.
+- scrollUntilVisible:
+    element:
+      id: "settings-privacy"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "settings-privacy"
+- extendedWaitUntil:
+    visible: "Privacidad y datos"
+    timeout: 20000
+
+# --- What ships in M3: the explanation, and an honest disabled state --------
+- assertVisible: "Todavía no disponible"
+- assertVisible: "Obtener una copia de mis datos"
+- assertVisible: "Eliminar mi cuenta"
+- takeScreenshot: build/maestro/privacy-entry-points
+
+# --- The disabled destructive button must not do anything -------------------
+# No confirm dialog, no navigation, no crash: we stay exactly here.
+- tapOn:
+    id: "privacy-delete-action"
+- assertNotVisible: "¿Eliminar tu cuenta?"
+- assertVisible: "Privacidad y datos"
+
+- tapOn:
+    id: "privacy-export-action"
+- assertNotVisible: "Tu copia está en camino"
+- assertVisible: "Privacidad y datos"
+- takeScreenshot: build/maestro/privacy-after-taps
