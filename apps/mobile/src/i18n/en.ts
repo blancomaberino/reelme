@@ -777,6 +777,8 @@ export const en = {
   'earnings.topPlaces': 'Your best places',
   'earnings.bySource': 'By post',
   'earnings.place.detail': '{{redeemed}} of {{issued}} codes redeemed',
+  'earnings.place.detail_one': '{{redeemed}} of {{issued}} code redeemed',
+  'earnings.place.detail_other': '{{redeemed}} of {{issued}} codes redeemed',
   'earnings.post.deleted': 'Post no longer available',
   'earnings.empty.title': 'No earnings yet',
   'earnings.empty.body': 'When someone redeems an offer at a place you put on the map, it shows up here.',

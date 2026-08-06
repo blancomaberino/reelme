@@ -762,6 +762,8 @@ export const es: Record<MessageKey, string> = {
   'earnings.topPlaces': 'Tus mejores lugares',
   'earnings.bySource': 'Por publicación',
   'earnings.place.detail': '{{redeemed}} de {{issued}} códigos canjeados',
+  'earnings.place.detail_one': '{{redeemed}} de {{issued}} código canjeado',
+  'earnings.place.detail_other': '{{redeemed}} de {{issued}} códigos canjeados',
   'earnings.post.deleted': 'La publicación ya no está disponible',
   'earnings.empty.title': 'Todavía no hay ganancias',
   'earnings.empty.body': 'Cuando alguien canjee una oferta en un lugar que pusiste en el mapa, aparece acá.',

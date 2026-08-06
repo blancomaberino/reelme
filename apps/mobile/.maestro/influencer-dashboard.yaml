@@ -13,7 +13,19 @@
 # On this dev DB that is user1 ↔ influencer 3 (datagastro.ba):
 #   docker compose exec laravel.test php artisan tinker --execute="\
 #     App\Models\Influencer::find(3)->forceFill(['claimed_by_user_id'=>2])->save(); \
-#     App\Models\User::find(2)->forceFill(['is_influencer'=>true])->save();"
+#     App\Models\User::find(2)->forceFill(['is_influencer'=>true])->save(); \
+#     App\Models\Redemption::find(2)->forceFill(['created_at'=>now()->subDays(60)])->save();"
+#
+# The backdated redemption is what makes the period switch OBSERVABLE: 30 days
+# sees one code, all-time sees two. Without differing data the only thing this
+# flow could assert is that the funnel is still on screen, which stays true even
+# if the switch does nothing at all.
+#
+# Undo all of it afterwards:
+#   docker compose exec laravel.test php artisan tinker --execute="\
+#     App\Models\Influencer::find(3)->forceFill(['claimed_by_user_id'=>null])->save(); \
+#     App\Models\User::find(2)->forceFill(['is_influencer'=>false])->save(); \
+#     App\Models\Redemption::find(2)->forceFill(['created_at'=>now()])->save();"
 #
 # Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/influencer-dashboard.yaml
 appId: pet.one.reelmap
@@ -40,20 +52,23 @@ appId: pet.one.reelmap
     id: "earnings-views-untracked"
 - takeScreenshot: build/maestro/influencer-dashboard
 
-# --- The period switch must re-ask, not just re-style -----------------------
-# Asserted via the funnel still being present after the switch: a crash or an
-# unhandled refetch state would take it off screen.
+# --- The period switch must RE-ASK, not just re-style -----------------------
+# Asserted on the NUMBERS, not on the funnel still being present: "the funnel is
+# visible" stays true when the control does nothing, which is exactly the
+# failure this is here to catch (CLAUDE.md: test the loop, not the first paint).
+# 30 days sees one code; all-time sees the backdated second one.
+- assertVisible: "código tomado"
 - tapOn:
     id: "earnings-period-all"
 - extendedWaitUntil:
-    visible:
-      id: "earnings-funnel"
+    visible: "códigos tomados"
     timeout: 20000
 - takeScreenshot: build/maestro/influencer-dashboard-all
 - tapOn:
     id: "earnings-period-30d"
-- assertVisible:
-    id: "earnings-funnel"
+- extendedWaitUntil:
+    visible: "código tomado"
+    timeout: 20000
 
 # --- Leave the app where we found it ----------------------------------------
 - stopApp

@@ -200,7 +200,7 @@ function Dashboard({
                   {row.place.name}
                 </Text>
                 <Text style={styles.rowMeta}>
-                  {t('earnings.place.detail', { redeemed: row.redeemed, issued: row.issued })}
+                  {t('earnings.place.detail', { count: row.issued, redeemed: row.redeemed, issued: row.issued })}
                 </Text>
               </View>
               <Text style={styles.rowAmount}>{formatMoney(row.earnings)}</Text>
@@ -232,7 +232,7 @@ function Dashboard({
                     {url ?? t('earnings.post.deleted')}
                   </Text>
                   <Text style={styles.rowMeta}>
-                    {t('earnings.place.detail', { redeemed: row.redeemed, issued: row.issued })}
+                    {t('earnings.place.detail', { count: row.issued, redeemed: row.redeemed, issued: row.issued })}
                   </Text>
                 </View>
                 <Text style={styles.rowAmount}>{formatMoney(row.earnings)}</Text>
@@ -259,9 +259,10 @@ function FunnelBar({
   emphasis?: boolean;
   styles: Styles;
 }) {
-  // A floor of 2% so a real-but-tiny stage still draws something — a zero-width
-  // bar next to a non-zero number looks like a rendering bug.
-  const pct = Math.max(2, Math.round((value / of) * 100));
+  // Zero draws NOTHING. The 2% floor exists so a real-but-tiny stage is still
+  // visible next to a big one, but applying it to 0 painted a sliver for a
+  // stage nobody reached — a bar that says "some" where the number says "none".
+  const pct = value === 0 ? 0 : Math.max(2, Math.round((value / of) * 100));
 
   return (
     <View style={styles.stage}>
@@ -270,7 +271,7 @@ function FunnelBar({
         <Text style={styles.stageLabel}>{label}</Text>
       </View>
       <View style={styles.track}>
-        <View style={[styles.bar, emphasis && styles.barEmphasis, { width: `${pct}%` }]} />
+        <View style={[styles.bar, emphasis && styles.barEmphasis, { width: `${pct}%` }]} testID="earnings-bar" />
       </View>
     </View>
   );

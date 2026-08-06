@@ -167,6 +167,23 @@ it('opens the original post, and leaves a deleted one inert', async () => {
   expect(openWebUrl).not.toHaveBeenCalled();
 });
 
+it('draws no bar at all for a stage nobody reached', async () => {
+  mock.onGet('/me/influencer/dashboard').reply(200, dashboard({
+    funnel: { shares: 4, views: null, views_tracked_since: null, issued: 6, redeemed: 0, earnings: { amount: 0, currency: 'EUR' } },
+  }));
+
+  render(<InfluencerDashboardScreen />, { wrapper: Providers });
+  await screen.findByTestId('earnings-funnel');
+
+  // The 2% minimum width exists so a tiny-but-real stage stays visible. Applied
+  // to zero it painted a sliver — a bar saying "some" beside a number saying
+  // "none", which is the most misreadable state a funnel has.
+  const bars = screen.getByTestId('earnings-funnel').findAllByProps({ testID: 'earnings-bar' });
+  expect(bars[bars.length - 1].props.style).toEqual(
+    expect.arrayContaining([expect.objectContaining({ width: '0%' })]),
+  );
+});
+
 it('offers an empty state rather than a chart of zeros', async () => {
   mock.onGet('/me/influencer/dashboard').reply(200, dashboard({
     funnel: { shares: 2, views: null, views_tracked_since: null, issued: 0, redeemed: 0, earnings: { amount: 0, currency: 'EUR' } },
