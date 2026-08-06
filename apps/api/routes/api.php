@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\FollowController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\InfluencerClaimController;
 use App\Http\Controllers\Api\V1\InfluencerController;
+use App\Http\Controllers\Api\V1\InfluencerDashboardController;
 use App\Http\Controllers\Api\V1\InviteController;
 use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MeController;
@@ -167,6 +168,12 @@ Route::prefix('v1')->group(function () {
             Route::get('/wallet/ledger', [WalletController::class, 'ledger']);
             Route::get('/wallet/payouts', [WalletController::class, 'payouts']);
             Route::get('/wallet/connect/status', [WalletController::class, 'connectStatus']);
+
+            // The influencer funnel (T-048, 06 §5.2). Sits beside the wallet
+            // because it answers the other half of the same question — the
+            // wallet says how much, this says which posts earned it. Same
+            // interactive limiter; the expensive part is cached per identity.
+            Route::get('/me/influencer/dashboard', [InfluencerDashboardController::class, 'show']);
         });
         Route::middleware('throttle:10,1')->group(function () {
             // "Create or refresh" — links expire in minutes and are single-use.
