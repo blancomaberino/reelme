@@ -1216,7 +1216,7 @@
       "id": "T-049",
       "title": "Moderation: reports, Filament queue, takedown/DMCA flow",
       "phase": "M5",
-      "status": "in_progress",
+      "status": "in_review",
       "depends_on": [
         "T-030",
         "T-008"
@@ -1236,7 +1236,8 @@
         "Takedown flow: influencer/rightsholder request → share unpublished + place_source removed",
         "In-app report entry points (mobile)"
       ],
-      "agent": "executor"
+      "agent": "executor",
+      "notes": "\n\n2026-08-07 (implementation): built on branch feat/T-049-moderation-reports-takedown. Deviations from the task text, all deliberate:\n(1) NO `hidden_at` COLUMN on places/shares (step 3). The take-downs already exist — T-072's ShareModerator/PlaceModerator and ADR-085 made `places.status = hidden` the mechanism. `ReportActions` ROUTES the report's polymorphic target to them. A second hide mechanism would diverge from the first and the divergence would surface as a user seeing something meant to be gone.\n(2) NO spatie/laravel-activitylog (step 5). The audit trail is structured log lines (`moderation.report.actioned`, `moderation.takedown.processed`) carrying admin, action, note and target. A package + table + relation manager for what is currently one log line per action is cost without a reader; revisit if ops needs it queryable in Filament.\n(3) `source_post` and `offer` are reportable but have NO take-down — a source post is shared between users (removing it takes other people's places), an offer is the venue's business record. The action says so out loud rather than reporting a no-op as success.\n(4) Takedown KEEPS the source_posts row (scrubbing caption/oembed/transcript) as well as the places (FR-30): other analytics reference it and a counter-notice asks what was there.\n(5) Morph map extended to place/share/source_post/offer. Verified the full suite unaffected; LedgerService derives its own short names via Str::snake(class_basename()) independently.\nTests: API 1640 (+41), mobile 914 (+9), contracts 5. Walked on the simulator via Maestro — My places → place → Report visible → sheet → send → confirmation, row landed as place#24/wrong_place/open."
     },
     {
       "id": "T-050",
