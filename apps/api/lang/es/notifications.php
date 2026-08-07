@@ -58,4 +58,18 @@ return [
         ],
     ],
 
+    'account' => [
+        'export_ready' => [
+            'title' => 'Tu copia de datos está lista',
+            'body' => 'Te enviamos el enlace de descarga por correo.',
+            'mail' => [
+                'subject' => 'Tu copia de datos de Reelmap está lista',
+                'intro' => 'Pediste una copia de tus datos de Reelmap. Ya está lista para descargar.',
+                'cta' => 'Descargar mis datos',
+                'expiry' => 'Este enlace vence en :hours horas. Podés pedir una copia nueva cuando quieras desde Ajustes → Privacidad y datos.',
+                'warning' => 'Si no fuiste vos, cambiá tu contraseña — puede que alguien más tenga acceso a tu cuenta.',
+            ],
+        ],
+    ],
+
 ];

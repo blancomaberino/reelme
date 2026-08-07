@@ -34,6 +34,26 @@ Schedule::command('reelmap:redemptions:expire')->hourly()->onOneServer()->withou
 // arithmetic failure in the ledger is the one bug that does not announce itself.
 Schedule::command('reelmap:ledger:verify')->dailyAt('03:30')->onOneServer()->withoutOverlapping();
 
+// T-050: the fail-safe behind account deletion. The delayed PurgeUserData job
+// is the fast path, not the guarantee — a flushed Redis or a failed job is an
+// erasure that silently never happens, and nothing else would ever notice.
+// The database knows what is owed; this asks it.
+Schedule::command('reelmap:gdpr:sweep-deletions')->hourly()->onOneServer()->withoutOverlapping();
+
+// T-050 / ADR-010: analyze-then-delete. Hourly, not daily — the retention
+// window is measured in hours, and a daily sweep would mean an original could
+// outlive its 72h by most of another day. Deleting somebody else's video late
+// is the one direction this policy must not err in.
+Schedule::command('reelmap:media:prune-originals')->hourly()->onOneServer()->withoutOverlapping();
+
+// T-050 / NFR-11: raw provider payloads have a 90-day window, so a daily pass
+// is granular enough. Off-peak — it rewrites rows the ingest path writes to.
+Schedule::command('reelmap:sources:prune-payloads')->dailyAt('04:10')->onOneServer()->withoutOverlapping();
+
+// T-050: sweep finished data-export archives. Daily is well inside their
+// multi-day retention, and each run is a directory listing plus a few unlinks.
+Schedule::command('reelmap:gdpr:prune-exports')->dailyAt('04:30')->onOneServer()->withoutOverlapping();
+
 // T-045 / 06 §4.3: the monthly payout run, first business day. One earner's
 // failed KYC must never stop the others being paid — the command catches per
 // user and continues, so this schedule is safe to leave unattended.

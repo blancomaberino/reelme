@@ -84,7 +84,7 @@ boot_backend() {
   # keeps a no-match (or a self-terminated shell) from tripping `set -e`.
   docker exec "$CONTAINER" sh -lc 'pkill -f "[q]ueue:work" 2>/dev/null; sleep 1' || true
   docker exec -d "$CONTAINER" sh -lc \
-    'php artisan queue:work redis --queue=ingest,fetch,media,transcribe,analyze,resolve,publish,notifications,default --sleep=1 --tries=2 --timeout=600 >> storage/logs/worker.log 2>&1'
+    'php artisan queue:work redis --queue=ingest,fetch,media,transcribe,analyze,resolve,publish,notifications,default,housekeeping --sleep=1 --tries=2 --timeout=600 >> storage/logs/worker.log 2>&1'
 
   printf '\n  API health : %s/api/v1/health\n  Mailpit    : http://localhost:8025\n' "$API_URL"
 }

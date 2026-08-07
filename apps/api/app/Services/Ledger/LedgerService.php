@@ -143,6 +143,12 @@ class LedgerService
                 'coalesce(sum(case when direction = ? then amount else -amount end), 0) AS balance',
                 [$normal],
             )
+            // A GROUP BY with no ORDER BY returns rows in whatever order the
+            // aggregate happens to produce — Postgres will hash-aggregate and
+            // hand them back differently between runs. That made the payout run
+            // pay people in an arbitrary order, and made its test fail roughly
+            // one run in twenty (array identity in PHP compares key order too).
+            ->orderBy('user_id')
             ->get()
             ->mapWithKeys(fn ($row) => [(int) $row->user_id => (int) $row->balance])
             ->all();

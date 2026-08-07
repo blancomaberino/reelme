@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\FeedController;
 use App\Http\Controllers\Api\V1\FeedDismissalController;
 use App\Http\Controllers\Api\V1\FollowController;
+use App\Http\Controllers\Api\V1\GdprController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\InfluencerClaimController;
 use App\Http\Controllers\Api\V1\InfluencerController;
@@ -150,6 +151,14 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::patch('/me', [MeController::class, 'update']);
+
+        // Data rights (T-050, 03 §2.2). Throttled hard — neither is a button
+        // anyone presses twice on purpose, and both are expensive: one queues a
+        // full-archive build, the other ends an account.
+        Route::middleware('throttle:5,1')->group(function () {
+            Route::post('/me/export', [GdprController::class, 'export']);
+            Route::delete('/me', [GdprController::class, 'destroy']);
+        });
 
         // Restaurant-owner claiming (T-041, 06 §2.1). Acts on the caller's own
         // claim only — no user id in any signature. Throttled harder than the

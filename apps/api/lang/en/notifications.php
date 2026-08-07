@@ -55,4 +55,23 @@ return [
         ],
     ],
 
+    'account' => [
+        'export_ready' => [
+            'title' => 'Your data export is ready',
+            'body' => 'We emailed you the download link.',
+            // The mail copy lives here too, not inline in the notification:
+            // it is composed in a queued worker in the recipient's
+            // preferredLocale(), so an untranslated literal would ship the
+            // English to a Spanish reader (the regression PR #175 fixed for
+            // the in-app side).
+            'mail' => [
+                'subject' => 'Your Reelmap data export is ready',
+                'intro' => 'You asked for a copy of your Reelmap data. It is ready to download.',
+                'cta' => 'Download my data',
+                'expiry' => 'This link expires in :hours hours. You can request a new export any time from Settings → Privacy & data.',
+                'warning' => 'If you did not request this, please change your password — someone else may have access to your account.',
+            ],
+        ],
+    ],
+
 ];

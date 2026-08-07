@@ -157,6 +157,11 @@ export default function ProfileScreen() {
           accessibilityLabel={t('profile.settings')}
           onPress={() => router.push('/settings')}
           style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+          // Matched by id in the Maestro flows, not by label: these rows render
+          // before the profile counters resolve, so the list reflows underneath
+          // a text-matched tap and lands on the neighbouring row. Seen once —
+          // "Ajustes" opened "Invitar amigos".
+          testID="profile-settings"
         >
           <Ionicons name="settings-outline" size={20} color={c.text} />
           <Text style={styles.settingsLabel}>{t('profile.settings')}</Text>

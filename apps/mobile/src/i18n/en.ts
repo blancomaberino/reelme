@@ -750,7 +750,15 @@ export const en = {
   'privacy.delete.action': 'Delete account',
   'privacy.delete.confirmTitle': 'Delete your account?',
   'privacy.delete.confirmBody':
-    'This can’t be undone, and it signs you out of this device right away.',
+    'You’ll be signed out of every device right away. Everything above is then erased permanently once the cancellation period below has passed.',
+  // Typing, not tapping. A destructive alert button sits one slip away from the
+  // cancel beside it, and this is the one action whose slip costs everything.
+  'privacy.delete.typePrompt': 'Type {{word}} to confirm',
+  'privacy.delete.typeWord': 'DELETE',
+  // Stated last, where it reads as a safety net rather than a reason to be
+  // casual about the button above it.
+  'privacy.delete.graceNote':
+    'Changed your mind? Sign back in within {{days}} days and your account comes back exactly as it was. After that, nothing can bring it back.',
   'privacy.delete.confirmCta': 'Delete everything',
   'privacy.delete.failedTitle': 'Couldn’t delete your account',
 

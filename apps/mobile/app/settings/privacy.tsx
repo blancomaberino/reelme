@@ -1,8 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router } from 'expo-router';
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   type StyleProp,
@@ -15,26 +19,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDeleteAccount, useExportMyData } from '@/api/hooks/useGdpr';
 import { Button } from '@/components/button';
 import { ScreenHeader } from '@/components/screen-header';
+import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
+import { matchesConfirmationWord } from '@/lib/confirmation-word';
 import { featureFlags } from '@/lib/feature-flags';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
 /**
- * Privacy & data — the two GDPR rights (T-039, 05 screen #16).
+ * Privacy & data — the two GDPR rights (T-039 screen, T-050 endpoints, 05 #16).
  *
- * This screen ships BEFORE the endpoints it calls (T-050, M5), and that is a
- * deliberate call rather than an oversight. The alternative considered and
- * rejected was to ship nothing until M5: an app that stores your shares, your
- * saved places and your reviews and says nothing anywhere about getting them
- * back or getting rid of them is not more honest for staying quiet — it is just
- * quieter. So the explanation ships now and the buttons are visibly, plainly
- * marked as not working yet.
+ * Shipped in T-039 with both actions visibly disabled, because the endpoints
+ * did not exist yet and a button that looks live and does nothing is worse than
+ * one that admits it. T-050 built them, so the flag is on and the buttons work.
+ * The disabled path stays: `authed` is still a real gate, and the flag is still
+ * the switch that turns this off if the backend has to be rolled back.
  *
- * What must NOT happen is a button that looks live and does nothing, so the
- * disabled state is stated twice: once as a notice above both cards, and once in
- * the controls themselves.
+ * Deletion asks the user to TYPE a word rather than tap a destructive alert.
+ * The tap is the wrong shape of gesture for this: a destructive alert button is
+ * one slip away from the cancel next to it, and account deletion is the single
+ * action in the app where the cost of a slip is everything the person has.
+ * Typing cannot be done by accident.
  */
 export default function PrivacyScreen() {
   const c = useColors();
@@ -44,6 +50,7 @@ export default function PrivacyScreen() {
   const authed = useSessionStore((s) => s.status === 'authed');
   const exportData = useExportMyData();
   const deleteAccount = useDeleteAccount();
+  const [confirming, setConfirming] = useState(false);
 
   // Both conditions are real gates, not belt-and-braces: the flag is the M5
   // switch, and `authed` covers someone arriving on a deep link while signed
@@ -64,22 +71,18 @@ export default function PrivacyScreen() {
   };
 
   const onDelete = () => {
-    Alert.alert(t('privacy.delete.confirmTitle'), t('privacy.delete.confirmBody'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('privacy.delete.confirmCta'),
-        style: 'destructive',
-        onPress: () =>
-          deleteAccount.mutate(undefined, {
-            // The hook has already wiped the local session by the time this
-            // runs, so the only thing left is to leave a screen that now
-            // belongs to nobody.
-            onSuccess: () => router.replace('/(auth)/welcome'),
-            onError: () =>
-              Alert.alert(t('privacy.delete.failedTitle'), t('common.error.general')),
-          }),
+    deleteAccount.mutate(undefined, {
+      // The hook has already wiped the local session by the time this runs, so
+      // the only thing left is to leave a screen that now belongs to nobody.
+      onSuccess: () => {
+        setConfirming(false);
+        router.replace('/(auth)/welcome');
       },
-    ]);
+      onError: () => {
+        setConfirming(false);
+        Alert.alert(t('privacy.delete.failedTitle'), t('common.error.general'));
+      },
+    });
   };
 
   return (
@@ -145,13 +148,147 @@ export default function PrivacyScreen() {
             size="sm"
             disabled={!actionsEnabled}
             loading={deleteAccount.isPending}
-            onPress={onDelete}
+            onPress={() => setConfirming(true)}
             style={styles.action}
             testID="privacy-delete-action"
           />
         </RightCard>
       </ScrollView>
+
+      <DeleteConfirmSheet
+        visible={confirming}
+        pending={deleteAccount.isPending}
+        onCancel={() => setConfirming(false)}
+        onConfirm={onDelete}
+      />
     </SafeAreaView>
+  );
+}
+
+/**
+ * The grace period the API actually applies (`GDPR_PURGE_GRACE_DAYS`, default
+ * 14). Stated here as a named constant rather than baked into the sentence,
+ * because that sentence is the most legally consequential one in the app: if
+ * the server window ever changes, this is the single line to change, and
+ * `AccountDeletionTest` pins the API default against it so the two cannot
+ * drift silently.
+ */
+const DELETION_GRACE_DAYS = 14;
+
+/**
+ * The typed confirmation. Nothing here is reachable by a mis-tap: the button
+ * stays disabled until the word is spelled out, so the gesture that deletes an
+ * account is one the user had to compose.
+ *
+ * The grace period is stated as the LAST line, where it reads as reassurance
+ * rather than as a reason to be casual — it is a safety net, not a preview.
+ */
+function DeleteConfirmSheet({
+  visible,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  visible: boolean;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const c = useColors();
+  const t = useT();
+  const styles = useMemo(() => makeStyles(c), [c]);
+  const [typed, setTyped] = useState('');
+
+  const word = t('privacy.delete.typeWord');
+  // Extracted so it can be tested against the SPANISH word — see
+  // `confirmation-word.ts`. The English sentinel has no Turkish casing
+  // transformation, so a test written against it cannot catch the locale bug.
+  const matches = matchesConfirmationWord(typed, word);
+
+  // Reset on the CLOSE transition, not inside a handler. The sheet stays mounted
+  // (only the Modal's children unmount), so `typed` survives — and cancel is not
+  // the only way out: success and the error alert both clear `confirming`
+  // directly. Leaving the word behind after a FAILED delete would make the next
+  // open a one-tap account deletion, which is the exact thing typing it out
+  // exists to prevent.
+  //
+  // Adjusted during render rather than in an effect: this is state derived from
+  // a prop change, React documents exactly this pattern for it, and an effect
+  // would be a second render pass for something already known here.
+  const [wasVisible, setWasVisible] = useState(visible);
+
+  if (wasVisible !== visible) {
+    setWasVisible(visible);
+
+    if (!visible) setTyped('');
+  }
+
+  const close = onCancel;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Unlabelled deliberately: a labelled full-bleed backdrop becomes
+            VoiceOver's FIRST stop and announces "Cancel" before the question it
+            is asking — and there is a real Cancel button right below. */}
+        <Pressable
+          style={styles.backdrop}
+          onPress={close}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+        <SafeAreaView style={styles.sheet} edges={['bottom']}>
+          <View style={styles.handle} />
+
+          <View style={[styles.badge, styles.badgeDelete]}>
+            <Ionicons name="warning-outline" size={18} color={c.danger} />
+          </View>
+
+          <Text style={styles.sheetTitle}>{t('privacy.delete.confirmTitle')}</Text>
+          <Text style={styles.sheetBody}>{t('privacy.delete.confirmBody')}</Text>
+
+          <TextField
+            label={t('privacy.delete.typePrompt', { word })}
+            value={typed}
+            onChangeText={setTyped}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            returnKeyType="done"
+            // No placeholder. Putting the word itself in one makes an empty
+            // field read as already filled — seen on the first device run,
+            // sitting above a disabled "delete everything" with no visible
+            // reason why.
+            testID="privacy-delete-confirm-input"
+          />
+
+            <Text style={styles.sheetFine}>
+            {t('privacy.delete.graceNote', { days: DELETION_GRACE_DAYS })}
+          </Text>
+
+          <View style={styles.sheetActions}>
+            <Button
+              title={t('common.cancel')}
+              variant="secondary"
+              onPress={close}
+              style={styles.sheetButton}
+              testID="privacy-delete-cancel"
+            />
+            <Button
+              title={t('privacy.delete.confirmCta')}
+              variant="danger"
+              disabled={!matches}
+              loading={pending}
+              onPress={onConfirm}
+              style={styles.sheetButton}
+              testID="privacy-delete-confirm"
+            />
+          </View>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -281,4 +418,35 @@ const makeStyles = (c: Palette) =>
     action: { alignSelf: 'flex-start', marginTop: space.xxs },
     cardTitle: { ...type.bodyLg, flex: 1, color: c.text },
     cardBody: { ...type.body, color: c.ink2, lineHeight: 21 },
+
+    // Confirmation sheet. Same bottom-sheet shape as MenuSheet/FilterSheet so
+    // the most consequential dialog in the app is not also the only unfamiliar
+    // one — a novel presentation here would read as an interstitial, not a
+    // decision.
+    // The KeyboardAvoidingView wrapper needs its own flex so the sheet is
+    // pushed clear of the keyboard: the confirm field sits directly above both
+    // buttons, and without this the keyboard covers the decision itself. The
+    // sibling filter-sheet solves the same problem the same way.
+    fill: { flex: 1 },
+    backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+    sheet: {
+      backgroundColor: c.background,
+      borderTopLeftRadius: radius.lg,
+      borderTopRightRadius: radius.lg,
+      padding: space.md,
+      gap: space.sm,
+    },
+    handle: {
+      alignSelf: 'center',
+      width: 40,
+      height: 4,
+      borderRadius: radius.pill,
+      backgroundColor: c.border,
+      marginBottom: space.xs,
+    },
+    sheetTitle: { ...type.title, color: c.text },
+    sheetBody: { ...type.body, color: c.ink2, lineHeight: 21 },
+    sheetFine: { ...type.bodySm, color: c.muted, lineHeight: 18 },
+    sheetActions: { flexDirection: 'row', gap: space.sm, marginTop: space.xs },
+    sheetButton: { flex: 1 },
   });
