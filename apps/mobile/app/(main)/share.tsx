@@ -55,6 +55,9 @@ export default function ShareScreen() {
   // The daily share allowance (T-051). Guarded on `remaining`, not on a 429:
   // the point of surfacing it is that the screen can say so before the tap.
   const { data: quotas } = useQuotas();
+  // Trustworthy across midnight UTC because `useQuotas` schedules its own
+  // refetch at `resets_at` — see the hook. Nothing here needs to re-check the
+  // clock, which is just as well: reading it during render is impure.
   const outOfShares = quotas !== undefined && quotas.shares.remaining === 0;
   // Rendered in the DEVICE's timezone even though the boundary is UTC — "resets
   // at 21:00" is only useful if it is the clock the person is looking at.

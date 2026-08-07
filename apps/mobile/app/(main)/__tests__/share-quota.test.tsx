@@ -127,6 +127,61 @@ it('still says "try again" for a BURST 429, which is a different problem', async
   expect(useUiStore.getState().rateLimited).toBe(true);
 });
 
+it('re-reads the quota after a share, instead of showing the old number', async () => {
+  let meCalls = 0;
+  mock.onGet('/me').reply(() => {
+    meCalls += 1;
+    return [200, meWithQuota(meCalls === 1 ? 1 : 0)];
+  });
+  mock.onPost('/shares').reply(202, { data: { id: '9', status: 'queued' }, meta: {} });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  await screen.findByTestId('share-submit');
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://www.instagram.com/reel/ABC/');
+  fireEvent.press(screen.getByTestId('share-submit'));
+
+  // The share just sent counts against today's allowance, and the quota has a
+  // 30s staleTime — without invalidation the screen keeps the OLD remaining
+  // until it happens to expire. On the last share of the day that means the
+  // limit notice appears a random half-minute after the action that caused it,
+  // which reads as a glitch rather than as a limit.
+  await waitFor(() => expect(meCalls).toBeGreaterThan(1));
+});
+
+it('stops refusing once the reset time has passed', async () => {
+  jest.useFakeTimers();
+  try {
+    const resetsAt = new Date(Date.now() + 5_000).toISOString();
+    let meCalls = 0;
+    mock.onGet('/me').reply(() => {
+      meCalls += 1;
+      // Exhausted before the boundary, replenished after it.
+      return [
+        200,
+        meCalls === 1
+          ? { ...meWithQuota(0), meta: { quotas: { ...meWithQuota(0).meta.quotas, resets_at: resetsAt } } }
+          : meWithQuota(50),
+      ];
+    });
+
+    render(<ShareScreen />, { wrapper: Providers });
+    await waitFor(() => expect(screen.queryByTestId('share-quota-reached')).not.toBeNull());
+
+    // `staleTime` schedules NOTHING — it only marks data refetchable. A screen
+    // left open in the foreground across midnight UTC would hold yesterday's
+    // `remaining: 0` forever, refusing to share while displaying a reset time
+    // that had already passed: a message contradicting itself, with no way out
+    // but backgrounding the app. `useQuotas` schedules one refetch AT the
+    // boundary, which is what this asserts.
+    await jest.advanceTimersByTimeAsync(6_500);
+
+    await waitFor(() => expect(screen.queryByTestId('share-quota-reached')).toBeNull());
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 it('stays out of the way while the user has allowance left', async () => {
   mock.onGet('/me').reply(200, meWithQuota(7));
 

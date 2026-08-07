@@ -127,7 +127,7 @@ class AppServiceProvider extends ServiceProvider
          * code `daily_quota_exceeded`, carrying the real reset time — so the client can
          * tell it apart from the burst 429 this limiter produces.
          */
-        RateLimiter::for('shares', fn (Request $request) => Limit::perMinute(10)
+        RateLimiter::for('shares', fn (Request $request) => Limit::perMinute((int) config('quotas.rate.shares'))
             ->by('shares:min:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
 
         // GET /map/places: 120/min per user (falls back to IP for anonymous —

@@ -102,6 +102,30 @@ it('gives every day in the chart a point, including the empty ones', function ()
         ->and($data['series']['openrouter'][0])->toBe(0.0);
 });
 
+it('gives exactly the number of days asked for, even across UTC midnight', function () {
+    // `$since` and the label loop each read the clock, so landing them either
+    // side of midnight produced $days + 1 labels — one more point than the
+    // series arrays the chart is drawn against.
+    //
+    // `travelTo` CANNOT catch this: it freezes the clock, so both reads return
+    // the same instant and the test passes against the broken code. (Written
+    // that way first, and the mutation check is what exposed it.) A Carbon
+    // test-now CLOSURE is re-evaluated per call, so this actually ticks over
+    // between the two reads — which is precisely the race.
+    $calls = 0;
+    Carbon::setTestNow(function () use (&$calls) {
+        return Carbon::parse($calls++ === 0 ? '2026-08-07 23:59:59' : '2026-08-08 00:00:01', 'UTC');
+    });
+
+    $data = app(AnalysisCosts::class)->dailyByEngine(30);
+
+    Carbon::setTestNow();
+
+    expect($data['labels'])->toHaveCount(30)
+        ->and($data['series']['openrouter'])->toHaveCount(30)
+        ->and($data['series']['local'])->toHaveCount(30);
+});
+
 it('breaks cost down by model, most expensive first', function () {
     costRun(AnalysisEngine::OpenRouter, 0.30, null, null, 0.8, 'gemini-2.0-flash');
     costRun(AnalysisEngine::Local, 0.0, null, null, 0.6, 'gemma3:12b');
@@ -192,6 +216,12 @@ it('caches the aggregates so the dashboard cannot hammer Postgres', function () 
 });
 
 it('still caches when the window start moves, which is every single call', function () {
+    // Pinned to :00 of a minute, because the assertion is that a ONE-SECOND
+    // move keeps the same bucket. Run for real at HH:MM:59 and the travel below
+    // crosses into the next minute, the key legitimately changes, and the test
+    // fails for a reason that has nothing to do with the bug it guards.
+    $this->travelTo(Carbon::parse('2026-08-07 12:30:00', 'UTC'));
+
     costRun(AnalysisEngine::OpenRouter, 0.10);
     $costs = app(AnalysisCosts::class);
 

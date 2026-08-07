@@ -156,13 +156,15 @@ it('refuses a share past the daily allowance, and says when it comes back', func
 });
 
 it('answers the burst limit as rate_limited, a different problem', function () {
-    config(['quotas.daily.shares' => 100]);
+    // Read from config like every other ceiling (FR-58) — this was the one left
+    // hard-coded in a change whose whole point was that none of them should be.
+    config(['quotas.daily.shares' => 100, 'quotas.rate.shares' => 2]);
     $user = User::factory()->create();
 
-    // 10/min, hard-coded in the `shares` limiter. Same route, same status,
-    // different code — that distinction is the whole point of the one above.
+    // Same route, same status, different code — that distinction is the whole
+    // point of the daily-cap test above.
     $last = null;
-    foreach (range(1, 11) as $ignored) {
+    foreach (range(1, 3) as $ignored) {
         $last = $this->actingAs($user)->postJson('/api/v1/shares', ['url' => 'https://www.instagram.com/reel/BURST/']);
     }
 

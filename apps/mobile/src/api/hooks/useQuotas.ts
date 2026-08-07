@@ -29,5 +29,28 @@ export function useQuotas() {
     // Short, not zero: the numbers move as the user shares, and a stale
     // "0 remaining" would block someone whose window has since reset.
     staleTime: 30_000,
+    /*
+     * One scheduled refetch, at the reset boundary — NOT a poll.
+     *
+     * `staleTime` does not schedule anything; it only marks data refetchable.
+     * A screen left open in the foreground across midnight UTC would therefore
+     * hold yesterday's `remaining: 0` indefinitely and keep refusing to share,
+     * while displaying a reset time that had already passed — a message
+     * visibly contradicting itself, and no way out but backgrounding the app.
+     *
+     * So the interval is the time UNTIL that boundary (plus a second, so the
+     * server has certainly rolled over), and `false` at every other moment.
+     * The common case — the screen open for a minute, well before reset —
+     * schedules a single timer that never fires.
+     */
+    refetchInterval: (query) => {
+      const resetsAt = query.state.data?.resets_at;
+      if (resetsAt === undefined) return false;
+
+      const msUntilReset = Date.parse(resetsAt) + 1_000 - Date.now();
+
+      // Already past it (a snapshot from before the boundary): refetch now.
+      return msUntilReset > 0 ? msUntilReset : 1;
+    },
   });
 }

@@ -74,6 +74,14 @@ class ShareController extends Controller
         // two want opposite advice ("wait a moment" vs "come back tomorrow"),
         // and a client branching on the status alone tells somebody who tapped
         // twice quickly that they are out for the day.
+        //
+        // Read-then-act, and deliberately NOT serialized. Two concurrent
+        // requests can both see limit-1 and both be admitted, so the ceiling is
+        // soft by a small margin. Closing it means a per-user lock on the app's
+        // primary write path, and the margin buys nothing: the burst limiter
+        // caps the same route at 10/min, and the thing that actually costs
+        // money — the AI spend — has its own independent per-user daily budget
+        // enforced in ModelRouter. This is an abuse ceiling, not a ledger.
         if ($this->quotas->sharesExhausted($user)) {
             throw DailyQuotaExceeded::shares(
                 (int) config('quotas.daily.shares'),

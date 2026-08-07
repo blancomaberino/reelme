@@ -31,7 +31,12 @@ class AnalysisCosts
     public function dailyByEngine(int $days = 30): array
     {
         return $this->remember("daily:{$days}", function () use ($days): array {
-            $since = Carbon::now('UTC')->startOfDay()->subDays($days - 1);
+            // Captured ONCE. Reading the clock again for the label loop below
+            // lets the two land on opposite sides of UTC midnight, and the
+            // chart then returns $days + 1 labels — one more point than the
+            // series arrays it is drawn against.
+            $today = Carbon::now('UTC')->startOfDay();
+            $since = $today->copy()->subDays($days - 1);
 
             /** @var Collection<int, object> $rows */
             $rows = DB::table('analysis_runs')
@@ -52,7 +57,7 @@ class AnalysisCosts
             // runs. Skipping empty days makes a gap look like a plateau and
             // hides exactly the outage an operator is looking for.
             $labels = [];
-            for ($day = $since->copy(); $day <= Carbon::now('UTC')->startOfDay(); $day->addDay()) {
+            for ($day = $since->copy(); $day <= $today; $day->addDay()) {
                 $labels[] = $day->format('Y-m-d');
             }
 

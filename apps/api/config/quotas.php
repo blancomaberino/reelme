@@ -41,6 +41,11 @@ return [
         // A till scanning codes is bursty; the real anti-fraud bound is the
         // hourly cap in RedemptionGuards, not this.
         'verify' => (int) env('RATE_VERIFY_PER_MINUTE', 30),
+
+        // POST /shares, BURST only — the daily cap is enforced in the
+        // controller (ADR-051). This was the one ceiling still hard-coded in a
+        // change whose whole point was that none of them should be.
+        'shares' => (int) env('RATE_SHARES_PER_MINUTE', 10),
     ],
 
     /*
