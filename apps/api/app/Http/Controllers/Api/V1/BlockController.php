@@ -6,7 +6,6 @@ use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserSummaryResource;
 use App\Models\User;
-use App\Models\UserBlock;
 use App\Services\Moderation\BlockUsers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,9 +32,16 @@ class BlockController extends Controller
         /** @var User $me */
         $me = $request->user();
 
+        // Ordered by when the BLOCK happened, not by the target's user id —
+        // `orderByDesc('users.id')` sorted by account age, so the most recent
+        // block could land anywhere in the list. On the one screen whose job is
+        // "find the person I just blocked", that is the wrong order.
         $blocked = User::query()
-            ->whereIn('id', UserBlock::query()->where('blocker_id', $me->id)->select('blocked_id'))
-            ->orderByDesc('id')
+            ->join('user_blocks', 'user_blocks.blocked_id', '=', 'users.id')
+            ->where('user_blocks.blocker_id', $me->id)
+            ->orderByDesc('user_blocks.created_at')
+            ->orderByDesc('user_blocks.id')
+            ->select('users.*')
             ->get();
 
         return ApiResponse::collection(UserSummaryResource::collection($blocked));

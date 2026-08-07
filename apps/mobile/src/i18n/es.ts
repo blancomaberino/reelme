@@ -731,6 +731,7 @@ export const es: Record<MessageKey, string> = {
   'block.listSubtitle': 'No pueden ver tus publicaciones ni vos las suyas.',
   'block.unblock': 'Desbloquear',
   'block.unblockConfirmTitle': '¿Desbloquear a @{{name}}?',
+  'block.unblockFailedTitle': 'No se pudo desbloquear',
   'block.unblockConfirmBody': 'Van a poder ver las publicaciones del otro otra vez. No se restauran los seguimientos.',
   'report.action': 'Reportar',
   'report.title': 'Reportar esto',

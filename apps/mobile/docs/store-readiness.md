@@ -11,7 +11,10 @@ by remembering.
 
 ## 1. Apple Guideline 1.2 — user-generated content
 
-Apple rejects UGC apps that lack these. All four are shipped.
+Apple rejects UGC apps that lack these. **Three of the four are shipped; the
+moderation contact is not** — it needs a real monitored address (§5.2), and a
+checklist that reads "all four ✅" is exactly how that gets missed and becomes a
+rejection.
 
 | Requirement | Status | Where |
 |---|---|---|

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserBlock;
 use App\Services\Moderation\BlockUsers;
 use Illuminate\Database\QueryException;
+use Laravel\Sanctum\Sanctum;
 
 /**
  * Blocking another account (T-054, IR-6 / Apple Guideline 1.2).
@@ -88,6 +89,92 @@ it('drops the blocked account’s shares out of the feed', function () {
     $response = $this->actingAs($me)->getJson('/api/v1/feed?scope=global')->assertOk();
 
     expect(collect($response->json('data'))->pluck('id'))->not->toContain((string) $share->id);
+});
+
+it('drops the BLOCKER’s shares out of the blocked account’s feed too', function () {
+    $me = User::factory()->create();
+    $them = User::factory()->create();
+    $share = publishedShareBy($me);
+
+    app(BlockUsers::class)->block($me, $them);
+
+    // The reverse direction, which exercises `invisibleTo`'s `blocked_id`
+    // branch. A block that only filters the blocker's own feed leaves them
+    // fully visible to the person they blocked — the situation blocking exists
+    // to end, and the branch that gets written and never called.
+    $response = $this->actingAs($them)->getJson('/api/v1/feed?scope=global')->assertOk();
+
+    expect(collect($response->json('data'))->pluck('id'))->not->toContain((string) $share->id);
+});
+
+it('gates the profile PLACES route, which had its own copy of the rule', function () {
+    $me = User::factory()->create();
+    $them = User::factory()->create(['is_public' => true]);
+
+    app(BlockUsers::class)->block($me, $them);
+
+    // `GET /users/{username}/places` never called `assertViewable()` — its
+    // privacy gate lived in `ProfilePlacesRequest::authorize()` instead, and
+    // T-054 added blocking to the controller's copy only. One rule, two
+    // implementations, and the second was invisible from the file being edited.
+    // Both now delegate to ProfileVisibility.
+    $this->actingAs($me)->getJson("/api/v1/users/{$them->username}/places")->assertNotFound();
+});
+
+it('keeps the private-profile gate working on that same route', function () {
+    $private = User::factory()->create(['is_public' => false]);
+
+    // The rule that was already there. Extracting it must not have dropped it —
+    // this is the regression the refactor could plausibly cause.
+    //
+    // `Sanctum::actingAs`, not `$this->actingAs`: the gate reads
+    // `$request->user('sanctum')` explicitly, and the owner-sees-own case is
+    // the ONLY one where that distinction changes the answer (a guest and a
+    // stranger both get the same 404, so the other tests here cannot tell them
+    // apart). This is the codebase's convention for the same reason.
+    Sanctum::actingAs(User::factory()->create());
+    $this->getJson("/api/v1/users/{$private->username}/places")->assertNotFound();
+
+    Sanctum::actingAs($private);
+    $this->getJson("/api/v1/users/{$private->username}/places")->assertOk();
+});
+
+it('drops the blocked account out of the ?include=sources EMBED as well', function () {
+    $me = User::factory()->create();
+    $them = User::factory()->create();
+    $share = publishedShareBy($them);
+    $place = $share->publishedPlaceSource->place;
+
+    $this->actingAs($me)->getJson("/api/v1/places/{$place->slug}?include=sources")
+        ->assertOk()
+        ->assertJsonCount(1, 'data.sources');
+
+    app(BlockUsers::class)->block($me, $them);
+
+    // The same attribution on the same screen, reached a different way. Filter
+    // the paginated list and not the embed and the name reappears the moment
+    // the client asks for `?include=sources`.
+    $this->actingAs($me)->getJson("/api/v1/places/{$place->slug}?include=sources")
+        ->assertOk()
+        ->assertJsonCount(0, 'data.sources');
+});
+
+it('lists blocks newest-first by when they happened, not by account age', function () {
+    $me = User::factory()->create();
+    // The OLDER account is blocked SECOND, so ordering by users.id would put it
+    // last — on the one screen whose job is "find the person I just blocked".
+    $older = User::factory()->create(['username' => 'older']);
+    $newer = User::factory()->create(['username' => 'newer']);
+
+    $blocks = app(BlockUsers::class);
+    $blocks->block($me, $newer);
+    $this->travel(1)->minute();
+    $blocks->block($me, $older);
+
+    $response = $this->actingAs($me)->getJson('/api/v1/me/blocks')->assertOk();
+
+    expect($response->json('data.0.username'))->toBe('older')
+        ->and($response->json('data.1.username'))->toBe('newer');
 });
 
 it('severs the follow edges in both directions, counters included', function () {

@@ -741,6 +741,7 @@ export const en = {
   'block.listSubtitle': 'They can’t see your posts and you can’t see theirs.',
   'block.unblock': 'Unblock',
   'block.unblockConfirmTitle': 'Unblock @{{name}}?',
+  'block.unblockFailedTitle': 'Couldn’t unblock',
   'block.unblockConfirmBody': 'You’ll be able to see each other’s posts again. Following isn’t restored.',
   'report.action': 'Report',
   'report.title': 'Report this',

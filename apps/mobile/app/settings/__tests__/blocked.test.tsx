@@ -86,6 +86,30 @@ it('does not unblock when the confirmation is dismissed', async () => {
   expect(screen.getByText('@noisy')).toBeOnTheScreen();
 });
 
+it('says so when the unblock itself fails, instead of nothing', async () => {
+  mock.onGet('/me/blocks').reply(200, { data: [noisy] });
+  mock.onDelete('/me/blocks/noisy').reply(500);
+
+  const alert = jest
+    .spyOn(Alert, 'alert')
+    .mockImplementationOnce((_title, _body, buttons) => {
+      buttons?.find((b) => b.style !== 'cancel')?.onPress?.();
+    })
+    // The failure alert. Mocked separately so the assertion below is about the
+    // SECOND call, not the confirm.
+    .mockImplementationOnce(() => {});
+
+  render(<BlockedAccountsScreen />, { wrapper: Providers });
+  fireEvent.press(await screen.findByText('Unblock'));
+
+  // A failed DELETE leaves the account blocked. Without a message the row just
+  // stays put and there is no way to tell whether the tap registered — so the
+  // user tries again, or assumes it worked and it did not.
+  await waitFor(() => expect(alert).toHaveBeenCalledTimes(2));
+  expect(alert.mock.calls[1][0]).toMatch(/couldn.t unblock/i);
+  expect(screen.getByText('@noisy')).toBeOnTheScreen();
+});
+
 it('shows an error rather than an empty list when the request fails', async () => {
   mock.onGet('/me/blocks').reply(500);
 

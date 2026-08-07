@@ -34,7 +34,17 @@ export default function BlockedAccountsScreen() {
       t('block.unblockConfirmBody'),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('block.unblock'), onPress: () => unblock.mutate(user.username) },
+        {
+          text: t('block.unblock'),
+          onPress: () =>
+            unblock.mutate(user.username, {
+              // A failed DELETE leaves the account blocked. Without this the
+              // row simply stays put and the user cannot tell whether the tap
+              // registered — so they try again, or assume it worked and it did
+              // not. Silence is the worst of the three outcomes.
+              onError: () => Alert.alert(t('block.unblockFailedTitle'), t('block.failedBody')),
+            }),
+        },
       ],
     );
 

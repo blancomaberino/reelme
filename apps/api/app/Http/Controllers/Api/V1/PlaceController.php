@@ -165,9 +165,17 @@ class PlaceController extends Controller
         // Sources are always loaded for tag aggregation; their relations only
         // matter to the ?include=sources embed. Reviews reduce to aggregates —
         // never load the rows (unbounded as T-059 reviews accumulate).
+        // Blocked accounts drop out of the EMBED too, not just the paginated
+        // /sources list (T-054). They are the same attribution rendered on the
+        // same screen; filtering one and not the other means the name reappears
+        // the moment the client asks for `?include=sources`.
+        $invisible = app(BlockUsers::class)->invisibleTo($request->user('sanctum')?->id);
+
         $place->load([
             'sources' => fn ($q) => $q
                 ->when($withSources, fn ($qq) => $qq->with(['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user']))
+                ->when($invisible !== [], fn ($qq) => $qq
+                    ->whereHas('share', fn ($sq) => $sq->whereNotIn('shares.user_id', $invisible)))
                 ->orderByDesc('is_primary')->orderBy('id')->limit(self::SOURCE_CAP),
             // Cached external review summaries (T-082) — read by the Trustpilot
             // ReviewSource driver; eager-loaded so `review_sources[]` costs no N+1.
@@ -227,7 +235,8 @@ class PlaceController extends Controller
         // (T-054). The PLACE stays — it is community data with many sources,
         // and removing a restaurant from the map because one blocked account
         // also shared it would punish the blocker. But their name appearing
-        // under it is exactly what blocking is supposed to stop.
+        // under it is exactly what blocking is supposed to stop. Mirrored in
+        // show()'s embed above, which renders the same attribution.
         $invisible = app(BlockUsers::class)->invisibleTo($request->user('sanctum')?->id);
         if ($invisible !== []) {
             $query->whereHas('share', fn ($q) => $q->whereNotIn('shares.user_id', $invisible));
