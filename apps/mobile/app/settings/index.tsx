@@ -159,6 +159,21 @@ export default function SettingsScreen() {
               <Text style={styles.optionLabel}>{t('settings.privacy')}</Text>
               <Ionicons name="chevron-forward" size={18} color={c.muted} />
             </Pressable>
+
+            {/* Blocked accounts (T-054, Apple 1.2). This row is what makes a
+                block REVERSIBLE: a blocked profile is a 404 for the blocker, so
+                there is no other route back to it. A block you cannot undo is a
+                worse product than no block at all. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('block.settingsRow')}
+              onPress={() => router.push('/settings/blocked')}
+              style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+              testID="settings-blocked"
+            >
+              <Text style={styles.optionLabel}>{t('block.settingsRow')}</Text>
+              <Ionicons name="chevron-forward" size={18} color={c.muted} />
+            </Pressable>
           </View>
         </View>
       ) : null}

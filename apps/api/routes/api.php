@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\Auth\RefreshController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
 use App\Http\Controllers\Api\V1\Auth\TwoFactorChallengeController;
+use App\Http\Controllers\Api\V1\BlockController;
 use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\FeedController;
 use App\Http\Controllers\Api\V1\FeedDismissalController;
@@ -335,6 +336,14 @@ Route::prefix('v1')->group(function () {
         Route::post('/follows', [FollowController::class, 'store']);
         Route::delete('/follows/{follow}', [FollowController::class, 'destroy']);
         Route::get('/me/follows', [FollowController::class, 'follows']);
+
+        // Blocking (T-054, IR-6 / Apple 1.2). Bound by USERNAME like every other
+        // user-facing route, and the list is what makes a block reversible — a
+        // blocked profile 404s for the blocker, so settings is the only place
+        // they can find it again.
+        Route::get('/me/blocks', [BlockController::class, 'index']);
+        Route::post('/me/blocks/{user:username}', [BlockController::class, 'store']);
+        Route::delete('/me/blocks/{user:username}', [BlockController::class, 'destroy']);
 
         // "Hide from my feed": per-user, non-destructive dismiss of a published
         // share. The feed query filters these out for the viewer only. A light

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\FeedRequest;
 use App\Http\Resources\FeedItemResource;
 use App\Services\Feed\PublishedShareFeed;
+use App\Services\Moderation\BlockUsers;
 use App\Support\KeysetPage;
 use Illuminate\Http\JsonResponse;
 
@@ -23,7 +24,7 @@ use Illuminate\Http\JsonResponse;
  */
 class FeedController extends Controller
 {
-    public function index(FeedRequest $request, PublishedShareFeed $feed): JsonResponse
+    public function index(FeedRequest $request, PublishedShareFeed $feed, BlockUsers $blocks): JsonResponse
     {
         $limit = $request->limit();
         $scope = $request->scope();
@@ -51,6 +52,15 @@ class FeedController extends Controller
                 ->selectRaw('1')->from('feed_dismissals')
                 ->whereColumn('feed_dismissals.share_id', 'shares.id')
                 ->where('feed_dismissals.user_id', $me->id));
+
+            // Blocked in EITHER direction (T-054). Applied to the `global`
+            // scope as well as `following` — the abusive account somebody
+            // blocked is not usually one they followed, so filtering only the
+            // following feed would leave the content exactly where they see it.
+            $invisible = $blocks->invisibleTo($me->id);
+            if ($invisible !== []) {
+                $constraints[] = fn ($q) => $q->whereNotIn('shares.user_id', $invisible);
+            }
         }
 
         $constrain = $constraints === []

@@ -22,6 +22,7 @@ use App\Models\PlaceList;
 use App\Models\User;
 use App\Services\Feed\PublishedShareFeed;
 use App\Services\Map\MapViewport;
+use App\Services\Moderation\BlockUsers;
 use App\Support\KeysetCursor;
 use App\Support\KeysetPage;
 use Illuminate\Http\JsonResponse;
@@ -209,10 +210,23 @@ class ProfileController extends Controller
     /** Private profiles 404 for everyone but their owner (no existence leak). */
     private function assertViewable(Request $request, User $user): void
     {
+        $viewer = $request->user('sanctum');
+
+        // A block hides the profile in BOTH directions (T-054, Apple 1.2). The
+        // single gate every profile read path already goes through — show, map,
+        // places, lists, followers, following — so blocking cannot be wired
+        // into some of them and forgotten in the rest.
+        //
+        // 404, not 403, and the same 404 a private profile gets: "you are
+        // blocked" is itself information, and telling someone they were blocked
+        // by a specific account is exactly the nudge that starts a second
+        // account. Indistinguishable from "no such user" is the point.
+        abort_if(app(BlockUsers::class)->betweenExists($viewer?->id, $user->id), 404);
+
         if ($user->is_public) {
             return;
         }
 
-        abort_unless($request->user('sanctum')?->id === $user->id, 404);
+        abort_unless($viewer?->id === $user->id, 404);
     }
 }
