@@ -131,7 +131,7 @@
       "id": "T-006",
       "title": "CI: GitHub Actions for api + mobile + contracts",
       "phase": "M5",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-002",
         "T-004",
@@ -153,7 +153,7 @@
         "All green on main"
       ],
       "agent": "executor",
-      "notes": "Reprioritized to the END of the queue (2026-07-10): moved M0 -> M5 and gated behind the terminal launch tasks (T-054, T-055) so the scheduler surfaces it dead-last. depends_on keeps the real build prereqs (T-002/T-004/T-005) too. NOTE the trade-off: earlier tasks now ship without a CI safety net (the M0 rationale). Implementation already exists and is reviewed on branch feat/t006-ci-github-actions (app repo, commit 04543e4); this only changes when it lands in the plan order."
+      "notes": "Reprioritized to the END of the queue (2026-07-10): moved M0 -> M5 and gated behind the terminal launch tasks (T-054, T-055) so the scheduler surfaces it dead-last. depends_on keeps the real build prereqs (T-002/T-004/T-005) too. NOTE the trade-off: earlier tasks now ship without a CI safety net (the M0 rationale). Implementation already exists and is reviewed on branch feat/t006-ci-github-actions (app repo, commit 04543e4); this only changes when it lands in the plan order.\n\n2026-08-07: DONE. `.github/workflows/ci.yml` has been live and green on main across every recent merge (T-049 dba..., T-051 #181, T-052 #182). Every acceptance item is covered: api job runs Pint + PHPStan + Pest against a postgis/postgis:16-3.4 service (plus redis and meilisearch for the @group meilisearch suite, and ffmpeg installed for the media stages); mobile job runs eslint + tsc + jest; contracts job runs schema tests AND fails on generated-output drift. Path filters skip unrelated jobs on PRs and every job runs on a main push.\n\nGAP WORTH KNOWING: CI runs `composer test` WITHOUT `--coverage`, so the coverage requirement in CLAUDE.md is enforced locally/by review, not by the pipeline. Add `--coverage --min=N` when a baseline is agreed."
     },
     {
       "id": "T-007",
@@ -1296,7 +1296,7 @@
       "id": "T-052",
       "title": "Observability: Sentry, Horizon alerts, stage metrics",
       "phase": "M5",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-028"
       ],
@@ -1314,13 +1314,13 @@
         "Runbook section: common failure taxonomy → remediation"
       ],
       "agent": "executor",
-      "notes": "2026-08-07: PR #182 open. Sentry wired on both ends behind the seams T-090/T-091 left; Horizon long-wait alerts routed (the tuned `waits` thresholds had been raising a notification that went NOWHERE since T-028 — Horizon routes nothing by default); runbook at apps/api/docs/observability.md with the failure-taxonomy table. PII hard-coded off (not env-backed) on both `send_default_pii` and `sql_bindings`. @sentry/react-native ~7.11, NOT the 8.19.0 T-090's note recommended — that pin is wrong for Expo 57. Verified end-to-end against a local catcher on both ends, mobile after a full `expo prebuild --clean` + dev-client rebuild. ACTIVATION IS PROVISIONING ONLY: SENTRY_LARAVEL_DSN, OBSERVABILITY_ERROR_REPORTER=sentry, EXPO_PUBLIC_SENTRY_DSN, SENTRY_ORG/PROJECT/AUTH_TOKEN (EAS secret), HORIZON_ALERT_*."
+      "notes": "2026-08-07: PR #182 open. Sentry wired on both ends behind the seams T-090/T-091 left; Horizon long-wait alerts routed (the tuned `waits` thresholds had been raising a notification that went NOWHERE since T-028 — Horizon routes nothing by default); runbook at apps/api/docs/observability.md with the failure-taxonomy table. PII hard-coded off (not env-backed) on both `send_default_pii` and `sql_bindings`. @sentry/react-native ~7.11, NOT the 8.19.0 T-090's note recommended — that pin is wrong for Expo 57. Verified end-to-end against a local catcher on both ends, mobile after a full `expo prebuild --clean` + dev-client rebuild. ACTIVATION IS PROVISIONING ONLY: SENTRY_LARAVEL_DSN, OBSERVABILITY_ERROR_REPORTER=sentry, EXPO_PUBLIC_SENTRY_DSN, SENTRY_ORG/PROJECT/AUTH_TOKEN (EAS secret), HORIZON_ALERT_*.\n\n2026-08-07: MERGED as dba732f (PR #182). CI green.\n\nTRAPS PAID FOR:\n(a) Horizon routes notifications NOWHERE by default — the per-queue `waits` thresholds tuned in T-028 had been raising an alert with no human on the other end ever since. Correct thresholds + a firing alert + no destination is indistinguishable from having no thresholds.\n(b) PINNING ONE `sql_bindings` FLAG CLOSES NOTHING. `breadcrumbs.sql_bindings` and `tracing.sql_bindings` are separate; bound values (emails, coordinates) reach Sentry through spans just as happily as through breadcrumbs. Both hard-coded false, plus `send_default_pii` — deliberately NOT env-backed, because one var flipped during an incident permanently exports user data and nothing fails to say so.\n(c) `sentry` WITHOUT a DSN falls back to `log`, never to silence: a missing DSN in production is a typo, and \"we stopped hearing about errors\" is indistinguishable from everything working.\n(d) Horizon's routing is STATIC — test state leaks across the process, and `routeSlackNotificationsTo` sets the CHANNEL even when the webhook is null, so a partial reset is not one.\n(e) T-090's note said to pin @sentry/react-native 8.19.0. WRONG for Expo 57 — `expo install` resolves ~7.11 and `--check` agrees. Trust the installer over a hand-written pin.\n(f) A test asserting on `env()` via `putenv()` passes locally and fails in CI, where `.env` (copied from .env.example) defines the var empty and the FILE value wins. Assert the source expression, not a resolved value.\n(g) A stale test can stop testing anything silently: \"degrades when the native SDK is absent\" passed because require() hit a jest ESM TRANSFORM error, not because of native modules — and the init path it bracketed never ran.\n\nACTIVATION IS PROVISIONING ONLY (no code): SENTRY_LARAVEL_DSN + OBSERVABILITY_ERROR_REPORTER=sentry, SENTRY_RELEASE from the deploy, EXPO_PUBLIC_SENTRY_DSN, SENTRY_ORG/PROJECT/AUTH_TOKEN (EAS secret), HORIZON_ALERT_EMAIL/SLACK_WEBHOOK. Runbook: apps/api/docs/observability.md."
     },
     {
       "id": "T-053",
       "title": "E2E: Maestro share→publish flow + map load test",
       "phase": "M5",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-026",
         "T-032"
@@ -1338,7 +1338,8 @@
         "Maestro flow: login → paste URL share → (mocked API) status → review → published place visible on map; runs in CI against staging",
         "Map bbox endpoint load test at 10k places documented with results"
       ],
-      "agent": "executor"
+      "agent": "executor",
+      "notes": "2026-08-07: PR #183 open (rebased onto T-052). Map load test at 10k places in apps/api/tests/Load + docs/load-testing.md; Maestro share→map flow.\n\nKEY RESULT: the clustered map path scales with places IN VIEW, not with table size — same code path, same zoom, same 10k table, 10x difference between a city bbox (~9900 rows, p95 317ms) and a district one (~200 rows, 31ms). NFR-2 wants p95<=600ms; worst case is 317ms on a laptop. So the number to watch as the product grows is places-per-viewport, not COUNT(places).\n\nTRAPS PAID FOR:\n(a) A SEQ SCAN IS SOMETIMES THE CORRECT PLAN. The index assertion, written against the city viewport, FAILED — with ~99% of rows in the envelope Postgres rightly picks a seq scan. Index usage is only meaningful where the predicate is SELECTIVE.\n(b) Maestro `tapOn: \"<label>\"` matches the LABEL Text, not the input that carries the same string as accessibilityLabel — so the T-051 quota flow had never actually typed a URL and its assertion proved nothing. Always assert the field's CONTENT before pressing.\n(c) Maestro `hideKeyboard` taps a \"safe\" area which can land on real controls and navigate away.\n(d) An `accessible` Pressable COLLAPSES its children, so a status badge is absent from the a11y tree entirely — invisible to screen readers AND unmatchable by Maestro.\n(e) Two implementations of failure copy: the status screen localized `failure.code`, the composer rendered the server's English `failure.message`. Two existing tests were PINNING the bug.\n(f) `travelTo` freezes the clock and cannot test a race between two now() reads; a Carbon test-now CLOSURE can."
     },
     {
       "id": "T-054",
