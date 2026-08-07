@@ -54,7 +54,8 @@ Legend — Auth: `public`, `user` (Sanctum token), `restaurant` (user with verif
 |---|---|---|---|---|
 | GET | `/api/v1/me` | Current user, settings, model preference, counters | user | M0 |
 | PATCH | `/api/v1/me` | Update handle, display name, bio, avatar, map visibility (`public`/`private`), analysis model preference | user | M0 |
-| DELETE | `/api/v1/me` | Account deletion (soft, queued purge) | user | M5 |
+| DELETE | `/api/v1/me` | Account deletion: soft-delete + revoke every token now, queued purge after `GDPR_PURGE_GRACE_DAYS`. Returns `{status, purge_at, grace_days}` — signing back in inside the window cancels it (T-050) | user | M5 |
+| POST | `/api/v1/me/export` | Queue a full data export; 202. The archive is emailed as a signed, expiring link — never returned inline (T-050) | user | M5 |
 
 ### 2.3 Platform Accounts
 
