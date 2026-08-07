@@ -27,6 +27,9 @@ export type MapFilters = {
 
 export const queryKeys = {
   me: ['me'] as const,
+  /** Daily allowance from GET /me meta (T-051). Separate key: it goes stale on
+   *  a clock the profile does not follow, and must not force a profile refetch. */
+  quotas: () => ['me', 'quotas'] as const,
   place: (slug: string) => ['places', slug] as const,
   placeSources: (slug: string) => ['places', slug, 'sources'] as const,
   // Quantized bbox + banded zoom keep tiny pans on one cache entry (T-032).

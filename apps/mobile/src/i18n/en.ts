@@ -377,6 +377,7 @@ export const en = {
   'shares.fail.transcribe_error.body': 'Transcription failed. Try again.',
   'shares.fail.cost_cap_exceeded.title': 'Daily limit reached',
   'shares.fail.cost_cap_exceeded.body': 'You’ve hit today’s analysis limit. Try again tomorrow.',
+  'share.quotaReached': 'Daily limit reached — resets at {{time}}.',
   'shares.fail.quota_exhausted.title': 'Out of analyses',
   'shares.fail.quota_exhausted.body': 'You’ve used up your analyses. Check your AI model settings.',
   'shares.fail.invalid_model_output.title': 'The analysis didn’t work out',

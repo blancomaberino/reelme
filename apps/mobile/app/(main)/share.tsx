@@ -17,6 +17,7 @@ import {
   type SharePlatform,
   type ShareStatus,
 } from '@/api/shares';
+import { useQuotas } from '@/api/hooks/useQuotas';
 import { Button } from '@/components/button';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { PendingVenues } from '@/components/share/pending-venues';
@@ -48,6 +49,16 @@ export default function ShareScreen() {
 
   const [url, setUrl] = useState('');
   const [caption, setCaption] = useState('');
+
+  // The daily share allowance (T-051). Guarded on `remaining`, not on a 429:
+  // the point of surfacing it is that the screen can say so before the tap.
+  const { data: quotas } = useQuotas();
+  const outOfShares = quotas !== undefined && quotas.shares.remaining === 0;
+  // Rendered in the DEVICE's timezone even though the boundary is UTC — "resets
+  // at 21:00" is only useful if it is the clock the person is looking at.
+  const quotaResetLabel = quotas
+    ? new Date(quotas.resets_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    : '';
   const [error, setError] = useState<string | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   // True when the API replayed an existing share (re-shared post) — drives the
@@ -159,7 +170,22 @@ export default function ShareScreen() {
               autoCapitalize="sentences"
             />
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <Button title={t('share.submit')} onPress={submit} loading={create.isPending} />
+            {/* Said BEFORE the tap, not after a 429. The limit is a designed
+                behaviour, and discovering it by being refused reads as a bug —
+                so the screen states it, with the reset time, and stops the
+                request rather than spending it on a rejection. */}
+            {outOfShares ? (
+              <Text style={styles.quota} testID="share-quota-reached">
+                {t('share.quotaReached', { time: quotaResetLabel })}
+              </Text>
+            ) : null}
+            <Button
+              title={t('share.submit')}
+              onPress={submit}
+              loading={create.isPending}
+              disabled={outOfShares}
+              testID="share-submit"
+            />
             <RecentShares styles={styles} t={t} />
           </View>
         )}
@@ -377,6 +403,7 @@ const makeStyles = (c: Palette) =>
     },
     platformBadgeText: { fontSize: 12, fontWeight: '700', color: c.primary },
     replayNote: { fontSize: 14, color: c.muted, textAlign: 'center', marginTop: -4 },
+    quota: { color: c.danger, fontSize: 13, lineHeight: 18 },
     error: { color: c.danger, fontSize: 14, marginBottom: 4 },
     result: { alignItems: 'center', gap: 12, paddingVertical: 32 },
     resultTitle: { fontFamily: fonts.display, fontSize: 20, fontWeight: '700', color: c.text },

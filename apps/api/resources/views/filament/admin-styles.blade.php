@@ -30,6 +30,9 @@
     .rm-link { color: var(--primary-600); text-decoration: underline; }
     /* Digits meant to be compared down a column need to share a width. */
     .rm-num { font-variant-numeric: tabular-nums; }
+    /* A second table inside one section needs a label, or the two read as one
+       list with a sudden change of columns. */
+    .rm-subhead { margin: 1.25rem 0 0.25rem; font-size: 0.8125rem; font-weight: 600; opacity: 0.7; }
     .rm-right { text-align: right; }
     .rm-stack { display: flex; flex-direction: column; gap: 0.5rem; }
 

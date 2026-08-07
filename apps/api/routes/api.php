@@ -209,7 +209,9 @@ Route::prefix('v1')->group(function () {
         Route::middleware('throttle:10,1')->group(function () {
             Route::post('/redemptions', [RedemptionController::class, 'store']);
         });
-        Route::middleware('throttle:30,1')->group(function () {
+        // Keyed on the staff ACCOUNT (T-051), not on a raw per-IP bucket: one
+        // till behind a shop's NAT must not throttle the shop next door.
+        Route::middleware('throttle:verify')->group(function () {
             Route::post('/redemptions/verify', [RedemptionController::class, 'verify']);
         });
         // Reads carry the same interactive limiter as the other read surfaces.
@@ -291,7 +293,11 @@ Route::prefix('v1')->group(function () {
         // Shares (ingest). POST is rate-limited 10/min + 100/day (03 §1).
         Route::post('/shares', [ShareController::class, 'store'])->middleware('throttle:shares');
         Route::get('/shares', [ShareController::class, 'index']);
-        Route::get('/shares/{share}', [ShareController::class, 'show']);
+        // AnalysisStatus polls this every 2.5s (24/min) while an ingest runs.
+        // Its own, higher bucket (T-051): on the default limiter one screen
+        // would consume most of a minute's budget and the app would throttle a
+        // user for using it exactly as designed.
+        Route::get('/shares/{share}', [ShareController::class, 'show'])->middleware('throttle:polling');
         Route::patch('/shares/{share}', [ShareController::class, 'update']);
         Route::post('/shares/{share}/retry', [ShareController::class, 'retry']);
         Route::post('/shares/{share}/publish-best-guess', [ShareController::class, 'publishBestGuess']);
