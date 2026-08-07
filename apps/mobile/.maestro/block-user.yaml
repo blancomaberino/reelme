@@ -1,0 +1,110 @@
+# Blocking another account, end to end (E2E, iOS simulator). T-054, Apple 1.2.
+#
+# What jest cannot prove about this feature:
+#
+#  1. That the Block control is REACHABLE. Apple's reviewer looks for the
+#     control, not the endpoint, and `render(<Profile/>)` bypasses navigation
+#     entirely — a button on a screen nobody can get to satisfies nothing.
+#  2. That the whole chain holds on a device: the block lands, the profile it
+#     was on becomes unreachable, and the account still appears in Settings so
+#     the block can be undone. A block with no route back is permanent by
+#     accident.
+#
+# PRECONDITIONS
+#   - API stack + Metro up via `./scripts/dev.sh start` — NOT a bare
+#     `npx expo start`, which drops EXPO_PUBLIC_API_URL and makes every request
+#     look like the device is offline.
+#   - Logged in, and another public account exists to block (the dev seed has
+#     several). This flow blocks `jacey.langysjv` and unblocks it again, so it
+#     is safe to re-run and leaves no state behind.
+#
+# The app runs in Spanish (the default locale), so the labels are the es strings.
+#
+# `openLink` reaches a profile directly: there IS an in-app path (feed card →
+# profile), but which accounts appear in the feed depends on seed data, and a
+# flow that starts by hunting for a specific author fails for reasons that have
+# nothing to do with blocking. The reachability this flow is actually asserting
+# is the Block CONTROL on the profile and the Settings row, both tapped for real.
+# The `stopApp` + plain `launchApp` at the end clears the launch URL.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/block-user.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+
+# --- Block from the profile --------------------------------------------------
+- openLink: reelmap:///users/jacey.langysjv
+- extendedWaitUntil:
+    visible: "Bloquear"
+    timeout: 30000
+- takeScreenshot: build/maestro/block-1-profile
+
+- tapOn:
+    id: "profile-block"
+# The system confirm. Blocking is undoable, so a plain alert — the typed-word
+# gate is reserved for account deletion, which is not.
+- extendedWaitUntil:
+    visible: ".*Bloquear a.*"
+    timeout: 15000
+- takeScreenshot: build/maestro/block-2-confirm
+- tapOn:
+    text: "Bloquear"
+    index: 1
+
+# It navigates away: that profile is a 404 for this viewer now, so staying would
+# turn a successful action into an error screen.
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 30000
+
+# --- The undo lives in Settings ---------------------------------------------
+- tapOn: ".*Perfil, tab.*"
+
+# Waited on by id, tapped by POINT — the same workaround privacy-entry-points.yaml
+# documents: `tapOn: id: profile-settings` and `tapOn: "Ajustes"` BOTH land on
+# "Invitar amigos", the row above, reproducibly. The element is found correctly
+# and the TAP is what misses; 69% is the centre of its real bounds. The WAIT
+# stays id-based so this fails loudly if the row ever moves.
+- extendedWaitUntil:
+    visible:
+      id: "profile-settings"
+    timeout: 30000
+- tapOn:
+    point: "50%,69%"
+- extendedWaitUntil:
+    visible: "Seguridad"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "settings-blocked"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "settings-blocked"
+
+- extendedWaitUntil:
+    visible: "@jacey.langysjv"
+    timeout: 30000
+- takeScreenshot: build/maestro/block-3-settings
+
+# --- Put the account back ----------------------------------------------------
+- tapOn: "Desbloquear"
+- extendedWaitUntil:
+    visible: ".*Desbloquear a.*"
+    timeout: 15000
+- tapOn:
+    text: "Desbloquear"
+    index: 1
+- extendedWaitUntil:
+    visible: "No bloqueaste a nadie."
+    timeout: 30000
+- takeScreenshot: build/maestro/block-4-unblocked
+
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
