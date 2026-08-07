@@ -64,6 +64,16 @@ class PurgeUserData implements ShouldBeUniqueUntilProcessing, ShouldQueue
         }
 
         if ($deletion->isWithinGrace($user)) {
+            // Deliberately NOT re-dispatched from here. A job that re-queues
+            // itself is an infinite loop the moment the queue connection is
+            // `sync` (which the test env is, and which a dev box easily can
+            // be) — it would run, find itself early, dispatch, run again.
+            //
+            // Losing this job is still not acceptable, so the guarantee lives
+            // one level up instead: `reelmap:gdpr:sweep-deletions` runs hourly
+            // and asks the database what is actually owed. Reconciliation
+            // belongs in a loop that can see all of it, not in each job's
+            // opinion of itself.
             Log::info('gdpr.purge.skipped', ['user_id' => $this->userId, 'reason' => 'still_within_grace']);
 
             return;
@@ -74,13 +84,12 @@ class PurgeUserData implements ShouldBeUniqueUntilProcessing, ShouldQueue
         $purger->purge($user);
 
         // Everything personal is gone either way; only the Stripe linkage was
-        // held back so money already in flight has somewhere to land. Come back
-        // for it — the purge is idempotent, so a second pass is just this one
-        // remaining field.
+        // held back so money already in flight has somewhere to land. The
+        // hourly sweep comes back for it once the payout settles — again not a
+        // self-dispatch, which under a `sync` connection would recurse until
+        // the stack gave out.
         if ($unsettled) {
             Log::info('gdpr.purge.deferred_financial_linkage', ['user_id' => $this->userId]);
-
-            self::dispatch($this->userId)->delay(now()->addDay());
         }
     }
 }

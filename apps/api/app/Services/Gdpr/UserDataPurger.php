@@ -45,25 +45,48 @@ class UserDataPurger
      */
     public function purge(User $user): array
     {
-        $counts = [];
+        // The in-memory instance may be stale — `scrubUserRow()` writes through
+        // the query builder, so a second purge() on the SAME object would not
+        // see the first one's work and would mint a second set of identifiers.
+        $user->refresh();
 
-        DB::transaction(function () use ($user, &$counts): void {
-            $counts['shares'] = $this->deleteUnpublishedShares($user);
+        $counts = [];
+        /** @var list<object> $doomedObjects */
+        $doomedObjects = [];
+
+        DB::transaction(function () use ($user, &$counts, &$doomedObjects): void {
+            [$shares, $doomedObjects] = $this->deleteUnpublishedShares($user);
+            $counts['shares'] = $shares;
             $counts['identity'] = $this->releaseInfluencerIdentity($user);
             $counts = array_merge($counts, $this->deletePersonalRows($user));
             $this->anonymiseRetainedRows($user);
             $this->scrubUserRow($user);
         });
 
-        // Storage last and outside the transaction: an object delete cannot be
-        // rolled back, so doing it inside would leave a file gone for a purge
-        // the database then undid.
+        // Storage strictly AFTER the commit. An object delete cannot be rolled
+        // back, so a media delete inside the transaction would leave files gone
+        // for a purge the database then undid — a live row pointing at a 404,
+        // which no later pass can detect. Collect inside, delete outside.
+        $this->deleteObjects($doomedObjects);
         $this->deleteAvatar($user);
+        $this->deleteExportArchives($user);
 
         // Scout holds a copy of username/name/bio outside Postgres. Without
         // this the person stays findable in people-search after the purge —
         // the one place the erasure would visibly not have happened.
-        $user->unsearchable();
+        //
+        // Guarded like every other external call here: the database work is
+        // already committed by now, and a Meilisearch outage must not turn a
+        // completed erasure into a failed job that never logs and never runs
+        // the deferred Stripe pass.
+        try {
+            $user->unsearchable();
+        } catch (\Throwable $e) {
+            Log::warning('gdpr.purge.unsearchable_failed', [
+                'user_id' => $user->id,
+                'reason' => $e->getMessage(),
+            ]);
+        }
 
         Log::info('gdpr.purge.completed', ['user_id' => $user->id] + $counts);
 
@@ -79,8 +102,12 @@ class UserDataPurger
      * with no source is a claim with no provenance. Their attribution is
      * anonymised instead (see {@see scrubUserRow()} — the FK keeps pointing at
      * a row that no longer names anybody).
+     *
+     * @return array{0: int, 1: list<object>} deleted count, and the storage
+     *                                        objects the caller must remove
+     *                                        after the transaction commits
      */
-    private function deleteUnpublishedShares(User $user): int
+    private function deleteUnpublishedShares(User $user): array
     {
         $shares = Share::query()
             ->where('user_id', $user->id)
@@ -91,66 +118,123 @@ class UserDataPurger
             ->get(['id', 'source_post_id']);
 
         if ($shares->isEmpty()) {
-            return 0;
+            return [0, []];
         }
 
         $sourcePostIds = $shares->pluck('source_post_id')->unique();
 
-        Share::query()->whereIn('id', $shares->pluck('id'))->delete();
+        // Chunked: Postgres binds one parameter per id and caps at 65,535, and
+        // a prolific sharer's draft pile is exactly the case this has to survive.
+        foreach ($shares->pluck('id')->chunk(5_000) as $chunk) {
+            Share::query()->whereIn('id', $chunk)->delete();
+        }
 
         // A source_post is keyed on (platform, external_id) and is therefore
         // SHARED — two users posting the same reel resolve to one row. Only
         // remove it, and the media hanging off it, when this user's share was
         // the last thing referencing it.
-        $orphaned = $sourcePostIds->reject(
-            fn ($id) => Share::query()->where('source_post_id', $id)->exists()
-                || DB::table('place_sources')->where('source_post_id', $id)->exists()
-        );
+        //
+        // Two set-based queries rather than two exists() per post: this runs
+        // inside the purge transaction, and an N+1 over a few thousand drafts
+        // is how a 300s job timeout turns into a rollback.
+        $stillReferenced = Share::query()
+            ->whereIn('source_post_id', $sourcePostIds)
+            ->distinct()
+            ->pluck('source_post_id')
+            ->merge(
+                DB::table('place_sources')
+                    ->whereIn('source_post_id', $sourcePostIds)
+                    ->distinct()
+                    ->pluck('source_post_id')
+            );
 
-        if ($orphaned->isNotEmpty()) {
-            $orphanedIds = $orphaned->values()->all();
-            $this->deleteMediaObjects($orphanedIds);
-            SourcePost::query()->whereIn('id', $orphanedIds)->delete();
+        $orphaned = $sourcePostIds->diff($stillReferenced)->values();
+
+        if ($orphaned->isEmpty()) {
+            return [$shares->count(), []];
         }
 
-        return $shares->count();
+        $orphanedIds = $orphaned->all();
+
+        // Read the objects now — the rows are about to cascade away with their
+        // source_posts, and afterwards there is no handle on the files at all.
+        $doomed = $this->orphanedObjects($orphanedIds);
+
+        SourcePost::query()->whereIn('id', $orphanedIds)->delete();
+
+        return [$shares->count(), $doomed];
     }
 
     /**
-     * Remove the stored files behind media_assets before the rows cascade away,
-     * so the purge does not leak orphaned objects nobody has a handle to.
+     * The stored files behind soon-to-be-deleted media_assets rows, minus any
+     * whose object something else still points at.
      *
      * @param  list<int>  $sourcePostIds
+     * @return list<object>
      */
-    private function deleteMediaObjects(array $sourcePostIds): void
+    private function orphanedObjects(array $sourcePostIds): array
     {
         $assets = DB::table('media_assets')
             ->whereIn('source_post_id', $sourcePostIds)
-            ->get(['id', 'disk', 'storage_path', 'sha256']);
+            ->get(['id', 'disk', 'storage_path']);
 
-        foreach ($assets as $asset) {
-            // The same file can back several source_posts (same sha256, e.g. a
-            // repost). Deleting the object while another live row still points
-            // at it would break a place that is staying.
-            $sharedElsewhere = DB::table('media_assets')
-                ->where('sha256', $asset->sha256)
-                ->whereNotIn('source_post_id', $sourcePostIds)
-                ->exists();
+        if ($assets->isEmpty()) {
+            return [];
+        }
 
-            if ($sharedElsewhere) {
-                continue;
-            }
+        // One set-based query for "which of these paths does something OUTSIDE
+        // the doomed set still use", rather than an exists() per asset.
+        //
+        // Keyed on the PATH, not on sha256. `MediaPaths::original()` embeds the
+        // share id, so two rows sharing a hash live at different keys — a
+        // sha256 guard would skip a delete for an object nothing else points
+        // at, drop the row, and leak the file with no handle left on it.
+        $keptPaths = DB::table('media_assets')
+            ->whereIn('storage_path', $assets->pluck('storage_path')->unique())
+            ->whereNotIn('source_post_id', $sourcePostIds)
+            ->pluck('storage_path')
+            ->flip();
 
+        return $assets
+            ->reject(fn ($asset) => $keptPaths->has($asset->storage_path))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<object>  $objects
+     */
+    private function deleteObjects(array $objects): void
+    {
+        foreach ($objects as $object) {
             try {
-                Storage::disk($asset->disk)->delete($asset->storage_path);
+                Storage::disk($object->disk)->delete($object->storage_path);
             } catch (\Throwable $e) {
                 // Never fail a legally-required purge because a bucket blinked.
-                // The row still goes; the object is swept by the retention pass.
+                // The row is already gone; the object is swept by the retention
+                // pass, which is exactly what that pass is for.
                 Log::warning('gdpr.purge.media_delete_failed', [
-                    'media_asset_id' => $asset->id,
+                    'media_asset_id' => $object->id,
                     'reason' => $e->getMessage(),
                 ]);
             }
+        }
+    }
+
+    /**
+     * A finished export is the single densest file of this person's data we
+     * ever produce, and `PruneDataExports` would otherwise leave it sitting on
+     * the disk for up to a week AFTER the irreversible erasure completed.
+     */
+    private function deleteExportArchives(User $user): void
+    {
+        try {
+            Storage::disk((string) config('media.disk'))->deleteDirectory("exports/{$user->id}");
+        } catch (\Throwable $e) {
+            Log::warning('gdpr.purge.exports_delete_failed', [
+                'user_id' => $user->id,
+                'reason' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -176,28 +260,45 @@ class UserDataPurger
     {
         $id = $user->id;
 
+        // `Relation::enforceMorphMap` is in force (AppServiceProvider), so every
+        // morph column on disk holds the ALIAS — `user`, not the FQCN. Querying
+        // these with `User::class` matches nothing at all, silently: the purge
+        // reports success having deleted zero notifications, zero inbound
+        // follows and zero tokens. Never hard-code either value here.
+        $morph = $user->getMorphClass();
+
+        // Denormalised follower/following counters are maintained by hand on the
+        // follow/unfollow paths. Bulk-deleting the edges underneath them would
+        // leave every counterparty permanently inflated — visible on OTHER
+        // people's profiles, with nothing that ever recomputes it.
+        $this->decrementFollowCounters($user, $morph);
+
         return [
             // OAuth tokens for their linked platform accounts — the single most
             // sensitive thing we hold about them, and live credentials at that.
             'platform_accounts' => DB::table('platform_accounts')->where('user_id', $id)->delete(),
             'devices' => DB::table('devices')->where('user_id', $id)->delete(),
             'tokens' => DB::table('personal_access_tokens')
-                ->where('tokenable_type', User::class)->where('tokenable_id', $id)->delete(),
+                ->where('tokenable_type', $morph)->where('tokenable_id', $id)->delete(),
             'sessions' => DB::table('sessions')->where('user_id', $id)->delete(),
             'notifications' => DB::table('notifications')
-                ->where('notifiable_type', User::class)->where('notifiable_id', $id)->delete(),
+                ->where('notifiable_type', $morph)->where('notifiable_id', $id)->delete(),
             // Both directions: who they followed AND who followed them. The
             // second is somebody else's edge, but it names this user, and a
             // follower list is exactly the "who do you know" graph GDPR means.
             'follows' => DB::table('follows')->where('follower_user_id', $id)->delete()
-                + DB::table('follows')->where('followee_type', User::class)->where('followee_id', $id)->delete(),
+                + DB::table('follows')->where('followee_type', $morph)->where('followee_id', $id)->delete(),
             'reviews' => DB::table('reviews')->where('user_id', $id)->delete(),
             'review_reports' => DB::table('review_reports')->where('user_id', $id)->delete(),
             'lists' => DB::table('place_lists')->where('user_id', $id)->delete(),
             'place_tags' => DB::table('user_place_tags')->where('user_id', $id)->delete(),
             'hidden_places' => DB::table('hidden_places')->where('user_id', $id)->delete(),
             'feed_dismissals' => DB::table('feed_dismissals')->where('user_id', $id)->delete(),
-            'invitations' => DB::table('invitations')->where('inviter_user_id', $id)->delete(),
+            // Both the invitations they SENT and any addressed TO them —
+            // `invitations.email` holds a raw address, and theirs is about to
+            // stop existing everywhere else.
+            'invitations' => DB::table('invitations')->where('inviter_user_id', $id)->delete()
+                + DB::table('invitations')->where('email', $user->email)->delete(),
             'influencer_claims' => DB::table('influencer_claims')->where('user_id', $id)->delete(),
             'place_claims' => DB::table('place_claims')->where('user_id', $id)->delete(),
             // Keyed on the email, not the id — and the email is about to change.
@@ -207,9 +308,55 @@ class UserDataPurger
     }
 
     /**
+     * Put the denormalised follow counters back before the edges disappear.
+     *
+     * `users.followers_count` / `following_count` and `influencers.followers_count`
+     * are maintained by hand on the follow/unfollow paths, so a bulk delete
+     * under them leaves everyone this person followed with an inflated follower
+     * count, and everyone who followed them with an inflated following count.
+     * Nothing recomputes those — the drift is permanent, and it shows on OTHER
+     * people's profiles, which is where it would eventually be noticed and be
+     * very hard to explain.
+     */
+    private function decrementFollowCounters(User $user, string $morph): void
+    {
+        $outbound = DB::table('follows')
+            ->where('follower_user_id', $user->id)
+            ->get(['followee_type', 'followee_id']);
+
+        foreach ($outbound->groupBy('followee_type') as $type => $rows) {
+            $model = $type === (new Influencer)->getMorphClass() ? Influencer::class : User::class;
+
+            $model::query()
+                ->whereIn('id', $rows->pluck('followee_id'))
+                // Guarded: a counter already at zero must not go negative, and a
+                // re-run of the purge must not decrement a second time.
+                ->where('followers_count', '>', 0)
+                ->decrement('followers_count');
+        }
+
+        $inboundFollowers = DB::table('follows')
+            ->where('followee_type', $morph)
+            ->where('followee_id', $user->id)
+            ->pluck('follower_user_id');
+
+        if ($inboundFollowers->isNotEmpty()) {
+            User::query()
+                ->whereIn('id', $inboundFollowers)
+                ->where('following_count', '>', 0)
+                ->decrement('following_count');
+        }
+    }
+
+    /**
      * Rows that stay because they are somebody else's record too, but whose
      * pointer at this user has to be cut rather than left dangling at a
      * scrubbed identity.
+     *
+     * `offers.created_by_user_id` is deliberately absent: an offer is the
+     * venue's business record, and the column anchors the scrubbed row exactly
+     * as `shares.user_id` and `redemptions.user_id` do. Nothing identifying
+     * survives on the other end of it.
      */
     private function anonymiseRetainedRows(User $user): void
     {
@@ -284,6 +431,11 @@ class UserDataPurger
             'is_admin' => false,
             'is_public' => false,
             'locale' => User::DEFAULT_LOCALE,
+            // The size of an erased account's social graph is still a fact
+            // about them, and the edges behind these are gone either way.
+            'followers_count' => 0,
+            'following_count' => 0,
+            'updated_at' => now(),
         ];
 
         // The Stripe account id is the one field that may have to outlive the

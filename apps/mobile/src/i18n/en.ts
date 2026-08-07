@@ -758,7 +758,7 @@ export const en = {
   // Stated last, where it reads as a safety net rather than a reason to be
   // casual about the button above it.
   'privacy.delete.graceNote':
-    'Changed your mind? Sign back in within 14 days and your account comes back exactly as it was. After that, nothing can bring it back.',
+    'Changed your mind? Sign back in within {{days}} days and your account comes back exactly as it was. After that, nothing can bring it back.',
   'privacy.delete.confirmCta': 'Delete everything',
   'privacy.delete.failedTitle': 'Couldn’t delete your account',
 

@@ -741,7 +741,7 @@ export const es: Record<MessageKey, string> = {
   'privacy.delete.typePrompt': 'Escribí {{word}} para confirmar',
   'privacy.delete.typeWord': 'ELIMINAR',
   'privacy.delete.graceNote':
-    '¿Te arrepentiste? Volvé a iniciar sesión dentro de 14 días y tu cuenta vuelve tal cual estaba. Después de eso, ya no hay forma de recuperarla.',
+    '¿Te arrepentiste? Volvé a iniciar sesión dentro de {{days}} días y tu cuenta vuelve tal cual estaba. Después de eso, ya no hay forma de recuperarla.',
   'privacy.delete.confirmCta': 'Eliminar todo',
   'privacy.delete.failedTitle': 'No se pudo eliminar tu cuenta',
 

@@ -1,9 +1,12 @@
 <?php
 
+use App\Jobs\Gdpr\ExportUserData;
 use App\Jobs\Gdpr\PurgeUserData;
+use App\Models\PlatformAccount;
 use App\Models\User;
 use App\Services\Gdpr\AccountDeletion;
 use App\Services\Gdpr\UserDataPurger;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 
 /**
@@ -27,7 +30,14 @@ it('ends every session immediately and schedules the purge', function () {
 
     $response->assertOk()
         ->assertJsonPath('data.status', 'scheduled')
-        ->assertJsonPath('data.grace_days', config('gdpr.purge_grace_days'));
+        ->assertJsonPath('data.grace_days', config('gdpr.purge_grace_days'))
+        // The date the app SHOWS the user. Returning `now()` here would pass
+        // every other assertion in this file while telling somebody their
+        // account dies today.
+        ->assertJsonPath(
+            'data.purge_at',
+            now()->addDays((int) config('gdpr.purge_grace_days'))->toIso8601String(),
+        );
 
     expect($user->fresh()->trashed())->toBeTrue()
         // BOTH tokens, not just the calling one. A deletion that left the
@@ -164,4 +174,107 @@ it('does not purge a banned account', function () {
 it('rejects both data-rights endpoints for a caller with no session', function () {
     $this->deleteJson('/api/v1/me')->assertUnauthorized();
     $this->postJson('/api/v1/me/export')->assertUnauthorized();
+});
+
+it('actually erases the account when the job runs after the grace period', function () {
+    config(['gdpr.purge_grace_days' => 14]);
+    $user = User::factory()->create();
+    PlatformAccount::factory()->for($user)->create();
+
+    $this->actingAs($user)->deleteJson('/api/v1/me')->assertOk();
+    $user->forceFill([
+        'deleted_at' => now()->subDays(15),
+        'deletion_requested_at' => now()->subDays(15),
+    ])->saveQuietly();
+
+    (new PurgeUserData($user->id))->handle(app(UserDataPurger::class), app(AccountDeletion::class));
+
+    // Until this existed, the entire body of handle() could be replaced with
+    // `return;` and every test in the suite stayed green: the job was only ever
+    // driven through its two NEGATIVE paths, so nothing proved the erasure half
+    // of the feature happened at all.
+    expect(DB::table('users')->find($user->id)->email)->toEndWith('@reelmap.invalid')
+        ->and(PlatformAccount::where('user_id', $user->id)->count())->toBe(0);
+});
+
+it('erases nothing when the purge arrives before the grace period is up', function () {
+    config(['gdpr.purge_grace_days' => 14]);
+    $user = User::factory()->create();
+    $user->forceFill(['deletion_requested_at' => now()])->saveQuietly();
+    $user->delete();
+
+    (new PurgeUserData($user->id))->handle(app(UserDataPurger::class), app(AccountDeletion::class));
+
+    // The job must NOT re-dispatch itself here. Under a `sync` connection —
+    // which the test env uses, and which a dev box easily has — a self-queueing
+    // job runs immediately, finds itself early again, and recurses until the
+    // stack gives out. The hourly sweep is what guarantees the account is not
+    // forgotten; this only has to be harmless.
+    expect(DB::table('users')->find($user->id)->email)->not->toContain('reelmap.invalid');
+});
+
+it('puts both jobs on the housekeeping queue', function () {
+    Queue::fake();
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->postJson('/api/v1/me/export')->assertStatus(202);
+    $this->actingAs($user)->deleteJson('/api/v1/me')->assertOk();
+
+    // A queue no supervisor listens to accepts every job and runs none of them
+    // — an erasure that never happens, reported as success.
+    Queue::assertPushed(ExportUserData::class, fn ($job) => $job->queue === 'housekeeping');
+    Queue::assertPushed(PurgeUserData::class, fn ($job) => $job->queue === 'housekeeping');
+});
+
+it('sweeps up an overdue deletion whose queued job was lost', function () {
+    Queue::fake();
+    config(['gdpr.purge_grace_days' => 14]);
+    $user = User::factory()->create();
+    app(AccountDeletion::class)->request($user);
+    $user->forceFill([
+        'deleted_at' => now()->subDays(20),
+        'deletion_requested_at' => now()->subDays(20),
+    ])->saveQuietly();
+
+    Queue::fake();
+    $this->artisan('reelmap:gdpr:sweep-deletions')->assertSuccessful();
+
+    // Fourteen days is a long time to trust one row in Redis. A flush, a
+    // horizon:clear or a failed job all end as an erasure that silently never
+    // happens — and nothing else in the system would ever report it.
+    Queue::assertPushed(PurgeUserData::class, fn ($job) => $job->userId === $user->id);
+});
+
+it('does not sweep a deletion still inside its grace period', function () {
+    Queue::fake();
+    $user = User::factory()->create();
+    app(AccountDeletion::class)->request($user);
+
+    Queue::fake();
+    $this->artisan('reelmap:gdpr:sweep-deletions')->assertSuccessful();
+
+    Queue::assertNothingPushed();
+});
+
+it('does not sweep a banned account', function () {
+    Queue::fake();
+    $user = User::factory()->create();
+    $user->delete();
+    $user->forceFill(['deleted_at' => now()->subDays(90)])->saveQuietly();
+
+    $this->artisan('reelmap:gdpr:sweep-deletions')->assertSuccessful();
+
+    // A ban is a moderation decision with no clock on it. Sweeping one would
+    // erase the evidence it rests on.
+    Queue::assertNothingPushed();
+});
+
+it('keeps the grace period the mobile copy promises', function () {
+    // apps/mobile/app/settings/privacy.tsx hard-codes DELETION_GRACE_DAYS = 14
+    // into the sentence "sign back in within N days". It cannot read this
+    // config — the note renders before any request is made — so the two are
+    // pinned here instead. Changing the server default without changing that
+    // constant would make the most legally consequential sentence in the app
+    // quietly false.
+    expect((int) config('gdpr.purge_grace_days'))->toBe(14);
 });

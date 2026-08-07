@@ -36,22 +36,38 @@ class UserDataExporter
 
         // ZipArchive needs a real filesystem path, and the media disk may be
         // R2 — so build in the local temp dir and stream the finished file up.
-        $tmp = tempnam(sys_get_temp_dir(), 'reelmap-export-').'.zip';
+        // tempnam() atomically CREATES the file it names. Appending '.zip' to
+        // the result would point at a different, uncreated path — leaking a
+        // zero-byte file per export and writing to a name nothing reserved.
+        $tmp = tempnam(sys_get_temp_dir(), 'reelmap-export-');
+
+        if ($tmp === false) {
+            throw new \RuntimeException('Could not allocate a temp file for the export.');
+        }
 
         $zip = new ZipArchive;
         if ($zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            @unlink($tmp);
             throw new \RuntimeException('Could not open the export archive for writing.');
         }
 
         foreach ($sections as $name => $rows) {
-            $zip->addFromString(
-                "{$name}.json",
-                (string) json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            );
+            // THROW_ON_ERROR, because the alternative is silent: json_encode
+            // returns false on one invalid UTF-8 byte (captions come from
+            // scraped third-party content), the (string) cast turns that into
+            // '', and the user is handed an empty file and told it worked.
+            $zip->addFromString("{$name}.json", (string) json_encode(
+                $rows,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+            ));
         }
 
         $zip->addFromString('README.txt', $this->readme($user));
-        $zip->close();
+
+        if (! $zip->close()) {
+            @unlink($tmp);
+            throw new \RuntimeException('The export archive could not be finalised.');
+        }
 
         $path = $this->pathFor($user);
         $stream = fopen($tmp, 'rb');
@@ -242,19 +258,29 @@ class UserDataExporter
      */
     private function follows(User $user): array
     {
+        // The morph map (AppServiceProvider) stores the ALIAS `user`, never the
+        // FQCN. Comparing against User::class here matched nothing and returned
+        // an empty follow graph on every export — a silently incomplete Art. 20
+        // response, which is the failure mode this whole file is written against.
+        $morph = $user->getMorphClass();
+
         return [
             'following' => DB::table('follows')
-                ->join('users', function ($join) {
+                ->join('users', function ($join) use ($morph) {
                     $join->on('follows.followee_id', '=', 'users.id')
-                        ->where('follows.followee_type', '=', User::class);
+                        ->where('follows.followee_type', '=', $morph);
                 })
                 ->where('follows.follower_user_id', $user->id)
+                // Someone who deleted their own account should not reappear in
+                // another person's export as `deleted_01hxy…`.
+                ->whereNull('users.deleted_at')
                 ->pluck('users.username')
                 ->all(),
             'followers' => DB::table('follows')
                 ->join('users', 'follows.follower_user_id', '=', 'users.id')
-                ->where('follows.followee_type', User::class)
+                ->where('follows.followee_type', $morph)
                 ->where('follows.followee_id', $user->id)
+                ->whereNull('users.deleted_at')
                 ->pluck('users.username')
                 ->all(),
         ];
@@ -266,7 +292,7 @@ class UserDataExporter
     private function notifications(User $user): array
     {
         return DB::table('notifications')
-            ->where('notifiable_type', User::class)
+            ->where('notifiable_type', $user->getMorphClass())
             ->where('notifiable_id', $user->id)
             ->orderBy('created_at')
             ->get(['id', 'type', 'data', 'read_at', 'created_at'])

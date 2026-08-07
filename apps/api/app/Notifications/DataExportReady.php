@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Notifications\Channels\ExpoChannel;
+use App\Services\Gdpr\UserDataExporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,26 +19,31 @@ use Illuminate\Notifications\Notification;
  * person had forgotten they asked for it. (It would also read as broken: the
  * link expires in a day, the row does not.)
  *
- * So the push/database side says "it's ready, check your email" and routes to
- * the privacy screen, which is where a user goes to ask again.
+ * The URL is also NOT a constructor argument. This is a queued notification, so
+ * anything held on the object is serialized into the `jobs` payload — and into
+ * `failed_jobs`, indefinitely, on a failure. Minting it inside `toMail()` keeps
+ * the live URL out of the queue entirely, and starts its 24h clock when the
+ * mail is actually composed rather than when the job was enqueued.
  */
 class DataExportReady extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(
-        private readonly string $path,
-        private readonly string $downloadUrl,
-    ) {
+    public function __construct(private readonly string $path)
+    {
         $this->onQueue('notifications');
     }
 
     /**
-     * @return list<string>
+     * @return list<string|class-string>
      */
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        // Push too, like every sibling: an export takes minutes to build, and
+        // without a banner the only way to learn it finished is to open the app
+        // and look — or to notice the email, which is the one channel a user
+        // asking about their privacy is least likely to be watching.
+        return ['mail', 'database', ExpoChannel::class];
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -44,17 +51,44 @@ class DataExportReady extends Notification implements ShouldQueue
         $hours = (int) config('gdpr.export_url_ttl_hours');
 
         return (new MailMessage)
-            ->subject(__('Your Reelmap data export is ready'))
-            ->line(__('You asked for a copy of your Reelmap data. It is ready to download.'))
-            ->action(__('Download my data'), $this->downloadUrl)
-            ->line(__('This link expires in :hours hours. You can request a new export any time from Settings → Privacy & data.', ['hours' => $hours]))
-            ->line(__('If you did not request this, please change your password — someone else may have access to your account.'));
+            ->subject(__('notifications.account.export_ready.mail.subject'))
+            ->line(__('notifications.account.export_ready.mail.intro'))
+            ->action(
+                __('notifications.account.export_ready.mail.cta'),
+                app(UserDataExporter::class)->downloadUrl($this->path),
+            )
+            ->line(__('notifications.account.export_ready.mail.expiry', ['hours' => $hours]))
+            ->line(__('notifications.account.export_ready.mail.warning'));
     }
 
     /**
      * @return array<string, mixed>
      */
     public function toDatabase(object $notifiable): array
+    {
+        return $this->payload();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toExpo(object $notifiable): array
+    {
+        $payload = $this->payload();
+
+        return [
+            'title' => $payload['title'],
+            'body' => $payload['body'],
+            'sound' => 'default',
+            'channelId' => 'default',
+            'data' => ['type' => $payload['type'], 'url' => $payload['url']],
+        ];
+    }
+
+    /**
+     * @return array{type: string, url: string, title: string, body: string, export_path: string}
+     */
+    private function payload(): array
     {
         return [
             'type' => 'account.export_ready',

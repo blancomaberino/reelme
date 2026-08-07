@@ -129,10 +129,22 @@ class PruneOriginalMedia extends Command
      */
     private function deleteAsset(object $asset): bool
     {
-        // The same bytes can back several source_posts (a repost resolves to the
-        // same sha256). Only remove the object when nothing else points at it.
+        // Ask whether anything else points at THIS OBJECT — the storage key, not
+        // the hash.
+        //
+        // Keying on sha256 was wrong in a way that inverted the command's whole
+        // purpose. `MediaPaths::original()` builds `media/{share_id}/original/
+        // {sha256}.{ext}`, and the (sha256, source_post_id) unique index means
+        // two rows can only share a hash across different posts — i.e. different
+        // shares, i.e. DIFFERENT paths. So the guard never protected a shared
+        // object; it fired on a twin stored somewhere else entirely, skipped the
+        // delete, dropped the row, and left the file on the bucket with nothing
+        // left pointing at it. A reposted reel permanently defeated
+        // analyze-then-delete, silently, which is the R-07 exposure this command
+        // exists to close.
         $shared = DB::table('media_assets')
-            ->where('sha256', $asset->sha256)
+            ->where('disk', $asset->disk)
+            ->where('storage_path', $asset->storage_path)
             ->where('id', '!=', $asset->id)
             ->exists();
 

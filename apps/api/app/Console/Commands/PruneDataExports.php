@@ -31,15 +31,26 @@ class PruneDataExports extends Command
         $deleted = 0;
 
         foreach ($disk->allFiles('exports') as $path) {
-            // Timestamped by the filesystem rather than a DB row on purpose:
-            // the archive is the artefact, and a row tracking it would be a
-            // second thing to keep in step (and to purge).
-            if ($disk->lastModified($path) >= $cutoff->getTimestamp()) {
-                continue;
-            }
+            try {
+                // Timestamped by the filesystem rather than a DB row on purpose:
+                // the archive is the artefact, and a row tracking it would be a
+                // second thing to keep in step (and to purge).
+                if ($disk->lastModified($path) >= $cutoff->getTimestamp()) {
+                    continue;
+                }
 
-            $disk->delete($path);
-            $deleted++;
+                if ($disk->delete($path)) {
+                    $deleted++;
+                }
+            } catch (\Throwable $e) {
+                // An object can vanish between the listing and the HEAD (a
+                // concurrent run, a lifecycle rule). One unreadable key must
+                // not strand every archive behind it until tomorrow.
+                Log::warning('gdpr.exports.prune_failed', [
+                    'path' => $path,
+                    'reason' => $e->getMessage(),
+                ]);
+            }
         }
 
         if ($deleted > 0) {

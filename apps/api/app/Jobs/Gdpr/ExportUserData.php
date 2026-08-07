@@ -52,8 +52,14 @@ class ExportUserData implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
         $path = $exporter->export($user);
 
-        $user->notify(new DataExportReady($path, $exporter->downloadUrl($path)));
+        // The URL is NOT passed in: this notification is itself queued, and a
+        // live signed link on the object would be written into the jobs payload
+        // (and failed_jobs). It mints its own inside toMail().
+        $user->notify(new DataExportReady($path));
 
-        Log::info('gdpr.export.completed', ['user_id' => $user->id, 'path' => $path]);
+        // user_id only. The path embeds the unguessable ULID that is the
+        // archive's whole protection, and an application log outlives both the
+        // 24h signature and the 7-day retention.
+        Log::info('gdpr.export.completed', ['user_id' => $user->id]);
     }
 }

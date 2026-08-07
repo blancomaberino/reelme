@@ -2,15 +2,19 @@
 
 use App\Jobs\Gdpr\ExportUserData;
 use App\Models\Device;
+use App\Models\Place;
+use App\Models\PlaceList;
 use App\Models\PlatformAccount;
 use App\Models\Share;
 use App\Models\User;
 use App\Notifications\DataExportReady;
+use App\Services\Gdpr\AccountDeletion;
 use App\Services\Gdpr\UserDataExporter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * POST /me/export (T-050, NFR-10 / GDPR Art. 20).
@@ -94,9 +98,13 @@ it('gives handles for the people around them, and nothing more', function () {
     $user = User::factory()->create();
     $other = User::factory()->create(['username' => 'chef', 'email' => 'chef@private.example']);
 
+    // The morph ALIAS, which is what production writes (Relation::enforceMorphMap).
+    // Inserting User::class here made a broken exporter look correct — the
+    // fixture and the buggy query agreed with each other and with nothing else,
+    // so the follow graph came back empty on every real export.
     DB::table('follows')->insert([
         'follower_user_id' => $user->id,
-        'followee_type' => User::class,
+        'followee_type' => $other->getMorphClass(),
         'followee_id' => $other->id,
         'created_at' => now(),
         'updated_at' => now(),
@@ -122,12 +130,22 @@ it('emails a signed link and files an in-app pointer without one', function () {
         $mail = $notification->toMail($user);
         $row = $notification->toDatabase($user);
 
-        // The link lives in the mail only. A notification-center row outlives
-        // the 24h signature by months, so a link parked there would be a stale
-        // handle on the densest personal file we produce.
-        return str_contains((string) $mail->actionUrl, '/')
+        $url = (string) $mail->actionUrl;
+
+        // A real, TIME-LIMITED URL — not the bare storage key. "Contains a
+        // slash" would have been satisfied by `->action($label, $this->path)`,
+        // which mails a link that does not work. The expiry marker differs by
+        // driver (R2 presigns, the local disk signs a route, a faked disk
+        // stamps an expiration), so match any of them rather than pinning the
+        // test to one filesystem.
+        return str_starts_with($url, 'http')
+            && preg_match('/(signature|expiration|X-Amz-Signature)=/', $url) === 1
+            && $url !== $row['export_path']
+            // The link lives in the mail ONLY: a notification-center row
+            // outlives the 24h signature by months, so one parked there would
+            // be a stale handle on the densest personal file we produce.
             && $row['type'] === 'account.export_ready'
-            && ! str_contains((string) json_encode($row), 'signature');
+            && ! str_contains((string) json_encode($row), 'http');
     });
 });
 
@@ -143,4 +161,42 @@ it('refuses to build an export for an account pending deletion', function () {
     // opposite of what the deletion request asked for.
     Notification::assertNothingSent();
     expect(Storage::disk(config('media.disk'))->allFiles('exports'))->toBeEmpty();
+});
+
+it('fills every section it claims to, not just the filenames', function () {
+    $user = User::factory()->create();
+    $place = Place::factory()->create(['name' => 'Bar Tinto']);
+    $list = PlaceList::factory()->for($user)->create(['name' => 'Weekend']);
+
+    DB::table('place_list_items')->insert(['place_list_id' => $list->id, 'place_id' => $place->id, 'position' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('reviews')->insert(['place_id' => $place->id, 'user_id' => $user->id, 'rating' => 4, 'body' => 'lovely', 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('user_place_tags')->insert(['user_id' => $user->id, 'place_id' => $place->id, 'label' => 'brunch', 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('notifications')->insert(['id' => (string) Str::uuid(), 'type' => 'Test', 'notifiable_type' => $user->getMorphClass(), 'notifiable_id' => $user->id, 'data' => '{}', 'created_at' => now(), 'updated_at' => now()]);
+
+    $sections = app(UserDataExporter::class)->collect($user);
+
+    // Asserting on filenames alone (they come from the collect() KEYS) let
+    // every one of these collectors be replaced with `[]` and stay green — the
+    // under-delivery half of this feature was entirely untested. `lists` in
+    // particular runs a nested per-list subquery.
+    expect($sections['lists'])->toHaveCount(1)
+        ->and($sections['lists'][0]['places'])->toBe(['Bar Tinto'])
+        ->and($sections['reviews'])->toHaveCount(1)
+        ->and($sections['reviews'][0]['place'])->toBe('Bar Tinto')
+        ->and($sections['place_tags'])->toHaveCount(1)
+        ->and($sections['place_tags'][0]['label'])->toBe('brunch')
+        ->and($sections['notifications'])->toHaveCount(1);
+});
+
+it('reports the deletion clock it is under', function () {
+    config(['gdpr.purge_grace_days' => 14]);
+    $user = User::factory()->create();
+    app(AccountDeletion::class)->request($user);
+
+    $sections = app(UserDataExporter::class)->collect(User::withTrashed()->find($user->id));
+
+    // Someone exporting their data mid-deletion is asking precisely when it
+    // goes. A null here would be the export quietly declining to say.
+    expect($sections['profile']['deletion_requested_at'])->not->toBeNull()
+        ->and($sections['profile']['deletion_scheduled_for'])->not->toBeNull();
 });

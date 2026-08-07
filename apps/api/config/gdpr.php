@@ -20,8 +20,13 @@ return [
     | The queue purge and export run on. Housekeeping is deliberately NOT the
     | `notifications` queue: a purge walks a dozen tables and must never sit in
     | front of a push somebody is waiting on.
+    |
+    | Deliberately NOT an env knob. It has to name a queue some supervisor in
+    | config/horizon.php actually listens to, and an environment that pointed it
+    | elsewhere would accept every purge and run none of them — an erasure that
+    | never happens, reported as success. A constant cannot drift.
     */
-    'queue' => env('GDPR_QUEUE', 'housekeeping'),
+    'queue' => 'housekeeping',
 
     /*
     |--------------------------------------------------------------------------

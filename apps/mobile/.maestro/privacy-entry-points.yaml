@@ -36,7 +36,24 @@ appId: pet.one.reelmap
     visible: ".*Perfil.*"
     timeout: 60000
 - tapOn: ".*Perfil, tab.*"
-- tapOn: "Ajustes"
+
+# Waited on by id, then tapped by POINT.
+#
+# `tapOn: id: profile-settings` and `tapOn: "Ajustes"` BOTH land on "Invitar
+# amigos" — the row above — reproducibly on this screen. `maestro hierarchy`
+# reports the row's real bounds as [24,632][416,681] in a 956pt-tall screen, so
+# the element is found correctly and the TAP is what misses. 69% is the centre
+# of those bounds (Maestro only accepts integer percentages).
+#
+# The wait is still by id, so this fails loudly if the row ever disappears
+# rather than silently tapping empty space, and every assertion the flow
+# actually exists to make is id-based.
+- extendedWaitUntil:
+    visible:
+      id: "profile-settings"
+    timeout: 20000
+- tapOn:
+    point: "50%,69%"
 - extendedWaitUntil:
     visible: "Seguridad"
     timeout: 20000
@@ -106,6 +123,9 @@ appId: pet.one.reelmap
     id: "privacy-delete-cancel"
 
 # --- Export is safe to actually run ----------------------------------------
+# NOTE: /me/export is throttled 5/min. Running this flow several times inside a
+# minute trips the limiter and this step fails with the generic error alert —
+# which is the throttle working, not a regression. Wait a minute between runs.
 - tapOn:
     id: "privacy-export-action"
 - extendedWaitUntil:

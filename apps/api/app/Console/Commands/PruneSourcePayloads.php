@@ -51,9 +51,15 @@ class PruneSourcePayloads extends Command
         // Chunked: this table grows with every share ever made, and one
         // unbounded UPDATE would hold a lock across all of it while the ingest
         // pipeline is trying to write new rows.
-        $query->select('id')->orderBy('id')->chunkById(500, function ($rows) use (&$cleared): void {
+        $query->select('id')->chunkById(500, function ($rows) use (&$cleared, $cutoff): void {
             $cleared += DB::table('source_posts')
                 ->whereIn('id', collect($rows)->pluck('id'))
+                // Re-checked inside the write: a post re-fetched between the
+                // SELECT and here holds a FRESH payload, and nulling that would
+                // throw away the debugging window it just earned.
+                ->whereNotNull('oembed_json')
+                ->where(fn ($q) => $q->where('fetched_at', '<', $cutoff)
+                    ->orWhere(fn ($inner) => $inner->whereNull('fetched_at')->where('created_at', '<', $cutoff)))
                 ->update(['oembed_json' => null]);
         });
 

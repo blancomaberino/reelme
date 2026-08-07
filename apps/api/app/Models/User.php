@@ -69,6 +69,37 @@ class User extends Authenticatable implements FilamentUser, HasLocalePreference,
     use MustVerifyEmail;
 
     /**
+     * Keep `deletion_requested_at` honest (T-050, ADR-050).
+     *
+     * The column means one thing only: *this person asked to be erased, and the
+     * grace clock is running*. `deleted_at` cannot carry that meaning because an
+     * admin BAN is also a soft delete — and a banned account that looked like a
+     * pending deletion could sign itself back in and cancel the ban.
+     *
+     * Enforced here rather than at each call site because there are four of
+     * them (the API delete, the Filament ban, unban, and the edit page's
+     * restore) and three are in code that has no reason to know this column
+     * exists. Any soft delete clears the flag; {@see AccountDeletion::request()}
+     * sets it back immediately afterwards, and it is the ONLY thing that does.
+     * Any restore clears it too, so an unbanned or reinstated account never
+     * carries a stale clock.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user): void {
+            if (! $user->isForceDeleting() && $user->deletion_requested_at !== null) {
+                $user->deletion_requested_at = null;
+            }
+        });
+
+        static::restored(function (User $user): void {
+            if ($user->deletion_requested_at !== null) {
+                $user->forceFill(['deletion_requested_at' => null])->saveQuietly();
+            }
+        });
+    }
+
+    /**
      * Gate the Filament admin panel to admins — enforced in EVERY environment
      * (the panel is session-authed and separate from the API's Sanctum tokens).
      */

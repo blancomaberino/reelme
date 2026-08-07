@@ -3,7 +3,9 @@ import { Stack, router } from 'expo-router';
 import { type ReactNode, useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -163,6 +165,16 @@ export default function PrivacyScreen() {
 }
 
 /**
+ * The grace period the API actually applies (`GDPR_PURGE_GRACE_DAYS`, default
+ * 14). Stated here as a named constant rather than baked into the sentence,
+ * because that sentence is the most legally consequential one in the app: if
+ * the server window ever changes, this is the single line to change, and
+ * `AccountDeletionTest` pins the API default against it so the two cannot
+ * drift silently.
+ */
+const DELETION_GRACE_DAYS = 14;
+
+/**
  * The typed confirmation. Nothing here is reachable by a mis-tap: the button
  * stays disabled until the word is spelled out, so the gesture that deletes an
  * account is one the user had to compose.
@@ -190,59 +202,97 @@ function DeleteConfirmSheet({
   // Case- and whitespace-tolerant: the point is deliberate intent, not a typing
   // test, and an on-screen keyboard that auto-capitalises would otherwise fail
   // people for something they did not do.
-  const matches = typed.trim().toLocaleUpperCase() === word.toLocaleUpperCase();
+  //
+  // toUpperCase, NOT toLocaleUpperCase: the latter uses the DEVICE locale,
+  // independent of the app's language, and on a Turkish or Azerbaijani device
+  // 'eliminar' uppercases to 'ELİMİNAR' — permanently unmatchable. That is a
+  // hard lockout on the one flow Apple requires us to offer. Both words are
+  // ASCII, so locale-aware casing buys nothing here.
+  const matches = typed.trim().toUpperCase() === word.toUpperCase();
 
-  const close = () => {
-    setTyped('');
-    onCancel();
-  };
+  // Reset on the CLOSE transition, not inside a handler. The sheet stays mounted
+  // (only the Modal's children unmount), so `typed` survives — and cancel is not
+  // the only way out: success and the error alert both clear `confirming`
+  // directly. Leaving the word behind after a FAILED delete would make the next
+  // open a one-tap account deletion, which is the exact thing typing it out
+  // exists to prevent.
+  //
+  // Adjusted during render rather than in an effect: this is state derived from
+  // a prop change, React documents exactly this pattern for it, and an effect
+  // would be a second render pass for something already known here.
+  const [wasVisible, setWasVisible] = useState(visible);
+
+  if (wasVisible !== visible) {
+    setWasVisible(visible);
+
+    if (!visible) setTyped('');
+  }
+
+  const close = onCancel;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      <Pressable style={styles.backdrop} onPress={close} accessibilityLabel={t('common.cancel')} />
-      <SafeAreaView style={styles.sheet} edges={['bottom']}>
-        <View style={styles.handle} />
-
-        <View style={[styles.badge, styles.badgeDelete]}>
-          <Ionicons name="warning-outline" size={18} color={c.danger} />
-        </View>
-
-        <Text style={styles.sheetTitle}>{t('privacy.delete.confirmTitle')}</Text>
-        <Text style={styles.sheetBody}>{t('privacy.delete.confirmBody')}</Text>
-
-        <TextField
-          label={t('privacy.delete.typePrompt', { word })}
-          value={typed}
-          onChangeText={setTyped}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          // No placeholder. Putting the word itself in one makes an empty field
-          // read as already filled — seen on the first device run, sitting above
-          // a disabled "delete everything" with no visible reason why.
-          testID="privacy-delete-confirm-input"
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Unlabelled deliberately: a labelled full-bleed backdrop becomes
+            VoiceOver's FIRST stop and announces "Cancel" before the question it
+            is asking — and there is a real Cancel button right below. */}
+        <Pressable
+          style={styles.backdrop}
+          onPress={close}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
         />
+        <SafeAreaView style={styles.sheet} edges={['bottom']}>
+          <View style={styles.handle} />
 
-        <Text style={styles.sheetFine}>{t('privacy.delete.graceNote')}</Text>
+          <View style={[styles.badge, styles.badgeDelete]}>
+            <Ionicons name="warning-outline" size={18} color={c.danger} />
+          </View>
 
-        <View style={styles.sheetActions}>
-          <Button
-            title={t('common.cancel')}
-            variant="secondary"
-            onPress={close}
-            style={styles.sheetButton}
-            testID="privacy-delete-cancel"
+          <Text style={styles.sheetTitle}>{t('privacy.delete.confirmTitle')}</Text>
+          <Text style={styles.sheetBody}>{t('privacy.delete.confirmBody')}</Text>
+
+          <TextField
+            label={t('privacy.delete.typePrompt', { word })}
+            value={typed}
+            onChangeText={setTyped}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            returnKeyType="done"
+            // No placeholder. Putting the word itself in one makes an empty
+            // field read as already filled — seen on the first device run,
+            // sitting above a disabled "delete everything" with no visible
+            // reason why.
+            testID="privacy-delete-confirm-input"
           />
-          <Button
-            title={t('privacy.delete.confirmCta')}
-            variant="danger"
-            disabled={!matches}
-            loading={pending}
-            onPress={onConfirm}
-            style={styles.sheetButton}
-            testID="privacy-delete-confirm"
-          />
-        </View>
-      </SafeAreaView>
+
+            <Text style={styles.sheetFine}>
+            {t('privacy.delete.graceNote', { days: DELETION_GRACE_DAYS })}
+          </Text>
+
+          <View style={styles.sheetActions}>
+            <Button
+              title={t('common.cancel')}
+              variant="secondary"
+              onPress={close}
+              style={styles.sheetButton}
+              testID="privacy-delete-cancel"
+            />
+            <Button
+              title={t('privacy.delete.confirmCta')}
+              variant="danger"
+              disabled={!matches}
+              loading={pending}
+              onPress={onConfirm}
+              style={styles.sheetButton}
+              testID="privacy-delete-confirm"
+            />
+          </View>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -378,6 +428,11 @@ const makeStyles = (c: Palette) =>
     // the most consequential dialog in the app is not also the only unfamiliar
     // one — a novel presentation here would read as an interstitial, not a
     // decision.
+    // The KeyboardAvoidingView wrapper needs its own flex so the sheet is
+    // pushed clear of the keyboard: the confirm field sits directly above both
+    // buttons, and without this the keyboard covers the decision itself. The
+    // sibling filter-sheet solves the same problem the same way.
+    fill: { flex: 1 },
     backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
     sheet: {
       backgroundColor: c.background,

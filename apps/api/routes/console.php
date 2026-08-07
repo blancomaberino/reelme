@@ -34,6 +34,12 @@ Schedule::command('reelmap:redemptions:expire')->hourly()->onOneServer()->withou
 // arithmetic failure in the ledger is the one bug that does not announce itself.
 Schedule::command('reelmap:ledger:verify')->dailyAt('03:30')->onOneServer()->withoutOverlapping();
 
+// T-050: the fail-safe behind account deletion. The delayed PurgeUserData job
+// is the fast path, not the guarantee — a flushed Redis or a failed job is an
+// erasure that silently never happens, and nothing else would ever notice.
+// The database knows what is owed; this asks it.
+Schedule::command('reelmap:gdpr:sweep-deletions')->hourly()->onOneServer()->withoutOverlapping();
+
 // T-050 / ADR-010: analyze-then-delete. Hourly, not daily — the retention
 // window is measured in hours, and a daily sweep would mean an original could
 // outlive its 72h by most of another day. Deleting somebody else's video late

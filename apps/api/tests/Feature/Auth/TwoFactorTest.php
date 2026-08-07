@@ -15,37 +15,6 @@ use PragmaRX\Google2FA\Google2FA;
  * a challenge token that turns out to authenticate other endpoints, and a
  * bearer token being enough on its own to strip the factor off an account.
  */
-const PASSWORD = 'secret123!';
-
-/** A user with 2FA fully set up. Returns [user, secret]. */
-function withTwoFactor(): array
-{
-    $secret = app(Google2FA::class)->generateSecretKey();
-
-    $user = User::factory()->create(['password' => PASSWORD]);
-    $user->two_factor_secret = $secret;
-    $user->two_factor_recovery_codes = ['AAAAAAAAAA-BBBBBBBBBB', 'CCCCCCCCCC-DDDDDDDDDD'];
-    $user->two_factor_confirmed_at = now();
-    $user->save();
-
-    return [$user->fresh(), $secret];
-}
-
-function totp(string $secret): string
-{
-    return app(Google2FA::class)->getCurrentOtp($secret);
-}
-
-/** Password step only — returns the challenge token. */
-function loginFor(User $user): string
-{
-    return test()->postJson('/api/v1/auth/login', [
-        'email' => $user->email,
-        'password' => PASSWORD,
-        'device_name' => 'cli',
-    ])->assertOk()->json('data.challenge_token');
-}
-
 describe('setup', function () {
     it('mints a secret and an otpauth URI without enforcing anything yet', function () {
         $user = User::factory()->create(['password' => PASSWORD]);

@@ -143,7 +143,10 @@ it('accepts the word in any case, with stray spaces', () => {
 });
 
 it('deletes the account, wipes the device session, and leaves for welcome', async () => {
-  mock.onDelete('/me').reply(200, { data: { status: 'scheduled' }, meta: {} });
+  mock.onDelete('/me').reply(200, {
+    data: { status: 'scheduled', purge_at: '2026-08-20T00:00:00+00:00', grace_days: 14 },
+    meta: {},
+  });
 
   render(<PrivacyScreen />, { wrapper: Providers });
   typeConfirmation();
@@ -190,4 +193,34 @@ it('keeps the session when the server refuses the delete', async () => {
   // stopped here would leave a signed-in user silently push-deaf.
   expect(unregisterPush).toHaveBeenCalled();
   await waitFor(() => expect(registerForPush).toHaveBeenCalled());
+});
+
+it('forgets the typed word after a FAILED delete, not just after cancel', async () => {
+  mock.onDelete('/me').reply(500);
+  jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+
+  render(<PrivacyScreen />, { wrapper: Providers });
+  typeConfirmation();
+  fireEvent.press(screen.getByTestId('privacy-delete-confirm'));
+  await waitFor(() => expect(Alert.alert).toHaveBeenCalled());
+
+  // The sheet stays MOUNTED — only the Modal's children unmount — so state
+  // survives a close unless something resets it. Cancel was handled; the error
+  // path was not, which left a flaky 500 turning a deliberate two-step gesture
+  // into a one-tap account deletion on the very next open.
+  fireEvent.press(screen.getByTestId('privacy-delete-action'));
+
+  expect(screen.getByTestId('privacy-delete-confirm-input').props.value).toBe('');
+  expect(screen.getByTestId('privacy-delete-confirm').props.accessibilityState.disabled).toBe(true);
+});
+
+it('does not accept a Turkish-locale uppercasing of the word', () => {
+  // toLocaleUpperCase() uses the DEVICE locale, not the app's: on a tr/az
+  // device 'eliminar' becomes 'ELİMİNAR' and the gate can never be satisfied —
+  // a hard lockout on the one flow Apple requires. Plain toUpperCase is why
+  // this passes.
+  render(<PrivacyScreen />, { wrapper: Providers });
+  typeConfirmation('delete');
+
+  expect(screen.getByTestId('privacy-delete-confirm').props.accessibilityState.disabled).toBe(false);
 });

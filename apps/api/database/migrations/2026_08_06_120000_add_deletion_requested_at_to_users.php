@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -21,18 +22,25 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->timestampTz('deletion_requested_at')->nullable()->after('deleted_at');
-
-            // The purge sweep asks "whose grace has run out" — a partial index
-            // keeps that cheap on a table where virtually every row is null.
-            $table->index('deletion_requested_at');
+            // No ->after(): Postgres ignores column ordering hints, and leaving
+            // one in implies a guarantee the grammar never makes.
+            $table->timestampTz('deletion_requested_at')->nullable();
         });
+
+        // Genuinely PARTIAL, which $table->index() is not: virtually every row
+        // is null, and the only reader (`reelmap:gdpr:sweep-deletions`) asks
+        // exclusively about the ones that are not.
+        DB::statement(
+            'CREATE INDEX users_deletion_requested_at_index ON users (deletion_requested_at) '.
+            'WHERE deletion_requested_at IS NOT NULL'
+        );
     }
 
     public function down(): void
     {
+        DB::statement('DROP INDEX IF EXISTS users_deletion_requested_at_index');
+
         Schema::table('users', function (Blueprint $table) {
-            $table->dropIndex(['deletion_requested_at']);
             $table->dropColumn('deletion_requested_at');
         });
     }
