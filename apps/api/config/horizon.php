@@ -96,6 +96,22 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Long-wait alert routing (T-052)
+    |--------------------------------------------------------------------------
+    | Horizon routes notifications NOWHERE by default, so the `waits` thresholds
+    | below raised an alert nobody received. Both are optional: unset in local
+    | and CI (an alert that fires during a test run is an alert somebody turns
+    | off), set in staging/production. See docs/runbooks/observability.md.
+    */
+
+    'notifications' => [
+        'mail' => env('HORIZON_ALERT_EMAIL'),
+        'slack_webhook' => env('HORIZON_ALERT_SLACK_WEBHOOK'),
+        'slack_channel' => env('HORIZON_ALERT_SLACK_CHANNEL', '#alerts'),
+    ],
+
     'waits' => [
         'redis:default' => 60,
         // The pipeline supervisors run long jobs (see the supervisor timeouts

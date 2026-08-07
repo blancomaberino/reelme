@@ -70,6 +70,35 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   runtimeVersion: { policy: 'appVersion' },
   plugins: [
     'expo-router',
+    /*
+     * Crash reporting (T-052). The plugin is what wires the NATIVE crash
+     * handler — a JS-only Sentry catches a render error and misses exactly the
+     * class of failure you most need a tracker for (a native module crashing
+     * the process leaves nothing behind at all).
+     *
+     * Included only when SENTRY_ORG/SENTRY_PROJECT are set: the plugin's job at
+     * build time is uploading source maps, and without an org it fails the
+     * prebuild rather than degrading — which would break every build for
+     * anybody who has not been given Sentry credentials. Same conditional
+     * idiom as GOOGLE_MAPS_ANDROID_KEY above.
+     *
+     * Runtime activation is separate and independent: EXPO_PUBLIC_SENTRY_DSN,
+     * read by src/lib/crash-reporting.ts.
+     */
+    ...(process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
+      ? [
+          [
+            '@sentry/react-native/expo',
+            {
+              organization: process.env.SENTRY_ORG,
+              project: process.env.SENTRY_PROJECT,
+              // The auth token is an EAS secret, never committed and never read
+              // from app.config.ts — the plugin picks up SENTRY_AUTH_TOKEN from
+              // the build environment itself.
+            },
+          ] as [string, Record<string, string>],
+        ]
+      : []),
     [
       'expo-splash-screen',
       { backgroundColor: '#208AEF', image: './assets/images/splash-icon.png', imageWidth: 76 },

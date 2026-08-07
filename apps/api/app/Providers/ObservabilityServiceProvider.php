@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Support\Observability\ErrorReporter;
 use App\Support\Observability\LogErrorReporter;
 use App\Support\Observability\NullErrorReporter;
+use App\Support\Observability\SentryErrorReporter;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Queue;
@@ -17,11 +18,12 @@ use Throwable;
  * whole multi-vendor pipeline — is captured with its share_id + request_id,
  * alongside the HTTP handler hook in bootstrap/app.php.
  *
- * Activating Sentry (the production driver) is a provisioning step, not a code
- * change: `composer require sentry/sentry-laravel`, add a `sentry` case below
- * that news up a small SentryErrorReporter (Sentry::captureException with the
- * context as extra), set OBSERVABILITY_ERROR_REPORTER=sentry + SENTRY_LARAVEL_DSN.
- * Until then `null` (CI/tests) and `log` (structured error logs) are the drivers.
+ * Sentry is now wired (T-052) — activating it is pure provisioning: set
+ * OBSERVABILITY_ERROR_REPORTER=sentry and SENTRY_LARAVEL_DSN. Without a DSN the
+ * driver falls back to `log` rather than silently doing nothing, because a
+ * missing DSN in production is a typo, not a decision, and the failure mode of
+ * getting that wrong is "we stopped hearing about errors and nobody noticed".
+ * `null` stays the default so CI and tests send nothing.
  */
 class ObservabilityServiceProvider extends ServiceProvider
 {
@@ -30,6 +32,11 @@ class ObservabilityServiceProvider extends ServiceProvider
         $this->app->singleton(ErrorReporter::class, function (): ErrorReporter {
             return match (config('observability.error_reporter')) {
                 'log' => new LogErrorReporter,
+                // A `sentry` driver with no DSN degrades to structured error
+                // logs — see the class docblock. It never silently no-ops.
+                'sentry' => config('observability.sentry_dsn')
+                    ? new SentryErrorReporter
+                    : new LogErrorReporter,
                 default => new NullErrorReporter, // 'null' + any unknown/unprovisioned driver
             };
         });
