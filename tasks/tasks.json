@@ -1270,7 +1270,7 @@
       "id": "T-051",
       "title": "Quotas, rate limits, AI cost dashboard",
       "phase": "M5",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-020",
         "T-008"
@@ -1289,13 +1289,14 @@
         "Filament widget: analysis cost by engine/model/day from analysis_runs",
         "Quota exceeded surfaces friendly mobile error"
       ],
-      "agent": "executor"
+      "agent": "executor",
+      "notes": "2026-08-07: MERGED as 7993a99 (PR #181). CI green.\n\nWHAT SHIPPED: config/quotas.php (every ceiling env-backed, FR-58); `polling` (90/min) and `api` limiters added; redemption verify re-keyed from IP to the STAFF ACCOUNT; GET /me carries meta.quotas; the share screen states the limit BEFORE the tap; three admin cost widgets (spend/fallback/avg, 30-day chart, by-model + top-spenders).\n\nADR-051 records the two deviations: the daily cap is enforced in ShareController, not as `Limit::perDay` (a rolling 86,400s window anchored to the caller's first request vs the midnight-UTC reset /me promises — up to 23h of disagreement); and it answers a NEW error code `daily_quota_exceeded` (03 §1's list is explicitly non-exhaustive).\n\nTRAPS PAID FOR, DO NOT RELEARN:\n(a) `abort(429)` renders as `rate_limited` — the SAME code the 10/min burst limiter emits. A client branching on the STATUS tells someone who tapped twice quickly that they are out for the day. Distinct codes are not cosmetic.\n(b) `quota_exhausted` was ALREADY TAKEN, twice: App\\Services\\AI\\Exceptions\\QuotaExhausted (the AI budget) and, per 04 §3, a share `review_reason` the app renders as \"Out of analyses\". Hence DailyQuotaExceeded / daily_quota_exceeded.\n(c) Laravel does NOT throttle the `api` group by default — every route without a named limiter was UNMETERED, and no test noticed because they all drove routes that name one. Throttle middlewares STACK and the tightest wins, so a 120/min `throttle:map` route inheriting the 60/min catch-all is silently capped at 60; hence `withoutMiddleware('throttle:api')` on each.\n(d) A NAMED limiter hashes its cache key (md5($name.$key)) — `RateLimiter::clear('polling:1')` clears NOTHING.\n(e) Cache keys built from `now()->subHours(n)` change EVERY SECOND: AnalysisCosts cached nothing while its docblock promised caching. Bucket to the minute.\n(f) `date_trunc` truncates in the SESSION timezone — needs an explicit `AT TIME ZONE 'UTC'` or buckets shift on a managed Postgres and early rows drop off the chart silently.\n(g) `travelTo` FREEZES the clock, so it cannot test a race between two now() reads. A Carbon test-now CLOSURE is re-evaluated per call and can.\n(h) `staleTime` schedules NOTHING. A screen left open across a reset boundary keeps stale data forever; schedule one refetch AT the boundary rather than polling.\n(i) Tests written as fixed `Z` literals silently change meaning with the host timezone when the behaviour under test is \"same LOCAL day\".\n(j) Filament `Dashboard::getWidgets()` is an EXPLICIT list — a widget missing from it renders perfectly in its own Livewire test and appears nowhere."
     },
     {
       "id": "T-052",
       "title": "Observability: Sentry, Horizon alerts, stage metrics",
       "phase": "M5",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "T-028"
       ],
@@ -1312,7 +1313,8 @@
         "Pipeline stage timing metrics logged; Horizon failure notifications",
         "Runbook section: common failure taxonomy → remediation"
       ],
-      "agent": "executor"
+      "agent": "executor",
+      "notes": "2026-08-07: PR #182 open. Sentry wired on both ends behind the seams T-090/T-091 left; Horizon long-wait alerts routed (the tuned `waits` thresholds had been raising a notification that went NOWHERE since T-028 — Horizon routes nothing by default); runbook at apps/api/docs/observability.md with the failure-taxonomy table. PII hard-coded off (not env-backed) on both `send_default_pii` and `sql_bindings`. @sentry/react-native ~7.11, NOT the 8.19.0 T-090's note recommended — that pin is wrong for Expo 57. Verified end-to-end against a local catcher on both ends, mobile after a full `expo prebuild --clean` + dev-client rebuild. ACTIVATION IS PROVISIONING ONLY: SENTRY_LARAVEL_DSN, OBSERVABILITY_ERROR_REPORTER=sentry, EXPO_PUBLIC_SENTRY_DSN, SENTRY_ORG/PROJECT/AUTH_TOKEN (EAS secret), HORIZON_ALERT_*."
     },
     {
       "id": "T-053",
