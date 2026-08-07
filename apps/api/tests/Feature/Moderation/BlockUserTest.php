@@ -195,6 +195,42 @@ it('leaves the blocked account’s places on the map', function () {
         ->assertJsonPath('data.id', (string) $place->id);
 });
 
+it('drops the blocked account out of a place’s attribution list', function () {
+    $me = User::factory()->create();
+    $them = User::factory()->create();
+    $share = publishedShareBy($them);
+    $place = $share->publishedPlaceSource->place;
+
+    $this->actingAs($me)->getJson("/api/v1/places/{$place->id}/sources")
+        ->assertOk()
+        ->assertJsonCount(1, 'data');
+
+    app(BlockUsers::class)->block($me, $them);
+
+    // The place survives (test above) but their NAME under it does not. Keeping
+    // the pin while still crediting the account by name would leave the blocker
+    // reading the handle they blocked, which is most of what blocking is for.
+    $this->actingAs($me)->getJson("/api/v1/places/{$place->id}/sources")
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+});
+
+it('still shows that attribution to everybody else', function () {
+    $me = User::factory()->create();
+    $them = User::factory()->create();
+    $bystander = User::factory()->create();
+    $share = publishedShareBy($them);
+    $place = $share->publishedPlaceSource->place;
+
+    app(BlockUsers::class)->block($me, $them);
+
+    // Filtering on the blocked account rather than on the PAIR would erase
+    // their contributions from the whole product — a moderation action.
+    $this->actingAs($bystander)->getJson("/api/v1/places/{$place->id}/sources")
+        ->assertOk()
+        ->assertJsonCount(1, 'data');
+});
+
 it('is invisible to a guest, who has blocked nobody', function () {
     $them = User::factory()->create(['is_public' => true]);
     $me = User::factory()->create();

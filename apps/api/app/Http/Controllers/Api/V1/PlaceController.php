@@ -14,6 +14,7 @@ use App\Http\Resources\PlaceSummaryResource;
 use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Place;
 use App\Models\PlaceSource;
+use App\Services\Moderation\BlockUsers;
 use App\Support\KeysetCursor;
 use App\Support\KeysetPage;
 use Illuminate\Database\Eloquent\Builder;
@@ -221,6 +222,16 @@ class PlaceController extends Controller
         $query = $place->sources()
             ->with(['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user'])
             ->orderBy('id');
+
+        // A blocked account's contribution drops out of the attribution list
+        // (T-054). The PLACE stays — it is community data with many sources,
+        // and removing a restaurant from the map because one blocked account
+        // also shared it would punish the blocker. But their name appearing
+        // under it is exactly what blocking is supposed to stop.
+        $invisible = app(BlockUsers::class)->invisibleTo($request->user('sanctum')?->id);
+        if ($invisible !== []) {
+            $query->whereHas('share', fn ($q) => $q->whereNotIn('shares.user_id', $invisible));
+        }
 
         if ($cursor !== null) {
             $query->where('id', '>', KeysetCursor::intKey($cursor[0]));
