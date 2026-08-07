@@ -149,12 +149,21 @@ it('reads its DSN from the same place the SDK does', function () {
     // because both read SENTRY_LARAVEL_DSN. Rename one and the app picks
     // SentryErrorReporter while the hub has no client — every capture becomes a
     // silent no-op, with no error anywhere and a config that looks correct.
-    putenv('SENTRY_LARAVEL_DSN=https://public@example.test/42');
+    //
+    // Asserted on the SOURCE, not on a resolved value. The first version set
+    // the variable with `putenv()` and compared `config()` on both sides; it
+    // passed locally and failed in CI, where `.env` (copied from .env.example)
+    // defines SENTRY_LARAVEL_DSN as empty and that file value wins. The
+    // invariant was never about what the variable holds — it is about the two
+    // files naming the SAME variable.
+    $sentry = file_get_contents(config_path('sentry.php'));
+    $observability = file_get_contents(config_path('observability.php'));
 
-    expect(require config_path('sentry.php'))->toHaveKey('dsn', 'https://public@example.test/42')
-        ->and((require base_path('config/observability.php'))['sentry_dsn'])->toBe('https://public@example.test/42');
+    preg_match("/'dsn' => env\\('([A-Z_]+)'/", $sentry, $sentryVar);
+    preg_match("/'sentry_dsn' => env\\('([A-Z_]+)'/", $observability, $observabilityVar);
 
-    putenv('SENTRY_LARAVEL_DSN');
+    expect($sentryVar[1] ?? null)->toBe('SENTRY_LARAVEL_DSN')
+        ->and($observabilityVar[1] ?? null)->toBe($sentryVar[1] ?? null);
 });
 
 it('never ships PII to a third party', function () {
