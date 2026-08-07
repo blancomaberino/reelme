@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRetryShare } from '@/api/hooks/useRetryShare';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
 import {
-  type FailureCode,
   hasEditableExtraction,
   isRetryable,
   isTerminal,
@@ -26,6 +25,12 @@ import { Button } from '@/components/button';
 import { PendingVenues } from '@/components/share/pending-venues';
 import { ScreenHeader } from '@/components/screen-header';
 import { type MessageKey, useT } from '@/i18n';
+import {
+  type FailAction,
+  failureBodyKey,
+  failureEntry,
+  failureTitleKey,
+} from '@/lib/failure-copy';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 import { space } from '@/theme/tokens';
 
@@ -46,35 +51,8 @@ const reachedIndex = (status: ShareStatus): number => {
   return i === -1 ? STEPS.length - 1 : i;
 };
 
-type FailAction = 'retry' | 'addManually' | 'aiSettings';
 
-/**
- * Single source of truth for how each terminal failure is presented, keyed on
- * `failure.code`. `stopStep` is the STEPS index the pipeline halted at (fetch
- * failures at "fetching", model/transcribe at "analyzing", geocode/resolve at
- * "review") — drives the stepper's error marker so un-run stages never render as
- * done. `actions` are the buttons offered (retry only when the API honors it;
- * link-account is deferred per T-015, so private posts route to manual). Typing
- * this `Record<FailureCode, …>` forces an entry per code — a new failure can't be
- * half-wired — and its keys double as the "known code has dedicated copy" set.
- */
-const FAILURE_TAXONOMY: Record<FailureCode, { actions: FailAction[]; stopStep: number }> = {
-  fetch_unavailable: { actions: ['retry', 'addManually'], stopStep: 1 },
-  fetch_auth_required: { actions: ['addManually'], stopStep: 1 },
-  media_too_large: { actions: ['addManually'], stopStep: 1 },
-  ffmpeg_error: { actions: ['retry'], stopStep: 1 },
-  transcribe_error: { actions: ['retry'], stopStep: 2 },
-  cost_cap_exceeded: { actions: [], stopStep: 2 },
-  quota_exhausted: { actions: ['aiSettings'], stopStep: 2 },
-  invalid_model_output: { actions: ['retry', 'aiSettings'], stopStep: 2 },
-  ollama_unreachable: { actions: ['retry', 'aiSettings'], stopStep: 2 },
-  geocode_failed: { actions: ['addManually'], stopStep: 3 },
-  resolve_conflict: { actions: ['retry'], stopStep: 3 },
-};
 
-/** The taxonomy entry for a raw `failure.code`, or null for an unrecognized code. */
-const failureEntry = (code: string | undefined): { actions: FailAction[]; stopStep: number } | null =>
-  code && code in FAILURE_TAXONOMY ? FAILURE_TAXONOMY[code as FailureCode] : null;
 
 /**
  * What a screen reader should hear for a status. Reuses the STEPS copy so the
@@ -313,8 +291,8 @@ function Terminal({
       <View style={[styles.badge, styles.badgeErr]}>
         <Ionicons name="alert" size={26} color={c.danger} />
       </View>
-      <Text style={styles.terminalTitle}>{t(failTitle(code))}</Text>
-      <Text style={styles.failBody}>{t(failBody(code))}</Text>
+      <Text style={styles.terminalTitle}>{t(failureTitleKey(code))}</Text>
+      <Text style={styles.failBody}>{t(failureBodyKey(code))}</Text>
       <View style={styles.actions}>
         {actions.map((a) =>
           a === 'retry' ? (
@@ -333,13 +311,6 @@ function Terminal({
   );
 }
 
-// The failure copy keys are static strings; fall back to the generic pair when a
-// code has no dedicated copy (unlisted pipeline reasons).
-// A code in the taxonomy has dedicated copy; anything else uses the generic pair.
-const failTitle = (code: string): MessageKey =>
-  (code in FAILURE_TAXONOMY ? `shares.fail.${code}.title` : 'shares.fail.default.title') as MessageKey;
-const failBody = (code: string): MessageKey =>
-  (code in FAILURE_TAXONOMY ? `shares.fail.${code}.body` : 'shares.fail.default.body') as MessageKey;
 
 type Styles = ReturnType<typeof makeStyles>;
 

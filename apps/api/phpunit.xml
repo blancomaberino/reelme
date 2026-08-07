@@ -11,6 +11,13 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <!-- The map endpoint at 10k places (T-053). Its own suite so it can be
+             run alone, but deliberately NOT excluded from a default run: the
+             seed is a handful of bulk INSERTs, and the query-plan assertions
+             are worth having on every PR. See docs/load-testing.md. -->
+        <testsuite name="Load">
+            <directory>tests/Load</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

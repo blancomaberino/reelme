@@ -131,8 +131,13 @@ it('does not offer "Publish anyway" for a review that needs a location (can_publ
   fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
   fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
 
-  await screen.findByText('Couldn’t place it');
+  // The LOCALIZED copy for the code, not the server's `message`. That string
+  // is written in English by the API, which has no idea what locale the device
+  // is in — it was rendering an English sentence inside a Spanish screen, and
+  // this assertion is what used to pin the bug in place.
+  await screen.findByText('Check the address or drop the pin yourself.');
   expect(screen.queryByText('Publish anyway')).toBeNull();
+  expect(screen.queryByText('Couldn’t place it')).toBeNull();
 });
 
 it('auto-submits a link shared in from the iOS share sheet', async () => {
@@ -220,7 +225,7 @@ it('offers Retry on a failed share and re-runs the pipeline', async () => {
   fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
   fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
 
-  expect(await screen.findByText('Analysis failed. Please try again.')).toBeOnTheScreen();
+  expect(await screen.findByText('We couldn’t reach the analysis model. Try again, or switch models.')).toBeOnTheScreen();
   fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
 
   await waitFor(() => expect(mock.history.post.some((r) => r.url === '/shares/1/retry')).toBe(true));
@@ -253,7 +258,7 @@ it('shows a validation error and does not POST when both inputs are empty', asyn
   expect(mock.history.post).toHaveLength(0);
 });
 
-it('surfaces a review outcome with the failure message', async () => {
+it('surfaces a review outcome in the user’s language, not the server’s', async () => {
   mock.onPost('/shares').reply(201, { data: shareDetail({ id: '1', status: 'pending' }) });
   mock.onGet('/shares/1').reply(200, {
     data: shareDetail({
@@ -268,7 +273,9 @@ it('surfaces a review outcome with the failure message', async () => {
   fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
 
   expect(await screen.findByText('Needs a quick review')).toBeOnTheScreen();
-  expect(screen.getByText("We couldn't pin this place.")).toBeOnTheScreen();
+  expect(screen.getByText('Check the address or drop the pin yourself.')).toBeOnTheScreen();
+  // The server's own sentence never reaches the screen — it is for logs.
+  expect(screen.queryByText("We couldn't pin this place.")).toBeNull();
 });
 
 it('does NOT auto-open a detail for a multi-place publish — it lists them to tap through (T-076)', async () => {

@@ -38,6 +38,7 @@ export function ShareRow({ share }: { share: ShareDetail }) {
 
   const label =
     share.place?.name ?? share.source_post.caption ?? share.source_post.url?.replace(/^https?:\/\//, '') ?? '—';
+  const statusLabel = t(STATUS_KEY[share.status]);
   const tone = statusTone(share.status, c);
   const go =
     share.place != null
@@ -47,7 +48,15 @@ export function ShareRow({ share }: { share: ShareDetail }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      /*
+       * The status belongs in the LABEL, not only in the badge. `accessible`
+       * Pressables collapse their children, so the pill's text is absent from
+       * the accessibility tree entirely: a screen-reader user heard "Kraken,
+       * button" with no way to tell a published share from one still in review
+       * — which is the only information in the row that changes what tapping it
+       * does (a published row opens the place, everything else opens status).
+       */
+      accessibilityLabel={`${label}, ${statusLabel}`}
       onPress={go}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
@@ -55,7 +64,7 @@ export function ShareRow({ share }: { share: ShareDetail }) {
         {label}
       </Text>
       <View style={[styles.pill, { backgroundColor: tone.bg }]}>
-        <Text style={[styles.pillText, { color: tone.fg }]}>{t(STATUS_KEY[share.status])}</Text>
+        <Text style={[styles.pillText, { color: tone.fg }]}>{statusLabel}</Text>
       </View>
       <Ionicons name="chevron-forward" size={16} color={c.muted} />
     </Pressable>

@@ -7,6 +7,7 @@ import { useCreateShare } from '@/api/hooks/useCreateShare';
 import { useShareStatus } from '@/api/hooks/useShareStatus';
 import { isTerminal, type SharePlace } from '@/api/shares';
 import { useT } from '@/i18n';
+import { failureBodyKey } from '@/lib/failure-copy';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 type Props = {
@@ -84,7 +85,7 @@ export function QuickShareModal({ visible, onClose, onPublished }: Props) {
           <View style={styles.processing}>
             <Ionicons name="alert-circle-outline" size={28} color={c.gold} />
             <Text style={styles.processingText}>
-              {share?.failure?.message ?? t('share.review.title')}
+              {share?.failure ? t(failureBodyKey(share.failure.code)) : t('share.review.title')}
             </Text>
             <Pressable accessibilityRole="button" onPress={retry} hitSlop={8}>
               <Text style={styles.retry}>{t('share.another')}</Text>

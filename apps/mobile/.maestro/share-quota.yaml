@@ -55,12 +55,18 @@ appId: pet.one.reelmap
 # --- The button is really inert ---------------------------------------------
 # Type a URL first: without one the screen refuses on "nothing to send", and
 # then this step would pass whether or not the quota guard exists at all.
-# Matched on the field's accessibility label ("Enlace"), not a testID — the
-# shared TextField does not forward one, and adding one just for this flow
-# would be a second identity for a control that already has a real one.
-- tapOn: "Enlace"
+# By testID, NOT by the label text: the label Text and the input both read
+# "Enlace" and Maestro matched the label, so this step typed into nothing and
+# the assertion below passed on a form that had never been filled in.
+- tapOn:
+    id: "share-url"
 - inputText: "https://www.instagram.com/reel/QUOTACHECK/"
-- hideKeyboard
+# No `hideKeyboard`: Maestro taps a "safe" area to dismiss it, and here that
+# lands on the recent-shares list and navigates away. Asserting the content
+# instead of trusting the typing — the first version of this flow tapped the
+# LABEL rather than the input, typed into nothing, and this step's assertion
+# then proved nothing about the guard.
+- assertVisible: ".*QUOTACHECK.*"
 
 - tapOn:
     id: "share-submit"
