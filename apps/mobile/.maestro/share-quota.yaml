@@ -1,0 +1,82 @@
+# The daily share limit, seen BEFORE the tap (E2E, iOS simulator).
+#
+# What jest cannot prove about this screen:
+#
+#  1. That the notice renders on the REAL screen a share-sheet ingest lands on.
+#     `render(<ShareScreen/>)` bypasses navigation entirely.
+#  2. That the submit button is inert ON DEVICE. In jest a `disabled` Pressable
+#     still receives the synthetic press and the handler simply isn't called;
+#     on device the question is whether the tap lands on the button at all.
+#  3. That `/me`'s `meta.quotas` survives the round trip through the real API,
+#     the real client, and the real query cache — every unit test above this
+#     line is reading a mock.
+#
+# The app runs in Spanish (the default locale), so the labels below are the es
+# strings, not the en ones the unit tests assert on.
+#
+# PRECONDITIONS
+#   - API stack + Metro up via `./scripts/dev.sh start` — NOT a bare
+#     `npx expo start`, which drops EXPO_PUBLIC_API_URL and makes every request
+#     look like the device is offline.
+#   - The app logged in.
+#   - `SHARES_DAILY_LIMIT=0` in apps/api/.env + `php artisan config:clear`.
+#     Without it the dev account has 100 shares of headroom and this flow
+#     asserts on a notice that will never appear. REMOVE IT AFTERWARDS — the
+#     dev app is unusable for sharing while it is set.
+#
+# WHY THIS ONE USES A LINK. The house rule is to navigate by tapping, because a
+# URL becomes the app's LAUNCH url and strands the owner's next Cmd+R on
+# whatever screen was under test. This screen is the documented exception: it is
+# registered `href: null`, so it is deliberately absent from the tab bar and has
+# no in-app control pointing at it — a share arrives from the OS share sheet,
+# which a simulator flow cannot raise. The `stopApp` + plain `launchApp` at the
+# bottom is the part that actually clears the launch URL, and it is not
+# optional: verify afterwards that Cmd+R lands on the map.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/share-quota.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000
+
+# --- The share screen, as an ingest reaches it ------------------------------
+- openLink: reelmap:///(main)/share
+- extendedWaitUntil:
+    visible: "Compartir"
+    timeout: 30000
+
+# The notice itself. It is rendered from `/me`'s meta.quotas, so seeing it here
+# means the whole chain resolved: API → client → query cache → screen.
+- assertVisible: ".*límite diario.*"
+- takeScreenshot: build/maestro/share-quota-notice
+
+# --- The button is really inert ---------------------------------------------
+# Type a URL first: without one the screen refuses on "nothing to send", and
+# then this step would pass whether or not the quota guard exists at all.
+# Matched on the field's accessibility label ("Enlace"), not a testID — the
+# shared TextField does not forward one, and adding one just for this flow
+# would be a second identity for a control that already has a real one.
+- tapOn: "Enlace"
+- inputText: "https://www.instagram.com/reel/QUOTACHECK/"
+- hideKeyboard
+
+- tapOn:
+    id: "share-submit"
+
+# Still on the form, still showing the limit — no progress view, which is what
+# a submitted share would have pushed.
+- assertVisible: ".*límite diario.*"
+- takeScreenshot: build/maestro/share-quota-after-tap
+
+# --- Put the simulator back --------------------------------------------------
+# A URL-less launch is what clears the launch URL; stopping first is what makes
+# the next launch URL-less. Without these two the owner's next Cmd+R reopens
+# this screen — reported three separate times, always caused by verification.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000
+- takeScreenshot: build/maestro/share-quota-restored

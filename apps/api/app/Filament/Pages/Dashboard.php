@@ -2,6 +2,9 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Widgets\AnalysisCostByModel;
+use App\Filament\Widgets\AnalysisCostChart;
+use App\Filament\Widgets\AnalysisCostOverview;
 use App\Filament\Widgets\PipelineFailureMix;
 use App\Filament\Widgets\PipelineHealthOverview;
 use App\Filament\Widgets\PipelineStageDurations;
@@ -82,12 +85,17 @@ class Dashboard extends BaseDashboard
     }
 
     /**
-     * The pipeline widgets, and only those.
+     * The operating widgets, and only those.
      *
      * This deliberately drops Filament's stock AccountWidget and
      * FilamentInfoWidget from the landing page: the panel exists to operate the
      * pipeline, and "here is your avatar" is not what an operator opens it to
      * find out. Both stay registered on the panel for any page that wants them.
+     *
+     * NOTE: this list is EXPLICIT, so panel-level auto-discovery does not put a
+     * widget here. A new widget that renders perfectly in its own Livewire test
+     * and is not added below simply never appears on the dashboard — which is
+     * indistinguishable from it not existing.
      *
      * @return array<class-string<Widget>>
      */
@@ -97,6 +105,11 @@ class Dashboard extends BaseDashboard
             PipelineHealthOverview::class,
             PipelineStageDurations::class,
             PipelineFailureMix::class,
+            // Cost (T-051). Below the pipeline widgets: an operator opens this
+            // page to ask "is it working" before "what did it cost".
+            AnalysisCostOverview::class,
+            AnalysisCostChart::class,
+            AnalysisCostByModel::class,
         ];
     }
 

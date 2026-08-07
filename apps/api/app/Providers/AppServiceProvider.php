@@ -77,26 +77,77 @@ class AppServiceProvider extends ServiceProvider
          * `tests/Feature/Queue/EventListenerRegistrationTest.php` pins the rule.
          */
 
-        // Auth endpoints: 5/min per IP (03-api-design §1). The 429 renders through
-        // ApiExceptionRenderer as a rate_limited error envelope with Retry-After.
-        RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(5)->by($request->ip()));
+        /*
+         * Rate limits (03 §1, T-051). Every ceiling comes from config/quotas.php
+         * so it can be raised during an incident without a deploy — a limiter
+         * nobody can raise is a limiter somebody removes.
+         *
+         * Authenticated limits key on the USER id, never the IP: mobile
+         * carriers NAT thousands of subscribers behind one address, so an
+         * IP-keyed authenticated limit throttles a city because one person was
+         * busy.
+         */
 
-        // POST /shares: 10/min + 100/day per user (03 §1).
-        RateLimiter::for('shares', fn (Request $request) => [
-            Limit::perMinute(10)->by('shares:min:'.$request->user()?->id),
-            Limit::perDay(100)->by('shares:day:'.$request->user()?->id),
-        ]);
+        // Auth endpoints: IP-keyed on purpose — there is no user yet, and the
+        // thing being bounded is guessing. The 429 renders through
+        // ApiExceptionRenderer as a rate_limited envelope with Retry-After.
+        RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(
+            (int) config('quotas.rate.auth')
+        )->by($request->ip()));
+
+        // The catch-all for authenticated traffic, falling back to IP for the
+        // handful of public reads that carry no session.
+        RateLimiter::for('api', fn (Request $request) => $request->user()
+            ? Limit::perMinute((int) config('quotas.rate.default'))->by('api:'.$request->user()->id)
+            : Limit::perMinute((int) config('quotas.rate.public'))->by('api:ip:'.$request->ip()));
+
+        /*
+         * Share-status polling. AnalysisStatus polls every 2.5s = 24/min, and
+         * that is ONE screen — watching two ingests would eat most of the
+         * default before the app made any other request, and the user would be
+         * throttled for using the product exactly as designed.
+         */
+        RateLimiter::for('polling', fn (Request $request) => Limit::perMinute(
+            (int) config('quotas.rate.polling')
+        )->by('polling:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
+
+        /*
+         * POST /shares: a BURST limit only.
+         *
+         * The daily quota deliberately does NOT live here. `Limit::perDay` is a
+         * rolling 86,400s window anchored to the user's first request, while
+         * `QuotaSnapshot` — the thing `GET /me` reports and the app renders —
+         * counts rows since midnight UTC. Two mechanisms for one limit, and
+         * they disagree by up to 23 hours: a user who hit the cap at 23:00 UTC
+         * would be told at 00:01 that they had a fresh 100, tap, and be refused
+         * with a generic `rate_limited` for the rest of the day.
+         *
+         * So the daily cap is enforced in ShareController against the same
+         * snapshot the client was shown, and throws DailyQuotaExceeded — error
+         * code `daily_quota_exceeded`, carrying the real reset time — so the client can
+         * tell it apart from the burst 429 this limiter produces.
+         */
+        RateLimiter::for('shares', fn (Request $request) => Limit::perMinute((int) config('quotas.rate.shares'))
+            ->by('shares:min:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
 
         // GET /map/places: 120/min per user (falls back to IP for anonymous —
         // the route has no auth middleware, so resolve via the sanctum guard).
-        RateLimiter::for('map', fn (Request $request) => Limit::perMinute(120)
+        RateLimiter::for('map', fn (Request $request) => Limit::perMinute((int) config('quotas.rate.map'))
             ->by('map:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
 
         // Review writes + reports (T-059): spam-adjacent like shares — bound
         // them so one token can't churn reviews or flood the moderation queue.
         RateLimiter::for('reviews', fn (Request $request) => [
             Limit::perMinute(10)->by('reviews:min:'.$request->user()?->id),
-            Limit::perDay(100)->by('reviews:day:'.$request->user()?->id),
+            Limit::perDay((int) config('quotas.daily.reviews'))->by('reviews:day:'.$request->user()?->id),
         ]);
+
+        // Redemption verify: keyed on the STAFF ACCOUNT, not the IP — one till
+        // behind a shop's NAT must not throttle the shop next door. A busy
+        // counter is bursty; the real anti-fraud bound is the hourly cap in
+        // RedemptionGuards, not this.
+        RateLimiter::for('verify', fn (Request $request) => Limit::perMinute(
+            (int) config('quotas.rate.verify')
+        )->by('verify:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
     }
 }

@@ -373,6 +373,7 @@ export const es: Record<MessageKey, string> = {
   'shares.fail.transcribe_error.body': 'Falló la transcripción. Reintentá.',
   'shares.fail.cost_cap_exceeded.title': 'Alcanzaste el límite diario',
   'shares.fail.cost_cap_exceeded.body': 'Llegaste al límite de análisis de hoy. Probá mañana.',
+  'share.quotaReached': 'Llegaste al límite diario — se renueva a las {{time}}.',
   'shares.fail.quota_exhausted.title': 'Sin análisis disponibles',
   'shares.fail.quota_exhausted.body': 'Usaste todos tus análisis. Revisá los ajustes del modelo de IA.',
   'shares.fail.invalid_model_output.title': 'El análisis no funcionó',

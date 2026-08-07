@@ -3,7 +3,6 @@
 use App\Enums\RedemptionStatus;
 use App\Models\Offer;
 use App\Models\Place;
-use App\Models\PlaceClaim;
 use App\Models\Redemption;
 use App\Models\User;
 use Laravel\Sanctum\Sanctum;
@@ -17,14 +16,6 @@ use Laravel\Sanctum\Sanctum;
  * log would double as a list of free meals), and nobody else may read the row
  * at all — it also carries the attribution chain, i.e. someone's earnings.
  */
-function operatorOfPlace(Place $place): User
-{
-    $operator = User::factory()->create();
-    PlaceClaim::factory()->verified()->create(['place_id' => $place->id, 'user_id' => $operator->id]);
-
-    return $operator;
-}
-
 describe('POST /redemptions', function () {
     it('issues a code to the caller and returns it', function () {
         $place = Place::factory()->active()->create();

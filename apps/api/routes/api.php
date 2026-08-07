@@ -58,42 +58,42 @@ Route::prefix('v1')->group(function () {
     // Map read path (T-029): public + viewport-scoped; 120/min. Optional auth —
     // `filter=mine|following` resolve the caller via the sanctum guard inside the
     // controller (401 when absent) without gating the public `all` view.
-    Route::get('/map/places', [MapController::class, 'places'])->middleware('throttle:map');
+    Route::get('/map/places', [MapController::class, 'places'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
 
     // Places browse surface (T-030, 03 §2.6): public index with filters +
     // detail + attribution sources. `{place}` binds by slug (canonical) or
     // numeric id. Same 120/min map limiter.
-    Route::get('/places', [PlaceController::class, 'index'])->middleware('throttle:map');
+    Route::get('/places', [PlaceController::class, 'index'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
     // Distinct card/bank/wallet discounts across visible places (T-079) — the
     // facet source for the map's "filter by card" chips. Before `{place}` so the
     // literal path isn't captured as a slug.
-    Route::get('/places/payment-cards', [PlaceController::class, 'paymentCards'])->middleware('throttle:map');
-    Route::get('/places/{place}', [PlaceController::class, 'show'])->middleware('throttle:map');
-    Route::get('/places/{place}/sources', [PlaceController::class, 'sources'])->middleware('throttle:map');
+    Route::get('/places/payment-cards', [PlaceController::class, 'paymentCards'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
+    Route::get('/places/{place}', [PlaceController::class, 'show'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
+    Route::get('/places/{place}/sources', [PlaceController::class, 'sources'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
 
     // Restaurant offers (T-042, 03 §2.12): public browse + detail. `?mine=1`
     // turns the index into the operator's management view — the controller
     // resolves that caller via the sanctum guard, so the route stays public.
     // Writes are registered in the authenticated group below.
-    Route::get('/offers', [OfferController::class, 'index'])->middleware('throttle:map');
-    Route::get('/offers/{offer}', [OfferController::class, 'show'])->middleware('throttle:map');
+    Route::get('/offers', [OfferController::class, 'index'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
+    Route::get('/offers/{offer}', [OfferController::class, 'show'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
 
     // Tags + federated search (T-031, 03 §2.11): public, same interactive
     // read limiter as the map (typing in a search box pans like a map does).
-    Route::get('/tags', [TagController::class, 'index'])->middleware('throttle:map');
-    Route::get('/search', SearchController::class)->middleware('throttle:map');
+    Route::get('/tags', [TagController::class, 'index'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
+    Route::get('/search', SearchController::class)->middleware('throttle:map')->withoutMiddleware('throttle:api');
 
     // Native reviews (T-059): public read; writes are authenticated below.
-    Route::get('/places/{place}/reviews', [ReviewController::class, 'index'])->middleware('throttle:map');
+    Route::get('/places/{place}/reviews', [ReviewController::class, 'index'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
 
     // Discovery feed (T-034, 03 §2.8): global scope is public; `following`
     // requires auth (checked in the controller via the sanctum guard).
-    Route::get('/feed', [FeedController::class, 'index'])->middleware('throttle:map');
+    Route::get('/feed', [FeedController::class, 'index'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
 
     // Public profiles (T-036, 03 §2.9): users bind by citext username;
     // private profiles 404 in-controller. Influencer identities are always
     // public. Same interactive read limiter.
-    Route::middleware('throttle:map')->group(function () {
+    Route::middleware('throttle:map')->withoutMiddleware('throttle:api')->group(function () {
         Route::get('/users/{user:username}', [ProfileController::class, 'show']);
         Route::get('/users/{user:username}/map', [ProfileController::class, 'map']);
         // Their places list + public Lists (T-071): the list view of their map,
@@ -179,7 +179,7 @@ Route::prefix('v1')->group(function () {
         // Wallet + payouts (T-045, 03 §2.14). Reads are on the interactive
         // limiter; the payout request is throttled hard — it moves real money
         // and each call creates a Stripe Transfer.
-        Route::middleware('throttle:map')->group(function () {
+        Route::middleware('throttle:map')->withoutMiddleware('throttle:api')->group(function () {
             Route::get('/wallet', [WalletController::class, 'show']);
             Route::get('/wallet/ledger', [WalletController::class, 'ledger']);
             Route::get('/wallet/payouts', [WalletController::class, 'payouts']);
@@ -209,14 +209,16 @@ Route::prefix('v1')->group(function () {
         Route::middleware('throttle:10,1')->group(function () {
             Route::post('/redemptions', [RedemptionController::class, 'store']);
         });
-        Route::middleware('throttle:30,1')->group(function () {
+        // Keyed on the staff ACCOUNT (T-051), not on a raw per-IP bucket: one
+        // till behind a shop's NAT must not throttle the shop next door.
+        Route::middleware('throttle:verify')->group(function () {
             Route::post('/redemptions/verify', [RedemptionController::class, 'verify']);
         });
         // Reads carry the same interactive limiter as the other read surfaces.
         // Two of them return BEARER CREDENTIALS to their owner (a live code is a
         // free meal), so an unbounded read rate is worth closing even though
         // RedemptionPolicy authorizes every row.
-        Route::middleware('throttle:map')->group(function () {
+        Route::middleware('throttle:map')->withoutMiddleware('throttle:api')->group(function () {
             // Registered AFTER /redemptions/verify so the literal segment can
             // never be captured as an id.
             Route::get('/redemptions/{redemption}', [RedemptionController::class, 'show']);
@@ -268,19 +270,19 @@ Route::prefix('v1')->group(function () {
         // The personal "my places" list (T-071): the filterable list view of my
         // map — places I shared (not soft-hidden) ∪ places I saved. Replaces the
         // removed global feed as the app's primary browse surface.
-        Route::get('/me/places', [MePlacesController::class, 'index'])->middleware('throttle:map');
+        Route::get('/me/places', [MePlacesController::class, 'index'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
         // Discovery-tag facet of my places (ADR-084): the tags actually on my
         // places, for the filter autocomplete. Registered before any {place}
         // route so the literal "tags" segment can never be read as a place.
-        Route::get('/me/places/tags', [MePlacesController::class, 'tags'])->middleware('throttle:map');
+        Route::get('/me/places/tags', [MePlacesController::class, 'tags'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
         // Country + type facets of my places (T-088): distinct values over the FULL
         // collection so the filter chips aren't capped at the first loaded page.
         // Literal segment registered before any {place} route (see "tags" above).
-        Route::get('/me/places/facets', [MePlacesController::class, 'facets'])->middleware('throttle:map');
+        Route::get('/me/places/facets', [MePlacesController::class, 'facets'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
         // The venues I OPERATE (T-042) — a different sense of "mine" from the
         // routes above (shared/saved): places I hold a verified claim on. Powers
         // the restaurant offer screens' venue picker.
-        Route::get('/me/venues', [MePlacesController::class, 'venues'])->middleware('throttle:map');
+        Route::get('/me/venues', [MePlacesController::class, 'venues'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
         // Remove a place from my collection (soft-hide my shares + un-save).
         Route::delete('/me/places/{place}', [MePlacesController::class, 'destroy']);
 
@@ -291,7 +293,16 @@ Route::prefix('v1')->group(function () {
         // Shares (ingest). POST is rate-limited 10/min + 100/day (03 §1).
         Route::post('/shares', [ShareController::class, 'store'])->middleware('throttle:shares');
         Route::get('/shares', [ShareController::class, 'index']);
-        Route::get('/shares/{share}', [ShareController::class, 'show']);
+        // AnalysisStatus polls this every 2.5s (24/min) while an ingest runs.
+        // Its own, higher bucket (T-051): on the default limiter one screen
+        // would consume most of a minute's budget and the app would throttle a
+        // user for using it exactly as designed.
+        // `withoutMiddleware`, or the 60/min catch-all would cap this at less
+        // than the 90 the polling limiter grants and the exemption would be
+        // decorative.
+        Route::get('/shares/{share}', [ShareController::class, 'show'])
+            ->middleware('throttle:polling')
+            ->withoutMiddleware('throttle:api');
         Route::patch('/shares/{share}', [ShareController::class, 'update']);
         Route::post('/shares/{share}/retry', [ShareController::class, 'retry']);
         Route::post('/shares/{share}/publish-best-guess', [ShareController::class, 'publishBestGuess']);

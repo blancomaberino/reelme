@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\Platform;
 use App\Enums\ShareStatus;
+use App\Exceptions\DailyQuotaExceeded;
 use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreShareRequest;
@@ -18,6 +19,7 @@ use App\Services\Ingestion\SourcePostResolver;
 use App\Services\Places\ExtractionCorrector;
 use App\Services\Places\PublishBestGuess;
 use App\Services\Places\ResolvePendingPlace;
+use App\Services\Quotas\QuotaSnapshot;
 use App\Support\Contracts\ExtractionSchema;
 use App\Support\KeysetPage;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -56,11 +58,37 @@ class ShareController extends Controller
         private readonly SourcePostResolver $sources,
         private readonly ExtractionCorrector $corrector,
         private readonly PublishBestGuess $bestGuess,
+        private readonly QuotaSnapshot $quotas,
     ) {}
 
     public function store(StoreShareRequest $request): JsonResponse
     {
         $user = $request->user();
+
+        // The daily cap, enforced against the SAME snapshot `GET /me` reported
+        // and the app rendered — see the `shares` limiter for why this is not a
+        // `Limit::perDay`.
+        //
+        // A typed exception rather than `abort(429)`, which renders as
+        // `rate_limited` — the same code the 10/min BURST limiter produces. The
+        // two want opposite advice ("wait a moment" vs "come back tomorrow"),
+        // and a client branching on the status alone tells somebody who tapped
+        // twice quickly that they are out for the day.
+        //
+        // Read-then-act, and deliberately NOT serialized. Two concurrent
+        // requests can both see limit-1 and both be admitted, so the ceiling is
+        // soft by a small margin. Closing it means a per-user lock on the app's
+        // primary write path, and the margin buys nothing: the burst limiter
+        // caps the same route at 10/min, and the thing that actually costs
+        // money — the AI spend — has its own independent per-user daily budget
+        // enforced in ModelRouter. This is an abuse ceiling, not a ledger.
+        if ($this->quotas->sharesExhausted($user)) {
+            throw DailyQuotaExceeded::shares(
+                (int) config('quotas.daily.shares'),
+                $this->quotas->resetsAt(),
+            );
+        }
+
         $url = $this->extractUrl($request);
         $caption = $request->string('caption')->value() ?: null;
 
