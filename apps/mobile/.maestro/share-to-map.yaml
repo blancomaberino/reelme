@@ -1,0 +1,159 @@
+# Share → published → on the map (E2E, iOS simulator). T-053.
+#
+# The app's whole reason to exist, walked end to end on a device: a link goes in
+# at one end and a pin a person can navigate to comes out at the other.
+#
+# WHAT THIS FLOW DOES **NOT** DO, AND WHY.
+#
+# It does not submit a link and then wait for the AI pipeline to finish. That
+# would make the app's headline E2E test depend on yt-dlp reaching Instagram, on
+# ffmpeg, on a local model host, and on an LLM returning a parseable extraction —
+# four network- and model-dependent steps whose combined runtime is minutes and
+# whose outcome is not deterministic. A flaky test at the centre of the suite is
+# worse than no test: it gets retried, then ignored, then deleted.
+#
+# The AI half is already covered where it can be made deterministic:
+# `apps/api/tests/Feature/Pipeline/HappyPathTest.php` drives POST /shares through
+# the REAL job chain with faked adapters and asserts a published place with
+# correct provenance and a correct PostGIS point.
+#
+# So this flow covers the two halves of the loop that ONLY a device can prove,
+# and it makes each one deterministic:
+#
+#   PART 1 — submission is genuinely accepted. Paste a link, press once, and the
+#            app moves to the progress screen. That transition is the seam
+#            between the form and the pipeline; a 202 in a Pest test proves the
+#            API accepted it, not that the screen went anywhere.
+#
+#   PART 2 — a published share is reachable all the way to the map. Tapping a
+#            published row goes to the PLACE (not to the status screen — the row
+#            branches on `share.place`), and the place's mini-map opens the main
+#            map centred on it. Every one of those is a real navigation on a real
+#            device, and `render(<Screen/>)` in jest bypasses all of them.
+#
+# PRECONDITIONS
+#   - API stack + Metro up via `./scripts/dev.sh start` — NOT a bare
+#     `npx expo start`, which drops EXPO_PUBLIC_API_URL and makes every request
+#     look like the device is offline.
+#   - Logged in, with at least one PUBLISHED share in the account (the dev seed
+#     has many). Part 2 asserts on the "Publicado" badge, so a fresh account
+#     with nothing published will fail at that step — correctly.
+#   - The daily share quota must not be exhausted (T-051): part 1 really does
+#     create a share.
+#
+# The app runs in Spanish (the default locale), so the labels below are the es
+# strings, not the en ones the unit tests assert on.
+#
+# WHY `openLink` HERE. The share screen is registered `href: null` — deliberately
+# absent from the tab bar, reached from the OS share sheet, which a simulator
+# flow cannot raise. It is the documented exception to the tap-only rule, and
+# the `stopApp` + plain `launchApp` at the end is what clears the launch URL so
+# the next Cmd+R does not land back here. Verify that, don't assume it.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/share-to-map.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+
+# === PART 1 — a pasted link is accepted and the app moves on ================
+- openLink: reelmap:///(main)/share
+- extendedWaitUntil:
+    visible: "Compartir"
+    timeout: 30000
+
+# A UNIQUE id per run. A fixed one made the second run an idempotent replay —
+# the API correctly returned the existing share and the screen showed "ya lo
+# habías agregado", which is right behaviour and the wrong thing to assert on.
+- evalScript: ${output.reel = 'E2E' + Date.now()}
+- tapOn:
+    id: "share-url"
+- inputText: "https://www.instagram.com/reel/${output.reel}/"
+# NO `hideKeyboard` here. Maestro implements it as a tap in a "safe" area, and
+# on this screen that area sits over the recent-shares list — the tap landed on
+# a published row and navigated to its place, so the next step was looking for
+# the submit button on a completely different screen.
+#
+# Asserting the field's CONTENT rather than trusting that the typing landed:
+# the first version of this flow tapped the label instead of the input, typed
+# into nothing, and every later step passed on a form that was never filled in.
+- assertVisible: ".*${output.reel}.*"
+- takeScreenshot: build/maestro/share-to-map-1-form
+
+- tapOn:
+    id: "share-submit"
+
+# The form gave way to the pipeline view. Asserted as "the URL field is GONE"
+# rather than by matching a stage label, because which stage is showing is a
+# race with the pipeline and the terminal state depends on whether a made-up
+# reel id can be fetched (it cannot). What this flow claims is the seam — the
+# app moved on from the form — and that is what it checks.
+- extendedWaitUntil:
+    notVisible:
+      id: "share-url"
+    timeout: 45000
+- takeScreenshot: build/maestro/share-to-map-2-progress
+
+# Deliberately NOT waiting for a terminal state — see the header.
+
+# === PART 2 — a published share leads to the map ============================
+# A fresh launch first. The share screen renders the progress view INLINE while
+# it holds a `shareId` (it is not a separate route), so navigating back to
+# /share would land on part 1's progress bar, not on the form and its list.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- openLink: reelmap:///(main)/share
+- extendedWaitUntil:
+    visible: "COMPARTIDOS RECIENTES"
+    timeout: 30000
+
+# A published row. Tapping it must go to the PLACE, not to the status screen —
+# `ShareRow` branches on `share.place`, and getting that branch wrong sends
+# somebody to a progress bar for work that finished days ago.
+#
+# Matched on the ROW, whose accessibility label is "<name>, <status>". The badge
+# text alone is not matchable: an `accessible` Pressable collapses its children,
+# so "Publicado" does not exist in the accessibility tree as its own node. That
+# was also a real defect for screen-reader users — the row announced only the
+# name — and T-053 fixed it in the component rather than working around it here.
+#
+# Scrolled to, because Maestro does NOT scroll on its own for `tapOn`, and this
+# flow puts a fresh unpublished share at the top of the list on every run.
+- scrollUntilVisible:
+    element:
+      text: ".*, Publicado"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- tapOn:
+    text: ".*, Publicado"
+    index: 0
+- extendedWaitUntil:
+    visible: "Abrir en el mapa"
+    timeout: 30000
+- takeScreenshot: build/maestro/share-to-map-3-place
+
+# The last hop: the place's mini-map opens the main map centred here. This is
+# the "published place visible on the map" half of the acceptance criterion, and
+# it is a real navigation carrying real coordinates.
+- tapOn: "Abrir en el mapa"
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 30000
+- takeScreenshot: build/maestro/share-to-map-4-map
+
+# === Put the simulator back =================================================
+# A URL-less launch is what clears the launch URL; stopping first is what makes
+# the next launch URL-less. Without these the owner's next Cmd+R reopens the
+# share screen.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- takeScreenshot: build/maestro/share-to-map-5-restored

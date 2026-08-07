@@ -26,6 +26,7 @@ import { ShareRow } from '@/components/share/share-row';
 import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
 import { platformIcon } from '@/lib/format';
+import { failureBodyKey } from '@/lib/failure-copy';
 import { formatResetAt } from '@/lib/format-reset';
 import { useUiStore } from '@/stores/ui';
 import { fonts, type Palette, useColors } from '@/theme/colors';
@@ -178,6 +179,11 @@ export default function ShareScreen() {
         ) : (
           <View style={styles.form}>
             <TextField
+              // The label Text and the input BOTH carry "Enlace" (one as text,
+              // one as accessibilityLabel), and Maestro matched the label — so
+              // the E2E flows were typing into nothing and asserting on a form
+              // they had never filled in. A testID is the unambiguous handle.
+              testID="share-url"
               label={t('share.urlLabel')}
               value={url}
               onChangeText={setUrl}
@@ -385,8 +391,12 @@ function ShareProgress({
       {replay ? <Text style={styles.replayNote}>{t('share.duplicate.note')}</Text> : null}
       {canSkip ? (
         <Text style={styles.resultBody}>{t('share.confirm.body')}</Text>
-      ) : share?.failure?.message ? (
-        <Text style={styles.resultBody}>{share.failure.message}</Text>
+      ) : share?.failure ? (
+        // The localized copy for the CODE, not the server's `failure.message`.
+        // That string is written in English by the API, which has no idea what
+        // locale the device is in — so it rendered an English sentence in the
+        // middle of a Spanish screen. Same mapping the status screen uses.
+        <Text style={styles.resultBody}>{t(failureBodyKey(share.failure.code))}</Text>
       ) : null}
       {canReview ? (
         <Button
