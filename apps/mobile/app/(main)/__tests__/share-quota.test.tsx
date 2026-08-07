@@ -82,11 +82,11 @@ it('blocks the share-sheet path too, not just the button', async () => {
   await waitFor(() => expect(mock.history.post).toHaveLength(0));
 });
 
-it('explains a quota_exhausted 429 as the daily limit, not as "try again"', async () => {
+it('explains a daily_quota_exceeded 429 as the daily limit, not as "try again"', async () => {
   mock.onGet('/me').reply(200, meWithQuota(3));
   mock.onPost('/shares').reply(429, {
     error: {
-      code: 'quota_exhausted',
+      code: 'daily_quota_exceeded',
       message: 'You have reached your daily share limit.',
       details: { reason: 'daily_shares', limit: 100, resets_at: '2026-08-08T00:00:00+00:00' },
       request_id: 'req_1',

@@ -49,9 +49,9 @@ return [
     |--------------------------------------------------------------------------
     | These are the "N per day" limits, distinct from the burst limiters above.
     | They reset at midnight **UTC** — one boundary everywhere, matching the
-    | `quota_exhausted` auto-retry in 04 §3 and stated as such in the mobile
-    | copy. A local-midnight reset would mean the answer to "when does this
-    | come back" depends on where the user is standing.
+    | auto-retry for a share parked over the AI budget (04 §3) and stated as
+    | such in the mobile copy. A local-midnight reset would mean the answer to
+    | "when does this come back" depends on where the user is standing.
     */
     'daily' => [
         'shares' => (int) env('SHARES_DAILY_LIMIT', 100),

@@ -137,11 +137,14 @@ it('refuses a share past the daily allowance, and says when it comes back', func
         ->postJson('/api/v1/shares', ['url' => 'https://www.instagram.com/reel/OVER/'])
         ->assertStatus(429);
 
-    // `quota_exhausted`, NOT `rate_limited`. The 10/min burst limiter on the
-    // same route is also a 429 and wants the opposite advice — "wait a moment"
-    // versus "come back tomorrow" — and a client that can only see the status
-    // tells somebody who tapped twice quickly that they are out for the day.
-    $response->assertJsonPath('error.code', 'quota_exhausted')
+    // `daily_quota_exceeded`, NOT `rate_limited`. The 10/min burst limiter on
+    // the same route is also a 429 and wants the opposite advice — "wait a
+    // moment" versus "come back tomorrow" — and a client that can only see the
+    // status tells somebody who tapped twice quickly that they are out for the
+    // day. (Not `quota_exhausted` either: 04 §3 already binds that string to
+    // the review_reason for a share parked over the AI BUDGET, which the app
+    // renders as "Out of analyses". Two quotas, one identifier, one bad day.)
+    $response->assertJsonPath('error.code', 'daily_quota_exceeded')
         ->assertJsonPath('error.details.reason', 'daily_shares')
         // The same midnight-UTC boundary `/me` reported, so the refusal and the
         // screen that predicted it agree to the second.

@@ -63,7 +63,7 @@ class ApiExceptionRenderer
             $e instanceof ClaimException => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
             $e instanceof RedemptionInvalid => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
             $e instanceof PayoutFailed => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
-            $e instanceof QuotaExhausted => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
+            $e instanceof DailyQuotaExceeded => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
             $e instanceof AuthenticationException => [401, 'unauthenticated', 'Unauthenticated.', []],
             $e instanceof AuthorizationException, $e instanceof AccessDeniedHttpException => [403, 'forbidden', 'This action is unauthorized.', []],
             $e instanceof ModelNotFoundException, $e instanceof NotFoundHttpException => [404, 'not_found', 'Resource not found.', []],

@@ -109,7 +109,7 @@ export default function ShareScreen() {
           // are out for the day is worse than the generic copy.
           onError: (error) =>
             setError(
-              isAxiosError(error) && error.response?.data?.error?.code === 'quota_exhausted'
+              isAxiosError(error) && error.response?.data?.error?.code === 'daily_quota_exceeded'
                 ? t('share.quotaReached', {
                     // The server's own boundary when it sends one, so the
                     // refusal and the screen that predicted it agree; otherwise

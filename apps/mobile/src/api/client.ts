@@ -91,7 +91,7 @@ api.interceptors.response.use(
     // which is also a 429 and wants the opposite advice. Slowing down does not
     // help somebody who is out until midnight, and the banner would contradict
     // the screen telling them when they get more.
-    if (status === 429 && error.response?.data?.error?.code !== 'quota_exhausted') {
+    if (status === 429 && error.response?.data?.error?.code !== 'daily_quota_exceeded') {
       useUiStore.getState().setRateLimited(true);
     }
 

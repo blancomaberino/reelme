@@ -16,9 +16,9 @@ use Illuminate\Support\Carbon;
  * hitting it.
  *
  * Everything resets at midnight **UTC**, one boundary everywhere: it matches
- * the `quota_exhausted` auto-retry in 04 §3, and a local-midnight reset would
- * make the answer to "when does this come back" depend on where the user is
- * standing.
+ * the auto-retry the pipeline uses for a share parked over the AI budget (04
+ * §3), and a local-midnight reset would make the answer to "when does this come
+ * back" depend on where the user is standing.
  */
 class QuotaSnapshot
 {

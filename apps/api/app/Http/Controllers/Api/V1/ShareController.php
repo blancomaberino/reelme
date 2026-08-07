@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\Platform;
 use App\Enums\ShareStatus;
-use App\Exceptions\QuotaExhausted;
+use App\Exceptions\DailyQuotaExceeded;
 use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreShareRequest;
@@ -75,7 +75,7 @@ class ShareController extends Controller
         // and a client branching on the status alone tells somebody who tapped
         // twice quickly that they are out for the day.
         if ($this->quotas->sharesExhausted($user)) {
-            throw QuotaExhausted::shares(
+            throw DailyQuotaExceeded::shares(
                 (int) config('quotas.daily.shares'),
                 $this->quotas->resetsAt(),
             );
