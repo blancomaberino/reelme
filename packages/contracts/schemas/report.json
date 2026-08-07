@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/report.json",
+  "title": "Report",
+  "description": "A user's moderation flag against a piece of content (T-049, 03 §2.16, 02 §3.17). Returned to the REPORTER as a receipt — it deliberately carries nothing about triage (no resolver, no internal note, no count of other reports against the same target), because all of that would tell a malicious reporter how close they are to getting something removed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "reportable_type", "reportable_id", "reason", "details", "status", "created_at"],
+  "properties": {
+    "id": {
+      "description": "Numeric id as a string, like every other id on the wire.",
+      "type": "string"
+    },
+    "reportable_type": {
+      "description": "The morph ALIAS of what was reported — never a class name. 03 §2.16 and 02 §3.17 list different sets (`offer` vs `source_post`); the union is what the API accepts.",
+      "type": "string",
+      "enum": ["place", "share", "user", "source_post", "offer"]
+    },
+    "reportable_id": {
+      "description": "Id of the reported record, as a string.",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Why it was flagged. Closed enum: the queue sorts and prioritises on this, so an open string would make triage impossible.",
+      "type": "string",
+      "enum": ["spam", "wrong_place", "inappropriate", "copyright", "fraud", "other"]
+    },
+    "details": {
+      "description": "Whatever the reporter added in their own words. Null when they said nothing beyond the reason.",
+      "type": ["string", "null"]
+    },
+    "status": {
+      "description": "Triage state. A reporter only ever sees `open` on the response to their own POST; the rest exist because the same shape is what the moderation tooling reads.",
+      "type": "string",
+      "enum": ["open", "reviewing", "resolved", "dismissed"]
+    },
+    "created_at": {
+      "description": "ISO-8601 timestamp.",
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  }
+}

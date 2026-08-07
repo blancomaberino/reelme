@@ -722,6 +722,24 @@ export const en = {
   // Privacy & data (T-039, 05 screen #16). The copy IS the feature here: two
   // rights, each stated in terms of what actually happens to the user's stuff.
   'settings.privacy': 'Privacy & data',
+  // Reporting content (T-049). Apple 1.2 and Google's UGC policy both require a
+  // visible report path; the copy stays plain because someone using it is
+  // usually upset and always in a hurry.
+  'report.action': 'Report',
+  'report.title': 'Report this',
+  'report.signedOut': 'Sign in to report this.',
+  'report.reasonsLabel': 'Why are you reporting this?',
+  'report.detailsLabel': 'Anything else? (optional)',
+  'report.submit': 'Send report',
+  'report.doneTitle': 'Thanks — we\u2019re on it',
+  'report.doneBody': 'A moderator will review this. We won\u2019t tell them who reported it.',
+  'report.reason.inappropriate': 'Offensive or inappropriate',
+  'report.reason.spam': 'Spam or advertising',
+  'report.reason.wrong_place': 'Wrong place or bad details',
+  'report.reason.copyright': 'It uses my content without permission',
+  'report.reason.fraud': 'Fake or misleading',
+  'report.reason.other': 'Something else',
+
   'privacy.title': 'Privacy & data',
   'privacy.intro':
     'Your account holds your profile, the posts you’ve shared, the places you saved and the reviews you wrote. Here’s what you can ask us to do with all of it.',

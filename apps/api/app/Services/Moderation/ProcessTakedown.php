@@ -1,0 +1,234 @@
+<?php
+
+namespace App\Services\Moderation;
+
+use App\Enums\PlaceStatus;
+use App\Enums\TakedownStatus;
+use App\Models\MediaAsset;
+use App\Models\Place;
+use App\Models\PlaceSource;
+use App\Models\Share;
+use App\Models\SourcePost;
+use App\Models\TakedownRequest;
+use App\Models\User;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+
+/**
+ * Execute a takedown (T-049, IR-2 / R-07 / ADR-010).
+ *
+ * The shape here follows FR-30: **the place survives, its source does not.** A
+ * rightsholder is objecting to their footage being used, not to the existence
+ * of a restaurant — and other people may have contributed the same place
+ * independently. Deleting the pin would take their contribution with it and
+ * answer a copyright complaint by destroying unrelated data.
+ *
+ * So: unpublish every share citing the post, drop the `place_sources` rows that
+ * cite it, delete the stored media, and leave the `source_posts` row itself in
+ * place. That last part matters — other analytics reference it, and a deleted
+ * row would cascade its media away silently and lose the record that a takedown
+ * ever happened here.
+ */
+class ProcessTakedown
+{
+    /** @var array<string, mixed> */
+    private const EMPTY_OUTCOME = [
+        'shares' => 0,
+        'place_sources' => 0,
+        'media' => 0,
+        'media_failed' => 0,
+        'places_kept' => [],
+        'places_revived' => [],
+    ];
+
+    public function __construct(private readonly ShareModerator $shares) {}
+
+    /**
+     * @return array{shares: int, place_sources: int, media: int, places_kept: list<int>}
+     */
+    public function execute(TakedownRequest $request, User $admin): array
+    {
+        // Claim it atomically before doing anything. Two admins working the
+        // queue can both press "Action it" before either finishes: without a
+        // claim both runs remove the same content and write competing audit
+        // outcomes, and the second one overwrites the first's record of what
+        // was actually removed.
+        $claimed = TakedownRequest::query()
+            ->whereKey($request->getKey())
+            ->whereIn('status', [TakedownStatus::Received, TakedownStatus::CounterNotice])
+            ->update(['status' => TakedownStatus::Processing]);
+
+        if ($claimed === 0) {
+            // Somebody else has it, or it is already finished. Hand back what
+            // that run recorded rather than inventing a second answer.
+            $existing = TakedownRequest::query()->find($request->getKey());
+
+            if ($existing !== null && is_array($existing->outcome_json)) {
+                return $existing->outcome_json;
+            }
+
+            return self::EMPTY_OUTCOME;
+        }
+
+        $request->refresh();
+        $post = $request->sourcePost;
+
+        if ($post === null) {
+            // Nothing matched to act on yet. Recorded rather than silently
+            // skipped: a notice that cannot be actioned still needs an answer.
+            $outcome = self::EMPTY_OUTCOME;
+            $this->close($request, $admin, $outcome, 'unmatched');
+
+            return $outcome;
+        }
+
+        // Read the objects BEFORE the rows go: once `media_assets` is deleted
+        // there is no handle left on the files at all.
+        $objects = MediaAsset::query()
+            ->where('source_post_id', $post->id)
+            ->get(['id', 'disk', 'storage_path']);
+
+        $placesKept = [];
+        $placesRevived = [];
+        $sourcesRemoved = 0;
+        $sharesTaken = 0;
+
+        DB::transaction(function () use ($post, &$placesKept, &$placesRevived, &$sourcesRemoved, &$sharesTaken): void {
+            $sources = PlaceSource::query()->where('source_post_id', $post->id)->get();
+            $places = Place::query()->whereIn('id', $sources->pluck('place_id')->unique())->get();
+            $placesKept = $places->pluck('id')->all();
+            $sourcesRemoved = $sources->count();
+
+            // Every share citing this post loses its publication. Routed through
+            // ShareModerator so the pin arithmetic (recount, tombstone-if-orphaned)
+            // is the same one the admin take-down uses — a second copy would
+            // diverge and leave ghost pins.
+            $shares = Share::query()->where('source_post_id', $post->id)->get();
+
+            foreach ($shares as $share) {
+                $this->shares->takeDown($share, 'takedown');
+                $sharesTaken++;
+            }
+
+            PlaceSource::query()->where('source_post_id', $post->id)->delete();
+
+            // FR-30, and the reason this block exists at all: ShareModerator's
+            // orphan rule (T-073) tombstones a place whose last published source
+            // just went, which is exactly right for an ordinary admin removal
+            // and exactly WRONG here. A copyright notice must not delete a
+            // restaurant — the rightsholder is objecting to their footage, and
+            // other people may yet contribute the same venue.
+            //
+            // Without this the outcome record said `places_kept: [42]` while
+            // place 42 was `Removed` and off the map, and the response letter
+            // was composed from that record.
+            foreach ($places as $place) {
+                if ($place->fresh()->status !== PlaceStatus::Removed) {
+                    continue;
+                }
+
+                // Back to Pending, not Active: it has no provenance left, so it
+                // belongs in the review queue rather than silently on the map
+                // as a claim nothing supports.
+                $place->forceFill([
+                    'status' => PlaceStatus::Pending,
+                    'needs_admin_review' => true,
+                ])->save();
+
+                $placesRevived[] = $place->id;
+            }
+
+            // The row STAYS. Deleting it would cascade its media away outside
+            // our control and erase the only record that this post was ever
+            // here — which is exactly what a counter-notice would ask about.
+            // The caption and the cached payload are what actually reproduce
+            // the rightsholder's material, so those go.
+            $post->forceFill(['caption' => null, 'oembed_json' => null, 'transcript_json' => null])->save();
+
+            MediaAsset::query()->where('source_post_id', $post->id)->delete();
+        });
+
+        $failed = $this->deleteObjects($objects);
+
+        $outcome = [
+            'shares' => $sharesTaken,
+            'place_sources' => $sourcesRemoved,
+            // The count of objects actually GONE, not the count attempted. A
+            // notice is a legal record: telling a rightsholder we deleted six
+            // files when two are still in the bucket is the one number here
+            // that must never be optimistic.
+            'media' => $objects->count() - count($failed),
+            'media_failed' => count($failed),
+            'places_kept' => $placesKept,
+            // Kept BECAUSE we overrode the orphan rule — these have no source
+            // left and are flagged for review. Recorded separately so the
+            // response letter can be precise rather than merely reassuring.
+            'places_revived' => $placesRevived,
+        ];
+
+        $this->close($request, $admin, $outcome, 'actioned');
+
+        return $outcome;
+    }
+
+    /**
+     * @param  Collection<int, MediaAsset>  $objects
+     * @return list<int> ids whose object is still in the bucket
+     */
+    private function deleteObjects($objects): array
+    {
+        $failed = [];
+
+        foreach ($objects as $asset) {
+            try {
+                Storage::disk($asset->disk)->delete($asset->storage_path);
+            } catch (\Throwable $e) {
+                $failed[] = (int) $asset->id;
+                // A takedown is a legal obligation with a clock on it — a
+                // blinking bucket must not abort the rest of it. The row is
+                // already gone, so the retention sweep is what catches the file.
+                Log::warning('moderation.takedown.media_delete_failed', [
+                    'media_asset_id' => $asset->id,
+                    'reason' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $failed;
+    }
+
+    /**
+     * @param  array<string, mixed>  $outcome
+     */
+    private function close(TakedownRequest $request, User $admin, array $outcome, string $result): void
+    {
+        $actioned = $result !== 'unmatched';
+
+        $request->forceFill([
+            // An unmatched notice stays OPEN. Marking it `actioned` would be a
+            // false legal record — nothing was removed — and it would drop out
+            // of the queue AND hide the action button, so the notification
+            // telling the admin to "match one and action it again" would point
+            // at a control that is no longer there.
+            'status' => $actioned ? TakedownStatus::Actioned : TakedownStatus::Received,
+            'actioned_by_user_id' => $actioned ? $admin->id : null,
+            'actioned_at' => $actioned ? now() : null,
+            'outcome_json' => $outcome,
+        ])->save();
+
+        Log::info('moderation.takedown.processed', [
+            'takedown_request_id' => $request->id,
+            'result' => $result,
+            'admin_id' => $admin->id,
+            'source_post_id' => $request->source_post_id,
+        ] + $outcome);
+    }
+
+    /** Match a bare URL to a source post, so ops can log first and match later. */
+    public function matchByUrl(string $url): ?SourcePost
+    {
+        return SourcePost::query()->where('url', trim($url))->first();
+    }
+}

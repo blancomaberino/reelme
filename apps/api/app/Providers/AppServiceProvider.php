@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Models\Influencer;
+use App\Models\Offer;
+use App\Models\Place;
+use App\Models\Share;
+use App\Models\SourcePost;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -28,10 +32,26 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Polymorphic follow targets (T-037) — aliases in the DB, never FQCNs.
+        // Every polymorphic target in the app — aliases in the DB, never FQCNs.
+        //
+        // `enforceMorphMap` (not `morphMap`) is deliberate: it makes an
+        // unmapped model throw instead of silently falling back to writing its
+        // class name, which is the failure that produces a table with two
+        // spellings of the same type and queries that match half the rows.
+        //
+        // Anything queried by morph column must use `$model->getMorphClass()`,
+        // never `Model::class` — comparing against the FQCN matches zero rows
+        // and does it silently (T-050 shipped that bug in the purge; three
+        // tests passed because the fixtures made the same mistake).
         Relation::enforceMorphMap([
+            // Follow targets (T-037).
             'user' => User::class,
             'influencer' => Influencer::class,
+            // Report targets (T-049, 02 §3.17 + 03 §2.16).
+            'place' => Place::class,
+            'share' => Share::class,
+            'source_post' => SourcePost::class,
+            'offer' => Offer::class,
         ]);
 
         // Register the SocialiteProviders "instagram" driver (T-015). This

@@ -18,6 +18,7 @@ export type { FeedItem } from './generated/feed-item';
 export type { PlaceListSummary } from './generated/place-list';
 export type { PlaceListDetail } from './generated/place-list-detail';
 export type { Offer } from './generated/offer';
+export type { Report } from './generated/report';
 export type { Redemption } from './generated/redemption';
 export type { Notification } from './generated/notification';
 export type { InfluencerDashboard } from './generated/influencer-dashboard';

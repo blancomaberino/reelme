@@ -21,9 +21,15 @@ class ShareModerator
 {
     public function __construct(private readonly PlacePublisher $publisher) {}
 
-    public function takeDown(Share $share): void
+    /**
+     * @param  string  $reason  written to `shares.failure_reason` — the only
+     *                          DB evidence of WHY a share was pulled. A DMCA
+     *                          removal and a routine admin one must not be
+     *                          indistinguishable when a notice is disputed.
+     */
+    public function takeDown(Share $share, string $reason = 'admin_removed'): void
     {
-        DB::transaction(function () use ($share): void {
+        DB::transaction(function () use ($share, $reason): void {
             $sources = PlaceSource::query()->where('share_id', $share->id)->get();
             $places = Place::query()->whereIn('id', $sources->pluck('place_id'))->get();
 
@@ -34,7 +40,7 @@ class ShareModerator
 
             $share->published_place_source_id = null;
             $share->save();
-            $share->forceResetStatus(ShareStatus::Rejected, 'admin_removed');
+            $share->forceResetStatus(ShareStatus::Rejected, $reason);
 
             // Tombstone a now-orphaned pin, or re-derive counters for one that
             // other shares keep alive.

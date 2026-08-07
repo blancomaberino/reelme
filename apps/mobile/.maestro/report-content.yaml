@@ -1,0 +1,94 @@
+# Reporting content — the store-review path (E2E, iOS simulator).
+#
+# Apple Guideline 1.2 and Google's UGC policy require a VISIBLE report control
+# on user-generated content, and a reviewer looks for the control rather than
+# for the endpoint. Jest presses it too, but only jest knows where it is: this
+# flow proves a person tapping around the app actually arrives at it.
+#
+# What this flow does NOT do is submit twice to check the 409. That path is
+# covered by Pest and by the sheet's unit tests, and repeating it here would
+# just burn the `reviews` limiter (10/min) for the next run.
+#
+# The app runs in Spanish (the default locale), so the labels below are the es
+# strings, not the en ones the unit tests assert on.
+#
+# Preconditions: API stack + Metro up via `./scripts/dev.sh start` — NOT a bare
+# `npx expo start`, which drops EXPO_PUBLIC_API_URL and makes every request look
+# like the device is offline. The app must be logged in.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/report-content.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+
+# --- Reach a place the way a user does --------------------------------------
+# Via the "Mis lugares" list rather than the map: map annotations are native
+# views with no testIDs, so tapping a pin means guessing at coordinates, and a
+# guess that lands on empty water fails for a reason that has nothing to do
+# with what this flow is testing. The list rows carry the place NAME as their
+# accessibility label, which is a real user-visible identity.
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000
+- tapOn: ".*Mis lugares, tab.*"
+- extendedWaitUntil:
+    visible: "Mis lugares"
+    timeout: 30000
+- takeScreenshot: build/maestro/report-list
+# The first row by index, but matched on the row's own accessibility label
+# (the place NAME) rather than on `text: ".*"` — that pattern matches the
+# header, the tab bar and anything else on screen, so which element it lands on
+# depends on hierarchy order rather than on anything this flow means.
+- tapOn:
+    index: 0
+    id: "my-place-card"
+
+# --- The report control must be VISIBLE on the place page -------------------
+# `assertVisible` on the id, not a scroll-and-hope: the claim being tested is
+# that a reviewer finds it, and a control below three folds fails that claim
+# even though it exists.
+- scrollUntilVisible:
+    element:
+      id: "place-report"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "place-report"
+- takeScreenshot: build/maestro/report-control
+
+# --- The sheet opens, and will not send an empty report ---------------------
+- tapOn:
+    id: "place-report"
+- extendedWaitUntil:
+    visible: "Reportar esto"
+    timeout: 10000
+- assertVisible:
+    id: "report-submit"
+    enabled: false
+- takeScreenshot: build/maestro/report-sheet
+
+- tapOn:
+    id: "report-reason-wrong_place"
+- assertVisible:
+    id: "report-submit"
+    enabled: true
+
+# --- Send it, and confirm the app says so -----------------------------------
+- tapOn:
+    id: "report-submit"
+- extendedWaitUntil:
+    visible: "Gracias — lo estamos viendo"
+    timeout: 20000
+- takeScreenshot: build/maestro/report-done
+- tapOn:
+    id: "report-close"
+
+# --- Leave the app where we found it ----------------------------------------
+# stop + plain launch (no URL, which is what Cmd+R replays), then confirm we
+# land on the map rather than back inside this flow's screens.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000
+- assertNotVisible: "Reportar esto"
