@@ -3,6 +3,20 @@
 use App\Providers\HorizonServiceProvider;
 use Laravel\Horizon\Horizon;
 
+/*
+ * Horizon's notification routing is STATIC, so anything these tests set leaks
+ * into every test that runs after them in the same process — including ones
+ * that would then look like they had an alert destination configured. Restored
+ * explicitly rather than trusted to be overwritten: `routeSlackNotificationsTo`
+ * sets the channel even when the webhook is null, so a partial reset is not one.
+ */
+afterEach(function () {
+    Horizon::$email = null;
+    Horizon::$slackWebhookUrl = null;
+    Horizon::$slackChannel = null;
+    Horizon::$smsNumber = null;
+});
+
 it('assigns exactly the canonical queue set across supervisors', function () {
     $supervisors = config('horizon.defaults');
 

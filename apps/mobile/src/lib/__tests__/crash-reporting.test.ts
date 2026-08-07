@@ -66,6 +66,16 @@ it('tags every event with the release that produced it', () => {
   expect(options.release).toMatch(/^pet\.one\.reelmap@\d+\.\d+\.\d+$/);
   expect(options.dsn).toBe('https://public@example.test/1');
   expect(options.enableNative).toBe(true);
+
+  // Environment, so staging noise never lands in the production project — and
+  // it is derived from `__DEV__`, which is exactly the kind of thing that gets
+  // inverted in a refactor.
+  expect(options.environment).toBe(__DEV__ ? 'development' : 'production');
+
+  // Tracing OFF. This is a crash reporter; sampling traces from a mobile client
+  // spends battery and quota on data nothing here reads, and a stray default
+  // would turn it on silently.
+  expect(options.tracesSampleRate).toBe(0);
 });
 
 it('does not attach PII', () => {

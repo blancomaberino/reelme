@@ -25,7 +25,7 @@ the seven pipeline stages is on fire.
 Two switches, and **both** are required — this is deliberate, so that setting a
 DSN in an environment does not by itself start shipping events:
 
-```
+```dotenv
 OBSERVABILITY_ERROR_REPORTER=sentry
 SENTRY_LARAVEL_DSN=https://…@…ingest.sentry.io/…
 SENTRY_RELEASE=<the commit being deployed>     # see below
@@ -51,8 +51,10 @@ SENTRY_ENVIRONMENT=production|staging          # defaults to APP_ENV
 
 ### What is deliberately NOT sent
 
-`send_default_pii` and `breadcrumbs.sql_bindings` are **hard-coded false** in
-`config/sentry.php`, not env-backed. They would attach request bodies, cookies,
+`send_default_pii`, `breadcrumbs.sql_bindings` **and `tracing.sql_bindings`** are
+**hard-coded false** in `config/sentry.php`, not env-backed. (Both binding flags:
+bound values reach Sentry through tracing spans just as happily as through
+breadcrumbs, so pinning one and leaving the other env-controlled closes nothing.) They would attach request bodies, cookies,
 the authenticated user, and the email addresses and coordinates sitting in a
 WHERE clause. T-050 built erasure guarantees over exactly that data, and a copy
 inside a third-party tracker is outside every one of them — `DELETE /me` cannot
@@ -85,7 +87,7 @@ alert that always fires is one nobody reads).
 Until T-052 those alerts **went nowhere** — Horizon routes nothing by default.
 Route them:
 
-```
+```dotenv
 HORIZON_ALERT_EMAIL=ops@…
 HORIZON_ALERT_SLACK_WEBHOOK=https://hooks.slack.com/services/…
 HORIZON_ALERT_SLACK_CHANNEL=#alerts

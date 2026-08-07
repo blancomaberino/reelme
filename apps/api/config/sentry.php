@@ -3,7 +3,7 @@
 /**
  * Sentry Laravel SDK configuration (T-052).
  *
- * Published from the vendor default and then narrowed in three places, each
+ * Published from the vendor default and then narrowed in four places, each
  * marked REELMAP below. Nothing is sent at all unless `SENTRY_LARAVEL_DSN` is
  * set AND `OBSERVABILITY_ERROR_REPORTER=sentry` — see ObservabilityServiceProvider.
  *
@@ -21,10 +21,10 @@ return [
     // 'logger' => Sentry\Logger\DebugFileLogger::class, // By default this will log to `storage_path('logs/sentry.log')`
 
     /*
-     * REELMAP (1/3) — release tagging.
+     * REELMAP (1/4) — release tagging.
      *
      * Set by the deploy script from the commit being deployed (see
-     * docs/runbooks/observability.md). Falls back to the Forge/CI-provided SHA
+     * docs/observability.md). Falls back to the Forge/CI-provided SHA
      * so a release tag is never simply absent: without one every regression
      * reads as "always been broken", and "did the deploy cause this" — the
      * first question anyone asks — becomes unanswerable.
@@ -65,7 +65,7 @@ return [
     'logs_channel_level' => env('SENTRY_LOG_LEVEL', env('SENTRY_LOGS_LEVEL', env('LOG_LEVEL', 'debug'))),
 
     /*
-     * REELMAP (2/3) — PII stays out, and not behind an env flag.
+     * REELMAP (2/4) — PII stays out, and not behind an env flag.
      *
      * `send_default_pii` attaches request bodies, cookies, headers and the
      * authenticated user to every event. This app holds exactly the data T-050
@@ -104,7 +104,7 @@ return [
         'sql_queries' => env('SENTRY_BREADCRUMBS_SQL_QUERIES_ENABLED', true),
 
         /*
-         * REELMAP (3/3) — query BINDINGS are PII by another route.
+         * REELMAP (3/4) — query BINDINGS are PII by another route.
          *
          * The vendor default is already false; pinned here so a future
          * `vendor:publish --force` cannot quietly re-open it. Bindings are the
@@ -137,8 +137,16 @@ return [
         // Capture SQL queries as spans
         'sql_queries' => env('SENTRY_TRACE_SQL_QUERIES_ENABLED', true),
 
-        // Capture SQL query bindings (parameters) in SQL query spans
-        'sql_bindings' => env('SENTRY_TRACE_SQL_BINDINGS_ENABLED', false),
+        /*
+         * REELMAP (4/4) — the same, for TRACING spans.
+         *
+         * Closing this was the whole point of pinning the breadcrumb version
+         * above, and pinning only that left the door open: bound values reach
+         * Sentry through spans just as happily as through breadcrumbs, so an
+         * env flag flipped here would have exported exactly the data the
+         * comment two hundred lines up promises is never sent.
+         */
+        'sql_bindings' => false,
 
         // Capture where the SQL query originated from on the SQL query spans
         'sql_origin' => env('SENTRY_TRACE_SQL_ORIGIN_ENABLED', true),

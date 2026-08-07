@@ -172,7 +172,12 @@ it('never ships PII to a third party', function () {
     // Both of these are hard-coded rather than env-backed, so this test is what
     // stops a `vendor:publish --force` from quietly re-opening them.
     expect(config('sentry.send_default_pii'))->toBeFalse()
-        ->and(config('sentry.breadcrumbs.sql_bindings'))->toBeFalse();
+        ->and(config('sentry.breadcrumbs.sql_bindings'))->toBeFalse()
+        // Both routes. Bound values reach Sentry through TRACING spans just as
+        // happily as through breadcrumbs, and pinning only the breadcrumb
+        // version left an env flag that would have exported exactly the data
+        // this test exists to keep out.
+        ->and(config('sentry.tracing.sql_bindings'))->toBeFalse();
 });
 
 it('tags every event with the release that produced it', function () {
