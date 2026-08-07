@@ -123,8 +123,9 @@ class AppServiceProvider extends ServiceProvider
          * with a generic `rate_limited` for the rest of the day.
          *
          * So the daily cap is enforced in ShareController against the same
-         * snapshot the client was shown, and answers `quota_exhausted` with the
-         * real reset time.
+         * snapshot the client was shown, and throws QuotaExhausted — error code
+         * `quota_exhausted`, carrying the real reset time — so the client can
+         * tell it apart from the burst 429 this limiter produces.
          */
         RateLimiter::for('shares', fn (Request $request) => Limit::perMinute(10)
             ->by('shares:min:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));

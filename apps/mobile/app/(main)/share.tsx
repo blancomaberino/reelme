@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import { isAxiosError } from 'axios';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCreateShare } from '@/api/hooks/useCreateShare';
+import { useQuotas } from '@/api/hooks/useQuotas';
 import { usePublishBestGuess } from '@/api/hooks/usePublishBestGuess';
 import { useRetryShare } from '@/api/hooks/useRetryShare';
 import { useShares } from '@/api/hooks/useShares';
@@ -17,10 +19,6 @@ import {
   type SharePlatform,
   type ShareStatus,
 } from '@/api/shares';
-import { isAxiosError } from 'axios';
-
-import { useQuotas } from '@/api/hooks/useQuotas';
-import { formatResetAt } from '@/lib/format-reset';
 import { Button } from '@/components/button';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { PendingVenues } from '@/components/share/pending-venues';
@@ -28,6 +26,7 @@ import { ShareRow } from '@/components/share/share-row';
 import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
 import { platformIcon } from '@/lib/format';
+import { formatResetAt } from '@/lib/format-reset';
 import { useUiStore } from '@/stores/ui';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
@@ -100,13 +99,26 @@ export default function ShareScreen() {
             setShareId(s.id);
             setReplay(s.idempotentReplay);
           },
-          // A 429 here is the server's daily cap, not a transient failure. The
-          // generic "couldn't submit, try again" invites a retry that cannot
-          // work — and this is the path a share-sheet ingest lands on.
+          // The daily cap, not a transient failure: "couldn't submit, try
+          // again" invites a retry that cannot work, and this is the path a
+          // share-sheet ingest lands on (it can fire before /me answers, so the
+          // server's refusal IS the guard there).
+          //
+          // Branched on the CODE, not the status — the 10/min burst limiter is
+          // also a 429, and telling somebody who tapped twice quickly that they
+          // are out for the day is worse than the generic copy.
           onError: (error) =>
             setError(
-              isAxiosError(error) && error.response?.status === 429
-                ? t('share.quotaReached', { time: quotaResetLabel })
+              isAxiosError(error) && error.response?.data?.error?.code === 'quota_exhausted'
+                ? t('share.quotaReached', {
+                    // The server's own boundary when it sends one, so the
+                    // refusal and the screen that predicted it agree; otherwise
+                    // the quota we already hold. `formatResetAt` returns '' on
+                    // anything it can't parse, which would render "resets at .".
+                    time:
+                      formatResetAt(String(error.response?.data?.error?.details?.resets_at ?? '')) ||
+                      quotaResetLabel,
+                  })
                 : t('share.submitError'),
             ),
         },

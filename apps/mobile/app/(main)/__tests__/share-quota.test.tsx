@@ -40,6 +40,7 @@ beforeEach(() => {
   mock = new AxiosMockAdapter(api);
   mock.onGet('/shares').reply(200, { data: [], meta: { pagination: { next_cursor: null } } });
   useSessionStore.setState({ user: null, status: 'authed' });
+  useUiStore.setState({ rateLimited: false });
 });
 
 afterEach(() => mock.restore());
@@ -81,9 +82,16 @@ it('blocks the share-sheet path too, not just the button', async () => {
   await waitFor(() => expect(mock.history.post).toHaveLength(0));
 });
 
-it('explains a 429 as the daily limit, not as "try again"', async () => {
+it('explains a quota_exhausted 429 as the daily limit, not as "try again"', async () => {
   mock.onGet('/me').reply(200, meWithQuota(3));
-  mock.onPost('/shares').reply(429, { message: 'Too Many Requests' });
+  mock.onPost('/shares').reply(429, {
+    error: {
+      code: 'quota_exhausted',
+      message: 'You have reached your daily share limit.',
+      details: { reason: 'daily_shares', limit: 100, resets_at: '2026-08-08T00:00:00+00:00' },
+      request_id: 'req_1',
+    },
+  });
 
   render(<ShareScreen />, { wrapper: Providers });
 
@@ -96,6 +104,27 @@ it('explains a 429 as the daily limit, not as "try again"', async () => {
   // to "try again" invites a retry that cannot work.
   expect(await screen.findByText(/daily limit reached/i)).toBeOnTheScreen();
   expect(screen.queryByText(/please try again/i)).toBeNull();
+  // ...and no global "slow down, too many requests" banner contradicting it.
+  expect(useUiStore.getState().rateLimited).toBe(false);
+});
+
+it('still says "try again" for a BURST 429, which is a different problem', async () => {
+  mock.onGet('/me').reply(200, meWithQuota(3));
+  // The 10/min share limiter. Same status, opposite advice: waiting a moment
+  // fixes this one, and "you are out until midnight" is simply false.
+  mock.onPost('/shares').reply(429, {
+    error: { code: 'rate_limited', message: 'Too Many Requests', details: {}, request_id: 'req_2' },
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  await screen.findByTestId('share-submit');
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://www.instagram.com/reel/ABC/');
+  fireEvent.press(screen.getByTestId('share-submit'));
+
+  expect(await screen.findByText(/please try again/i)).toBeOnTheScreen();
+  expect(screen.queryByText(/daily limit reached/i)).toBeNull();
+  expect(useUiStore.getState().rateLimited).toBe(true);
 });
 
 it('stays out of the way while the user has allowance left', async () => {

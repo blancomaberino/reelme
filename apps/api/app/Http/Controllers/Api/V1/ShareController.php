@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\Platform;
 use App\Enums\ShareStatus;
+use App\Exceptions\QuotaExhausted;
 use App\Http\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreShareRequest;
@@ -66,11 +67,18 @@ class ShareController extends Controller
 
         // The daily cap, enforced against the SAME snapshot `GET /me` reported
         // and the app rendered — see the `shares` limiter for why this is not a
-        // `Limit::perDay`. 429 with a specific code and the real reset time,
-        // rather than a generic `rate_limited` a client cannot explain.
+        // `Limit::perDay`.
+        //
+        // A typed exception rather than `abort(429)`, which renders as
+        // `rate_limited` — the same code the 10/min BURST limiter produces. The
+        // two want opposite advice ("wait a moment" vs "come back tomorrow"),
+        // and a client branching on the status alone tells somebody who tapped
+        // twice quickly that they are out for the day.
         if ($this->quotas->sharesExhausted($user)) {
-            abort(429, 'You have reached your daily share limit. It resets at '
-                .$this->quotas->resetsAt()->toIso8601String().'.');
+            throw QuotaExhausted::shares(
+                (int) config('quotas.daily.shares'),
+                $this->quotas->resetsAt(),
+            );
         }
 
         $url = $this->extractUrl($request);

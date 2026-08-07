@@ -34,14 +34,7 @@ class QuotaSnapshot
     public function for(User $user): array
     {
         $shareLimit = (int) config('quotas.daily.shares');
-        // Counted from the SHARES table, not a cache counter. The counter is a
-        // fast pre-check that a Redis flush can lose; what the app shows a user
-        // about their own limit has to be the number we would actually enforce
-        // on, and that number is rows.
-        $sharesUsed = Share::query()
-            ->where('user_id', $user->id)
-            ->where('created_at', '>=', $this->windowStart())
-            ->count();
+        $sharesUsed = $this->sharesUsed($user);
 
         $budget = (float) config('ai.daily_user_budget');
         $spent = $this->spend->todaySpendUsd($user->id);
@@ -61,10 +54,32 @@ class QuotaSnapshot
         ];
     }
 
-    /** Has this user used up today's share allowance? */
+    /**
+     * Has this user used up today's share allowance?
+     *
+     * Counts directly rather than through `for()`: this runs on every POST
+     * /shares, and the full snapshot also reads the AI spend counter — work the
+     * write path has no use for.
+     */
     public function sharesExhausted(User $user): bool
     {
-        return $this->for($user)['shares']['remaining'] === 0;
+        return $this->sharesUsed($user) >= (int) config('quotas.daily.shares');
+    }
+
+    /**
+     * Shares created by this user since the window opened.
+     *
+     * Counted from the SHARES table, not a cache counter. The counter is a fast
+     * pre-check that a Redis flush can lose; what the app shows a user about
+     * their own limit has to be the number we would actually enforce on, and
+     * that number is rows.
+     */
+    private function sharesUsed(User $user): int
+    {
+        return Share::query()
+            ->where('user_id', $user->id)
+            ->where('created_at', '>=', $this->windowStart())
+            ->count();
     }
 
     /** Midnight UTC just gone — the start of the current quota day. */

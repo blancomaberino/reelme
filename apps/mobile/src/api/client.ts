@@ -87,7 +87,11 @@ api.interceptors.response.use(
       return Promise.reject(new ValidationError(fields, error.response?.data?.error?.message));
     }
 
-    if (status === 429) {
+    // A 429 raises the global "slow down" banner — EXCEPT the daily quota,
+    // which is also a 429 and wants the opposite advice. Slowing down does not
+    // help somebody who is out until midnight, and the banner would contradict
+    // the screen telling them when they get more.
+    if (status === 429 && error.response?.data?.error?.code !== 'quota_exhausted') {
       useUiStore.getState().setRateLimited(true);
     }
 

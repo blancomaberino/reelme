@@ -44,6 +44,36 @@ it('answers a throttled request in the standard error envelope', function () {
         ->and($last->headers->get('X-RateLimit-Remaining'))->toBe('0');
 });
 
+it('meters a route that names no limiter of its own', function () {
+    // Laravel does NOT throttle the `api` group by default. Without the
+    // `throttleApi('api')` line in bootstrap/app.php every endpoint that does
+    // not name a limiter is completely unmetered — which is what was shipping,
+    // and which nothing in the suite would have noticed: the tests all drove
+    // routes that DO name one.
+    config(['quotas.rate.default' => 2]);
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->getJson('/api/v1/me')->assertOk();
+    $this->actingAs($user)->getJson('/api/v1/me')->assertOk();
+    $this->actingAs($user)->getJson('/api/v1/me')->assertStatus(429);
+});
+
+it('does not let the catch-all quietly cap a route that asked for more', function () {
+    // Throttle middlewares STACK, and the tightest wins. A route on
+    // `throttle:map` (120/min) that also inherits the 60/min catch-all is
+    // capped at 60 — the higher limiter becomes decorative, and the only
+    // symptom is users being throttled at half the documented rate. Hence
+    // `withoutMiddleware('throttle:api')` on every such route.
+    config(['quotas.rate.default' => 1, 'quotas.rate.map' => 5]);
+    $user = User::factory()->create();
+
+    foreach (range(1, 4) as $ignored) {
+        $this->actingAs($user)
+            ->getJson('/api/v1/map/places?bbox=-56.2,-34.95,-56.1,-34.85&zoom=13')
+            ->assertOk();
+    }
+});
+
 it('gives share-status polling its own, larger budget', function () {
     // AnalysisStatus polls at 24/min. On the shared default limiter one screen
     // would eat most of a minute's allowance and the app would throttle a user
@@ -107,16 +137,33 @@ it('refuses a share past the daily allowance, and says when it comes back', func
         ->postJson('/api/v1/shares', ['url' => 'https://www.instagram.com/reel/OVER/'])
         ->assertStatus(429);
 
-    // The daily cap is enforced in the CONTROLLER, not as a `Limit::perDay` —
-    // that is a rolling 86,400s window anchored to the user's first request,
-    // which would disagree with the midnight-UTC reset `/me` reports. Two
-    // mechanisms answering "when do I get more" differently is the bug.
-    expect($response->json('error.message'))
-        ->toContain(Carbon::now('UTC')->startOfDay()->addDay()->toIso8601String());
+    // `quota_exhausted`, NOT `rate_limited`. The 10/min burst limiter on the
+    // same route is also a 429 and wants the opposite advice — "wait a moment"
+    // versus "come back tomorrow" — and a client that can only see the status
+    // tells somebody who tapped twice quickly that they are out for the day.
+    $response->assertJsonPath('error.code', 'quota_exhausted')
+        ->assertJsonPath('error.details.reason', 'daily_shares')
+        // The same midnight-UTC boundary `/me` reported, so the refusal and the
+        // screen that predicted it agree to the second.
+        ->assertJsonPath('error.details.resets_at', Carbon::now('UTC')->startOfDay()->addDay()->toIso8601String());
 
     // And nothing was written. A refused share that still costs a row would
     // make the next day's count wrong too.
     expect(Share::where('user_id', $user->id)->count())->toBe(1);
+});
+
+it('answers the burst limit as rate_limited, a different problem', function () {
+    config(['quotas.daily.shares' => 100]);
+    $user = User::factory()->create();
+
+    // 10/min, hard-coded in the `shares` limiter. Same route, same status,
+    // different code — that distinction is the whole point of the one above.
+    $last = null;
+    foreach (range(1, 11) as $ignored) {
+        $last = $this->actingAs($user)->postJson('/api/v1/shares', ['url' => 'https://www.instagram.com/reel/BURST/']);
+    }
+
+    $last->assertStatus(429)->assertJsonPath('error.code', 'rate_limited');
 });
 
 it('lets the share through while the allowance lasts', function () {
