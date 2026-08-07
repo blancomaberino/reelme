@@ -1,5 +1,8 @@
 <?php
 
+use App\Providers\HorizonServiceProvider;
+use Laravel\Horizon\Horizon;
+
 it('assigns exactly the canonical queue set across supervisors', function () {
     $supervisors = config('horizon.defaults');
 
@@ -64,4 +67,36 @@ it('sets a long-wait threshold for every queue that runs long jobs', function ()
             "redis:{$queue} must not alert before its own jobs can finish",
         );
     }
+});
+
+it('actually routes the long-wait alert somewhere when configured', function () {
+    // The thresholds above have been tuned since T-028 and, until T-052, the
+    // notification they raise went NOWHERE: Horizon routes nothing by default.
+    // The whole alerting half of this config was dead — correct thresholds, a
+    // firing alert, and no human on the other end, which is indistinguishable
+    // from having no thresholds at all. This asserts the wiring, not the value.
+    config([
+        'horizon.notifications.mail' => 'ops@reelmap.test',
+        'horizon.notifications.slack_webhook' => 'https://hooks.slack.test/x',
+        'horizon.notifications.slack_channel' => '#pipeline',
+    ]);
+
+    (new HorizonServiceProvider(app()))->boot();
+
+    expect(Horizon::$email)->toBe('ops@reelmap.test')
+        ->and(Horizon::$slackWebhookUrl)->toBe('https://hooks.slack.test/x')
+        ->and(Horizon::$slackChannel)->toBe('#pipeline');
+});
+
+it('stays silent when no destination is configured', function () {
+    // Local and CI. An alert that pages during a test run is an alert somebody
+    // turns off — and then it is off in production too.
+    config(['horizon.notifications' => ['mail' => null, 'slack_webhook' => null, 'slack_channel' => '#alerts']]);
+    Horizon::$email = null;
+    Horizon::$slackWebhookUrl = null;
+
+    (new HorizonServiceProvider(app()))->boot();
+
+    expect(Horizon::$email)->toBeNull()
+        ->and(Horizon::$slackWebhookUrl)->toBeNull();
 });

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
+use Laravel\Horizon\Horizon;
 use Laravel\Horizon\HorizonApplicationServiceProvider;
 
 class HorizonServiceProvider extends HorizonApplicationServiceProvider
@@ -15,9 +16,36 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     {
         parent::boot();
 
-        // Horizon::routeSmsNotificationsTo('15556667777');
-        // Horizon::routeMailNotificationsTo('example@example.com');
-        // Horizon::routeSlackNotificationsTo('slack-webhook-url', '#channel');
+        $this->routeLongWaitNotifications();
+    }
+
+    /**
+     * Where a `LongWaitDetected` alert goes (T-052).
+     *
+     * `config/horizon.php`'s `waits` thresholds have been tuned per queue since
+     * T-028 — and until now the notification they raise went NOWHERE. Horizon
+     * routes nothing by default, so the whole alerting half of that config was
+     * dead: the thresholds were correct, the alert fired, and no human was on
+     * the other end. Which is indistinguishable from having no thresholds.
+     *
+     * Both channels are optional and env-backed, so local and CI stay silent —
+     * an alert that pages during a test run is an alert somebody turns off.
+     *
+     * NOTE this covers a BACKLOG, not a failure. A job that exhausts its retries
+     * is captured by ObservabilityServiceProvider's `Queue::failing` hook and
+     * goes to the error tracker with its share_id — the two are different
+     * questions ("is work piling up" vs "did this share break") and deliberately
+     * have different destinations.
+     */
+    private function routeLongWaitNotifications(): void
+    {
+        if ($email = config('horizon.notifications.mail')) {
+            Horizon::routeMailNotificationsTo($email);
+        }
+
+        if ($webhook = config('horizon.notifications.slack_webhook')) {
+            Horizon::routeSlackNotificationsTo($webhook, config('horizon.notifications.slack_channel'));
+        }
     }
 
     /**
