@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\ReportReason;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Http\FormRequest;
@@ -64,6 +65,31 @@ class StoreReportRequest extends FormRequest
             'reportable_type.in' => 'That is not something you can report.',
             'reportable_id.exists' => 'We could not find what you are reporting.',
         ];
+    }
+
+    /**
+     * Reporting yourself is unactionable noise in a queue that sorts by count.
+     *
+     * Enforced HERE, as a validation rule, rather than as a special case in the
+     * controller: a short-circuit there returned `data.report = null`, which is
+     * a response shape the contract does not describe and no test covered — a
+     * client reading `data.report.id` would have broken at runtime with no
+     * signal from CI. A 422 is a shape every client already handles.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $user = $this->user();
+
+            if ($user === null) {
+                return;
+            }
+
+            if ($this->input('reportable_type') === $user->getMorphClass()
+                && (int) $this->input('reportable_id') === (int) $user->getKey()) {
+                $validator->errors()->add('reportable_id', 'You cannot report your own account.');
+            }
+        });
     }
 
     /** The table the requested alias maps to, or a sentinel that never matches. */

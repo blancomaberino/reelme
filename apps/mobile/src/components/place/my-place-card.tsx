@@ -61,6 +61,10 @@ function MyPlaceCardBase({ place, onPress, onRemove }: Props) {
       accessibilityLabel={place.name}
       onPress={() => onPress(place.slug)}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      // Stable handle for the E2E flows. Matching these rows on `text: ".*"`
+      // picks up the header and the tab bar too, so which one a tap lands on
+      // depends on hierarchy order rather than on anything the flow means.
+      testID="my-place-card"
     >
       <Thumbnail uri={place.thumbnail_url ?? null} style={styles.thumb} />
       <View style={styles.body}>

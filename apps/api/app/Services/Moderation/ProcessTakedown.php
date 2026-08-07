@@ -33,6 +33,16 @@ use Illuminate\Support\Facades\Storage;
  */
 class ProcessTakedown
 {
+    /** @var array<string, mixed> */
+    private const EMPTY_OUTCOME = [
+        'shares' => 0,
+        'place_sources' => 0,
+        'media' => 0,
+        'media_failed' => 0,
+        'places_kept' => [],
+        'places_revived' => [],
+    ];
+
     public function __construct(private readonly ShareModerator $shares) {}
 
     /**
@@ -40,12 +50,35 @@ class ProcessTakedown
      */
     public function execute(TakedownRequest $request, User $admin): array
     {
+        // Claim it atomically before doing anything. Two admins working the
+        // queue can both press "Action it" before either finishes: without a
+        // claim both runs remove the same content and write competing audit
+        // outcomes, and the second one overwrites the first's record of what
+        // was actually removed.
+        $claimed = TakedownRequest::query()
+            ->whereKey($request->getKey())
+            ->whereIn('status', [TakedownStatus::Received, TakedownStatus::CounterNotice])
+            ->update(['status' => TakedownStatus::Processing]);
+
+        if ($claimed === 0) {
+            // Somebody else has it, or it is already finished. Hand back what
+            // that run recorded rather than inventing a second answer.
+            $existing = TakedownRequest::query()->find($request->getKey());
+
+            if ($existing !== null && is_array($existing->outcome_json)) {
+                return $existing->outcome_json;
+            }
+
+            return self::EMPTY_OUTCOME;
+        }
+
+        $request->refresh();
         $post = $request->sourcePost;
 
         if ($post === null) {
             // Nothing matched to act on yet. Recorded rather than silently
             // skipped: a notice that cannot be actioned still needs an answer.
-            $outcome = ['shares' => 0, 'place_sources' => 0, 'media' => 0, 'places_kept' => [], 'places_revived' => []];
+            $outcome = self::EMPTY_OUTCOME;
             $this->close($request, $admin, $outcome, 'unmatched');
 
             return $outcome;
@@ -117,12 +150,17 @@ class ProcessTakedown
             MediaAsset::query()->where('source_post_id', $post->id)->delete();
         });
 
-        $this->deleteObjects($objects);
+        $failed = $this->deleteObjects($objects);
 
         $outcome = [
             'shares' => $sharesTaken,
             'place_sources' => $sourcesRemoved,
-            'media' => $objects->count(),
+            // The count of objects actually GONE, not the count attempted. A
+            // notice is a legal record: telling a rightsholder we deleted six
+            // files when two are still in the bucket is the one number here
+            // that must never be optimistic.
+            'media' => $objects->count() - count($failed),
+            'media_failed' => count($failed),
             'places_kept' => $placesKept,
             // Kept BECAUSE we overrode the orphan rule — these have no source
             // left and are flagged for review. Recorded separately so the
@@ -137,13 +175,17 @@ class ProcessTakedown
 
     /**
      * @param  Collection<int, MediaAsset>  $objects
+     * @return list<int> ids whose object is still in the bucket
      */
-    private function deleteObjects($objects): void
+    private function deleteObjects($objects): array
     {
+        $failed = [];
+
         foreach ($objects as $asset) {
             try {
                 Storage::disk($asset->disk)->delete($asset->storage_path);
             } catch (\Throwable $e) {
+                $failed[] = (int) $asset->id;
                 // A takedown is a legal obligation with a clock on it — a
                 // blinking bucket must not abort the rest of it. The row is
                 // already gone, so the retention sweep is what catches the file.
@@ -153,6 +195,8 @@ class ProcessTakedown
                 ]);
             }
         }
+
+        return $failed;
     }
 
     /**

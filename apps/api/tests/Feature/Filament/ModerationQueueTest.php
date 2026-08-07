@@ -204,8 +204,11 @@ it('lets an admin log and action a takedown notice', function () {
 
     expect($share->fresh()->status)->toBe(ShareStatus::Rejected)
         ->and($request->fresh()->status)->toBe(TakedownStatus::Actioned)
-        // FR-30 — the pin survives its source being pulled.
-        ->and(Place::find($place->id))->not->toBeNull();
+        // FR-30 — the pin survives its source being pulled. Asserted on STATUS:
+        // `not->toBeNull()` passes on a `Removed` tombstone, i.e. on a pin that
+        // has vanished from the map.
+        ->and(Place::find($place->id)->status)->toBe(PlaceStatus::Pending)
+        ->and(Place::find($place->id)->needs_admin_review)->toBeTrue();
 });
 
 it('keeps takedowns out of non-admin hands', function () {

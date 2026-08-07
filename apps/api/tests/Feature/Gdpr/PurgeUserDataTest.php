@@ -4,6 +4,7 @@ use App\Enums\LedgerAccount;
 use App\Enums\MediaKind;
 use App\Enums\PayoutStatus;
 use App\Enums\RedemptionStatus;
+use App\Enums\ReportStatus;
 use App\Enums\ShareStatus;
 use App\Models\Device;
 use App\Models\Influencer;
@@ -325,6 +326,20 @@ it('takes the moderation flags they filed AND the ones naming them', function ()
     // anonymised rather than deleted.
     expect(DB::table('reports')->where('reporter_user_id', $user->id)->count())->toBe(0)
         ->and(DB::table('reports')->where('id', $aboutThem->id)->count())->toBe(0);
+});
+
+it('stops a purged admin being the recorded decider on retained moderation rows', function () {
+    ['user' => $admin] = gdprPurgeFixture();
+    $share = Share::factory()->create();
+    $report = Report::factory()->against($share)->resolved()->create(['resolved_by_user_id' => $admin->id]);
+
+    app(UserDataPurger::class)->purge($admin);
+
+    // Same rule as the rest of anonymiseRetainedRows: the DECISION is the
+    // record we keep, the decider is not. Without this a purged admin stays
+    // linked to every report they ever closed.
+    expect($report->fresh()->resolved_by_user_id)->toBeNull()
+        ->and($report->fresh()->status)->toBe(ReportStatus::Resolved);
 });
 
 it('deletes an invitation addressed TO the purged user', function () {

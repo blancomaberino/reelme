@@ -34,6 +34,7 @@ class TakedownRequestsTable
                     ->badge()
                     ->color(fn (TakedownStatus $state): string => match ($state) {
                         TakedownStatus::Received => 'danger',
+                        TakedownStatus::Processing => 'info',
                         TakedownStatus::CounterNotice => 'warning',
                         TakedownStatus::Actioned => 'success',
                         TakedownStatus::Closed => 'gray',

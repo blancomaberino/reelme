@@ -168,3 +168,41 @@ it('dismisses without touching the content', function () {
         ->and($report->fresh()->status)->toBe(ReportStatus::Dismissed)
         ->and($report->fresh()->resolved_by_user_id)->toBe($admin->id);
 });
+
+it('sweeps nothing while the primary report is still open', function () {
+    $admin = User::factory()->admin()->create();
+    $share = Share::factory()->create();
+    $primary = reportAgainst($share);
+    $sibling = reportAgainst($share, ReportReason::Spam);
+
+    // Fail-closed. `close()` copies the PRIMARY's status onto each sibling, so
+    // sweeping from an open primary stamps a resolver and a timestamp onto rows
+    // whose status stays `open` — reports that sit in the queue forever looking
+    // decided.
+    expect(app(ReportActions::class)->resolveSiblings($primary, $admin, 'too early'))->toBe(0);
+
+    expect($sibling->fresh()->status)->toBe(ReportStatus::Open)
+        ->and($sibling->fresh()->resolved_by_user_id)->toBeNull();
+});
+
+it('does not ban an account that is already banned', function () {
+    $admin = User::factory()->admin()->create();
+    $offender = User::factory()->create();
+    $offender->delete();
+    $report = reportAgainst($offender);
+
+    // Re-banning would re-stamp `deleted_at` and make the ban look newer than
+    // it is — and the report would close on a decision nobody actually took.
+    expect(app(ReportActions::class)->banReported($report->fresh(), $admin, 'again'))->toBeFalse();
+    expect($report->fresh()->status)->toBe(ReportStatus::Open);
+});
+
+it('does not pretend it took a user down through the content path', function () {
+    $admin = User::factory()->admin()->create();
+    $report = reportAgainst(User::factory()->create());
+
+    // "Take down" has no meaning for an account — banning is the action, and it
+    // is a separate control. Returning true here would suppress the "nothing to
+    // take down" warning and tell an admin something happened.
+    expect(app(ReportActions::class)->takeDown($report, $admin, 'wrong control'))->toBeFalse();
+});

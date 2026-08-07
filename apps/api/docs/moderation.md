@@ -14,8 +14,8 @@ material removed. This is how both work.
 | `reportable_type` | `place` · `share` · `user` · `source_post` · `offer` — morph **aliases**, never class names |
 | `reason` | `spam` · `wrong_place` · `inappropriate` · `copyright` · `fraud` · `other` |
 | 201 | filed |
-| 409 | you already filed this exact report — **a success from the user's side**, and the app says "already reported, thanks" |
-| 422 | unknown type/reason, or a target id that does not exist |
+| 409 | you already filed this exact report — **a success from the user's side**. The app treats it as done and shows the same "thanks, we're on it" confirmation as a 201 |
+| 422 | unknown type/reason, a target id that does not exist, or your own account |
 
 Unique on `(reporter, target, reason)`. Without that, one motivated person can
 manufacture a pile of reports that looks like consensus — and the queue sorts by
@@ -80,6 +80,12 @@ public endpoint: a self-service takedown would let anyone unpublish anyone
 else's places by asserting a claim, and verifying the claim is the part that
 needs a human.
 
+Actioning claims the notice atomically (`received`/`counter_notice` →
+`processing`) before touching anything: two admins working the queue can both
+press the button before either finishes, and without the claim both runs remove
+the same content and write competing records of what was removed. A second
+press hands back what the first run recorded.
+
 Log the notice first and match the post later — a notice usually arrives as a
 bare URL, and refusing to record it until someone finds the row is how notices
 get lost. "Action it" then:
@@ -97,8 +103,15 @@ get lost. "Action it" then:
 > row survives for the same reason a receipt does: other analytics reference it,
 > and a counter-notice asks what was there.
 
-The outcome is written to `outcome_json` (shares, sources, media, places kept),
-which is what a response letter is composed from.
+The outcome is written to `outcome_json` (shares, sources, media, media_failed,
+places kept, places revived), which is what a response letter is composed from.
+`media` counts objects actually **gone** — a delete the bucket refused is
+counted in `media_failed`, because telling a rightsholder we removed a file that
+is still in storage is the one number here that must never be optimistic.
+
+`places_revived` are places whose last source this notice removed. They are kept
+(FR-30) but returned to `pending` with `needs_admin_review`, because a pin with
+no provenance left belongs in the review queue rather than silently on the map.
 
 `counter_notice` is a real status, not a note on `closed`: the DMCA gives the
 uploader a right of reply, and a system that cannot represent "they disputed it"

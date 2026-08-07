@@ -377,6 +377,11 @@ class UserDataPurger
         DB::table('place_merges')->where('performed_by_user_id', $id)->update(['performed_by_user_id' => null]);
         DB::table('place_claims')->where('reviewed_by_user_id', $id)->update(['reviewed_by_user_id' => null]);
         DB::table('influencer_claims')->where('reviewed_by_user_id', $id)->update(['reviewed_by_user_id' => null]);
+        // A purged ADMIN otherwise stays linked to every report they closed and
+        // every notice they actioned. Same rule as the rest of this method: the
+        // decision is the record we keep, the decider is not.
+        DB::table('reports')->where('resolved_by_user_id', $id)->update(['resolved_by_user_id' => null]);
+        DB::table('takedown_requests')->where('actioned_by_user_id', $id)->update(['actioned_by_user_id' => null]);
 
         // A code THIS user scanned as venue staff: the redemption is the
         // restaurant's billing record, the scanner's identity is not.

@@ -94,13 +94,16 @@ it('keeps the form open on a real failure', async () => {
 
   renderSheet();
   fireEvent.press(screen.getByTestId('report-reason-fraud'));
+  fireEvent.changeText(screen.getByTestId('report-details'), 'They keep posting this.');
   fireEvent.press(screen.getByTestId('report-submit'));
 
-  // The chosen reason and any typed details must survive — losing them means
-  // the person has to compose the whole thing again to try.
+  // The chosen reason and any typed details must SURVIVE — asserted, not
+  // assumed. Losing them means the person has to compose the whole thing again
+  // to retry, which is how a failed report becomes an abandoned one.
   await screen.findByTestId('report-error');
   expect(screen.queryByTestId('report-done')).toBeNull();
-  expect(screen.getByTestId('report-submit')).toBeOnTheScreen();
+  expect(screen.getByTestId('report-details').props.value).toBe('They keep posting this.');
+  expect(screen.getByTestId('report-submit').props.accessibilityState.disabled).toBe(false);
 });
 
 it('omits empty details rather than sending a blank string', async () => {

@@ -184,13 +184,19 @@ it('finishes the takedown even when the bucket refuses', function () {
 
     Storage::shouldReceive('disk')->andThrow(new RuntimeException('bucket down'));
 
-    app(ProcessTakedown::class)->execute(TakedownRequest::factory()->forPost($post)->create(), $admin);
+    $outcome = app(ProcessTakedown::class)->execute(TakedownRequest::factory()->forPost($post)->create(), $admin);
 
     // A takedown is a legal obligation with a clock on it. The rows go either
     // way; the orphaned object is swept by the retention pass, which is what
     // that pass is for.
     expect($share->fresh()->status)->toBe(ShareStatus::Rejected)
-        ->and(MediaAsset::find($asset->id))->toBeNull();
+        ->and(MediaAsset::find($asset->id))->toBeNull()
+        // And the record says what actually happened. Counting an attempted
+        // delete as a completed one would tell a rightsholder we removed a
+        // file that is still sitting in the bucket — the one number in this
+        // outcome that must never be optimistic.
+        ->and($outcome['media'])->toBe(0)
+        ->and($outcome['media_failed'])->toBe(1);
 });
 
 it('marks a DMCA removal distinguishably from a routine admin one', function () {
@@ -221,4 +227,37 @@ it('records the takedown in the audit log', function () {
             && $context['admin_id'] === $admin->id
             && $context['shares'] === 1,
     );
+});
+
+it('lets only one admin action a notice', function () {
+    $admin = User::factory()->admin()->create();
+    $second = User::factory()->admin()->create();
+    ['post' => $post, 'share' => $share] = takedownFixture();
+    $request = TakedownRequest::factory()->forPost($post)->create();
+
+    $first = app(ProcessTakedown::class)->execute($request, $admin);
+
+    // The second admin pressed the button before the page refreshed. Without an
+    // atomic claim this runs the whole take-down again and overwrites the first
+    // run's record of what was removed — competing audit outcomes for one notice.
+    $repeat = app(ProcessTakedown::class)->execute($request->fresh(), $second);
+
+    // Same outcome handed back (key order differs — it comes back through
+    // JSON), and crucially the FIRST admin stays recorded as the actor.
+    expect($repeat['shares'])->toBe($first['shares'])
+        ->and($repeat['places_kept'])->toBe($first['places_kept'])
+        ->and($request->fresh()->actioned_by_user_id)->toBe($admin->id)
+        ->and($share->fresh()->status)->toBe(ShareStatus::Rejected);
+});
+
+it('reports what a previous run did rather than redoing it', function () {
+    $admin = User::factory()->admin()->create();
+    $request = TakedownRequest::factory()->create(['status' => TakedownStatus::Closed]);
+
+    // A closed notice is not available to action. Handing back its recorded
+    // outcome beats inventing a second answer for the same notice.
+    $outcome = app(ProcessTakedown::class)->execute($request, $admin);
+
+    expect($outcome['shares'])->toBe(0)
+        ->and($request->fresh()->status)->toBe(TakedownStatus::Closed);
 });

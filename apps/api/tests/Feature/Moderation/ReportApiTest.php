@@ -243,3 +243,31 @@ it('rejects details longer than the column can hold', function () {
         'details' => str_repeat('a', 2001),
     ])->assertStatus(422)->assertJsonPath('error.details.details', fn ($v) => is_array($v));
 });
+
+it('refuses a report against your own account, in the normal error shape', function () {
+    $user = User::factory()->create();
+
+    // A controller short-circuit here returned `data.report = null`, a shape the
+    // contract does not describe and no client handles — someone reading
+    // `data.report.id` would have broken at runtime with nothing failing in CI.
+    // A 422 is the shape every client already handles.
+    $this->actingAs($user)->postJson('/api/v1/reports', [
+        'reportable_type' => 'user',
+        'reportable_id' => $user->id,
+        'reason' => ReportReason::Spam->value,
+    ])->assertStatus(422)->assertJsonPath('error.details.reportable_id', fn ($v) => is_array($v));
+
+    expect(Report::count())->toBe(0);
+});
+
+it('still lets you report somebody else', function () {
+    $user = User::factory()->create();
+    $other = User::factory()->create();
+
+    // The self-check must key on the CALLER, not on the type being `user`.
+    $this->actingAs($user)->postJson('/api/v1/reports', [
+        'reportable_type' => 'user',
+        'reportable_id' => $other->id,
+        'reason' => ReportReason::Spam->value,
+    ])->assertCreated();
+});

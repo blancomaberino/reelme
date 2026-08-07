@@ -42,9 +42,23 @@ class ReportActions
     public function takeDown(Report $report, User $admin, string $note): bool
     {
         $target = $report->reportable;
-        $acted = $target !== null && $this->applyTakeDown($target);
 
-        $this->close($report, ReportStatus::Resolved, $admin, $note, $acted ? 'take_down' : 'take_down_noop');
+        // One transaction around the mutation AND its record. Separately, a
+        // throw between them leaves content hidden with nothing saying who hid
+        // it or why — which this class's whole docblock argues is the failure
+        // to avoid. The moderators open their own nested transactions; Laravel
+        // folds those into this one.
+        $acted = DB::transaction(function () use ($report, $target, $admin): bool {
+            $acted = $target !== null && $this->applyTakeDown($target);
+
+            $this->record($report, ReportStatus::Resolved, $admin, $acted ? 'take_down' : 'take_down_noop');
+
+            return $acted;
+        });
+
+        // Logged only after the commit, so a rolled-back action is never
+        // written down as done.
+        $this->audit($report, ReportStatus::Resolved, $admin, $note, $acted ? 'take_down' : 'take_down_noop');
 
         return $acted;
     }
@@ -69,12 +83,14 @@ class ReportActions
             return false;
         }
 
-        DB::transaction(function () use ($target): void {
+        DB::transaction(function () use ($report, $target, $admin): void {
             $target->tokens()->delete();
             $target->delete();
+
+            $this->record($report, ReportStatus::Resolved, $admin, 'ban');
         });
 
-        $this->close($report, ReportStatus::Resolved, $admin, $note, 'ban');
+        $this->audit($report, ReportStatus::Resolved, $admin, $note, 'ban');
 
         return true;
     }
@@ -82,7 +98,8 @@ class ReportActions
     /** Looked at it, nothing to do. */
     public function dismiss(Report $report, User $admin, string $note): void
     {
-        $this->close($report, ReportStatus::Dismissed, $admin, $note, 'dismiss');
+        $this->record($report, ReportStatus::Dismissed, $admin, 'dismiss');
+        $this->audit($report, ReportStatus::Dismissed, $admin, $note, 'dismiss');
     }
 
     /**
@@ -105,7 +122,8 @@ class ReportActions
         $siblings = Report::query()->againstSameTarget($report)->open()->get();
 
         foreach ($siblings as $sibling) {
-            $this->close($sibling, $report->status, $admin, $note, 'sibling_of:'.$report->id);
+            $this->record($sibling, $report->status, $admin, 'sibling_of:'.$report->id);
+            $this->audit($sibling, $report->status, $admin, $note, 'sibling_of:'.$report->id);
         }
 
         return $siblings->count();
@@ -131,13 +149,22 @@ class ReportActions
         };
     }
 
-    private function close(Report $report, ReportStatus $status, User $admin, string $note, string $action): void
+    /** The database half — must commit with whatever it is recording. */
+    private function record(Report $report, ReportStatus $status, User $admin, string $action): void
     {
         $report->resolve($status, $admin);
+    }
 
-        // The audit trail. `note` is required by the Filament action, so this
-        // always carries a human's stated reason — the thing a takedown dispute
-        // or a store review actually asks for.
+    /**
+     * The audit trail, written AFTER the commit.
+     *
+     * `note` is required by the Filament action, so this always carries a
+     * human's stated reason — the thing a takedown dispute or a store review
+     * actually asks for. Deliberately outside the transaction: a rolled-back
+     * action must not leave a log line saying it happened.
+     */
+    private function audit(Report $report, ReportStatus $status, User $admin, string $note, string $action): void
+    {
         Log::info('moderation.report.actioned', [
             'report_id' => $report->id,
             'action' => $action,

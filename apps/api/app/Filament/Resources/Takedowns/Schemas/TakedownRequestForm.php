@@ -43,8 +43,16 @@ class TakedownRequestForm
                 ->helperText('Leave empty if you cannot find it — the notice is still logged and answerable.'),
 
             Textarea::make('notes')->rows(4)->maxLength(5000),
+            // `actioned` is deliberately absent. It is written ONLY by
+            // ProcessTakedown, together with the audit fields and the outcome —
+            // a hand-set `actioned` would be a notice claiming work was done
+            // with no record of what, and it would hide the process button, so
+            // the work could then never actually be done.
             Select::make('status')
-                ->options(collect(TakedownStatus::cases())->pluck('value', 'value')->all())
+                ->options(collect(TakedownStatus::cases())
+                    ->reject(fn (TakedownStatus $case) => $case === TakedownStatus::Actioned)
+                    ->pluck('value', 'value')
+                    ->all())
                 ->default(TakedownStatus::Received->value)
                 ->required(),
         ]);

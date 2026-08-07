@@ -160,8 +160,11 @@ it('lets you report a profile, and files against the user', async () => {
   fireEvent.press(screen.getByTestId('report-submit'));
 
   await waitFor(() => expect(mock.history.post).toHaveLength(1));
+  // The ID matters as much as the type: a sheet wired to the viewer instead of
+  // the profile would file a report against the wrong person and look correct.
   expect(JSON.parse(mock.history.post[0].data)).toMatchObject({
     reportable_type: 'user',
+    reportable_id: '9',
     reason: 'inappropriate',
   });
 });

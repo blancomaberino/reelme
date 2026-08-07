@@ -35,10 +35,13 @@ appId: pet.one.reelmap
     visible: "Mis lugares"
     timeout: 30000
 - takeScreenshot: build/maestro/report-list
+# The first row by index, but matched on the row's own accessibility label
+# (the place NAME) rather than on `text: ".*"` — that pattern matches the
+# header, the tab bar and anything else on screen, so which element it lands on
+# depends on hierarchy order rather than on anything this flow means.
 - tapOn:
     index: 0
-    text: ".*"
-    enabled: true
+    id: "my-place-card"
 
 # --- The report control must be VISIBLE on the place page -------------------
 # `assertVisible` on the id, not a scroll-and-hope: the claim being tested is
