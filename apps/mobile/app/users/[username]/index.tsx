@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useBlockUser } from '@/api/hooks/useBlocks';
 import { useFollow, useProfile, useUserLists, useUserPlaces } from '@/api/hooks/useProfile';
 import { Button } from '@/components/button';
 import { MyPlaceCard } from '@/components/place/my-place-card';
@@ -27,6 +28,7 @@ export default function UserProfileScreen() {
   const { follow, unfollow } = useFollow();
   const [tab, setTab] = useState<Tab>('places');
   const [reportOpen, setReportOpen] = useState(false);
+  const block = useBlockUser();
   const { data: places } = useUserPlaces(username ?? null);
   const { data: lists } = useUserLists(username ?? null);
 
@@ -92,6 +94,47 @@ export default function UserProfileScreen() {
               size="sm"
               onPress={() => setReportOpen(true)}
               testID="profile-report"
+            />
+          ) : null}
+
+          {/* Blocking sits beside reporting because they answer different
+              questions: a report is a REQUEST to a moderator, a block is a
+              decision that takes effect now. Apple 1.2 wants both, and a person
+              being harassed should not have to wait on a queue.
+
+              Authed-only — a guest has no account to block from. Confirmed with
+              a plain alert rather than a typed word (that is reserved for the
+              irreversible account deletion): this is undoable from Settings,
+              and the copy says so. */}
+          {!isSelf && authed ? (
+            <Button
+              title={t('block.action')}
+              variant="secondary"
+              size="sm"
+              loading={block.isPending}
+              testID="profile-block"
+              onPress={() =>
+                Alert.alert(
+                  t('block.confirmTitle', { name: profile.username }),
+                  t('block.confirmBody'),
+                  [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    {
+                      text: t('block.action'),
+                      style: 'destructive',
+                      onPress: () =>
+                        block.mutate(profile.username, {
+                          // Back to where they came from: this profile is a 404
+                          // for them now, so staying on it would show an error
+                          // screen as the result of a successful action.
+                          onSuccess: () =>
+                            router.canGoBack() ? router.back() : router.replace('/(main)/map'),
+                          onError: () => Alert.alert(t('block.failedTitle'), t('block.failedBody')),
+                        }),
+                    },
+                  ],
+                )
+              }
             />
           ) : null}
 

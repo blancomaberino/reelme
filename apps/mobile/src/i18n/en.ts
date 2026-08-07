@@ -726,6 +726,23 @@ export const en = {
   // Reporting content (T-049). Apple 1.2 and Google's UGC policy both require a
   // visible report path; the copy stays plain because someone using it is
   // usually upset and always in a hurry.
+  // Blocking (T-054, Apple 1.2). Distinct from reporting on purpose: a report
+  // is a request to a moderator, a block takes effect immediately — the copy
+  // has to make that difference obvious or people report and then wait.
+  'block.action': 'Block',
+  'block.confirmTitle': 'Block @{{name}}?',
+  'block.confirmBody':
+    'You won’t see their posts and they won’t see yours. You’ll both stop following each other. You can undo this in Settings.',
+  'block.failedTitle': 'Couldn’t block',
+  'block.failedBody': 'Something went wrong. Please try again.',
+  'block.settingsRow': 'Blocked accounts',
+  'block.listTitle': 'Blocked accounts',
+  'block.listEmpty': 'You haven’t blocked anyone.',
+  'block.listSubtitle': 'They can’t see your posts and you can’t see theirs.',
+  'block.unblock': 'Unblock',
+  'block.unblockConfirmTitle': 'Unblock @{{name}}?',
+  'block.unblockFailedTitle': 'Couldn’t unblock',
+  'block.unblockConfirmBody': 'You’ll be able to see each other’s posts again. Following isn’t restored.',
   'report.action': 'Report',
   'report.title': 'Report this',
   'report.signedOut': 'Sign in to report this.',

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 
@@ -167,6 +168,47 @@ it('lets you report a profile, and files against the user', async () => {
     reportable_id: '9',
     reason: 'inappropriate',
   });
+});
+
+it('blocks the account and leaves the screen it just 404’d', async () => {
+  mock.onGet('/users/alice').reply(200, profileResponse({ following: false, follow_id: null }));
+  mock.onPost('/me/blocks/alice').reply(204);
+
+  // Take the confirm branch — `Alert.alert` renders nothing in jest, so the
+  // destructive path is otherwise untestable and the test would only prove the
+  // dialog was requested.
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _b, buttons) => {
+    buttons?.find((b) => b.style === 'destructive')?.onPress?.();
+  });
+
+  render(<UserProfileScreen />, { wrapper: Providers });
+  await screen.findByText('Alice');
+
+  // Apple 1.2 asks for reporting AND blocking, and the store review looks for
+  // the CONTROL. Pressing the real one on the real screen is the only evidence
+  // anybody can reach it.
+  fireEvent.press(screen.getByTestId('profile-block'));
+
+  await waitFor(() => expect(mock.history.post).toHaveLength(1));
+  expect(mock.history.post[0].url).toBe('/me/blocks/alice');
+
+  // And it navigates away. This profile is a 404 for them now — staying would
+  // turn a successful action into an error screen.
+  await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+
+  alert.mockRestore();
+});
+
+it('never offers to block yourself', async () => {
+  useSessionStore.setState({ user: me('alice'), status: 'authed' }); // self
+  mock.onGet('/users/alice').reply(200, profileResponse({ following: false, follow_id: null }));
+
+  render(<UserProfileScreen />, { wrapper: Providers });
+  await screen.findByText('Alice');
+
+  // A self-block would empty your own feed and 404 your own profile. The API
+  // refuses it and the DB forbids it; the control should not be there at all.
+  expect(screen.queryByTestId('profile-block')).toBeNull();
 });
 
 it('never offers to report yourself', async () => {

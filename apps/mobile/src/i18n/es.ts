@@ -716,6 +716,23 @@ export const es: Record<MessageKey, string> = {
 
   // Privacidad y datos (T-039, 05 pantalla #16).
   'settings.privacy': 'Privacidad y datos',
+  // Bloqueo (T-054, Apple 1.2). Distinto de reportar a propósito: un reporte es
+  // un pedido a moderación, un bloqueo tiene efecto ya — si la diferencia no
+  // queda clara, la gente reporta y se queda esperando.
+  'block.action': 'Bloquear',
+  'block.confirmTitle': '¿Bloquear a @{{name}}?',
+  'block.confirmBody':
+    'No vas a ver sus publicaciones ni ellos las tuyas. Van a dejar de seguirse. Podés deshacerlo en Ajustes.',
+  'block.failedTitle': 'No se pudo bloquear',
+  'block.failedBody': 'Algo salió mal. Probá de nuevo.',
+  'block.settingsRow': 'Cuentas bloqueadas',
+  'block.listTitle': 'Cuentas bloqueadas',
+  'block.listEmpty': 'No bloqueaste a nadie.',
+  'block.listSubtitle': 'No pueden ver tus publicaciones ni vos las suyas.',
+  'block.unblock': 'Desbloquear',
+  'block.unblockConfirmTitle': '¿Desbloquear a @{{name}}?',
+  'block.unblockFailedTitle': 'No se pudo desbloquear',
+  'block.unblockConfirmBody': 'Van a poder ver las publicaciones del otro otra vez. No se restauran los seguimientos.',
   'report.action': 'Reportar',
   'report.title': 'Reportar esto',
   'report.signedOut': 'Iniciá sesión para reportar esto.',

@@ -24,6 +24,7 @@ use App\Services\Feed\PublishedShareFeed;
 use App\Services\Map\MapViewport;
 use App\Support\KeysetCursor;
 use App\Support\KeysetPage;
+use App\Support\Profiles\ProfileVisibility;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -207,12 +208,12 @@ class ProfileController extends Controller
     }
 
     /** Private profiles 404 for everyone but their owner (no existence leak). */
+    /**
+     * One gate for every profile read path — see {@see ProfileVisibility} for
+     * why the rule does not live here any more.
+     */
     private function assertViewable(Request $request, User $user): void
     {
-        if ($user->is_public) {
-            return;
-        }
-
-        abort_unless($request->user('sanctum')?->id === $user->id, 404);
+        ProfileVisibility::assert($request->user('sanctum'), $user);
     }
 }
