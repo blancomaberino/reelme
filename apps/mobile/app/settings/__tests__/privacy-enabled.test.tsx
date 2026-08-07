@@ -214,11 +214,12 @@ it('forgets the typed word after a FAILED delete, not just after cancel', async 
   expect(screen.getByTestId('privacy-delete-confirm').props.accessibilityState.disabled).toBe(true);
 });
 
-it('does not accept a Turkish-locale uppercasing of the word', () => {
-  // toLocaleUpperCase() uses the DEVICE locale, not the app's: on a tr/az
-  // device 'eliminar' becomes 'ELİMİNAR' and the gate can never be satisfied —
-  // a hard lockout on the one flow Apple requires. Plain toUpperCase is why
-  // this passes.
+it('accepts a lower-case word', () => {
+  // The locale half of this — that a Turkish device can still type the SPANISH
+  // word — lives in `src/lib/__tests__/confirmation-word.test.ts`. It cannot be
+  // tested here: this suite runs the English dictionary, and 'DELETE' has no
+  // character Turkish casing transforms, so the assertion would pass either
+  // way and prove nothing.
   render(<PrivacyScreen />, { wrapper: Providers });
   typeConfirmation('delete');
 

@@ -21,6 +21,7 @@ import { Button } from '@/components/button';
 import { ScreenHeader } from '@/components/screen-header';
 import { TextField } from '@/components/text-field';
 import { type MessageKey, useT } from '@/i18n';
+import { matchesConfirmationWord } from '@/lib/confirmation-word';
 import { featureFlags } from '@/lib/feature-flags';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
@@ -199,16 +200,10 @@ function DeleteConfirmSheet({
   const [typed, setTyped] = useState('');
 
   const word = t('privacy.delete.typeWord');
-  // Case- and whitespace-tolerant: the point is deliberate intent, not a typing
-  // test, and an on-screen keyboard that auto-capitalises would otherwise fail
-  // people for something they did not do.
-  //
-  // toUpperCase, NOT toLocaleUpperCase: the latter uses the DEVICE locale,
-  // independent of the app's language, and on a Turkish or Azerbaijani device
-  // 'eliminar' uppercases to 'ELİMİNAR' — permanently unmatchable. That is a
-  // hard lockout on the one flow Apple requires us to offer. Both words are
-  // ASCII, so locale-aware casing buys nothing here.
-  const matches = typed.trim().toUpperCase() === word.toUpperCase();
+  // Extracted so it can be tested against the SPANISH word — see
+  // `confirmation-word.ts`. The English sentinel has no Turkish casing
+  // transformation, so a test written against it cannot catch the locale bug.
+  const matches = matchesConfirmationWord(typed, word);
 
   // Reset on the CLOSE transition, not inside a handler. The sheet stays mounted
   // (only the Modal's children unmount), so `typed` survives — and cancel is not

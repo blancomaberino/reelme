@@ -17,10 +17,19 @@ use Illuminate\Support\Facades\Log;
  * and a serialised model would be a fortnight-old snapshot of a row that has
  * very much changed by the time it runs. It re-reads and re-decides.
  *
- * Unique per user so a second deletion request cannot queue a second purge of
- * one account. Unique UNTIL PROCESSING, not until completion: the "check back
- * later" re-dispatch at the bottom of handle() carries the same key, and a lock
- * held for the duration of the job would silently swallow it.
+ * Unique per user so a second deletion request, or the hourly reconciliation
+ * sweep, cannot queue a second purge for an account that already has one
+ * waiting. Unique UNTIL PROCESSING rather than until completion, so the sweep
+ * can re-queue an account the moment a previous attempt starts rather than
+ * being blocked for the length of the run.
+ *
+ * The lock is a de-duplication convenience, NOT a correctness guarantee:
+ * `uniqueFor` expires long before a 14-day delay elapses, and the job is
+ * idempotent and re-checks every precondition on execution, which is what
+ * actually makes a duplicate harmless.
+ *
+ * This job never re-dispatches itself. Under a `sync` connection that is an
+ * infinite loop; reconciliation lives in `reelmap:gdpr:sweep-deletions`.
  */
 class PurgeUserData implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {

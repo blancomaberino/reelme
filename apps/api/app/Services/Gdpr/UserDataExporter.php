@@ -51,33 +51,59 @@ class UserDataExporter
             throw new \RuntimeException('Could not open the export archive for writing.');
         }
 
-        foreach ($sections as $name => $rows) {
-            // THROW_ON_ERROR, because the alternative is silent: json_encode
-            // returns false on one invalid UTF-8 byte (captions come from
-            // scraped third-party content), the (string) cast turns that into
-            // '', and the user is handed an empty file and told it worked.
-            $zip->addFromString("{$name}.json", (string) json_encode(
-                $rows,
-                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
-            ));
-        }
-
-        $zip->addFromString('README.txt', $this->readme($user));
-
-        if (! $zip->close()) {
-            @unlink($tmp);
-            throw new \RuntimeException('The export archive could not be finalised.');
-        }
-
+        // Everything from here is wrapped, because two of the steps below can
+        // throw: JSON_THROW_ON_ERROR on a bad byte, and the upload. Without the
+        // finally, each failure leaks a temp file AND an open ZipArchive
+        // handle — and the job retries, so the leak repeats.
         $path = $this->pathFor($user);
-        $stream = fopen($tmp, 'rb');
+        $stream = null;
+        $closed = false;
 
         try {
-            Storage::disk($this->disk())->put($path, $stream);
+            foreach ($sections as $name => $rows) {
+                // THROW_ON_ERROR, because the alternative is silent:
+                // json_encode returns false on one invalid UTF-8 byte (captions
+                // come from scraped third-party content), the (string) cast
+                // turns that into '', and the user is handed an empty file and
+                // told it worked.
+                $zip->addFromString("{$name}.json", (string) json_encode(
+                    $rows,
+                    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+                ));
+            }
+
+            $zip->addFromString('README.txt', $this->readme($user));
+
+            if (! $zip->close()) {
+                throw new \RuntimeException('The export archive could not be finalised.');
+            }
+
+            $closed = true;
+
+            $stream = fopen($tmp, 'rb');
+
+            // `put()` returns FALSE on a failed write unless the disk sets
+            // `throw`. Ignoring it is the worst outcome this class has: the job
+            // logs success and mails a signed link to an object that does not
+            // exist, and nothing anywhere says otherwise.
+            if (Storage::disk($this->disk())->put($path, $stream) === false) {
+                throw new \RuntimeException('The export archive could not be uploaded.');
+            }
         } finally {
+            // Only if it is still open: close() on a closed archive raises a
+            // ValueError, and `@` suppresses warnings, not exceptions.
+            if (! $closed) {
+                try {
+                    $zip->close();
+                } catch (\Throwable) {
+                    // Already unusable — nothing left to release.
+                }
+            }
+
             if (is_resource($stream)) {
                 fclose($stream);
             }
+
             @unlink($tmp);
         }
 

@@ -750,7 +750,7 @@ export const en = {
   'privacy.delete.action': 'Delete account',
   'privacy.delete.confirmTitle': 'Delete your account?',
   'privacy.delete.confirmBody':
-    'You’ll be signed out of every device right away, and everything above is erased for good.',
+    'You’ll be signed out of every device right away. Everything above is then erased permanently once the cancellation period below has passed.',
   // Typing, not tapping. A destructive alert button sits one slip away from the
   // cancel beside it, and this is the one action whose slip costs everything.
   'privacy.delete.typePrompt': 'Type {{word}} to confirm',

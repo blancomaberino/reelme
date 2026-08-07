@@ -37,11 +37,18 @@ class SweepDueDeletions extends Command
         $due = User::onlyTrashed()
             ->whereNotNull('deletion_requested_at')
             ->where('deletion_requested_at', '<=', now()->subDays((int) config('gdpr.purge_grace_days')))
-            // Includes accounts already scrubbed but still holding a Stripe
-            // linkage: the purge keeps that one field while a payout is in
-            // flight, and something has to come back once it settles. The job
-            // is idempotent, so a re-run of a finished purge is just that field.
-            ->get(['id', 'deletion_requested_at', 'stripe_connect_account_id']);
+            // Finished purges are excluded by `purged_at` — without it every
+            // account ever erased matches this query on every hourly run and
+            // gets a full re-purge, forever.
+            //
+            // The one exception is a purge that deliberately held the Stripe
+            // linkage back while a payout was in flight: that account IS still
+            // owed work, and something has to come back for it once the
+            // transfer settles. The job is idempotent, so the revisit costs
+            // exactly the one remaining field.
+            ->where(fn ($q) => $q->whereNull('purged_at')
+                ->orWhereNotNull('stripe_connect_account_id'))
+            ->get(['id', 'deletion_requested_at', 'purged_at', 'stripe_connect_account_id']);
 
         $dispatched = 0;
 

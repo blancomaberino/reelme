@@ -391,12 +391,14 @@ class UserDataPurger
         // identifiers. Churning them would break any log line or support ticket
         // that recorded the first, for no benefit.
         if (Str::endsWith((string) $user->email, self::SCRUBBED_EMAIL_DOMAIN)) {
+            $attributes = ['purged_at' => $user->purged_at ?? now()];
+
             if (! $this->hasUnsettledPayout($user)) {
-                DB::table('users')->where('id', $user->id)->update([
-                    'stripe_connect_account_id' => null,
-                    'stripe_connect_onboarded_at' => null,
-                ]);
+                $attributes['stripe_connect_account_id'] = null;
+                $attributes['stripe_connect_onboarded_at'] = null;
             }
+
+            DB::table('users')->where('id', $user->id)->update($attributes);
 
             return;
         }
@@ -436,6 +438,11 @@ class UserDataPurger
             'followers_count' => 0,
             'following_count' => 0,
             'updated_at' => now(),
+            // The completion marker. `deletion_requested_at` stays set — it is
+            // the record of WHY this row is soft-deleted — so without a
+            // separate "done" fact the hourly sweep would match every account
+            // ever purged, on every run, forever.
+            'purged_at' => now(),
         ];
 
         // The Stripe account id is the one field that may have to outlive the

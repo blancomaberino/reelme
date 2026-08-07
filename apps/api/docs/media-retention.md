@@ -23,7 +23,10 @@ is needed — selected via `MEDIA_DISK` (see `.env.example`).
   and hard-deletes originals past their window (T-050). Derived
   keyframes/thumbnails persist.
 - **Defense-in-depth:** configure an **R2 lifecycle rule** expiring the
-  `originals/` prefix at 72 h, so nothing lingers even if the job fails.
+  `originals/` prefix at **`MEDIA_IN_FLIGHT_CEILING_HOURS` (168 h)** — the
+  ceiling, NOT the 72 h window. A rule set at 72 h would delete the originals of
+  shares that are still mid-pipeline, which is precisely the case the ceiling
+  exists to protect; the command is what enforces 72 h for finished ones.
 
 ## The retention commands (T-050)
 

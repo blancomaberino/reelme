@@ -45,8 +45,11 @@ corrections and media.
 `redemptions.redeemed_by_user_id` (a code this person scanned as venue staff is
 the restaurant's billing record).
 
-**Kept, in full** — `ledger_entries`, `redemptions`, `payouts`, published
-`shares` and the `places`/`place_sources` they created.
+**Kept** — `ledger_entries`, `redemptions`, `payouts`, published `shares` and
+the `places`/`place_sources` they created. Note that "kept" is not "untouched":
+a `redemptions` row this person scanned as venue staff keeps its billing facts
+but loses `redeemed_by_user_id` (see above). What survives in full is the
+financial record; what goes is the personal reference inside it.
 
 **The user row survives, scrubbed.** `name` → `Deleted user`, `username`/`email`
 → ULID-suffixed values on `@reelmap.invalid` (uniquely indexed, so a shared
@@ -65,7 +68,9 @@ would also take published community places' attribution with it.
 
 If a `pending`/`processing` payout exists, `stripe_connect_account_id` is the
 one field held back — the transfer has to land somewhere. Everything else is
-erased on schedule and the job re-dispatches daily until the payout settles.
+erased on schedule, and the hourly `reelmap:gdpr:sweep-deletions` revisits the
+account until the payout settles. (`PurgeUserData` does NOT re-dispatch itself:
+under a `sync` queue connection that is an infinite loop.)
 The deletion copy in the app discloses this: retention law overrides erasure for
 transaction records, and for an influencer or restaurant owner that is *the*
 material fact about deleting their account.
@@ -92,8 +97,11 @@ php artisan tinker --execute="App\Models\User::onlyTrashed()
   ->whereNotNull('deletion_requested_at')
   ->get(['id','deletion_requested_at'])->each(fn(\$u) => print(\$u->id.' '.\$u->deletion_requested_at.PHP_EOL));"
 
-# Force a purge now (idempotent — safe to re-run after a partial failure)
-php artisan tinker --execute="App\Jobs\Gdpr\PurgeUserData::dispatchSync(<id>);"
+# Run an ALREADY-DUE purge synchronously (idempotent — safe after a partial
+# failure). This does NOT bypass anything: the job re-checks that the deletion
+# is pending, is the user's own, and is past its grace period, and returns
+# without erasing if any of that fails. Quote the id or the shell eats it.
+php artisan tinker --execute="App\Jobs\Gdpr\PurgeUserData::dispatchSync(123);"
 
 # Retention sweeps
 php artisan reelmap:media:prune-originals --dry-run
@@ -110,6 +118,10 @@ not only in `defaults`, or the queue has no worker and jobs enqueue into silence
 
 `gdpr.deletion.requested` · `gdpr.deletion.cancelled` · `gdpr.purge.completed` ·
 `gdpr.purge.skipped` · `gdpr.purge.deferred_financial_linkage` ·
-`gdpr.export.completed` · `media.prune.deleted`
+`gdpr.export.completed` · `media.prune.deleted` · `gdpr.sweep.dispatched`
 
-None of them carry PII.
+None carry direct identifiers — no email, name, handle, token or archive path.
+They do carry `user_id`, which is **pseudonymous**: meaningless on its own, but
+re-identifying for anyone who can also read the database. Treat application logs
+as in-scope for the retention and access controls that covers, and do not add a
+field to these that would make a log line identifying by itself.

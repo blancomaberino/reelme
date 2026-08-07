@@ -40,6 +40,7 @@ use Laravel\Scout\Searchable;
  * @property Carbon|null $email_verified_at
  * @property Carbon|null $deleted_at
  * @property Carbon|null $deletion_requested_at
+ * @property Carbon|null $purged_at
  * @property Carbon|null $stripe_connect_onboarded_at
  * @property string|null $two_factor_secret
  * @property list<string>|null $two_factor_recovery_codes
@@ -76,25 +77,22 @@ class User extends Authenticatable implements FilamentUser, HasLocalePreference,
      * admin BAN is also a soft delete — and a banned account that looked like a
      * pending deletion could sign itself back in and cancel the ban.
      *
-     * Enforced here rather than at each call site because there are four of
-     * them (the API delete, the Filament ban, unban, and the edit page's
-     * restore) and three are in code that has no reason to know this column
-     * exists. Any soft delete clears the flag; {@see AccountDeletion::request()}
-     * sets it back immediately afterwards, and it is the ONLY thing that does.
-     * Any restore clears it too, so an unbanned or reinstated account never
-     * carries a stale clock.
+     * RESTORE is the hook that matters, and it is enough. It is the only way a
+     * soft-deleted row becomes live again (Filament's unban, the edit page's
+     * RestoreAction, and {@see AccountDeletion::cancel()} all funnel through
+     * it), so clearing here guarantees that any later ban starts from a null
+     * flag. `AccountDeletion::request()` is the only writer that sets it.
+     *
+     * There is deliberately no `deleting` counterpart: `runSoftDelete()` issues
+     * an UPDATE of `deleted_at`/`updated_at` only, so an attribute set in that
+     * event is never persisted. A hook there would look like a guarantee and
+     * silently be a no-op — verified against the database, not assumed.
      */
     protected static function booted(): void
     {
-        static::deleting(function (User $user): void {
-            if (! $user->isForceDeleting() && $user->deletion_requested_at !== null) {
-                $user->deletion_requested_at = null;
-            }
-        });
-
         static::restored(function (User $user): void {
-            if ($user->deletion_requested_at !== null) {
-                $user->forceFill(['deletion_requested_at' => null])->saveQuietly();
+            if ($user->deletion_requested_at !== null || $user->purged_at !== null) {
+                $user->forceFill(['deletion_requested_at' => null, 'purged_at' => null])->saveQuietly();
             }
         });
     }
@@ -289,6 +287,7 @@ class User extends Authenticatable implements FilamentUser, HasLocalePreference,
             // Both set `deleted_at`; only one of them may be undone by signing
             // back in, and this column is the only thing that says which.
             'deletion_requested_at' => 'datetime',
+            'purged_at' => 'datetime',
             'stripe_connect_onboarded_at' => 'datetime',
             'password' => 'hashed',
             // Encrypted, not hashed (T-068): both must be readable again — the

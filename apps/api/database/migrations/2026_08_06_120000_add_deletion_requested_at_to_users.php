@@ -25,6 +25,13 @@ return new class extends Migration
             // No ->after(): Postgres ignores column ordering hints, and leaving
             // one in implies a guarantee the grammar never makes.
             $table->timestampTz('deletion_requested_at')->nullable();
+
+            // When the erasure actually finished. Without it the reconciliation
+            // sweep has no way to tell "owed" from "done" — every account ever
+            // purged still matches `trashed + requested + past grace`, so it
+            // would be re-purged on every hourly run, forever, with the cost
+            // growing by one full table walk per deletion.
+            $table->timestampTz('purged_at')->nullable();
         });
 
         // Genuinely PARTIAL, which $table->index() is not: virtually every row
@@ -41,7 +48,7 @@ return new class extends Migration
         DB::statement('DROP INDEX IF EXISTS users_deletion_requested_at_index');
 
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('deletion_requested_at');
+            $table->dropColumn(['deletion_requested_at', 'purged_at']);
         });
     }
 };

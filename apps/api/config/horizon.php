@@ -106,6 +106,11 @@ return [
         'redis:analyze' => 600,
         'redis:resolve' => 600,
         'redis:publish' => 600,
+        // Housekeeping (T-050) runs one process with a 600s timeout and nobody
+        // watching. Without its own threshold it inherits `redis:default`'s 60s
+        // and a single normal purge would page as a backlog — the fastest way
+        // to teach an operator to ignore the alert.
+        'redis:housekeeping' => 900,
     ],
 
     /*

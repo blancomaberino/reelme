@@ -44,3 +44,24 @@ it('keeps every supervisor timeout below the redis retry_after', function () {
         );
     }
 });
+
+it('sets a long-wait threshold for every queue that runs long jobs', function () {
+    // A queue with no entry falls back to `redis:default` (60s). For the
+    // supervisors whose jobs legitimately take minutes, that turns every normal
+    // run into a backlog alert — and an alert that always fires is one nobody
+    // reads.
+    $waits = config('horizon.waits');
+    $long = ['media', 'transcribe', 'analyze', 'resolve', 'publish', 'housekeeping'];
+
+    foreach ($long as $queue) {
+        expect($waits)->toHaveKey("redis:{$queue}");
+        expect($waits["redis:{$queue}"])->toBeGreaterThanOrEqual(
+            config('horizon.defaults.supervisor-'.match ($queue) {
+                'media', 'transcribe' => 'media',
+                'analyze', 'resolve', 'publish' => 'analyze',
+                default => 'housekeeping',
+            }.'.timeout'),
+            "redis:{$queue} must not alert before its own jobs can finish",
+        );
+    }
+});

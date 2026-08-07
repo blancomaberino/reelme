@@ -1,7 +1,9 @@
 <?php
 
+use App\Enums\PayoutStatus;
 use App\Jobs\Gdpr\ExportUserData;
 use App\Jobs\Gdpr\PurgeUserData;
+use App\Models\Payout;
 use App\Models\PlatformAccount;
 use App\Models\User;
 use App\Services\Gdpr\AccountDeletion;
@@ -277,4 +279,65 @@ it('keeps the grace period the mobile copy promises', function () {
     // constant would make the most legally consequential sentence in the app
     // quietly false.
     expect((int) config('gdpr.purge_grace_days'))->toBe(14);
+});
+
+it('does not re-purge an account it has already erased', function () {
+    config(['gdpr.purge_grace_days' => 14]);
+    $user = User::factory()->create();
+    app(AccountDeletion::class)->request($user);
+    $user->forceFill([
+        'deleted_at' => now()->subDays(20),
+        'deletion_requested_at' => now()->subDays(20),
+    ])->saveQuietly();
+
+    app(UserDataPurger::class)->purge(User::withTrashed()->find($user->id));
+    expect(DB::table('users')->find($user->id)->purged_at)->not->toBeNull();
+
+    Queue::fake();
+    $this->artisan('reelmap:gdpr:sweep-deletions')->assertSuccessful();
+
+    // Without the completion marker, every account ever erased still matches
+    // `trashed + requested + past grace` and gets a full re-purge on EVERY
+    // hourly run — unbounded, growing by one table walk per deletion, and
+    // completely silent because the work is idempotent.
+    Queue::assertNothingPushed();
+});
+
+it('still revisits a purged account that is holding a Stripe linkage', function () {
+    config(['gdpr.purge_grace_days' => 14]);
+    $user = User::factory()->create(['stripe_connect_account_id' => 'acct_1']);
+    app(AccountDeletion::class)->request($user);
+    $user->forceFill([
+        'deleted_at' => now()->subDays(20),
+        'deletion_requested_at' => now()->subDays(20),
+    ])->saveQuietly();
+    Payout::factory()->create([
+        'user_id' => $user->id,
+        'status' => PayoutStatus::Processing,
+    ]);
+
+    app(UserDataPurger::class)->purge(User::withTrashed()->find($user->id));
+
+    Queue::fake();
+    $this->artisan('reelmap:gdpr:sweep-deletions')->assertSuccessful();
+
+    // The one purge that is finished but still OWES work: the Stripe id was
+    // held back for money in flight, and nothing else would ever come back
+    // for it once the transfer settles.
+    Queue::assertPushed(PurgeUserData::class, fn ($job) => $job->userId === $user->id);
+});
+
+it('clears the deletion clock when an admin restores the account', function () {
+    $user = User::factory()->create();
+    app(AccountDeletion::class)->request($user);
+
+    // The Filament unban path: a plain restore(), with no knowledge of the GDPR
+    // columns. If the flag survived it, a later ban would be readable as a
+    // pending deletion — and the banned user could sign in and undo it.
+    User::withTrashed()->find($user->id)->restore();
+
+    $restored = User::find($user->id);
+    expect($restored->deletion_requested_at)->toBeNull()
+        ->and($restored->purged_at)->toBeNull()
+        ->and($restored->trashed())->toBeFalse();
 });

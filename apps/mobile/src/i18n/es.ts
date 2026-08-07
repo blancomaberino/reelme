@@ -737,7 +737,7 @@ export const es: Record<MessageKey, string> = {
   'privacy.delete.action': 'Eliminar cuenta',
   'privacy.delete.confirmTitle': '¿Eliminar tu cuenta?',
   'privacy.delete.confirmBody':
-    'Se cierra tu sesión en todos los dispositivos de inmediato, y todo lo de arriba se borra para siempre.',
+    'Se cierra tu sesión en todos los dispositivos de inmediato. Después, cuando pase el plazo de arrepentimiento de abajo, todo lo de arriba se borra para siempre.',
   'privacy.delete.typePrompt': 'Escribí {{word}} para confirmar',
   'privacy.delete.typeWord': 'ELIMINAR',
   'privacy.delete.graceNote':
