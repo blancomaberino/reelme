@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+#
+# Zero-downtime deploy for the Reelmap API (T-055).
+#
+# Written for Laravel Forge's deploy hook, but it is plain bash and assumes only
+# a git checkout with PHP, composer and a running Horizon — nothing Forge-
+# specific. Paste it into the site's deploy script, or run it from any deploy
+# tool with $FORGE_SITE_PATH set.
+#
+# ORDER IS THE WHOLE POINT HERE. The sequence below is not arbitrary:
+#
+#   1. Maintenance mode goes on BEFORE the migration and off after, and it is
+#      the ONLY thing that must survive a failure — hence the trap. A deploy
+#      that dies mid-migration with the site still down is an outage; one that
+#      dies with the site up serving a half-migrated schema is worse.
+#   2. Caches are cleared BEFORE composer install and rebuilt AFTER, because a
+#      cached config file that references a class the new code deleted makes
+#      artisan itself unbootable — including the command you would use to clear
+#      it.
+#   3. Horizon is terminated LAST. It restarts with the new code; terminating it
+#      first would leave a window where the old workers pick up jobs the new
+#      migration has already reshaped underneath them.
+#
+# WHAT THIS SCRIPT CANNOT DO: it does not provision anything, and it has never
+# run against real infrastructure — see docs/runbooks/provisioning.md. Treat the
+# first deploy as an exercise to be watched, not as a routine one.
+
+set -Eeuo pipefail
+
+SITE_PATH="${FORGE_SITE_PATH:-$(pwd)}"
+PHP="${FORGE_PHP:-php}"
+COMPOSER="${FORGE_COMPOSER:-composer}"
+
+cd "$SITE_PATH/apps/api"
+
+# Whatever happens after this point, bring the site back up. Without the trap a
+# failed migration leaves maintenance mode latched on and the outage lasts until
+# somebody notices and runs `artisan up` by hand.
+cleanup() {
+  local code=$?
+  if [ $code -ne 0 ]; then
+    echo "::error:: deploy failed (exit $code) — lifting maintenance mode so the OLD code serves"
+  fi
+  $PHP artisan up || true
+  exit $code
+}
+trap cleanup EXIT
+
+echo "==> Pulling"
+git -C "$SITE_PATH" pull origin main
+
+echo "==> Clearing compiled caches (before install — see the header)"
+$PHP artisan config:clear
+$PHP artisan route:clear
+$PHP artisan view:clear
+
+echo "==> Installing dependencies"
+$COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+echo "==> Maintenance mode"
+# `--secret` keeps a way in: the deployer can hit /<secret> to check a migration
+# landed before letting traffic back. It is passed ONLY when DEPLOY_SECRET is
+# set, with NO fallback — a default value here would be a guessable bypass path
+# live on every deploy, letting anyone who knows it walk past maintenance mode
+# into a half-migrated app. An unset variable costs a convenience; a shared
+# default costs the thing maintenance mode is for.
+#
+#   DEPLOY_SECRET=$(openssl rand -hex 16)   # in the deploy environment
+if [ -n "${DEPLOY_SECRET:-}" ]; then
+  $PHP artisan down --render="errors::503" --retry=15 --secret="$DEPLOY_SECRET"
+else
+  $PHP artisan down --render="errors::503" --retry=15
+fi
+
+echo "==> Migrating"
+# --force because there is no TTY. --isolated so two overlapping deploys (a
+# retried hook, a second app server) cannot run the same migration twice; it
+# needs the shared cache lock the scheduler already relies on.
+$PHP artisan migrate --force --isolated
+
+echo "==> Rebuilding caches"
+$PHP artisan config:cache
+$PHP artisan route:cache
+$PHP artisan view:cache
+$PHP artisan event:cache
+
+# Sentry wants to know what shipped. Without a release tag every regression
+# reads as "always been broken" — see docs/observability.md.
+if [ -n "${SENTRY_RELEASE:-}" ]; then
+  echo "==> Deploying release ${SENTRY_RELEASE}"
+fi
+
+echo "==> Restarting queue workers"
+# LAST, and `terminate` not `restart`: it lets in-flight jobs finish on the old
+# code and brings the replacements up on the new. The pipeline's jobs run for
+# minutes (see config/horizon.php timeouts), so killing them mid-flight would
+# strand shares in a non-terminal state.
+$PHP artisan horizon:terminate
+
+echo "==> Deploy complete"
+# The trap runs `artisan up` on the way out.
