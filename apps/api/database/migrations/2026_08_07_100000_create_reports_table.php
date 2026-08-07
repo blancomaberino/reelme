@@ -2,9 +2,9 @@
 
 use App\Enums\ReportReason;
 use App\Enums\ReportStatus;
+use App\Support\Database\Constraints;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -51,22 +51,17 @@ return new class extends Migration
         // CHECK constraints rather than trusting the enum casts alone: the
         // admin panel, a console command and a future backfill all write this
         // table, and only the database is in every one of those paths.
-        $this->check('reports_reason_check', 'reason', array_column(ReportReason::cases(), 'value'));
-        $this->check('reports_status_check', 'status', array_column(ReportStatus::cases(), 'value'));
+        //
+        // Through the shared helper so the constraint NAME follows the
+        // `{table}_{column}_check` convention every other enum column here
+        // uses — a hand-rolled name is one the next person greps for and
+        // does not find.
+        Constraints::enumCheck('reports', 'reason', ReportReason::class);
+        Constraints::enumCheck('reports', 'status', ReportStatus::class);
     }
 
     public function down(): void
     {
         Schema::dropIfExists('reports');
-    }
-
-    /**
-     * @param  list<string>  $values
-     */
-    private function check(string $name, string $column, array $values): void
-    {
-        $list = implode(', ', array_map(fn (string $v) => "'{$v}'", $values));
-
-        DB::statement("ALTER TABLE reports ADD CONSTRAINT {$name} CHECK ({$column} IN ({$list}))");
     }
 };

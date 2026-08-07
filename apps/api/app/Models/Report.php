@@ -88,11 +88,11 @@ class Report extends Model
      *
      * @param  Builder<Report>  $query
      */
-    public function scopeAgainstSameTarget(Builder $query): void
+    public function scopeAgainstSameTarget(Builder $query, Report $report): void
     {
-        $query->where('reportable_type', $this->reportable_type)
-            ->where('reportable_id', $this->reportable_id)
-            ->whereKeyNot($this->getKey());
+        $query->where('reportable_type', $report->reportable_type)
+            ->where('reportable_id', $report->reportable_id)
+            ->whereKeyNot($report->getKey());
     }
 
     /** Close it out, recording who decided and when. */

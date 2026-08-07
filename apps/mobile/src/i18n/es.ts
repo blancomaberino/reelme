@@ -718,6 +718,7 @@ export const es: Record<MessageKey, string> = {
   'report.action': 'Reportar',
   'report.title': 'Reportar esto',
   'report.signedOut': 'Iniciá sesión para reportar esto.',
+  'report.reasonsLabel': '¿Por qué lo estás reportando?',
   'report.detailsLabel': '¿Algo más? (opcional)',
   'report.submit': 'Enviar reporte',
   'report.doneTitle': 'Gracias — lo estamos viendo',

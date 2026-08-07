@@ -728,6 +728,7 @@ export const en = {
   'report.action': 'Report',
   'report.title': 'Report this',
   'report.signedOut': 'Sign in to report this.',
+  'report.reasonsLabel': 'Why are you reporting this?',
   'report.detailsLabel': 'Anything else? (optional)',
   'report.submit': 'Send report',
   'report.doneTitle': 'Thanks — we\u2019re on it',

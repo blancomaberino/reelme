@@ -68,14 +68,14 @@ class ReportsTable
                 // pattern. Without this an admin decides on a fraction of the
                 // evidence — and it is the number that separates a brigading
                 // campaign from a real problem.
+                // Selected as a correlated subquery in getEloquentQuery(), not
+                // computed per row: a ->state() closure here issued one COUNT
+                // per row, so a 50-row queue cost 50 extra queries on the page
+                // whose whole purpose is being scanned quickly.
                 TextColumn::make('same_target_count')
                     ->label('Total')
                     ->badge()
-                    ->state(fn (Report $record): int => Report::query()
-                        ->where('reportable_type', $record->reportable_type)
-                        ->where('reportable_id', $record->reportable_id)
-                        ->count())
-                    ->color(fn (int $state): string => $state > 2 ? 'danger' : 'gray'),
+                    ->color(fn ($state): string => (int) $state > 2 ? 'danger' : 'gray'),
                 TextColumn::make('status')
                     ->badge()
                     ->color(fn (ReportStatus $state): string => match ($state) {
@@ -135,7 +135,10 @@ class ReportsTable
                 $acted = app(ReportActions::class)->takeDown($record, self::admin(), $data['note']);
 
                 if ($data['sweep'] ?? false) {
-                    app(ReportActions::class)->resolveSiblings($record, self::admin(), $data['note']);
+                    // `fresh()` because the sweep copies the PRIMARY's status
+                    // onto the siblings, and the in-memory record still shows
+                    // the pre-resolve one.
+                    app(ReportActions::class)->resolveSiblings($record->fresh(), self::admin(), $data['note']);
                 }
 
                 if (! $acted) {
@@ -165,10 +168,22 @@ class ReportsTable
                 && $record->reportable instanceof User
                 && ! $record->reportable->trashed())
             ->action(function (Report $record, array $data): void {
-                app(ReportActions::class)->banReporter($record, self::admin(), $data['note']);
+                $banned = app(ReportActions::class)->banReported($record, self::admin(), $data['note']);
+
+                if (! $banned) {
+                    // Said out loud, like the take-down path. Silently doing
+                    // nothing is how an admin believes a ban landed.
+                    Notification::make()
+                        ->warning()
+                        ->title('Nothing to ban')
+                        ->body('That account is already banned, or it is your own.')
+                        ->send();
+
+                    return;
+                }
 
                 if ($data['sweep'] ?? false) {
-                    app(ReportActions::class)->resolveSiblings($record, self::admin(), $data['note']);
+                    app(ReportActions::class)->resolveSiblings($record->fresh(), self::admin(), $data['note']);
                 }
             });
     }
@@ -186,7 +201,7 @@ class ReportsTable
                 app(ReportActions::class)->dismiss($record, self::admin(), $data['note']);
 
                 if ($data['sweep'] ?? false) {
-                    app(ReportActions::class)->resolveSiblings($record, self::admin(), $data['note']);
+                    app(ReportActions::class)->resolveSiblings($record->fresh(), self::admin(), $data['note']);
                 }
             });
     }

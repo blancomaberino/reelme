@@ -7,11 +7,15 @@ use App\Enums\ReportStatus;
 use App\Filament\Resources\Reports\Pages\ListReports;
 use App\Filament\Resources\Reports\Tables\ReportsTable;
 use App\Models\Report;
+use App\Models\Share;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\Relations\Relation;
 
 /**
  * The moderation queue (T-049).
@@ -58,8 +62,23 @@ class ReportResource extends Resource
     {
         // The reportable is morphed, so eager-loading it is the difference
         // between one query and one per row on a queue that is meant to be
-        // scanned quickly.
-        return parent::getEloquentQuery()->with(['reporter', 'resolver', 'reportable']);
+        // scanned quickly. `morphWith` reaches the share's author too — the
+        // triage line renders "share #12 by @someone", which otherwise lazy
+        // loads a user per row on top of that.
+        return parent::getEloquentQuery()
+            ->with([
+                'reporter',
+                'resolver',
+                // Typed as the base Relation for PHPStan's benefit; morphWith
+                // only exists on MorphTo, which is what this relation is.
+                'reportable' => function (Relation $morph): void {
+                    /** @var MorphTo<Model, Report> $morph */
+                    $morph->morphWith([Share::class => ['user']]);
+                },
+            ])
+            ->selectRaw('reports.*, (select count(*) from reports peers'
+                .' where peers.reportable_type = reports.reportable_type'
+                .' and peers.reportable_id = reports.reportable_id) as same_target_count');
     }
 
     public static function getPages(): array

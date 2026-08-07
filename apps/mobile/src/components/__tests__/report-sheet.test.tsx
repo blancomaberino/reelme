@@ -153,3 +153,39 @@ it('asks a signed-out visitor to sign in instead of failing', async () => {
   expect(screen.getByTestId('report-signed-out')).toBeOnTheScreen();
   expect(screen.queryByTestId('report-submit')).toBeNull();
 });
+
+it('clears a previous failure when reopened', async () => {
+  mock.onPost('/reports').reply(500);
+  const onClose = jest.fn();
+
+  const view = renderSheet({ onClose });
+  fireEvent.press(screen.getByTestId('report-reason-spam'));
+  fireEvent.press(screen.getByTestId('report-submit'));
+  await screen.findByTestId('report-error');
+
+  view.rerender(
+    <ReportSheet visible={false} onClose={onClose} target={{ type: 'place', id: '42' }} subject="Bar Tinto" />,
+  );
+  view.rerender(
+    <ReportSheet visible onClose={onClose} target={{ type: 'place', id: '42' }} subject="Bar Tinto" />,
+  );
+
+  // The mutation's error state lives in TanStack, not in local state — the
+  // three setState resets do not touch it. Without `report.reset()` the red
+  // banner is still on screen the next time the sheet opens, blaming the user
+  // for a failure that belonged to the previous attempt.
+  expect(screen.queryByTestId('report-error')).toBeNull();
+});
+
+it('gives a signed-out visitor a way back out', () => {
+  useSessionStore.setState({ user: null, status: 'guest' });
+  const onClose = jest.fn();
+
+  renderSheet({ onClose });
+
+  // The backdrop is deliberately hidden from assistive tech and
+  // `onRequestClose` is Android-only, so without this button the sheet is a
+  // trap for a VoiceOver user on a public place page.
+  fireEvent.press(screen.getByTestId('report-close'));
+  expect(onClose).toHaveBeenCalled();
+});

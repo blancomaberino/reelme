@@ -25,7 +25,10 @@ class TakedownRequestsTable
                     ->label('Post')
                     ->placeholder('— unmatched —')
                     ->limit(50)
-                    ->url(fn (TakedownRequest $record): ?string => $record->sourcePost->url ?? $record->target_url)
+                    // Scheme-guarded: `target_url` is admin free-text, and
+                    // Filament's url() validator lets `javascript:`-shaped
+                    // input past FILTER_VALIDATE_URL.
+                    ->url(fn (TakedownRequest $record): ?string => self::safeUrl($record->sourcePost->url ?? $record->target_url))
                     ->openUrlInNewTab(),
                 TextColumn::make('status')
                     ->badge()
@@ -66,6 +69,13 @@ class TakedownRequestsTable
      * place staying is the part an admin most needs to have understood before
      * pressing this, and the part a rightsholder will ask about.
      */
+    private static function safeUrl(?string $url): ?string
+    {
+        return $url !== null && (str_starts_with($url, 'https://') || str_starts_with($url, 'http://'))
+            ? $url
+            : null;
+    }
+
     private static function processAction(): Action
     {
         return Action::make('process')
@@ -81,7 +91,10 @@ class TakedownRequestsTable
 
                 $outcome = app(ProcessTakedown::class)->execute($record, $admin);
 
-                if ($record->source_post_id === null) {
+                // The SAME check the service branches on. Keying the UI on the
+                // FK id while the service keys on the relation makes a dangling
+                // FK report "actioned, 0 shares" as a success.
+                if ($record->sourcePost === null) {
                     Notification::make()
                         ->warning()
                         ->title('Logged, but nothing to remove')

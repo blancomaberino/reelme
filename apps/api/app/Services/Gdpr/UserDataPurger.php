@@ -290,6 +290,13 @@ class UserDataPurger
                 + DB::table('follows')->where('followee_type', $morph)->where('followee_id', $id)->delete(),
             'reviews' => DB::table('reviews')->where('user_id', $id)->delete(),
             'review_reports' => DB::table('review_reports')->where('user_id', $id)->delete(),
+            // Moderation flags (T-049), BOTH directions. `details` is 2000
+            // characters of free prose — exactly where PII lands — and a report
+            // naming this person as its target keeps identifying them after the
+            // erasure. The FK cascade never fires, because the user row is
+            // anonymised rather than deleted.
+            'reports' => DB::table('reports')->where('reporter_user_id', $id)->delete()
+                + DB::table('reports')->where('reportable_type', $morph)->where('reportable_id', $id)->delete(),
             'lists' => DB::table('place_lists')->where('user_id', $id)->delete(),
             'place_tags' => DB::table('user_place_tags')->where('user_id', $id)->delete(),
             'hidden_places' => DB::table('hidden_places')->where('user_id', $id)->delete(),

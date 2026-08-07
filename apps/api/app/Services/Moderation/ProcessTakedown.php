@@ -2,8 +2,10 @@
 
 namespace App\Services\Moderation;
 
+use App\Enums\PlaceStatus;
 use App\Enums\TakedownStatus;
 use App\Models\MediaAsset;
+use App\Models\Place;
 use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\SourcePost;
@@ -43,7 +45,7 @@ class ProcessTakedown
         if ($post === null) {
             // Nothing matched to act on yet. Recorded rather than silently
             // skipped: a notice that cannot be actioned still needs an answer.
-            $outcome = ['shares' => 0, 'place_sources' => 0, 'media' => 0, 'places_kept' => []];
+            $outcome = ['shares' => 0, 'place_sources' => 0, 'media' => 0, 'places_kept' => [], 'places_revived' => []];
             $this->close($request, $admin, $outcome, 'unmatched');
 
             return $outcome;
@@ -56,10 +58,16 @@ class ProcessTakedown
             ->get(['id', 'disk', 'storage_path']);
 
         $placesKept = [];
+        $placesRevived = [];
         $sourcesRemoved = 0;
         $sharesTaken = 0;
 
-        DB::transaction(function () use ($post, &$placesKept, &$sourcesRemoved, &$sharesTaken): void {
+        DB::transaction(function () use ($post, &$placesKept, &$placesRevived, &$sourcesRemoved, &$sharesTaken): void {
+            $sources = PlaceSource::query()->where('source_post_id', $post->id)->get();
+            $places = Place::query()->whereIn('id', $sources->pluck('place_id')->unique())->get();
+            $placesKept = $places->pluck('id')->all();
+            $sourcesRemoved = $sources->count();
+
             // Every share citing this post loses its publication. Routed through
             // ShareModerator so the pin arithmetic (recount, tombstone-if-orphaned)
             // is the same one the admin take-down uses — a second copy would
@@ -67,15 +75,37 @@ class ProcessTakedown
             $shares = Share::query()->where('source_post_id', $post->id)->get();
 
             foreach ($shares as $share) {
-                $this->shares->takeDown($share);
+                $this->shares->takeDown($share, 'takedown');
                 $sharesTaken++;
             }
 
-            $sources = PlaceSource::query()->where('source_post_id', $post->id)->get();
-            $placesKept = $sources->pluck('place_id')->unique()->values()->all();
-            $sourcesRemoved = $sources->count();
-
             PlaceSource::query()->where('source_post_id', $post->id)->delete();
+
+            // FR-30, and the reason this block exists at all: ShareModerator's
+            // orphan rule (T-073) tombstones a place whose last published source
+            // just went, which is exactly right for an ordinary admin removal
+            // and exactly WRONG here. A copyright notice must not delete a
+            // restaurant — the rightsholder is objecting to their footage, and
+            // other people may yet contribute the same venue.
+            //
+            // Without this the outcome record said `places_kept: [42]` while
+            // place 42 was `Removed` and off the map, and the response letter
+            // was composed from that record.
+            foreach ($places as $place) {
+                if ($place->fresh()->status !== PlaceStatus::Removed) {
+                    continue;
+                }
+
+                // Back to Pending, not Active: it has no provenance left, so it
+                // belongs in the review queue rather than silently on the map
+                // as a claim nothing supports.
+                $place->forceFill([
+                    'status' => PlaceStatus::Pending,
+                    'needs_admin_review' => true,
+                ])->save();
+
+                $placesRevived[] = $place->id;
+            }
 
             // The row STAYS. Deleting it would cascade its media away outside
             // our control and erase the only record that this post was ever
@@ -94,6 +124,10 @@ class ProcessTakedown
             'place_sources' => $sourcesRemoved,
             'media' => $objects->count(),
             'places_kept' => $placesKept,
+            // Kept BECAUSE we overrode the orphan rule — these have no source
+            // left and are flagged for review. Recorded separately so the
+            // response letter can be precise rather than merely reassuring.
+            'places_revived' => $placesRevived,
         ];
 
         $this->close($request, $admin, $outcome, 'actioned');
@@ -126,10 +160,17 @@ class ProcessTakedown
      */
     private function close(TakedownRequest $request, User $admin, array $outcome, string $result): void
     {
+        $actioned = $result !== 'unmatched';
+
         $request->forceFill([
-            'status' => TakedownStatus::Actioned,
-            'actioned_by_user_id' => $admin->id,
-            'actioned_at' => now(),
+            // An unmatched notice stays OPEN. Marking it `actioned` would be a
+            // false legal record — nothing was removed — and it would drop out
+            // of the queue AND hide the action button, so the notification
+            // telling the admin to "match one and action it again" would point
+            // at a control that is no longer there.
+            'status' => $actioned ? TakedownStatus::Actioned : TakedownStatus::Received,
+            'actioned_by_user_id' => $actioned ? $admin->id : null,
+            'actioned_at' => $actioned ? now() : null,
             'outcome_json' => $outcome,
         ])->save();
 

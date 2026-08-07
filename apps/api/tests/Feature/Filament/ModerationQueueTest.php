@@ -14,6 +14,7 @@ use App\Models\Share;
 use App\Models\SourcePost;
 use App\Models\TakedownRequest;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
@@ -100,6 +101,76 @@ it('sweeps sibling reports when asked', function () {
         ->callTableAction('dismiss', $primary, ['note' => 'Fine actually.', 'sweep' => true]);
 
     expect($sibling->fresh()->status)->toBe(ReportStatus::Dismissed);
+});
+
+it('actually bans from the queue, and records the note', function () {
+    Log::spy();
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
+
+    $offender = User::factory()->create();
+    $offender->createToken('phone');
+    $report = Report::factory()->against($offender)->reason(ReportReason::Fraud)->create();
+
+    // The ban action's BODY had no test — only its visibility. Swapping
+    // `banReported` for `dismiss` in the table left every test on the branch
+    // green while the most destructive control in the product banned nobody.
+    Livewire::test(ListReports::class)
+        ->callTableAction('ban', $report, ['note' => 'Impersonating a venue.', 'sweep' => false]);
+
+    $offender = User::withTrashed()->find($offender->id);
+
+    expect($offender->trashed())->toBeTrue()
+        ->and($offender->tokens()->count())->toBe(0)
+        ->and($report->fresh()->status)->toBe(ReportStatus::Resolved);
+
+    // The note is the audit trail this design justifies itself with. Without
+    // this the whole Log::info block could be deleted and nothing would fail.
+    Log::shouldHaveReceived('info')->withArgs(
+        fn (string $message, array $context) => $message === 'moderation.report.actioned'
+            && $context['action'] === 'ban'
+            && $context['note'] === 'Impersonating a venue.'
+            && $context['admin_id'] === $admin->id,
+    );
+});
+
+it('says so instead of silently doing nothing when a ban cannot apply', function () {
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
+
+    // A report filed against the admin themselves. `visible()` does not exclude
+    // it, so the button is there — and before this, pressing it did nothing at
+    // all AND still swept the siblings into a half-resolved state.
+    $report = Report::factory()->against($admin)->create();
+    $sibling = Report::factory()->against($admin)->reason(ReportReason::Spam)->create();
+
+    Livewire::test(ListReports::class)
+        ->callTableAction('ban', $report, ['note' => 'oops', 'sweep' => true]);
+
+    expect($admin->fresh()->trashed())->toBeFalse()
+        ->and($report->fresh()->status)->toBe(ReportStatus::Open)
+        // The sweep must NOT have run: it copies the primary's status onto the
+        // siblings, and the primary is still open — so it would stamp a
+        // resolver onto rows that stay in the queue looking decided.
+        ->and($sibling->fresh()->status)->toBe(ReportStatus::Open)
+        ->and($sibling->fresh()->resolved_by_user_id)->toBeNull();
+});
+
+it('leaves siblings alone when the admin turns the sweep off', function () {
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
+
+    $share = Share::factory()->create();
+    $primary = Report::factory()->against($share)->reason(ReportReason::Spam)->create();
+    $sibling = Report::factory()->against($share)->reason(ReportReason::Fraud)->create();
+
+    // The toggle defaults to on, so OFF is the deliberate choice of a careful
+    // admin — and it was the untested direction.
+    Livewire::test(ListReports::class)
+        ->callTableAction('dismiss', $primary, ['note' => 'Only this one.', 'sweep' => false]);
+
+    expect($primary->fresh()->status)->toBe(ReportStatus::Dismissed)
+        ->and($sibling->fresh()->status)->toBe(ReportStatus::Open);
 });
 
 it('only offers Ban when the report is against a user', function () {

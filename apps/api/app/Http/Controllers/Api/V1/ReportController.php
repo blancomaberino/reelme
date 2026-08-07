@@ -27,6 +27,15 @@ class ReportController extends Controller
         /** @var User $user */
         $user = $request->user();
 
+        // Reporting yourself is unactionable noise in a queue that sorts by
+        // count. Silently accepted (201) rather than rejected: telling someone
+        // "you cannot report yourself" is a worse conversation than simply not
+        // filing it, and the sibling review-report endpoint does the same.
+        if ($request->validated('reportable_type') === $user->getMorphClass()
+            && (int) $request->validated('reportable_id') === (int) $user->id) {
+            return ApiResponse::item(['report' => null], [], 201);
+        }
+
         // firstOrCreate against the unique (reporter, target, reason) is
         // race-safe without a TOCTOU pre-check: two concurrent taps on the same
         // button leave one row, and the loser reports 409 rather than failing

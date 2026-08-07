@@ -11,6 +11,7 @@ use App\Models\SourcePost;
 use App\Models\TakedownRequest;
 use App\Models\User;
 use App\Services\Moderation\ProcessTakedown;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -59,10 +60,16 @@ it('unpublishes the share, drops the source, deletes the media — and keeps the
         ->and(PlaceSource::find($source->id))->toBeNull()
         ->and(MediaAsset::find($asset->id))->toBeNull()
         ->and(Storage::disk(config('media.disk'))->exists($asset->storage_path))->toBeFalse()
-        // FR-30. The restaurant is not the rightsholder's material, and other
-        // people may have contributed it independently.
-        ->and(Place::find($place->id))->not->toBeNull()
-        ->and($outcome['places_kept'])->toBe([$place->id]);
+        // FR-30, asserted on STATUS. `not->toBeNull()` was the original check
+        // and it passes on a `Removed` tombstone — which is exactly what was
+        // happening: the pin was off the map while `places_kept` claimed it
+        // had been kept.
+        ->and(Place::find($place->id)->status)->toBe(PlaceStatus::Pending)
+        ->and($outcome['places_kept'])->toBe([$place->id])
+        // It has no provenance left, so it is flagged rather than left to sit
+        // on the map as a claim nothing supports.
+        ->and(Place::find($place->id)->needs_admin_review)->toBeTrue()
+        ->and($outcome['places_revived'])->toBe([$place->id]);
 });
 
 it('keeps the source_post row while scrubbing what it reproduces', function () {
@@ -79,9 +86,11 @@ it('keeps the source_post row while scrubbing what it reproduces', function () {
     // ever happened here — the thing a counter-notice asks about.
     expect($post->exists)->toBeTrue()
         ->and($post->url)->not->toBeNull()
-        // What actually reproduces the rightsholder's material does go.
+        // What actually reproduces the rightsholder's material does go. The
+        // transcript most of all — it is a verbatim copy of their audio.
         ->and($post->caption)->toBeNull()
-        ->and($post->oembed_json)->toBeNull();
+        ->and($post->oembed_json)->toBeNull()
+        ->and($post->transcript_json)->toBeNull();
 });
 
 it('takes down every share citing the post, not just the first', function () {
@@ -113,12 +122,16 @@ it('leaves a place standing when another source still supports it', function () 
         'published_at' => now(),
     ]);
 
-    app(ProcessTakedown::class)->execute(TakedownRequest::factory()->forPost($post)->create(), $admin);
+    $outcome = app(ProcessTakedown::class)->execute(TakedownRequest::factory()->forPost($post)->create(), $admin);
 
     // Their contribution is untouched, and the pin they created is still live.
+    // `toBe(Active)`, not `not->toBe(Removed)`: the loose version passes on
+    // Hidden too, i.e. on a pin that has vanished from the map.
     expect($otherShare->fresh()->status)->toBe(ShareStatus::Published)
         ->and(PlaceSource::where('source_post_id', $otherPost->id)->exists())->toBeTrue()
-        ->and(Place::find($place->id)->status)->not->toBe(PlaceStatus::Removed);
+        ->and(Place::find($place->id)->status)->toBe(PlaceStatus::Active)
+        // Nothing was revived, because nothing was orphaned.
+        ->and($outcome['places_revived'] ?? [])->toBe([]);
 });
 
 it('records what it did, for the response letter', function () {
@@ -138,17 +151,23 @@ it('records what it did, for the response letter', function () {
         ->and($request->outcome_json['media'])->toBe(1);
 });
 
-it('logs and closes a notice nobody has matched to a post yet', function () {
+it('leaves an unmatched notice OPEN rather than calling it actioned', function () {
     $admin = User::factory()->admin()->create();
     $request = TakedownRequest::factory()->create(['target_url' => 'https://instagram.com/reel/unknown/']);
 
     $outcome = app(ProcessTakedown::class)->execute($request, $admin);
+    $request->refresh();
 
-    // A notice that arrives as a bare URL still needs an answer. Refusing to
-    // process it until someone matches the row is how notices get lost.
+    // Nothing was removed, so "actioned" would be a false legal record — and it
+    // would drop the notice out of the queue AND hide the action button, so the
+    // toast telling the admin to "match one and action it again" would point at
+    // a control that is no longer there.
     expect($outcome['shares'])->toBe(0)
-        ->and($request->fresh()->status)->toBe(TakedownStatus::Actioned)
-        ->and($request->fresh()->outcome_json['places_kept'])->toBe([]);
+        ->and($request->status)->toBe(TakedownStatus::Received)
+        ->and($request->status->isOpen())->toBeTrue()
+        ->and($request->actioned_at)->toBeNull()
+        ->and($request->actioned_by_user_id)->toBeNull()
+        ->and($request->outcome_json['places_kept'])->toBe([]);
 });
 
 it('matches a bare URL to its post so ops can log first and match later', function () {
@@ -172,4 +191,34 @@ it('finishes the takedown even when the bucket refuses', function () {
     // that pass is for.
     expect($share->fresh()->status)->toBe(ShareStatus::Rejected)
         ->and(MediaAsset::find($asset->id))->toBeNull();
+});
+
+it('marks a DMCA removal distinguishably from a routine admin one', function () {
+    $admin = User::factory()->admin()->create();
+    ['post' => $post, 'share' => $share] = takedownFixture();
+
+    app(ProcessTakedown::class)->execute(TakedownRequest::factory()->forPost($post)->create(), $admin);
+
+    // `failure_reason` is the only DB evidence of WHY a share was pulled.
+    // Leaving it as `admin_removed` makes "which shares did we remove for
+    // notice #12" answerable only by grepping logs.
+    expect($share->fresh()->failure_reason)->toBe('takedown');
+});
+
+it('records the takedown in the audit log', function () {
+    Log::spy();
+    $admin = User::factory()->admin()->create();
+    ['post' => $post] = takedownFixture();
+
+    app(ProcessTakedown::class)->execute(TakedownRequest::factory()->forPost($post)->create(), $admin);
+
+    // The log IS the audit trail this design justifies itself with. Without
+    // this assertion the whole Log::info block could be deleted and every test
+    // on the branch would stay green.
+    Log::shouldHaveReceived('info')->withArgs(
+        fn (string $message, array $context) => $message === 'moderation.takedown.processed'
+            && $context['result'] === 'actioned'
+            && $context['admin_id'] === $admin->id
+            && $context['shares'] === 1,
+    );
 });

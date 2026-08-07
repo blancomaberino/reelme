@@ -2,9 +2,9 @@
 
 use App\Enums\TakedownRequesterRole;
 use App\Enums\TakedownStatus;
+use App\Support\Database\Constraints;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -47,22 +47,12 @@ return new class extends Migration
             $table->index('source_post_id');
         });
 
-        $this->check('takedown_requests_status_check', 'status', array_column(TakedownStatus::cases(), 'value'));
-        $this->check('takedown_requests_role_check', 'requester_role', array_column(TakedownRequesterRole::cases(), 'value'));
+        Constraints::enumCheck('takedown_requests', 'status', TakedownStatus::class);
+        Constraints::enumCheck('takedown_requests', 'requester_role', TakedownRequesterRole::class);
     }
 
     public function down(): void
     {
         Schema::dropIfExists('takedown_requests');
-    }
-
-    /**
-     * @param  list<string>  $values
-     */
-    private function check(string $name, string $column, array $values): void
-    {
-        $list = implode(', ', array_map(fn (string $v) => "'{$v}'", $values));
-
-        DB::statement("ALTER TABLE takedown_requests ADD CONSTRAINT {$name} CHECK ({$column} IN ({$list}))");
     }
 };

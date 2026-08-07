@@ -74,7 +74,7 @@ it('bans a reported user without touching their financial history', function () 
     $offender->createToken('phone');
     $report = reportAgainst($offender, ReportReason::Fraud);
 
-    expect(app(ReportActions::class)->banReporter($report, $admin, 'Impersonation.'))->toBeTrue();
+    expect(app(ReportActions::class)->banReported($report, $admin, 'Impersonation.'))->toBeTrue();
 
     $offender = User::withTrashed()->find($offender->id);
 
@@ -91,7 +91,7 @@ it('refuses to let an admin ban themselves through a report', function () {
     $admin = User::factory()->admin()->create();
     $report = reportAgainst($admin);
 
-    expect(app(ReportActions::class)->banReporter($report, $admin, 'oops'))->toBeFalse();
+    expect(app(ReportActions::class)->banReported($report, $admin, 'oops'))->toBeFalse();
     expect($admin->fresh()->trashed())->toBeFalse();
 });
 

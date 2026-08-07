@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -25,6 +25,25 @@ import { type MessageKey, useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
+
+/**
+ * Reason → copy key, exhaustively.
+ *
+ * NOT `t(\`report.reason.${option}\` as MessageKey)`: that cast only requires
+ * comparability, so the template union overlaps MessageKey on its other members
+ * and tsc accepts a reason with no copy. The parity test compares es against en
+ * and passes when a key is missing from BOTH — so the label and its
+ * accessibilityLabel would render the literal string `report.reason.harassment`
+ * to a user. `satisfies` makes adding a reason without its copy a build error.
+ */
+const REASON_KEY = {
+  inappropriate: 'report.reason.inappropriate',
+  spam: 'report.reason.spam',
+  wrong_place: 'report.reason.wrong_place',
+  copyright: 'report.reason.copyright',
+  fraud: 'report.reason.fraud',
+  other: 'report.reason.other',
+} satisfies Record<ReportReason, MessageKey>;
 
 type Props = {
   visible: boolean;
@@ -71,9 +90,19 @@ export function ReportSheet({ visible, onClose, target, subject }: Props) {
       setReason(null);
       setDetails('');
       setDone(false);
-      report.reset();
     }
   }
+
+  // The mutation reset is NOT part of the render-phase block above. Local
+  // setState during render is React's documented pattern for state derived
+  // from a prop change; `report.reset()` is not local — it notifies the
+  // TanStack mutation cache synchronously, re-entering useSyncExternalStore
+  // mid-render, and React logs "cannot update a component while rendering a
+  // different component" every time the sheet closes.
+  useEffect(() => {
+    if (!visible) report.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset is stable
+  }, [visible]);
 
   const submit = () => {
     if (!reason) return;
@@ -131,19 +160,34 @@ export function ReportSheet({ visible, onClose, target, subject }: Props) {
               </Text>
 
               {!authed ? (
-                // Reachable from a public place page while signed out.
-                <Text style={styles.body} testID="report-signed-out">
-                  {t('report.signedOut')}
-                </Text>
+                // Reachable from a public place page while signed out — and it
+                // needs its own way out. The backdrop is deliberately hidden
+                // from assistive tech and `onRequestClose` is Android-only, so
+                // without this button a VoiceOver user who opens Report while
+                // signed out is trapped in the sheet.
+                <View style={styles.doneBlock} testID="report-signed-out">
+                  <Text style={styles.body}>{t('report.signedOut')}</Text>
+                  <Button
+                    title={t('common.close')}
+                    variant="secondary"
+                    onPress={onClose}
+                    testID="report-close"
+                  />
+                </View>
               ) : (
                 <>
-                  <ScrollView style={styles.reasons} keyboardShouldPersistTaps="handled">
+                  <ScrollView
+                    style={styles.reasons}
+                    keyboardShouldPersistTaps="handled"
+                    accessibilityRole="radiogroup"
+                    accessibilityLabel={t('report.reasonsLabel')}
+                  >
                     {REPORT_REASONS.map((option) => (
                       <Pressable
                         key={option}
                         accessibilityRole="radio"
                         accessibilityState={{ selected: reason === option }}
-                        accessibilityLabel={t(`report.reason.${option}` as MessageKey)}
+                        accessibilityLabel={t(REASON_KEY[option])}
                         onPress={() => setReason(option)}
                         style={({ pressed }) => [
                           styles.reason,
@@ -158,7 +202,7 @@ export function ReportSheet({ visible, onClose, target, subject }: Props) {
                           color={reason === option ? c.primary : c.muted}
                         />
                         <Text style={styles.reasonLabel}>
-                          {t(`report.reason.${option}` as MessageKey)}
+                          {t(REASON_KEY[option])}
                         </Text>
                       </Pressable>
                     ))}

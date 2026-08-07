@@ -50,14 +50,18 @@ class ReportActions
     }
 
     /**
-     * Ban the account behind the report and resolve it.
+     * Ban the REPORTED account — never the reporter — and resolve the report.
+     *
+     * Named for what it does. `banReporter` was the original name and it is the
+     * single worst one available here: the next caller reads it as "ban the
+     * person who filed this" and ships the exact opposite of moderation.
      *
      * Reuses the T-008 mechanism exactly — revoke every token, then soft-delete
      * — rather than inventing a second one. `deletion_requested_at` is left
      * alone: a ban is not a deletion request, and conflating the two is what
      * ADR-050 exists to prevent.
      */
-    public function banReporter(Report $report, User $admin, string $note): bool
+    public function banReported(Report $report, User $admin, string $note): bool
     {
         $target = $report->reportable;
 
@@ -90,11 +94,15 @@ class ReportActions
      */
     public function resolveSiblings(Report $report, User $admin, string $note): int
     {
-        $siblings = Report::query()->where(function ($q) use ($report) {
-            $q->where('reportable_type', $report->reportable_type)
-                ->where('reportable_id', $report->reportable_id)
-                ->whereKeyNot($report->getKey());
-        })->open()->get();
+        // Fail closed: `close()` writes the PRIMARY report's status onto each
+        // sibling, so calling this while the primary is still open would stamp
+        // a resolver and a timestamp onto rows whose status stays `open` —
+        // reports that sit in the queue forever looking decided.
+        if (! $report->status->isTerminal()) {
+            return 0;
+        }
+
+        $siblings = Report::query()->againstSameTarget($report)->open()->get();
 
         foreach ($siblings as $sibling) {
             $this->close($sibling, $report->status, $admin, $note, 'sibling_of:'.$report->id);

@@ -132,6 +132,7 @@ class UserDataExporter
             'lists' => $this->lists($user),
             'place_tags' => $this->placeTags($user),
             'reviews' => $this->reviews($user),
+            'reports' => $this->reports($user),
             'follows' => $this->follows($user),
             'notifications' => $this->notifications($user),
             'devices' => $this->devices($user),
@@ -271,6 +272,26 @@ class UserDataExporter
             ->join('places', 'reviews.place_id', '=', 'places.id')
             ->where('reviews.user_id', $user->id)
             ->get(['places.name as place', 'reviews.rating', 'reviews.body', 'reviews.created_at'])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
+     * Moderation flags this person filed (T-049).
+     *
+     * Their own words in `details` are theirs to have a copy of. What is NOT
+     * here is the outcome: telling a reporter whether their flag succeeded is
+     * how a malicious reporter learns how close they are to getting something
+     * removed.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function reports(User $user): array
+    {
+        return DB::table('reports')
+            ->where('reporter_user_id', $user->id)
+            ->orderBy('id')
+            ->get(['id', 'reportable_type', 'reportable_id', 'reason', 'details', 'created_at'])
             ->map(fn ($row) => (array) $row)
             ->all();
     }

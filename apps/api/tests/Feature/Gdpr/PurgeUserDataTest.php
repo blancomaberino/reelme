@@ -15,6 +15,7 @@ use App\Models\PlaceList;
 use App\Models\PlaceSource;
 use App\Models\PlatformAccount;
 use App\Models\Redemption;
+use App\Models\Report;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Models\User;
@@ -306,6 +307,24 @@ it('leaves nothing behind in any personal table', function () {
         ->and(DB::table('user_place_tags')->where('user_id', $user->id)->count())->toBe(0)
         ->and(DB::table('hidden_places')->where('user_id', $user->id)->count())->toBe(0)
         ->and(DB::table('invitations')->where('inviter_user_id', $user->id)->count())->toBe(0);
+});
+
+it('takes the moderation flags they filed AND the ones naming them', function () {
+    ['user' => $user] = gdprPurgeFixture();
+    $other = User::factory()->create();
+    $share = Share::factory()->create();
+
+    Report::factory()->against($share)->create(['reporter_user_id' => $user->id]);
+    $aboutThem = Report::factory()->against($user)->create(['reporter_user_id' => $other->id]);
+
+    app(UserDataPurger::class)->purge($user);
+
+    // Both directions. `details` is 2000 characters of free prose — where PII
+    // actually lands — and a report naming this person keeps identifying them
+    // after the erasure. The FK cascade never fires, because the row is
+    // anonymised rather than deleted.
+    expect(DB::table('reports')->where('reporter_user_id', $user->id)->count())->toBe(0)
+        ->and(DB::table('reports')->where('id', $aboutThem->id)->count())->toBe(0);
 });
 
 it('deletes an invitation addressed TO the purged user', function () {

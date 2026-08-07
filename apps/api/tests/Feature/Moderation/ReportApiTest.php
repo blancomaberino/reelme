@@ -212,3 +212,34 @@ it('answers in the shape the contract promises', function () {
     // field added server-side is exactly how triage data leaks to a reporter.
     assertMatchesContract($response->json('data.report'), 'report');
 });
+
+it('throttles a flood of reports from one account', function () {
+    $user = User::factory()->create();
+    $shares = Share::factory()->count(11)->create();
+
+    // The file's own premise: "a thousand reports from one person is a way of
+    // making moderation impossible". Without the limiter on the route, nothing
+    // here would fail — each report has a different target, so the unique
+    // constraint never fires.
+    $statuses = collect($shares)->map(fn ($share) => $this->actingAs($user)->postJson('/api/v1/reports', [
+        'reportable_type' => 'share',
+        'reportable_id' => $share->id,
+        'reason' => ReportReason::Spam->value,
+    ])->status());
+
+    expect($statuses->take(10)->every(fn ($s) => $s === 201))->toBeTrue()
+        ->and($statuses->last())->toBe(429);
+});
+
+it('rejects details longer than the column can hold', function () {
+    $user = User::factory()->create();
+    $share = Share::factory()->create();
+
+    // The mobile maxLength is client-side only; this is the one that binds.
+    $this->actingAs($user)->postJson('/api/v1/reports', [
+        'reportable_type' => 'share',
+        'reportable_id' => $share->id,
+        'reason' => ReportReason::Other->value,
+        'details' => str_repeat('a', 2001),
+    ])->assertStatus(422)->assertJsonPath('error.details.details', fn ($v) => is_array($v));
+});
