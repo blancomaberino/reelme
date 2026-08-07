@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\V1\PlaceListController;
 use App\Http\Controllers\Api\V1\PlatformAccountController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\RedemptionController;
+use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SearchController;
 use App\Http\Controllers\Api\V1\ShareController;
@@ -151,6 +152,12 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
         Route::patch('/me', [MeController::class, 'update']);
+
+        // Reporting content (T-049, 03 §2.16). The ONLY moderation REST route:
+        // triage and takedown are Filament-only, deliberately. Shares the
+        // `reviews` limiter — both are spam-adjacent user writes, and a flooded
+        // moderation queue is as bad as flooded reviews.
+        Route::post('/reports', [ReportController::class, 'store'])->middleware('throttle:reviews');
 
         // Data rights (T-050, 03 §2.2). Throttled hard — neither is a button
         // anyone presses twice on purpose, and both are expensive: one queues a

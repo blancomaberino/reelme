@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { Linking, Share } from 'react-native';
@@ -441,5 +441,45 @@ describe('the offers section', () => {
 
     // Not an empty "no offers" block — absence of a promotion is not news.
     expect(screen.queryByTestId('place-offers')).toBeNull();
+  });
+});
+
+describe('reporting (T-049)', () => {
+  it('tells a signed-out visitor to sign in, rather than 401ing on submit', async () => {
+    useSessionStore.setState({ user: null, status: 'guest' });
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    // The place page is public, so the control is reachable while signed out.
+    fireEvent.press(screen.getByTestId('place-report'));
+
+    expect(await screen.findByTestId('report-signed-out')).toBeTruthy();
+    expect(screen.queryByTestId('report-submit')).toBeNull();
+  });
+
+  it('is reachable from the place page and files against the place', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+    mock.onPost('/reports').reply(201, { data: { report: { id: '1' } }, meta: {} });
+
+    useSessionStore.setState({ user: null, status: 'authed' });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    // Apple 1.2 asks for a VISIBLE report path on user-generated content. A
+    // sheet that only opens from a test bypasses the very thing being claimed,
+    // so this presses the real control on the real screen.
+    fireEvent.press(screen.getByTestId('place-report'));
+    fireEvent.press(await screen.findByTestId('report-reason-wrong_place'));
+    fireEvent.press(screen.getByTestId('report-submit'));
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(JSON.parse(mock.history.post[0].data)).toMatchObject({
+      reportable_type: 'place',
+      reportable_id: PLACE.id,
+      reason: 'wrong_place',
+    });
   });
 });

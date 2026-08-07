@@ -715,6 +715,20 @@ export const es: Record<MessageKey, string> = {
 
   // Privacidad y datos (T-039, 05 pantalla #16).
   'settings.privacy': 'Privacidad y datos',
+  'report.action': 'Reportar',
+  'report.title': 'Reportar esto',
+  'report.signedOut': 'Iniciá sesión para reportar esto.',
+  'report.detailsLabel': '¿Algo más? (opcional)',
+  'report.submit': 'Enviar reporte',
+  'report.doneTitle': 'Gracias — lo estamos viendo',
+  'report.doneBody': 'Un moderador va a revisarlo. No le decimos a nadie quién lo reportó.',
+  'report.reason.inappropriate': 'Ofensivo o inapropiado',
+  'report.reason.spam': 'Spam o publicidad',
+  'report.reason.wrong_place': 'Lugar equivocado o datos incorrectos',
+  'report.reason.copyright': 'Usa contenido mío sin permiso',
+  'report.reason.fraud': 'Falso o engañoso',
+  'report.reason.other': 'Otra cosa',
+
   'privacy.title': 'Privacidad y datos',
   'privacy.intro':
     'Tu cuenta guarda tu perfil, los posts que compartiste, los lugares que guardaste y las reseñas que escribiste. Esto es lo que podés pedirnos que hagamos con todo eso.',

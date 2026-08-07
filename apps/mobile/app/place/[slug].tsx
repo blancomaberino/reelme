@@ -12,6 +12,7 @@ import { OfferCard } from '@/components/offer/offer-card';
 import { MiniMap } from '@/components/place/mini-map';
 import { ReviewComposer } from '@/components/place/review-composer';
 import { MenuSheet } from '@/components/place/menu-sheet';
+import { ReportSheet } from '@/components/report-sheet';
 import { MyTags } from '@/components/place/my-tags';
 import { PlaceGallery } from '@/components/place/place-gallery';
 import { ReviewSources } from '@/components/place/review-sources';
@@ -89,6 +90,7 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
   const fmt = useFormat();
   const [hoursOpen, setHoursOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const hours = useMemo(() => summarizeHours(place.opening_hours), [place.opening_hours]);
   const tags = useMemo(
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
@@ -284,6 +286,17 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
       <View style={styles.actions}>
         <ActionButton icon="navigate" label={t('place.directions')} onPress={openDirections} c={c} styles={styles} />
         <ActionButton icon="share-outline" label={t('place.share')} onPress={share} c={c} styles={styles} />
+        {/* Report sits in the primary action row, not behind an overflow menu:
+            Apple 1.2 reviewers look for a VISIBLE report path on user-generated
+            content, and a control nobody can find is one that does not exist. */}
+        <ActionButton
+          icon="flag-outline"
+          label={t('report.action')}
+          onPress={() => setReportOpen(true)}
+          c={c}
+          styles={styles}
+          testID="place-report"
+        />
       </View>
 
       {/* Menu — a button into the full dish/price list + its source & date */}
@@ -373,6 +386,13 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
         language={place.dishes_language}
         sources={place.sources ?? []}
       />
+
+      <ReportSheet
+        visible={reportOpen}
+        onClose={() => setReportOpen(false)}
+        target={{ type: 'place', id: String(place.id) }}
+        subject={place.name}
+      />
     </ScrollView>
   );
 }
@@ -402,18 +422,21 @@ function ActionButton({
   onPress,
   c,
   styles,
+  testID,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
   c: Palette;
   styles: Styles;
+  testID?: string;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
+      testID={testID}
       style={({ pressed }) => [styles.action, pressed ? styles.actionPressed : null]}
     >
       <Ionicons name={icon} size={20} color={c.onPrimary} />

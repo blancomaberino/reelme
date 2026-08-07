@@ -163,6 +163,21 @@ class User extends Authenticatable implements FilamentUser, HasLocalePreference,
     }
 
     /**
+     * Moderation flags this user filed (T-049).
+     *
+     * Reports are created THROUGH this relation so `reporter_user_id` is set by
+     * the relation rather than mass-assigned — the column is deliberately not
+     * fillable, because a caller must never be able to file a report in
+     * somebody else's name.
+     *
+     * @return HasMany<Report, $this>
+     */
+    public function reports(): HasMany
+    {
+        return $this->hasMany(Report::class, 'reporter_user_id');
+    }
+
+    /**
      * Follow edges this user created (T-037).
      *
      * @return HasMany<Follow, $this>

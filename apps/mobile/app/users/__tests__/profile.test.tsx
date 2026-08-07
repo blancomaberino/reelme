@@ -145,3 +145,35 @@ it('opens their map from the "View on map" button', async () => {
 
   expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/users/[username]/map', params: { username: 'alice' } });
 });
+
+it('lets you report a profile, and files against the user', async () => {
+  mock.onGet('/users/alice').reply(200, profileResponse({ following: false, follow_id: null }));
+  mock.onPost('/reports').reply(201, { data: { report: { id: '1' } }, meta: {} });
+
+  render(<UserProfileScreen />, { wrapper: Providers });
+  await screen.findByText('Alice');
+
+  // Apple's UGC requirements cover profiles, not just content. Pressing the
+  // real control on the real screen is the only evidence anyone can reach it.
+  fireEvent.press(screen.getByTestId('profile-report'));
+  fireEvent.press(await screen.findByTestId('report-reason-inappropriate'));
+  fireEvent.press(screen.getByTestId('report-submit'));
+
+  await waitFor(() => expect(mock.history.post).toHaveLength(1));
+  expect(JSON.parse(mock.history.post[0].data)).toMatchObject({
+    reportable_type: 'user',
+    reason: 'inappropriate',
+  });
+});
+
+it('never offers to report yourself', async () => {
+  useSessionStore.setState({ user: me('alice'), status: 'authed' }); // self
+  mock.onGet('/users/alice').reply(200, profileResponse({ following: false, follow_id: null }));
+
+  render(<UserProfileScreen />, { wrapper: Providers });
+  await screen.findByText('Alice');
+
+  // Reporting yourself is noise in the queue, and a control that cannot apply
+  // reads as a bug.
+  expect(screen.queryByTestId('profile-report')).toBeNull();
+});

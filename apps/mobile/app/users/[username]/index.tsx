@@ -8,6 +8,7 @@ import { useFollow, useProfile, useUserLists, useUserPlaces } from '@/api/hooks/
 import { Button } from '@/components/button';
 import { MyPlaceCard } from '@/components/place/my-place-card';
 import { ProfileCounters } from '@/components/profile/profile-counters';
+import { ReportSheet } from '@/components/report-sheet';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
@@ -25,6 +26,7 @@ export default function UserProfileScreen() {
   const authed = useSessionStore((s) => s.status === 'authed');
   const { follow, unfollow } = useFollow();
   const [tab, setTab] = useState<Tab>('places');
+  const [reportOpen, setReportOpen] = useState(false);
   const { data: places } = useUserPlaces(username ?? null);
   const { data: lists } = useUserLists(username ?? null);
 
@@ -81,6 +83,18 @@ export default function UserProfileScreen() {
             />
           ) : null}
 
+          {/* Never on your own profile — reporting yourself is noise in the
+              queue, and the control reads as a bug where it cannot apply. */}
+          {!isSelf ? (
+            <Button
+              title={t('report.action')}
+              variant="secondary"
+              size="sm"
+              onPress={() => setReportOpen(true)}
+              testID="profile-report"
+            />
+          ) : null}
+
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t('profileUser.viewMap')}
@@ -132,6 +146,15 @@ export default function UserProfileScreen() {
           )}
         </ScrollView>
       )}
+
+      {profile ? (
+        <ReportSheet
+          visible={reportOpen}
+          onClose={() => setReportOpen(false)}
+          target={{ type: 'user', id: String(profile.id) }}
+          subject={'@' + profile.username}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
