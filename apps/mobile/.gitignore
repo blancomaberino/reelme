@@ -40,3 +40,6 @@ yarn-error.*
 /ios
 /android
 coverage
+
+# Maestro screenshot artifacts (`takeScreenshot: build/maestro/...`).
+build/

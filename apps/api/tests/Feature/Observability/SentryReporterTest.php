@@ -143,6 +143,20 @@ describe('driver resolution', function () {
     });
 });
 
+it('reads its DSN from the same place the SDK does', function () {
+    // The seam: the DRIVER is chosen from `observability.sentry_dsn`, while the
+    // SDK's hub is built by sentry-laravel from `sentry.dsn`. They agree only
+    // because both read SENTRY_LARAVEL_DSN. Rename one and the app picks
+    // SentryErrorReporter while the hub has no client — every capture becomes a
+    // silent no-op, with no error anywhere and a config that looks correct.
+    putenv('SENTRY_LARAVEL_DSN=https://public@example.test/42');
+
+    expect(require config_path('sentry.php'))->toHaveKey('dsn', 'https://public@example.test/42')
+        ->and((require base_path('config/observability.php'))['sentry_dsn'])->toBe('https://public@example.test/42');
+
+    putenv('SENTRY_LARAVEL_DSN');
+});
+
 it('never ships PII to a third party', function () {
     // T-050 built erasure guarantees over exactly this data, and a copy inside
     // a tracker is outside every one of them — `DELETE /me` cannot reach it.
