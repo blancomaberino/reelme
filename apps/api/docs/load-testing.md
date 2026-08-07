@@ -35,6 +35,11 @@ trips to a managed database.
 docker compose exec -T laravel.test vendor/bin/pest --testsuite=Load
 ```
 
+The **timings** case is skipped unless `LOAD_BENCH=1` — it is a measurement, not
+an assertion: 80 requests whose output nobody reads in CI, for numbers that mean
+nothing on a shared runner anyway. The five assertions above it are the ones
+worth paying for on every PR.
+
 ## Results
 
 10 000 places, deterministic lattice over ~11 km of Montevideo. Laravel Sail
@@ -43,13 +48,13 @@ compose stack. 20 iterations after a warm-up, `ANALYZE`d table.
 
 | Viewport | Path | Places in view | p50 | p95 | max |
 |---|---|---|---|---|---|
-| City, z13 | clustered | ~9 900 | 306 ms | 321 ms | 431 ms |
-| District, z13 | clustered | ~200 | 22 ms | 24 ms | 24 ms |
-| Block, z16 | pins (capped 300) | ~40 | 20 ms | 22 ms | 22 ms |
-| Empty ocean, z13 | clustered | 0 | 8 ms | 10 ms | 10 ms |
+| City, z13 | clustered | ~9 900 | 312 ms | 317 ms | 420 ms |
+| District, z13 | clustered | ~200 | 30 ms | 31 ms | 33 ms |
+| Block, z16 | pins (capped 300) | ~40 | 26 ms | 28 ms | 30 ms |
+| Empty ocean, z13 | clustered | 0 | 8 ms | 9 ms | 9 ms |
 
 **NFR-2 asks for p95 ≤ 600 ms on map bbox/cluster queries. The worst case
-measured is 321 ms — inside budget, with roughly 2× headroom**, on a laptop
+measured is 317 ms — inside budget, with roughly 2× headroom**, on a laptop
 running the database in Docker alongside the app. Production hardware is not the
 constraint here.
 
@@ -57,7 +62,7 @@ constraint here.
 
 **The clustered path scales with places IN VIEW, not with table size.** Rows two
 and one are the same code path, the same zoom, and the same 10 000-row table —
-they differ only in how much of the city the bbox covers, and that is a **14×**
+they differ only in how much of the city the bbox covers, and that is a **10×**
 difference. So the number to watch as the table grows is not `COUNT(places)`, it
 is how many places sit inside a typical viewport. Ten cities of 10 k places each
 behave like the district row, not the city row.
@@ -85,7 +90,8 @@ The timings are **printed by the test**, not typed by hand — a hand-maintained
 benchmark is stale the day after it is written:
 
 ```bash
-docker compose exec -T laravel.test vendor/bin/pest --testsuite=Load 2>&1 | grep '\[load\]'
+docker compose exec -T laravel.test \
+  env LOAD_BENCH=1 vendor/bin/pest --testsuite=Load 2>&1 | grep '\[load\]'
 ```
 
 The seed (`tests/Load/PlaceSeeder.php`) lays places out on a golden-ratio lattice

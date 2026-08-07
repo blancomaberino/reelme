@@ -1,9 +1,8 @@
 <?php
 
-use App\Models\Place;
 use Illuminate\Support\Facades\DB;
+use Tests\Load\MapProbe;
 use Tests\Load\PlaceSeeder;
-use Tests\TestCase;
 
 /**
  * `GET /map/places` at 10k places (T-053, NFR-2).
@@ -41,43 +40,6 @@ const CITY_BBOX = ['minLng' => -56.25, 'minLat' => -34.95, 'maxLng' => -56.05, '
 /** A few blocks — the zoom-16 "walking around" viewport, past the cluster cutoff. */
 const BLOCK_BBOX = ['minLng' => -56.165, 'minLat' => -34.912, 'maxLng' => -56.155, 'maxLat' => -34.905];
 
-/** `bbox` goes over the wire as one comma-joined string — see MapPlacesRequest. */
-function mapUrl(array $bbox, int $zoom): string
-{
-    $joined = implode(',', [$bbox['minLng'], $bbox['minLat'], $bbox['maxLng'], $bbox['maxLat']]);
-
-    return '/api/v1/map/places?'.http_build_query(['bbox' => $joined, 'zoom' => $zoom]);
-}
-
-/** Wall-clock for one request, in milliseconds. */
-function timeRequest(TestCase $test, string $url): array
-{
-    $start = hrtime(true);
-    $response = $test->getJson($url);
-    $ms = (hrtime(true) - $start) / 1e6;
-
-    return [$response, $ms];
-}
-
-/** The plan Postgres picks for the endpoint's real query over a given bbox. */
-function planFor(array $bbox): string
-{
-    // Built from the REAL scope + the REAL predicate rather than hand-written
-    // SQL. A copy would keep passing after `publiclyVisible()` or the bbox
-    // clause changed underneath it, which is the one thing this must not do.
-    $query = Place::query()
-        ->publiclyVisible()
-        ->whereRaw(
-            'location && ST_MakeEnvelope(?, ?, ?, ?, 4326)::geography',
-            [$bbox['minLng'], $bbox['minLat'], $bbox['maxLng'], $bbox['maxLat']],
-        )
-        ->select('places.id');
-
-    $plan = DB::select('EXPLAIN (FORMAT JSON) '.$query->toSql(), $query->getBindings());
-
-    return json_encode($plan[0]->{'QUERY PLAN'} ?? $plan[0]);
-}
-
 it('uses the spatial index for a selective viewport', function () {
     // THE assertion of this file. `&&` against a geography column is indexable;
     // most of the natural-looking alternatives are not, and the endpoint would
@@ -90,7 +52,7 @@ it('uses the spatial index for a selective viewport', function () {
     // was right and the test was wrong. Index usage is only a meaningful claim
     // where the predicate is selective — which is also the case that actually
     // matters, since a user looks at a neighbourhood.
-    $plan = planFor(BLOCK_BBOX);
+    $plan = MapProbe::plan(BLOCK_BBOX);
 
     expect($plan)->toContain('places_location_gist')
         // Naming the index could still pass on a plan that then re-checks every
@@ -99,7 +61,7 @@ it('uses the spatial index for a selective viewport', function () {
 });
 
 it('answers a city-wide viewport as clusters, not 10k pins', function () {
-    [$response, $ms] = timeRequest($this, mapUrl(CITY_BBOX, 13));
+    [$response, $ms] = MapProbe::time($this, MapProbe::url(CITY_BBOX, 13));
 
     $response->assertOk();
     $body = $response->json();
@@ -118,7 +80,7 @@ it('answers a city-wide viewport as clusters, not 10k pins', function () {
 });
 
 it('caps a dense zoomed-in viewport at the pin limit', function () {
-    [$response, $ms] = timeRequest($this, mapUrl(BLOCK_BBOX, 16));
+    [$response, $ms] = MapProbe::time($this, MapProbe::url(BLOCK_BBOX, 16));
 
     $response->assertOk();
     $body = $response->json();
@@ -137,7 +99,7 @@ it('does not get slower when the viewport is empty', function () {
     // "no rows" without touching the heap. If this is as slow as the city
     // viewport, the index is not being used and the other tests are passing on
     // small-table luck.
-    [$response, $ms] = timeRequest($this, mapUrl(
+    [$response, $ms] = MapProbe::time($this, MapProbe::url(
         ['minLng' => -30.0, 'minLat' => -20.0, 'maxLng' => -29.9, 'maxLat' => -19.9],
         13,
     ));
@@ -148,6 +110,16 @@ it('does not get slower when the viewport is empty', function () {
 });
 
 it('records the timings that docs/load-testing.md quotes', function () {
+    // Skipped unless asked for. This is a MEASUREMENT, not an assertion: 80
+    // requests whose output nobody reads in CI, for numbers that mean nothing
+    // on a shared runner anyway. The five tests above are the ones worth the
+    // per-PR cost.
+    //
+    //   LOAD_BENCH=1 vendor/bin/pest --testsuite=Load
+    if (env('LOAD_BENCH') === null) {
+        test()->markTestSkipped('measurement only — set LOAD_BENCH=1 to regenerate docs/load-testing.md');
+    }
+
     // Not an assertion about speed — the numbers themselves, printed so the doc
     // can be regenerated instead of hand-maintained (a hand-typed benchmark is
     // stale the day after it is written). 20 iterations, warm.
@@ -168,11 +140,11 @@ it('records the timings that docs/load-testing.md quotes', function () {
 
     $lines = [];
     foreach ($cases as $label => [$bbox, $zoom]) {
-        $url = mapUrl($bbox, $zoom);
+        $url = MapProbe::url($bbox, $zoom);
         $this->getJson($url); // warm
         $samples = [];
         for ($i = 0; $i < 20; $i++) {
-            [, $ms] = timeRequest($this, $url);
+            [, $ms] = MapProbe::time($this, $url);
             $samples[] = $ms;
         }
         sort($samples);
@@ -193,7 +165,7 @@ it('records the timings that docs/load-testing.md quotes', function () {
 
 it('issues a bounded number of queries however many pins come back', function () {
     DB::enableQueryLog();
-    $this->getJson(mapUrl(BLOCK_BBOX, 16))->assertOk();
+    $this->getJson(MapProbe::url(BLOCK_BBOX, 16))->assertOk();
     $count = count(DB::getQueryLog());
     DB::disableQueryLog();
 
