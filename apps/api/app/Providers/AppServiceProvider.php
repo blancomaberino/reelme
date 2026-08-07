@@ -111,11 +111,23 @@ class AppServiceProvider extends ServiceProvider
             (int) config('quotas.rate.polling')
         )->by('polling:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
 
-        // POST /shares: a burst limit AND the daily quota (NFR-12).
-        RateLimiter::for('shares', fn (Request $request) => [
-            Limit::perMinute(10)->by('shares:min:'.$request->user()?->id),
-            Limit::perDay((int) config('quotas.daily.shares'))->by('shares:day:'.$request->user()?->id),
-        ]);
+        /*
+         * POST /shares: a BURST limit only.
+         *
+         * The daily quota deliberately does NOT live here. `Limit::perDay` is a
+         * rolling 86,400s window anchored to the user's first request, while
+         * `QuotaSnapshot` — the thing `GET /me` reports and the app renders —
+         * counts rows since midnight UTC. Two mechanisms for one limit, and
+         * they disagree by up to 23 hours: a user who hit the cap at 23:00 UTC
+         * would be told at 00:01 that they had a fresh 100, tap, and be refused
+         * with a generic `rate_limited` for the rest of the day.
+         *
+         * So the daily cap is enforced in ShareController against the same
+         * snapshot the client was shown, and answers `quota_exhausted` with the
+         * real reset time.
+         */
+        RateLimiter::for('shares', fn (Request $request) => Limit::perMinute(10)
+            ->by('shares:min:'.($request->user('sanctum')?->getAuthIdentifier() ?? $request->ip())));
 
         // GET /map/places: 120/min per user (falls back to IP for anonymous —
         // the route has no auth middleware, so resolve via the sanctum guard).

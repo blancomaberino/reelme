@@ -31,6 +31,19 @@ return Application::configure(basePath: dirname(__DIR__))
         // later in a worker can be written in it. Terminable — it costs the
         // response nothing.
         $middleware->appendToGroup('api', RememberUserLocale::class);
+
+        /*
+         * The catch-all rate limit (T-051, 03 §1). Laravel does NOT throttle
+         * the api group by default, so without this line every endpoint that
+         * does not name its own limiter is completely unmetered — which is
+         * exactly what was shipping.
+         *
+         * Routes that legitimately need more headroom (the map, share-status
+         * polling) drop this one with `withoutMiddleware('throttle:api')`
+         * rather than being silently capped at the default: throttle
+         * middlewares stack, and the tightest wins.
+         */
+        $middleware->throttleApi('api');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

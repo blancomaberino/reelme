@@ -17,7 +17,10 @@ import {
   type SharePlatform,
   type ShareStatus,
 } from '@/api/shares';
+import { isAxiosError } from 'axios';
+
 import { useQuotas } from '@/api/hooks/useQuotas';
+import { formatResetAt } from '@/lib/format-reset';
 import { Button } from '@/components/button';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { PendingVenues } from '@/components/share/pending-venues';
@@ -56,9 +59,7 @@ export default function ShareScreen() {
   const outOfShares = quotas !== undefined && quotas.shares.remaining === 0;
   // Rendered in the DEVICE's timezone even though the boundary is UTC — "resets
   // at 21:00" is only useful if it is the clock the person is looking at.
-  const quotaResetLabel = quotas
-    ? new Date(quotas.resets_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    : '';
+  const quotaResetLabel = quotas ? formatResetAt(quotas.resets_at) : '';
   const [error, setError] = useState<string | null>(null);
   const [shareId, setShareId] = useState<string | null>(null);
   // True when the API replayed an existing share (re-shared post) — drives the
@@ -78,6 +79,18 @@ export default function ShareScreen() {
         setError(t('share.needInput'));
         return;
       }
+      // Guarded HERE, not only on the button. The share-sheet path calls this
+      // straight from the mount effect — the product's PRIMARY entry point — so
+      // a disabled button protects the route nobody uses and leaves the
+      // important one to meet the limit as a generic "couldn't submit".
+      //
+      // `outOfShares`/`quotaResetLabel` in the dependency list is safe: the
+      // mount effect dedupes on `handled`, so a rebuilt callback re-runs it and
+      // it returns early.
+      if (outOfShares) {
+        setError(t('share.quotaReached', { time: quotaResetLabel }));
+        return;
+      }
       setError(null);
       Keyboard.dismiss();
       create.mutate(
@@ -87,11 +100,19 @@ export default function ShareScreen() {
             setShareId(s.id);
             setReplay(s.idempotentReplay);
           },
-          onError: () => setError(t('share.submitError')),
+          // A 429 here is the server's daily cap, not a transient failure. The
+          // generic "couldn't submit, try again" invites a retry that cannot
+          // work — and this is the path a share-sheet ingest lands on.
+          onError: (error) =>
+            setError(
+              isAxiosError(error) && error.response?.status === 429
+                ? t('share.quotaReached', { time: quotaResetLabel })
+                : t('share.submitError'),
+            ),
         },
       );
     },
-    [create, t],
+    [create, t, outOfShares, quotaResetLabel],
   );
 
   const submit = useCallback(() => doSubmit(url, caption), [doSubmit, url, caption]);

@@ -28,6 +28,13 @@ class AnalysisCostOverview extends StatsOverviewWidget
 
     protected int|string|array $columnSpan = 'full';
 
+    /**
+     * Never. StatsOverviewWidget polls every 5s by default, which would re-run
+     * the aggregate twelve times a minute for numbers that move on a scale of
+     * hours — and make the database slower the more closely it is watched.
+     */
+    protected ?string $pollingInterval = null;
+
     /** 04 §8: sustained remote fallback above this is a problem, not a blip. */
     private const FALLBACK_WARNING = 0.30;
 

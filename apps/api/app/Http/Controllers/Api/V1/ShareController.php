@@ -18,6 +18,7 @@ use App\Services\Ingestion\SourcePostResolver;
 use App\Services\Places\ExtractionCorrector;
 use App\Services\Places\PublishBestGuess;
 use App\Services\Places\ResolvePendingPlace;
+use App\Services\Quotas\QuotaSnapshot;
 use App\Support\Contracts\ExtractionSchema;
 use App\Support\KeysetPage;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -56,11 +57,22 @@ class ShareController extends Controller
         private readonly SourcePostResolver $sources,
         private readonly ExtractionCorrector $corrector,
         private readonly PublishBestGuess $bestGuess,
+        private readonly QuotaSnapshot $quotas,
     ) {}
 
     public function store(StoreShareRequest $request): JsonResponse
     {
         $user = $request->user();
+
+        // The daily cap, enforced against the SAME snapshot `GET /me` reported
+        // and the app rendered — see the `shares` limiter for why this is not a
+        // `Limit::perDay`. 429 with a specific code and the real reset time,
+        // rather than a generic `rate_limited` a client cannot explain.
+        if ($this->quotas->sharesExhausted($user)) {
+            abort(429, 'You have reached your daily share limit. It resets at '
+                .$this->quotas->resetsAt()->toIso8601String().'.');
+        }
+
         $url = $this->extractUrl($request);
         $caption = $request->string('caption')->value() ?: null;
 

@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import ShareScreen from '../share';
 import { api } from '@/api/client';
 import { useSessionStore } from '@/stores/session';
+import { useUiStore } from '@/stores/ui';
 
 /**
  * The daily share allowance on the share screen (T-051, NFR-12).
@@ -53,10 +54,48 @@ it('says the limit is reached and refuses to send', async () => {
   expect(notice).toBeOnTheScreen();
   expect(screen.getByTestId('share-submit').props.accessibilityState.disabled).toBe(true);
 
-  // A disabled Pressable still receives the synthetic press in RNTL, which is
-  // the regression worth pinning: the request must not go out.
+  // A URL must actually be entered, or `doSubmit` short-circuits on
+  // "nothing to send" and the assertion below proves nothing about the guard —
+  // removing `disabled` entirely still left this green.
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://www.instagram.com/reel/ABC/');
+
   fireEvent.press(screen.getByTestId('share-submit'));
   await waitFor(() => expect(mock.history.post).toHaveLength(0));
+});
+
+it('blocks the share-sheet path too, not just the button', async () => {
+  mock.onGet('/me').reply(200, meWithQuota(0));
+  mock.onPost('/shares').reply(201, { data: {}, meta: {} });
+  // Seeded, because the auto-submit fires from the mount effect: with a cold
+  // cache the request is already gone before /me answers. The client guard is
+  // only ever a courtesy — the server's 429 is the enforcement (below).
+  qc.setQueryData(['me', 'quotas'], meWithQuota(0).meta.quotas);
+  useUiStore.getState().setPendingShare({ url: 'https://www.instagram.com/reel/ABC/', text: '' });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  // The share-sheet path never touches the button — it is the product's
+  // PRIMARY entry point, so a guard living only on the button protects the one
+  // route nobody uses.
+  await screen.findByTestId('share-quota-reached');
+  await waitFor(() => expect(mock.history.post).toHaveLength(0));
+});
+
+it('explains a 429 as the daily limit, not as "try again"', async () => {
+  mock.onGet('/me').reply(200, meWithQuota(3));
+  mock.onPost('/shares').reply(429, { message: 'Too Many Requests' });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  await screen.findByTestId('share-submit');
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://www.instagram.com/reel/ABC/');
+  fireEvent.press(screen.getByTestId('share-submit'));
+
+  // The share-sheet auto-submit races /me and can land before the quota is
+  // known, so the server's refusal IS the guard on that path. Telling somebody
+  // to "try again" invites a retry that cannot work.
+  expect(await screen.findByText(/daily limit reached/i)).toBeOnTheScreen();
+  expect(screen.queryByText(/please try again/i)).toBeNull();
 });
 
 it('stays out of the way while the user has allowance left', async () => {

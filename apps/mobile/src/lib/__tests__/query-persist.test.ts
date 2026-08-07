@@ -51,6 +51,9 @@ describe('isPersistableKey', () => {
     ['share status', queryKeys.share('42')],
     ['the public map', queryKeys.mapPlaces('bbox', 12, publicScope)],
     ['the idle map placeholder', ['places', 'map', 'idle']],
+    // Sits under the allowlisted `me` head, so it needs its own carve-out —
+    // see the dehydrate test below for what happens without one.
+    ['the quota snapshot', queryKeys.quotas()],
   ])('does not persist %s', (_label, key) => {
     expect(isPersistableKey(key)).toBe(false);
   });
@@ -79,6 +82,28 @@ describe('shouldDehydrateQuery', () => {
 
     expect(query.state.status).toBe('error');
     expect(shouldDehydrateQuery(query)).toBe(false);
+  });
+
+  it('refuses the quota snapshot even though its own profile is allowlisted', async () => {
+    const client = new QueryClient();
+    await client.prefetchQuery({ queryKey: queryKeys.me, queryFn: async () => ({ id: '1' }) });
+    await client.prefetchQuery({
+      queryKey: queryKeys.quotas(),
+      queryFn: async () => ({ shares: { used: 30, limit: 30, remaining: 0 } }),
+    });
+
+    const persisted = client
+      .getQueryCache()
+      .getAll()
+      .filter(shouldDehydrateQuery)
+      .map((q) => q.queryKey.join('/'));
+
+    // `remaining: 0` is a fact about a 24h window, and the persisted cache also
+    // lives 24h — so yesterday's exhausted quota rehydrates on a cold start,
+    // disables the share button, and names a reset time that already passed.
+    // Offline (the case persistence exists for) the refetch never resolves, so
+    // it stays disabled all session: a guard meant to fail OPEN, failing closed.
+    expect(persisted).toEqual(['me']);
   });
 
   it('refuses a successful query on a non-allowlisted key', async () => {

@@ -190,3 +190,20 @@ it('caches the aggregates so the dashboard cannot hammer Postgres', function () 
     Cache::flush();
     expect($costs->summary(now()->subDay())['spend_usd'])->toBe(5.1);
 });
+
+it('still caches when the window start moves, which is every single call', function () {
+    costRun(AnalysisEngine::OpenRouter, 0.10);
+    $costs = app(AnalysisCosts::class);
+
+    expect($costs->summary(now()->subDay())['spend_usd'])->toBe(0.1);
+
+    costRun(AnalysisEngine::OpenRouter, 5.00);
+    $this->travel(1)->second();
+
+    // The regression this exists for: the key was `$since->timestamp`, and
+    // `$since` is `now()->subDay()` — so it changed EVERY SECOND and every
+    // lookup was a miss plus a write into an unbounded key space. The docblock
+    // promised caching; the widget recomputed a 30-day group-by on every poll.
+    // Without the minute bucket the assertion below reads 5.1.
+    expect($costs->summary(now()->subDay())['spend_usd'])->toBe(0.1);
+});

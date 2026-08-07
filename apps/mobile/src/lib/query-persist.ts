@@ -89,7 +89,13 @@ export async function clearPersistedQueryCache(): Promise<void> {
 export function isPersistableKey(key: readonly unknown[]): boolean {
   const [head, second] = key;
 
-  if (head === 'me') return true;
+  // ...except the quota snapshot. It is a fact about RIGHT NOW on a 24h clock,
+  // and the persisted cache lives for 24h — so a `remaining: 0` from yesterday
+  // rehydrates on a cold start and disables the share button with a reset time
+  // that has already passed. Offline (the case persistence exists for) the
+  // refetch never resolves, so it stays disabled for the whole session. The
+  // guard is meant to fail OPEN; persisting it makes it fail closed.
+  if (head === 'me') return second !== 'quotas';
 
   if (head === 'lists') return second !== 'public';
 

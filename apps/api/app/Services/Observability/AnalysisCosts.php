@@ -35,7 +35,13 @@ class AnalysisCosts
 
             /** @var Collection<int, object> $rows */
             $rows = DB::table('analysis_runs')
-                ->selectRaw("date_trunc('day', finished_at) AS day, engine, SUM(cost_usd) AS cost")
+                // AT TIME ZONE 'UTC' explicitly: `date_trunc` on a timestamptz
+                // truncates in the SESSION timezone, while the labels below are
+                // built from UTC dates. On a managed Postgres with a non-UTC
+                // default every bucket shifts, and any row whose shifted date
+                // falls before the first label is dropped SILENTLY — spend
+                // simply disappears from the chart with no error.
+                ->selectRaw("date_trunc('day', finished_at AT TIME ZONE 'UTC') AS day, engine, SUM(cost_usd) AS cost")
                 ->whereNotNull('finished_at')
                 ->where('finished_at', '>=', $since)
                 ->groupBy('day', 'engine')
@@ -74,7 +80,7 @@ class AnalysisCosts
      */
     public function byModel(Carbon $since): array
     {
-        return $this->remember('model:'.$since->timestamp, fn (): array => DB::table('analysis_runs')
+        return $this->remember('model:'.$this->bucket($since), fn (): array => DB::table('analysis_runs')
             ->selectRaw('model, engine, COUNT(*) AS runs, SUM(cost_usd) AS cost, AVG(overall_confidence) AS confidence')
             ->whereNotNull('finished_at')
             ->where('finished_at', '>=', $since)
@@ -98,7 +104,7 @@ class AnalysisCosts
      */
     public function topSpenders(Carbon $since, int $limit = 10): array
     {
-        return $this->remember("spenders:{$since->timestamp}:{$limit}", fn (): array => DB::table('analysis_runs')
+        return $this->remember("spenders:{$this->bucket($since)}:{$limit}", fn (): array => DB::table('analysis_runs')
             ->join('shares', 'analysis_runs.share_id', '=', 'shares.id')
             ->leftJoin('users', 'shares.user_id', '=', 'users.id')
             ->selectRaw('shares.user_id, users.username, SUM(analysis_runs.cost_usd) AS cost, COUNT(*) AS runs')
@@ -129,7 +135,7 @@ class AnalysisCosts
      */
     public function summary(Carbon $since): array
     {
-        return $this->remember('summary:'.$since->timestamp, function () use ($since): array {
+        return $this->remember('summary:'.$this->bucket($since), function () use ($since): array {
             $row = DB::table('analysis_runs')
                 ->selectRaw('COUNT(*) AS runs, SUM(cost_usd) AS cost')
                 ->selectRaw('SUM(CASE WHEN engine = ? THEN 1 ELSE 0 END) AS remote', [AnalysisEngine::OpenRouter->value])
@@ -152,9 +158,25 @@ class AnalysisCosts
         });
     }
 
-    /** @param  \Closure(): mixed  $callback */
+    /**
+     * @param  \Closure(): mixed  $callback
+     */
     private function remember(string $key, \Closure $callback): mixed
     {
         return Cache::remember("analysis-costs:{$key}", self::TTL, $callback);
+    }
+
+    /**
+     * A cache-key fragment for a window, bucketed to the minute.
+     *
+     * Keying on `$since->timestamp` looked right and cached NOTHING: the window
+     * start is `now()->subHours(n)`, so the key changed every second and every
+     * lookup was a miss plus a write into an unbounded key space. The widget
+     * whose docblock promised caching was the one recomputing a 30-day
+     * group-by on every poll.
+     */
+    private function bucket(Carbon $since): string
+    {
+        return $since->format('YmdHi');
     }
 }
