@@ -38,6 +38,8 @@ use Laravel\Scout\Searchable;
  * @property string $locale
  * @property bool $is_influencer
  * @property Carbon|null $email_verified_at
+ * @property Carbon|null $deleted_at
+ * @property Carbon|null $deletion_requested_at
  * @property Carbon|null $stripe_connect_onboarded_at
  * @property string|null $two_factor_secret
  * @property list<string>|null $two_factor_recovery_codes
@@ -252,6 +254,10 @@ class User extends Authenticatable implements FilamentUser, HasLocalePreference,
     {
         return [
             'email_verified_at' => 'datetime',
+            // Distinguishes a self-requested deletion from an admin ban (T-050).
+            // Both set `deleted_at`; only one of them may be undone by signing
+            // back in, and this column is the only thing that says which.
+            'deletion_requested_at' => 'datetime',
             'stripe_connect_onboarded_at' => 'datetime',
             'password' => 'hashed',
             // Encrypted, not hashed (T-068): both must be readable again — the

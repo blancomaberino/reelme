@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\TwoFactorChallengeRequest;
 use App\Http\Resources\UserResource;
 use App\Services\Auth\TwoFactorService;
+use App\Services\Gdpr\AccountDeletion;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 
@@ -25,12 +26,22 @@ use Illuminate\Validation\ValidationException;
  */
 class TwoFactorChallengeController extends Controller
 {
-    public function __invoke(TwoFactorChallengeRequest $request, TwoFactorService $twoFactor): JsonResponse
-    {
+    public function __invoke(
+        TwoFactorChallengeRequest $request,
+        TwoFactorService $twoFactor,
+        AccountDeletion $deletion,
+    ): JsonResponse {
         $challengeToken = (string) $request->string('challenge_token');
         $user = $twoFactor->resolveChallenge($challengeToken);
 
         if ($user === null || ! $user->hasTwoFactorEnabled()) {
+            $this->reject();
+        }
+
+        // Same gate as LoginController, on the path that mints the actual
+        // token: a soft-deleted account passes only if the USER asked for the
+        // deletion (never an admin ban) and the grace period is still running.
+        if ($user->trashed() && ! ($deletion->isPending($user) && $deletion->isWithinGrace($user))) {
             $this->reject();
         }
 
@@ -52,6 +63,9 @@ class TwoFactorChallengeController extends Controller
         // One exchange per challenge: without this the token stays live for its
         // full TTL and a replayed request would mint a second session.
         $twoFactor->consumeChallenge($challengeToken);
+
+        // Both factors passed — a pending deletion is now a change of mind (T-050).
+        $deletion->cancel($user);
 
         $deviceName = (string) $request->string('device_name');
         $user->tokens()->where('name', $deviceName)->delete();

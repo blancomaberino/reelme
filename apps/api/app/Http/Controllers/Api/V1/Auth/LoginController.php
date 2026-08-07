@@ -9,18 +9,32 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Services\Auth\TwoFactorService;
+use App\Services\Gdpr\AccountDeletion;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class LoginController extends Controller
 {
-    public function __invoke(LoginRequest $request, TwoFactorService $twoFactor): JsonResponse
+    public function __invoke(LoginRequest $request, TwoFactorService $twoFactor, AccountDeletion $deletion): JsonResponse
     {
-        $user = User::where('email', $request->string('email'))->first();
+        // withTrashed, because signing in IS how a pending account deletion is
+        // cancelled (T-050). The reactivation itself happens further down, only
+        // once every factor has passed — see below.
+        $user = User::withTrashed()->where('email', $request->string('email'))->first();
 
         if (! $user || $user->password === null || ! Hash::check((string) $request->string('password'), $user->password)) {
             // Uniform failure — never reveal whether the email exists.
+            throw ValidationException::withMessages([
+                'email' => [__('auth.failed')],
+            ]);
+        }
+
+        // A soft-deleted account is signable-in ONLY when the user asked for the
+        // deletion themselves and the grace period is still running. An admin
+        // ban is also a soft delete, and a ban that a correct password could
+        // undo would not be a ban — so `isPending` (not `trashed`) is the gate.
+        if ($user->trashed() && ! ($deletion->isPending($user) && $deletion->isWithinGrace($user))) {
             throw ValidationException::withMessages([
                 'email' => [__('auth.failed')],
             ]);
@@ -43,6 +57,13 @@ class LoginController extends Controller
                 'challenge_token' => $twoFactor->issueChallenge($user),
             ]);
         }
+
+        // Password was right and no second factor is owed — this is a complete
+        // sign-in, so a pending deletion is now genuinely a change of mind.
+        // Placed AFTER the 2FA branch on purpose: restoring an account for
+        // someone holding only the password would let a stolen password undo a
+        // deletion the real owner asked for.
+        $deletion->cancel($user);
 
         $deviceName = (string) $request->string('device_name');
 

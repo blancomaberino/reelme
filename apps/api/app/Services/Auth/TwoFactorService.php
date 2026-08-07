@@ -233,7 +233,11 @@ class TwoFactorService
             $expiresAt,
         );
 
-        return User::find($entry['user_id']);
+        // withTrashed: an account inside its GDPR deletion grace period can be
+        // signed back into — that is how the deletion gets cancelled (T-050).
+        // Without this the 2FA half of that login resolves to null and the user
+        // is told their code was wrong, with no way to reach their own account.
+        return User::withTrashed()->find($entry['user_id']);
     }
 
     /** Invalidate a challenge once it has been successfully exchanged. */

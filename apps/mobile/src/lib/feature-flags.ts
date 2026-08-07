@@ -27,17 +27,14 @@ export const featureFlags = {
    * GDPR self-service: the "export my data" and "delete my account" actions on
    * `settings/privacy`.
    *
-   * OFF until **T-050** (M5) ships `POST /me/export` and `DELETE /me` — the
-   * routes do not exist yet, so with this on, both actions 404. The privacy
-   * screen still ships today: it explains both rights and shows them as not yet
-   * available, which is the honest state, rather than hiding the fact that the
-   * app holds this data at all.
-   *
-   * Turning it on is the whole M5 mobile change — the screen, the two mutations,
-   * the confirm flow and the local-teardown-on-delete are already written and
-   * tested behind it (`privacy-enabled.test.tsx` runs that path).
+   * ON since **T-050** shipped `POST /me/export` and `DELETE /me`. Kept as a
+   * flag rather than deleted because it is the switch that takes the two
+   * actions down cleanly — showing "not available yet" instead of a 404 — if the
+   * backend ever has to be rolled back. It also stays because Apple requires
+   * in-app account deletion (Guideline 5.1.1(v)), so a build that ships this
+   * OFF is a build that fails review: the default is the thing to protect.
    */
-  gdprSelfService: parseFlag(process.env.EXPO_PUBLIC_FEATURE_GDPR_SELF_SERVICE, false),
+  gdprSelfService: parseFlag(process.env.EXPO_PUBLIC_FEATURE_GDPR_SELF_SERVICE, true),
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

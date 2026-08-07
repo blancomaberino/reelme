@@ -13,12 +13,11 @@ import { useSessionStore } from '@/stores/session';
 import { mockRouter } from '../../../jest.setup';
 
 /**
- * The SAME screen with the flag on — i.e. the app T-050 ships by flipping one
- * boolean. This file is the whole reason the flag is worth having: the M5 path
- * is written, wired and covered now, next to the copy it belongs to, instead of
- * being reconstructed from a task note months later.
+ * Both data rights, working (T-050).
  *
- * If these cases ever fail, "M5 is just a flip" has stopped being true.
+ * The deletion half is a typed confirmation rather than a destructive alert,
+ * and most of what follows is about that gate: an account deletion that a
+ * mis-tap can reach is the one irreversible mistake this app can hand someone.
  */
 jest.mock('@/lib/feature-flags', () => ({ featureFlags: { gdprSelfService: true } }));
 
@@ -37,17 +36,10 @@ function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-/** Take the destructive button in the confirm dialog. */
-function confirmDestructive() {
-  return jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-    // Optional-chained because the failure path raises a SECOND, button-less
-    // alert through this same spy — reaching into `buttons` unconditionally
-    // would throw there and turn a real assertion into a crash.
-    const destructive = (buttons as { style?: string; onPress?: () => void }[] | undefined)?.find(
-      (b) => b.style === 'destructive',
-    );
-    destructive?.onPress?.();
-  });
+/** Open the sheet and spell the word out, as a user has to. */
+function typeConfirmation(word = 'DELETE') {
+  fireEvent.press(screen.getByTestId('privacy-delete-action'));
+  fireEvent.changeText(screen.getByTestId('privacy-delete-confirm-input'), word);
 }
 
 beforeEach(async () => {
@@ -72,8 +64,8 @@ it('hides the "not available yet" notice once the flag is on', () => {
 
 it('tells a signed-out visitor why the actions are off, rather than just greying them', () => {
   // Reachable by deep link even though the settings row is authed-only. Without
-  // this branch, flipping the flag for T-050 would hand a guest two dead
-  // buttons and no explanation — the exact thing this screen exists to avoid.
+  // this branch a guest gets two dead buttons and no explanation — the exact
+  // thing this screen exists to avoid.
   useSessionStore.setState({ user: null, status: 'guest' });
 
   render(<PrivacyScreen />, { wrapper: Providers });
@@ -111,23 +103,51 @@ it('reports a failed export instead of pretending it worked', async () => {
   expect(screen.getByTestId('privacy-export-action')).toBeOnTheScreen();
 });
 
-it('never deletes without a confirmation', () => {
-  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-
+it('opens a confirmation instead of deleting on the first press', () => {
   render(<PrivacyScreen />, { wrapper: Providers });
+
   fireEvent.press(screen.getByTestId('privacy-delete-action'));
 
-  expect(alert).toHaveBeenCalled();
+  expect(screen.getByTestId('privacy-delete-confirm-input')).toBeOnTheScreen();
   expect(mock.history.delete).toHaveLength(0);
   expect(useSessionStore.getState().status).toBe('authed');
 });
 
-it('deletes the account, wipes the device session, and leaves for welcome', async () => {
-  mock.onDelete('/me').reply(204);
-  confirmDestructive();
-
+it('keeps the confirm button dead until the word is spelled out', () => {
   render(<PrivacyScreen />, { wrapper: Providers });
   fireEvent.press(screen.getByTestId('privacy-delete-action'));
+
+  const confirm = screen.getByTestId('privacy-delete-confirm');
+  expect(confirm.props.accessibilityState.disabled).toBe(true);
+
+  // Half-typed is still not a decision.
+  fireEvent.changeText(screen.getByTestId('privacy-delete-confirm-input'), 'DEL');
+  expect(confirm.props.accessibilityState.disabled).toBe(true);
+
+  // And a disabled press must send nothing — RNTL delivers it either way.
+  fireEvent.press(confirm);
+  expect(mock.history.delete).toHaveLength(0);
+
+  fireEvent.changeText(screen.getByTestId('privacy-delete-confirm-input'), 'DELETE');
+  expect(screen.getByTestId('privacy-delete-confirm').props.accessibilityState.disabled).toBe(false);
+});
+
+it('accepts the word in any case, with stray spaces', () => {
+  // The gate is about deliberate intent, not typing accuracy. An on-screen
+  // keyboard that auto-capitalises, or a trailing space from a suggestion bar,
+  // must not fail someone for something they did not do.
+  render(<PrivacyScreen />, { wrapper: Providers });
+  typeConfirmation('  delete ');
+
+  expect(screen.getByTestId('privacy-delete-confirm').props.accessibilityState.disabled).toBe(false);
+});
+
+it('deletes the account, wipes the device session, and leaves for welcome', async () => {
+  mock.onDelete('/me').reply(200, { data: { status: 'scheduled' }, meta: {} });
+
+  render(<PrivacyScreen />, { wrapper: Providers });
+  typeConfirmation();
+  fireEvent.press(screen.getByTestId('privacy-delete-confirm'));
 
   await waitFor(() => expect(mock.history.delete).toHaveLength(1));
   expect(mock.history.delete[0].url).toBe('/me');
@@ -135,17 +155,33 @@ it('deletes the account, wipes the device session, and leaves for welcome', asyn
   expect(mockRouter.replace).toHaveBeenCalledWith('/(auth)/welcome');
 });
 
+it('abandons cleanly and forgets what was typed', () => {
+  render(<PrivacyScreen />, { wrapper: Providers });
+  typeConfirmation();
+
+  fireEvent.press(screen.getByTestId('privacy-delete-cancel'));
+  // Re-opening must start from a dead button. A sheet that remembered the word
+  // would leave a live "delete everything" one tap away on the next visit.
+  fireEvent.press(screen.getByTestId('privacy-delete-action'));
+
+  expect(screen.getByTestId('privacy-delete-confirm').props.accessibilityState.disabled).toBe(true);
+  expect(mock.history.delete).toHaveLength(0);
+});
+
 it('keeps the session when the server refuses the delete', async () => {
   // The failure that matters: signing someone out of an account that still
   // exists, while telling them it is gone, is worse than the error itself.
   mock.onDelete('/me').reply(500);
-  confirmDestructive();
+  jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
 
   render(<PrivacyScreen />, { wrapper: Providers });
-  fireEvent.press(screen.getByTestId('privacy-delete-action'));
+  typeConfirmation();
+  fireEvent.press(screen.getByTestId('privacy-delete-confirm'));
 
   await waitFor(() => expect(mock.history.delete).toHaveLength(1));
-  await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith('Couldn’t delete your account', expect.any(String)));
+  await waitFor(() =>
+    expect(Alert.alert).toHaveBeenCalledWith('Couldn’t delete your account', expect.any(String)),
+  );
   expect(useSessionStore.getState().status).toBe('authed');
   expect(mockRouter.replace).not.toHaveBeenCalled();
 

@@ -10,12 +10,28 @@ it('assigns exactly the canonical queue set across supervisors', function () {
         ->values()
         ->all();
 
-    // Canonical set per 04-analysis-pipeline §1. `payouts` is intentionally
-    // absent until M4 (T-045). Guards against later queue-name drift.
+    // Canonical set per 04-analysis-pipeline §1, plus `housekeeping` (T-050 —
+    // GDPR purge/export). `payouts` is intentionally absent until M4 (T-045).
+    // Guards against later queue-name drift.
     expect($queues)->toBe([
-        'analyze', 'default', 'fetch', 'ingest', 'media',
+        'analyze', 'default', 'fetch', 'housekeeping', 'ingest', 'media',
         'notifications', 'publish', 'resolve', 'transcribe',
     ]);
+});
+
+it('runs every supervisor in every environment', function () {
+    // A supervisor defined only in `defaults` never starts: Horizon builds its
+    // provisioning plan from `environments` and merges the defaults in. Omitting
+    // one is silent — jobs enqueue onto a queue nothing is listening to, and the
+    // only symptom is work that never happens.
+    $defined = array_keys(config('horizon.defaults'));
+
+    foreach (config('horizon.environments') as $environment => $supervisors) {
+        expect(array_keys($supervisors))->toEqualCanonicalizing(
+            $defined,
+            "environment {$environment} must run every defined supervisor",
+        );
+    }
 });
 
 it('keeps every supervisor timeout below the redis retry_after', function () {

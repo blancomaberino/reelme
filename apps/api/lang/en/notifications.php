@@ -55,4 +55,11 @@ return [
         ],
     ],
 
+    'account' => [
+        'export_ready' => [
+            'title' => 'Your data export is ready',
+            'body' => 'We emailed you the download link.',
+        ],
+    ],
+
 ];

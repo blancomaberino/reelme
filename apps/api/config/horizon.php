@@ -260,6 +260,23 @@ return [
             'timeout' => 120,
             'nice' => 0,
         ],
+        // GDPR purge/export (T-050). Its own supervisor rather than a slot on
+        // `default`: these walk every table a user touches and zip an archive,
+        // so on a shared queue one deletion would sit in front of every push
+        // waiting behind it. `nice` because nothing is watching them run.
+        'supervisor-housekeeping' => [
+            'connection' => 'redis',
+            'queue' => ['housekeeping'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 1,
+            'timeout' => 600,
+            'nice' => 5,
+        ],
     ],
 
     'environments' => [
@@ -268,6 +285,11 @@ return [
             'supervisor-media' => ['maxProcesses' => 4, 'balanceMaxShift' => 1, 'balanceCooldown' => 3],
             'supervisor-analyze' => ['maxProcesses' => 4, 'balanceMaxShift' => 1, 'balanceCooldown' => 3],
             'supervisor-default' => ['maxProcesses' => 4, 'balanceMaxShift' => 1, 'balanceCooldown' => 3],
+            // Every supervisor must be listed per environment, not only in
+            // `defaults`: Horizon's provisioning plan runs what the ENVIRONMENT
+            // names and merges defaults into it, so one omitted here is a queue
+            // with no worker — jobs enqueue fine and are never picked up.
+            'supervisor-housekeeping' => ['maxProcesses' => 1],
         ],
 
         'local' => [
@@ -275,6 +297,7 @@ return [
             'supervisor-media' => ['maxProcesses' => 1],
             'supervisor-analyze' => ['maxProcesses' => 1],
             'supervisor-default' => ['maxProcesses' => 1],
+            'supervisor-housekeeping' => ['maxProcesses' => 1],
         ],
     ],
 

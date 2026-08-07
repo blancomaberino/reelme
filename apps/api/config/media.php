@@ -34,6 +34,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Retention (T-050 / ADR-010 — analyze-then-delete)
+    |--------------------------------------------------------------------------
+    | We hold a downloaded original only long enough to analyse it. Keeping a
+    | copy of someone else's video indefinitely is the copyright exposure R-07
+    | is about, and it is the one risk that grows on its own — every share adds
+    | to it whether or not anybody looks at the result.
+    |
+    | `original_hours`: how long an original video / extracted WAV may live once
+    | its share chain has finished. Keyframes and thumbnails are DERIVED work
+    | and are kept.
+    |
+    | `in_flight_ceiling_hours`: a share stuck mid-pipeline holds its original
+    | past the window, because deleting it would strand a retry with nothing to
+    | re-read. That grace is bounded — past the ceiling the asset goes anyway
+    | and a retry re-fetches (ADR-010 already requires re-fetch to re-analyse),
+    | so a permanently wedged share cannot pin a video forever.
+    |
+    | `oembed_days`: NFR-11 — raw provider payloads are cached debugging aids,
+    | not product data. The extracted fields are already in our own columns.
+    */
+    'retention' => [
+        'original_hours' => (int) env('MEDIA_ORIGINAL_RETENTION_HOURS', 72),
+        'in_flight_ceiling_hours' => (int) env('MEDIA_IN_FLIGHT_CEILING_HOURS', 168),
+        'oembed_days' => (int) env('MEDIA_OEMBED_RETENTION_DAYS', 90),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Media processing (T-017 — DownloadMedia / PrepareMedia)
     |--------------------------------------------------------------------------
     | Binary paths are configurable so CI/containers can point at their own

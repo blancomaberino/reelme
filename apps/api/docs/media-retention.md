@@ -19,10 +19,41 @@ is needed — selected via `MEDIA_DISK` (see `.env.example`).
   `MediaUrlService::temporaryUrl()`, uploads from `temporaryUploadUrl()`.
 - **The app never streams stored originals.** Display is embed / link-out to the
   original source post; originals exist only for the analysis pipeline.
-- **Analyze-then-delete (ADR-010):** a scheduled command hard-deletes originals
-  ≤ 72 h after analysis (ships M5 / T-050). Derived keyframes/thumbnails persist.
+- **Analyze-then-delete (ADR-010):** `reelmap:media:prune-originals` runs hourly
+  and hard-deletes originals past their window (T-050). Derived
+  keyframes/thumbnails persist.
 - **Defense-in-depth:** configure an **R2 lifecycle rule** expiring the
   `originals/` prefix at 72 h, so nothing lingers even if the job fails.
+
+## The retention commands (T-050)
+
+| Command | Schedule | What it removes |
+|---------|----------|-----------------|
+| `reelmap:media:prune-originals` | hourly | `media_assets` of kind `video`/`audio`/`screen_recording` past their window — **object first, then the row** |
+| `reelmap:sources:prune-payloads` | daily 04:10 | `source_posts.oembed_json` older than 90 days (NFR-11). The row and the transcript stay |
+| `reelmap:gdpr:prune-exports` | daily 04:30 | data-export archives under `exports/` past `GDPR_EXPORT_RETENTION_DAYS` |
+
+Tuning knobs (`config/media.php` → `retention`):
+
+| Env | Default | Meaning |
+|-----|---------|---------|
+| `MEDIA_ORIGINAL_RETENTION_HOURS` | 72 | How long a **finished** share's original may live |
+| `MEDIA_IN_FLIGHT_CEILING_HOURS` | 168 | Hard ceiling for a share still mid-pipeline |
+| `MEDIA_OEMBED_RETENTION_DAYS` | 90 | Raw provider payload window |
+
+Two clocks, not one. A share still `pending|fetching|analyzing|review` keeps its
+original past the normal window so a retry has something to re-read — but only
+until the ceiling, after which it goes anyway and a retry re-fetches (ADR-010
+already requires a re-fetch to re-analyse). Without the ceiling, one permanently
+wedged share pins a copy of somebody else's video forever, and "wedged" is
+exactly the state nobody notices.
+
+Both media commands take `--dry-run`. Deletion order is object-then-row on
+purpose: a failed bucket call leaves the row for the next pass, whereas
+deleting the row first would lose the only handle we have on the file.
+
+> ⚠️ **The schedule only runs if `schedule:run` is on cron** (T-055). Without
+> it every window above is infinite and the commands are documentation.
 
 ## Path conventions (`App\Services\Media\MediaPaths`)
 

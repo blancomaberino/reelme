@@ -58,4 +58,11 @@ return [
         ],
     ],
 
+    'account' => [
+        'export_ready' => [
+            'title' => 'Tu copia de datos está lista',
+            'body' => 'Te enviamos el enlace de descarga por correo.',
+        ],
+    ],
+
 ];
