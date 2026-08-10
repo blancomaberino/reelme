@@ -104,6 +104,7 @@ export const es: Record<MessageKey, string> = {
   'place.call': 'Llamar a {{phone}}',
   'place.view': 'Ver lugar',
 
+  'source.openInfluencer': 'Abrir la página de {{handle}}',
   'source.openSharer': 'Abrir el perfil de {{handle}}',
   'source.openOriginal': 'Abrir publicación original de {{platform}}',
   'source.firstShared': 'Compartido primero',
