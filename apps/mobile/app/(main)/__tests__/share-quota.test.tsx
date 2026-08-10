@@ -214,9 +214,13 @@ it('does not hammer /me when the reset time is already in the past', async () =>
 
     // `refetchInterval` is a REPEATING poll, not a one-shot. Answering a
     // past-due boundary with "refetch immediately" polls a thousand times a
-    // second for as long as it stays past-due. Floored at 30s, a minute buys a
-    // couple of refetches — not hundreds.
-    expect(meCalls - afterMount).toBeLessThanOrEqual(3);
+    // second for as long as it stays past-due.
+    //
+    // EXACTLY the two the 30s floor allows in 60s (at 30s and at 60s). Three
+    // would also pass a 20s interval, which is a polling storm slowed down
+    // rather than the floor being honoured — the assertion has to pin the
+    // number the floor implies, not merely "not hundreds".
+    expect(meCalls - afterMount).toBeLessThanOrEqual(2);
   } finally {
     jest.useRealTimers();
   }
