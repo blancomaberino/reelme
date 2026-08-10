@@ -309,6 +309,36 @@ it('taps the sharer’s handle through to their profile', async () => {
   });
 });
 
+it('taps the influencer’s handle through to their page', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+
+  // Both handles navigate, which is also what removes the ambiguity: two
+  // look-alike handles where only one was a link read as neither being one.
+  fireEvent.press(await screen.findByTestId('source-influencer-comeren.uy'));
+
+  expect(mockRouter.push).toHaveBeenCalledWith({
+    pathname: '/influencer/[id]',
+    params: { id: '2' },
+  });
+});
+
+it('announces an anonymised sharer as text, not as a dead button', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, {
+    data: { ...PLACE, sources: [{ ...PLACE.sources![0], sharer: null }] },
+  });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+  await screen.findByText(PLACE.name);
+
+  // The chevron is the app's "this navigates" signal and must be absent here,
+  // and the row must not claim `button` — a private sharer is still worth
+  // announcing, just not as a control. Asserted through the ROLE, which is what
+  // a screen reader actually says.
+  expect(screen.queryByRole('button', { name: /Someone|Alguien/ })).toBeNull();
+});
+
 it('does not offer a profile tap when the sharer is anonymised', async () => {
   mock.onGet(`/places/${PLACE.slug}`).reply(200, {
     data: { ...PLACE, sources: [{ ...PLACE.sources![0], sharer: null }] },

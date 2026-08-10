@@ -5,10 +5,10 @@
 #
 # What jest cannot prove here, and why this exists:
 #
-#  1. The sharer's handle is a `Pressable` nested INSIDE the card's own
-#     Pressable. React Native gives the touch to the innermost responder, so
-#     this works — but a test that mounts the screen and fires a synthetic press
-#     would pass either way. Only a real view hierarchy can swallow the tap.
+#  1. The handles are `Pressable`s nested INSIDE the card's own Pressable.
+#     React Native gives the touch to the innermost responder, so this works —
+#     but a test that mounts the screen and fires a synthetic press would pass
+#     either way. Only a real view hierarchy can swallow the tap.
 #  2. Reachability. The place screen's handle was styled to look tappable and
 #     left inert from T-033 until T-054's follow-up; every unit test passed
 #     throughout, because none of them asked whether anyone could GET to a
@@ -72,10 +72,12 @@ appId: pet.one.reelmap
     timeout: 25000
 - takeScreenshot: build/maestro/reach-1-place
 
-# Both tap targets coexist: the CARD opens the original post, the HANDLE opens
-# the profile. Asserting the card's label here is what would catch the inner
-# Pressable eating the whole card.
+# All three tap targets coexist: the CARD opens the original post, and each
+# HANDLE opens its person. Asserting the card's label here is what would catch
+# an inner Pressable eating the whole card.
 - assertVisible: ".*Abrir publicación original.*"
+- assertVisible: ".*Abrir la página de.*"
+- assertVisible: ".*Abrir el perfil de.*"
 - tapOn:
     id: "source-sharer-.*"
 

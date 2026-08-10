@@ -107,6 +107,7 @@ export const en = {
   'place.call': 'Call {{phone}}',
   'place.view': 'View place',
 
+  'source.openInfluencer': 'Open {{handle}}’s page',
   'source.openSharer': 'Open {{handle}}’s profile',
   'source.openOriginal': 'Open original {{platform}} post',
   'source.firstShared': 'First shared',
