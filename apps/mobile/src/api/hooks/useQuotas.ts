@@ -19,6 +19,13 @@ export type Quotas = {
   resets_at: string;
 };
 
+/**
+ * Never poll `/me` faster than this, whatever the arithmetic says. See the
+ * `refetchInterval` note below — this is the difference between one scheduled
+ * refetch and a millisecond hot loop.
+ */
+const MIN_QUOTA_REFETCH_MS = 30_000;
+
 export function useQuotas() {
   return useQuery({
     queryKey: queryKeys.quotas(),
@@ -30,7 +37,7 @@ export function useQuotas() {
     // "0 remaining" would block someone whose window has since reset.
     staleTime: 30_000,
     /*
-     * One scheduled refetch, at the reset boundary — NOT a poll.
+     * Refetch AT the reset boundary.
      *
      * `staleTime` does not schedule anything; it only marks data refetchable.
      * A screen left open in the foreground across midnight UTC would therefore
@@ -38,10 +45,21 @@ export function useQuotas() {
      * while displaying a reset time that had already passed — a message
      * visibly contradicting itself, and no way out but backgrounding the app.
      *
-     * So the interval is the time UNTIL that boundary (plus a second, so the
-     * server has certainly rolled over), and `false` at every other moment.
-     * The common case — the screen open for a minute, well before reset —
-     * schedules a single timer that never fires.
+     * So the interval is the time until that boundary, plus a second so the
+     * server has certainly rolled over. In the common case — the screen open
+     * for a minute, well before reset — that timer never fires.
+     *
+     * THE FLOOR IS LOAD-BEARING. `refetchInterval` is a REPEATING poll, not a
+     * one-shot, so a `resets_at` already in the past cannot be answered with
+     * "refetch immediately": returning 1 polls `/me` a thousand times a second,
+     * forever, for as long as the boundary stays behind us. That is reachable
+     * without any bug on our side — a device clock ahead of the server's, or a
+     * snapshot restored from disk after the window closed. The floor turns the
+     * worst case into a 30s poll that heals itself on the first fresh payload.
+     *
+     * Found because a test fixture's fixed `resets_at` fell into the past as
+     * real time moved, and the hot loop's successful refetches cleared the
+     * global rate-limit banner mid-assertion.
      */
     refetchInterval: (query) => {
       const resetsAt = query.state.data?.resets_at;
@@ -49,8 +67,9 @@ export function useQuotas() {
 
       const msUntilReset = Date.parse(resetsAt) + 1_000 - Date.now();
 
-      // Already past it (a snapshot from before the boundary): refetch now.
-      return msUntilReset > 0 ? msUntilReset : 1;
+      // NaN (an unparseable timestamp) fails every comparison, so it lands on
+      // the floor rather than becoming an interval of NaN.
+      return msUntilReset > MIN_QUOTA_REFETCH_MS ? msUntilReset : MIN_QUOTA_REFETCH_MS;
     },
   });
 }

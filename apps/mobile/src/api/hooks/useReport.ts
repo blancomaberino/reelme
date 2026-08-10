@@ -22,13 +22,35 @@ export const REPORT_REASONS = [
 
 export type ReportReason = (typeof REPORT_REASONS)[number];
 
+/**
+ * Reporting a REVIEW is a different endpoint with a different vocabulary, and
+ * both differences are deliberate on the server side.
+ *
+ * `POST /reviews/{id}/report` takes only a reason, validated against
+ * `ReviewReport::REASONS` — and that list is genuinely not the general one:
+ * `off_topic` is meaningful for a review and meaningless for a place, while
+ * `wrong_place` and `copyright` are the reverse. Flattening them into one
+ * vocabulary would put reasons in front of people that their target cannot
+ * have.
+ *
+ * So the transport branches and the sheet stays single. Matches
+ * `App\Models\ReviewReport::REASONS` exactly — a reason this list has and the
+ * server does not is a 422 the user reads as "reporting is broken".
+ */
+export const REVIEW_REPORT_REASONS = ['spam', 'offensive', 'off_topic', 'other'] as const;
+
+export type ReviewReportReason = (typeof REVIEW_REPORT_REASONS)[number];
+
 /** Matches the server's morph aliases — never a class name. */
 export type ReportableType = 'place' | 'share' | 'user' | 'source_post' | 'offer';
 
+/** Every surface the one sheet can report, including the odd one out. */
+export type ReportTargetType = ReportableType | 'review';
+
 export type ReportInput = {
-  reportable_type: ReportableType;
+  reportable_type: ReportTargetType;
   reportable_id: string;
-  reason: ReportReason;
+  reason: ReportReason | ReviewReportReason;
   details?: string;
 };
 
@@ -44,6 +66,16 @@ export function isAlreadyReported(error: unknown): boolean {
 export function useReport() {
   return useMutation({
     mutationFn: async (input: ReportInput): Promise<void> => {
+      // Reviews have their own endpoint and take ONLY a reason — no
+      // reportable_type, no details. Posting the general shape there is a 422.
+      if (input.reportable_type === 'review') {
+        await api.post(`/reviews/${encodeURIComponent(input.reportable_id)}/report`, {
+          reason: input.reason,
+        });
+
+        return;
+      }
+
       await api.post('/reports', input);
     },
     // Not retried: the endpoint is throttled and the unique constraint makes a

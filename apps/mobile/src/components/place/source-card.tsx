@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { memo, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -17,8 +18,23 @@ type Props = {
 /**
  * One provenance card on the place detail screen (T-033 §5): thumbnail,
  * platform badge, caption excerpt, and — the point — a link-out to the
- * original post. Attribution rows (influencer + sharer) render tappable-looking
- * but inert until M3 profiles (T-036/T-039).
+ * original post.
+ *
+ * The SHARER row taps through to their Reelmap profile. It had been styled to
+ * look tappable and left inert "until M3 profiles" since T-033; those shipped in
+ * T-036/T-039 and the wiring never followed, so it spent three milestones as a
+ * control that invites a tap and does nothing.
+ *
+ * That mattered more than a dead affordance once T-054 added blocking: a place
+ * is the surface where you encounter someone else's content, and the ONLY other
+ * routes to a profile are search (you must already know the handle) and a
+ * follow list. So "you can block an abusive user" (Apple 1.2) meant retyping
+ * their username somewhere else. This is the path from what you are looking at
+ * to the control that acts on it.
+ *
+ * The INFLUENCER row stays inert: an influencer is an attribution identity, and
+ * `/influencer/[id]` needs an id the place-source payload does not carry. Left
+ * visibly non-interactive rather than half-wired.
  */
 function SourceCardBase({ source }: Props) {
   const c = useColors();
@@ -28,8 +44,12 @@ function SourceCardBase({ source }: Props) {
   const { source_post: post, influencer, sharer } = source;
   const open = () => openWebUrl(post.url);
 
-  // A private sharer is anonymized by the API (null) — never crash on it.
+  // A private sharer is anonymized by the API (null) — never crash on it, and
+  // never render a tap target that would navigate to `/users/undefined`.
   const sharerLabel = sharer ? `@${sharer.username}` : t('feed.sharerFallback');
+  const openSharer = sharer
+    ? () => router.push({ pathname: '/users/[username]', params: { username: sharer.username } })
+    : undefined;
 
   return (
     <Pressable
@@ -64,12 +84,27 @@ function SourceCardBase({ source }: Props) {
             </Text>
           </View>
         ) : null}
-        <View style={styles.attrItem}>
-          <Ionicons name="person-outline" size={13} color={c.muted} />
-          <Text style={styles.attrMuted} numberOfLines={1}>
+        {/* Its own Pressable INSIDE the card's: React Native gives the touch to
+            the innermost responder, so tapping the handle opens the profile and
+            tapping anywhere else on the card still opens the original post.
+            Verified on device — that nesting is the kind of thing that works in
+            jest and swallows the tap in a real view hierarchy. */}
+        <Pressable
+          accessibilityRole={openSharer ? 'link' : 'text'}
+          accessibilityLabel={
+            openSharer ? t('source.openSharer', { handle: sharerLabel }) : sharerLabel
+          }
+          disabled={openSharer === undefined}
+          onPress={openSharer}
+          hitSlop={8}
+          style={({ pressed }) => [styles.attrItem, pressed && openSharer ? styles.pressed : null]}
+          testID={sharer ? `source-sharer-${sharer.username}` : undefined}
+        >
+          <Ionicons name="person-outline" size={13} color={openSharer ? c.primary : c.muted} />
+          <Text style={openSharer ? styles.attrLink : styles.attrMuted} numberOfLines={1}>
             {sharerLabel}
           </Text>
-        </View>
+        </Pressable>
       </View>
     </Pressable>
   );
@@ -116,4 +151,7 @@ const makeStyles = (c: Palette) =>
     attrItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     attrText: { color: c.text, fontSize: 13, fontWeight: '600' },
     attrMuted: { color: c.muted, fontSize: 13 },
+    // Coloured like every other link in the app, so the tap target reads as one
+    // — it looked tappable and was inert for three milestones.
+    attrLink: { color: c.primary, fontSize: 13 },
   });
