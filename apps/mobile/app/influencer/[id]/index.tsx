@@ -4,8 +4,9 @@ import { useMemo } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useFollowInfluencer, useInfluencer } from '@/api/hooks/useInfluencer';
+import { useFollowInfluencer, useInfluencer, useInfluencerPlaces } from '@/api/hooks/useInfluencer';
 import { Button } from '@/components/button';
+import { MyPlaceCard } from '@/components/place/my-place-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
@@ -28,6 +29,7 @@ export default function InfluencerProfileScreen() {
   const styles = useMemo(() => makeStyles(c), [c]);
 
   const { data, isLoading, isError } = useInfluencer(id ?? null);
+  const { data: places } = useInfluencerPlaces(id ?? null);
   const authed = useSessionStore((s) => s.status === 'authed');
   const { follow, unfollow } = useFollowInfluencer();
 
@@ -119,6 +121,23 @@ export default function InfluencerProfileScreen() {
               />
             </View>
           ) : null}
+
+          {/* Their places, listed — the sibling of the user profile's list.
+              The counter above said "2 Lugares" while the screen showed none
+              of them and the map screen showed none either; a number with
+              nothing behind it is a claim the user cannot check. */}
+          {places && places.length > 0 ? (
+            <View style={styles.places}>
+              <Text style={styles.sectionTitle}>{t('influencer.places')}</Text>
+              {places.map((place) => (
+                <MyPlaceCard
+                  key={place.id}
+                  place={place}
+                  onPress={(slug) => router.push({ pathname: '/place/[slug]', params: { slug } })}
+                />
+              ))}
+            </View>
+          ) : null}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -130,6 +149,8 @@ const makeStyles = (c: Palette) =>
     safe: { flex: 1, backgroundColor: c.background },
     loading: { paddingVertical: space.xl },
     scroll: { padding: space.md, gap: space.md },
+    places: { gap: space.xs, marginTop: space.xs },
+    sectionTitle: { ...type.title, color: c.text },
     top: { alignItems: 'center', gap: space.xxs },
     avatar: {
       width: 72,

@@ -5,6 +5,7 @@ namespace App\Models\Builders;
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
 use App\Models\HiddenPlace;
+use App\Models\Influencer;
 use App\Models\Offer;
 use App\Models\Place;
 use App\Models\User;
@@ -179,6 +180,32 @@ class PlaceQueryBuilder extends Builder
         $this->whereHas(
             'sources.share',
             fn ($s) => $s->where('user_id', $user->id)->where('status', ShareStatus::Published),
+        );
+
+        return $this;
+    }
+
+    /**
+     * Places an INFLUENCER is credited on — their posts, on published shares.
+     *
+     * The direct sibling of {@see publishedBy()}, and it exists for the same
+     * reason that one does: the influencer profile's counter, its map, and its
+     * places list are three views of one question, and until this scope existed
+     * each had its own copy of the answer. They disagreed — a profile reading
+     * "2 Lugares" one tap above a map saying "no places from this creator".
+     *
+     * Note the shape: `sources` joins `place_sources`, whose `source_post` is
+     * where the influencer credit lives, while the PUBLISHED test is on the
+     * share. A place is credited when SOME source satisfies both at once, which
+     * is why this is one whereHas over the pair and not two.
+     */
+    public function promotedBy(Influencer $influencer): self
+    {
+        $this->whereHas(
+            'sources',
+            fn ($q) => $q
+                ->whereHas('sourcePost', fn ($p) => $p->where('influencer_id', $influencer->id))
+                ->whereHas('share', fn ($sh) => $sh->where('status', ShareStatus::Published)),
         );
 
         return $this;

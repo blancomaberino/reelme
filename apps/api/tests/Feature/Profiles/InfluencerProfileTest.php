@@ -99,6 +99,58 @@ it('serves the influencer map with only their published-share places', function 
     $res->assertJsonPath('meta.total_in_bbox', 1);
 });
 
+it('lists the influencer’s places, the same set the map draws', function () {
+    $influencer = Influencer::factory()->create();
+    $other = Influencer::factory()->create();
+
+    $promoted = Place::factory()->active()->atPoint(51.5117, -0.1300)->create(['name' => 'Promoted']);
+    $unrelated = Place::factory()->active()->atPoint(51.5000, -0.1000)->create(['name' => 'Unrelated']);
+    $reviewOnly = Place::factory()->active()->atPoint(51.5200, -0.1200)->create(['name' => 'ReviewOnly']);
+
+    influencerPlace($influencer, $promoted);
+    influencerPlace($other, $unrelated);
+    influencerPlace($influencer, $reviewOnly, shareStatus: 'review');
+
+    // The LIST endpoint the profile and its map screen read. A viewport cannot
+    // express "everywhere this creator has posted", and the attempt to send one
+    // as a whole-globe bbox is what left the map permanently empty.
+    $names = collect($this->getJson("/api/v1/influencers/{$influencer->id}/places")->assertOk()->json('data'))
+        ->pluck('name');
+
+    expect($names)->toContain('Promoted')->not->toContain('Unrelated', 'ReviewOnly');
+});
+
+it('makes the counter, the list and the map agree by construction', function () {
+    $influencer = Influencer::factory()->create();
+
+    // Two places in ONE bbox so the map can be compared directly, plus a
+    // review-status share that none of the three may count.
+    $a = Place::factory()->active()->atPoint(51.5117, -0.1300)->create(['name' => 'A']);
+    $b = Place::factory()->active()->atPoint(51.5150, -0.1250)->create(['name' => 'B']);
+    $excluded = Place::factory()->active()->atPoint(51.5180, -0.1220)->create(['name' => 'Excluded']);
+
+    influencerPlace($influencer, $a);
+    influencerPlace($influencer, $b);
+    influencerPlace($influencer, $excluded, shareStatus: 'review');
+
+    $counter = $this->getJson("/api/v1/influencers/{$influencer->id}")->assertOk()
+        ->json('data.counters.promoted_places');
+    $list = $this->getJson("/api/v1/influencers/{$influencer->id}/places")->assertOk()->json('data');
+    $map = $this->getJson("/api/v1/influencers/{$influencer->id}/map?bbox=-0.20,51.45,-0.05,51.55&zoom=16")
+        ->assertOk()->json('data.pins');
+
+    // THE regression. These were three hand-rolled queries — a counter join, a
+    // map whereExists, and nothing at all for a list — agreeing only by
+    // coincidence. The profile ended up claiming "2 Lugares" one tap above a
+    // map that said the creator had none. They now share
+    // PlaceQueryBuilder::promotedBy(), so disagreeing requires editing it.
+    expect($counter)->toBe(2)
+        ->and($list)->toHaveCount(2)
+        ->and($map)->toHaveCount(2)
+        ->and(collect($list)->pluck('name')->sort()->values()->all())
+        ->toBe(collect($map)->pluck('name')->sort()->values()->all());
+});
+
 it('404s an unknown influencer and exposes rate-limit headers', function () {
     $this->getJson('/api/v1/influencers/999999')->assertStatus(404);
 

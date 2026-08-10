@@ -106,6 +106,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/users/{user:username}/following', [ProfileController::class, 'following']);
         Route::get('/influencers/{influencer}', [InfluencerController::class, 'show']);
         Route::get('/influencers/{influencer}/map', [InfluencerController::class, 'map']);
+        // The LIST sibling of /users/{user}/places — what the profile and its
+        // map screen read. A viewport cannot express "everywhere this creator
+        // has posted", which is how the map came to show nothing at all.
+        Route::get('/influencers/{influencer}/places', [InfluencerController::class, 'places']);
 
         // Shared lists (T-063): public read of a list by its global public_slug.
         // A private/never-shared list 404s (privacy in PublicListShowRequest).

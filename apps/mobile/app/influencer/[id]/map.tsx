@@ -5,7 +5,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useInfluencer, useInfluencerMap } from '@/api/hooks/useInfluencer';
+import { useInfluencer, useInfluencerPlaces } from '@/api/hooks/useInfluencer';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { fitRegion } from '@/lib/map-region';
@@ -24,10 +24,10 @@ export default function InfluencerMapScreen() {
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
 
-  const { data: pins, isLoading } = useInfluencerMap(id ?? null);
+  const { data: places, isLoading, isError } = useInfluencerPlaces(id ?? null);
   const { data: profile } = useInfluencer(id ?? null);
 
-  const region = useMemo(() => fitRegion(pins ?? []), [pins]);
+  const region = useMemo(() => fitRegion(places ?? []), [places]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -36,6 +36,15 @@ export default function InfluencerMapScreen() {
 
       {isLoading ? (
         <ActivityIndicator color={c.primary} style={styles.loading} />
+      ) : isError ? (
+        // Distinguished from "no places" ON PURPOSE. Rendering the empty state
+        // for a failed request is how a 422'd endpoint spent this screen's
+        // whole life telling people a creator had no places — a definite claim
+        // about their data, made from no data at all.
+        <View style={styles.empty} testID="influencer-map-error">
+          <Ionicons name="cloud-offline-outline" size={40} color={c.muted} />
+          <Text style={styles.emptyText}>{t('common.error.general')}</Text>
+        </View>
       ) : !region ? (
         <View style={styles.empty} testID="influencer-map-empty">
           <Ionicons name="map-outline" size={40} color={c.muted} />
@@ -43,16 +52,17 @@ export default function InfluencerMapScreen() {
         </View>
       ) : (
         <MapView provider={PROVIDER_DEFAULT} style={styles.map} initialRegion={region} showsPointsOfInterests={false}>
-          {(pins ?? []).map((p) => (
+          {(places ?? []).map((p) => (
             <Marker
               key={p.id}
               coordinate={{ latitude: p.lat, longitude: p.lng }}
               title={p.name}
               description={p.city ?? undefined}
-              // MapPin carries no slug — the pin's numeric id is passed as the
-              // `slug` param, which the API's route binding resolves (it accepts
-              // either). Same convention as the main map.
-              onCalloutPress={() => router.push({ pathname: '/place/[slug]', params: { slug: p.id } })}
+              // The list carries a real slug; prefer it and fall back to the id,
+              // which the API's route binding also accepts.
+              onCalloutPress={() =>
+                router.push({ pathname: '/place/[slug]', params: { slug: p.slug ?? p.id } })
+              }
             />
           ))}
         </MapView>

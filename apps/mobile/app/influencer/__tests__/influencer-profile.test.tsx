@@ -169,6 +169,29 @@ describe('following', () => {
   });
 });
 
+it('asks for their places by the endpoint the API actually has', async () => {
+  respond(influencer());
+  mock.onGet('/influencers/7/places').reply(200, {
+    data: [
+      { id: '1', name: 'Kraken', slug: 'kraken', lat: -34.9, lng: -56.1, city: 'Piriápolis', country_code: 'UY', status: 'active', thumbnail_url: null, category: null, price_range: null },
+    ],
+  });
+
+  render(<InfluencerProfileScreen />, { wrapper: Providers });
+
+  // THE regression. The old hook called the VIEWPORT endpoint with
+  // `minLng/minLat/maxLng/maxLat` as separate params and a whole-globe extent.
+  // The API takes `bbox` as one comma-joined string and rejects a globe-spanning
+  // span outright, so every call 422'd — and the screen, unable to tell a failed
+  // request from an empty one, told every visitor the creator had no places.
+  expect(await screen.findByText('Kraken')).toBeOnTheScreen();
+
+  const call = mock.history.get.find((c) => c.url?.includes('/places'));
+  expect(call?.url).toBe('/influencers/7/places');
+  expect(call?.params).not.toHaveProperty('minLng');
+  expect(call?.params).not.toHaveProperty('bbox');
+});
+
 it('routes to their map', async () => {
   respond(influencer());
 
