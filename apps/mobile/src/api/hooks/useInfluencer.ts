@@ -124,15 +124,51 @@ export function useClaimInfluencer(id: string) {
  * failed request from an empty one, rendered "no places from this creator" for
  * every influencer that had them. A list has no viewport to get wrong.
  */
+/**
+ * Hard ceiling on how much of a creator's back catalogue this screen will pull.
+ *
+ * The counter on the profile counts EVERY promoted place, so a single 50-item
+ * page reintroduces exactly the disagreement this whole change removed — "137
+ * Lugares" over a list of 50 — just at a higher threshold. Following the cursor
+ * fixes that for every realistic creator.
+ *
+ * Bounded anyway, because "follow it until it ends" is an unbounded request
+ * count driven by data we do not control: a prolific account should cost a
+ * profile view four round trips, not forty. When the cap does bite the list is
+ * a prefix of the real set rather than a wrong one, and the map fits what it
+ * has.
+ */
+const PLACES_PAGE_SIZE = 50;
+const MAX_PLACES_PAGES = 4;
+
 export function useInfluencerPlaces(id: string | null) {
   return useQuery({
     queryKey: [...queryKeys.influencer(id ?? ''), 'places'] as const,
     queryFn: async (): Promise<PlaceSummary[]> => {
-      const { data } = await api.get<{ data: PlaceSummary[] }>(
-        `/influencers/${encodeURIComponent(id as string)}/places`,
-        { params: { limit: 50 } },
-      );
-      return data.data;
+      const places: PlaceSummary[] = [];
+      let cursor: string | null = null;
+
+      // The response type is named rather than inferred: `cursor` is assigned
+      // from `data` inside the loop that declares it, and tsc cannot infer
+      // through that cycle (TS7022).
+      type Page = {
+        data: PlaceSummary[];
+        meta?: { pagination?: { next_cursor?: string | null } };
+      };
+
+      for (let page = 0; page < MAX_PLACES_PAGES; page++) {
+        const response: { data: Page } = await api.get<Page>(
+          `/influencers/${encodeURIComponent(id as string)}/places`,
+          { params: { limit: PLACES_PAGE_SIZE, ...(cursor ? { cursor } : {}) } },
+        );
+
+        places.push(...response.data.data);
+        cursor = response.data.meta?.pagination?.next_cursor ?? null;
+
+        if (cursor === null) break;
+      }
+
+      return places;
     },
     enabled: !!id,
     staleTime: 30_000,
