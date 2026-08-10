@@ -107,6 +107,7 @@ export const en = {
   'place.call': 'Call {{phone}}',
   'place.view': 'View place',
 
+  'source.openSharer': 'Open {{handle}}’s profile',
   'source.openOriginal': 'Open original {{platform}} post',
   'source.firstShared': 'First shared',
 
@@ -756,6 +757,9 @@ export const en = {
   'report.reason.wrong_place': 'Wrong place or bad details',
   'report.reason.copyright': 'It uses my content without permission',
   'report.reason.fraud': 'Fake or misleading',
+  'report.reviewAction': 'Report the review by {{name}}',
+  'report.reason.offensive': 'Offensive or abusive',
+  'report.reason.off_topic': 'Not about this place',
   'report.reason.other': 'Something else',
 
   'privacy.title': 'Privacy & data',

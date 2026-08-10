@@ -291,6 +291,83 @@ it('renders app + Google reviews with names, stars and text', async () => {
   expect(screen.getByText(/Sin foto/)).toBeOnTheScreen();
 });
 
+it('taps the sharer’s handle through to their profile', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+
+  // Styled to look tappable since T-033 and inert until now. It matters beyond
+  // a dead affordance: a place is where you meet someone else's content, and
+  // the only other routes to a profile are search (you must already know the
+  // handle) and a follow list — so with this inert, "block an abusive user"
+  // meant retyping their username somewhere else.
+  fireEvent.press(await screen.findByTestId('source-sharer-foodie'));
+
+  expect(mockRouter.push).toHaveBeenCalledWith({
+    pathname: '/users/[username]',
+    params: { username: 'foodie' },
+  });
+});
+
+it('does not offer a profile tap when the sharer is anonymised', async () => {
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, {
+    data: { ...PLACE, sources: [{ ...PLACE.sources![0], sharer: null }] },
+  });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+
+  await screen.findByText(PLACE.name);
+  // A private sharer is nulled by the API. A tap target here would navigate to
+  // `/users/undefined`.
+  expect(screen.queryByTestId(/^source-sharer-/)).toBeNull();
+});
+
+it('reports a review through the review endpoint, with review-specific reasons', async () => {
+  const withReview: PlaceDetail = {
+    ...PLACE,
+    reviews: [
+      {
+        id: '9',
+        rating: 5,
+        body: 'Impecable, volvería.',
+        author: { username: 'foodie', avatar_path: null },
+        is_own: false,
+        created_at: '2026-07-01T00:00:00Z',
+      },
+    ],
+  };
+  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withReview });
+  mock.onPost('/reviews/9/report').reply(200, { data: { reported: true } });
+  // The sheet offers a sign-in prompt instead of reasons to a guest.
+  useSessionStore.setState({ user: null, status: 'authed' });
+
+  render(<PlaceDetailScreen />, { wrapper: Providers });
+  await screen.findByText('Impecable, volvería.');
+
+  // Distinct from the place's own Report control, which sits on the same
+  // screen — two buttons labelled just "Report" are ambiguous to a screen
+  // reader, and this test is what caught that.
+  fireEvent.press(screen.getByLabelText('Report the review by @foodie'));
+
+  // The REVIEW vocabulary, not the general one: `off_topic` is meaningful for a
+  // review, and `wrong_place` would be a reason the server rejects — a 422 the
+  // user reads as "reporting is broken".
+  expect(await screen.findByTestId('report-reason-off_topic')).toBeOnTheScreen();
+  expect(screen.queryByTestId('report-reason-wrong_place')).toBeNull();
+
+  // And no free-text box: the review endpoint takes a reason and nothing else,
+  // so a field here would collect an explanation and silently discard it.
+  expect(screen.queryByTestId('report-details')).toBeNull();
+
+  fireEvent.press(screen.getByTestId('report-reason-off_topic'));
+  fireEvent.press(screen.getByTestId('report-submit'));
+
+  // Its own endpoint, and a bare `reason` — posting the general shape 422s.
+  await waitFor(() => expect(mock.history.post).toHaveLength(1));
+  expect(mock.history.post[0].url).toBe('/reviews/9/report');
+  expect(JSON.parse(mock.history.post[0].data)).toEqual({ reason: 'off_topic' });
+});
+
 it('links out to the place reviews on Google when a google_place_id is present', async () => {
   mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
 

@@ -104,6 +104,7 @@ export const es: Record<MessageKey, string> = {
   'place.call': 'Llamar a {{phone}}',
   'place.view': 'Ver lugar',
 
+  'source.openSharer': 'Abrir el perfil de {{handle}}',
   'source.openOriginal': 'Abrir publicación original de {{platform}}',
   'source.firstShared': 'Compartido primero',
 
@@ -746,6 +747,9 @@ export const es: Record<MessageKey, string> = {
   'report.reason.wrong_place': 'Lugar equivocado o datos incorrectos',
   'report.reason.copyright': 'Usa contenido mío sin permiso',
   'report.reason.fraud': 'Falso o engañoso',
+  'report.reviewAction': 'Reportar la reseña de {{name}}',
+  'report.reason.offensive': 'Ofensivo o abusivo',
+  'report.reason.off_topic': 'No es sobre este lugar',
   'report.reason.other': 'Otra cosa',
 
   'privacy.title': 'Privacidad y datos',

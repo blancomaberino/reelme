@@ -14,8 +14,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   REPORT_REASONS,
+  REVIEW_REPORT_REASONS,
   type ReportReason,
-  type ReportableType,
+  type ReportTargetType,
+  type ReviewReportReason,
   isAlreadyReported,
   useReport,
 } from '@/api/hooks/useReport';
@@ -43,12 +45,15 @@ const REASON_KEY = {
   copyright: 'report.reason.copyright',
   fraud: 'report.reason.fraud',
   other: 'report.reason.other',
-} satisfies Record<ReportReason, MessageKey>;
+  // Review-only, and the same `satisfies` discipline applies to them.
+  offensive: 'report.reason.offensive',
+  off_topic: 'report.reason.off_topic',
+} satisfies Record<ReportReason | ReviewReportReason, MessageKey>;
 
 type Props = {
   visible: boolean;
   onClose: () => void;
-  target: { type: ReportableType; id: string };
+  target: { type: ReportTargetType; id: string };
   /** What is being reported, shown back so nobody flags the wrong thing. */
   subject: string;
 };
@@ -73,7 +78,12 @@ export function ReportSheet({ visible, onClose, target, subject }: Props) {
   const report = useReport();
   const authed = useSessionStore((s) => s.status === 'authed');
 
-  const [reason, setReason] = useState<ReportReason | null>(null);
+  const [reason, setReason] = useState<ReportReason | ReviewReportReason | null>(null);
+
+  // A review's reasons are NOT the general ones — see REVIEW_REPORT_REASONS.
+  // Offering `wrong_place` for a review would be a reason the server rejects,
+  // read by the user as "reporting is broken".
+  const reasons = target.type === 'review' ? REVIEW_REPORT_REASONS : REPORT_REASONS;
   const [details, setDetails] = useState('');
   const [done, setDone] = useState(false);
 
@@ -182,7 +192,7 @@ export function ReportSheet({ visible, onClose, target, subject }: Props) {
                     accessibilityRole="radiogroup"
                     accessibilityLabel={t('report.reasonsLabel')}
                   >
-                    {REPORT_REASONS.map((option) => (
+                    {reasons.map((option) => (
                       <Pressable
                         key={option}
                         accessibilityRole="radio"
@@ -208,14 +218,21 @@ export function ReportSheet({ visible, onClose, target, subject }: Props) {
                     ))}
                   </ScrollView>
 
-                  <TextField
-                    label={t('report.detailsLabel')}
-                    value={details}
-                    onChangeText={setDetails}
-                    multiline
-                    maxLength={2000}
-                    testID="report-details"
-                  />
+                  {/* Hidden for a review: `POST /reviews/{id}/report` accepts a
+                      reason and NOTHING else, so an open field here invites
+                      somebody to explain themselves at length and then discards
+                      every word of it. A control that takes input it throws
+                      away is worse than no control. */}
+                  {target.type === 'review' ? null : (
+                    <TextField
+                      label={t('report.detailsLabel')}
+                      value={details}
+                      onChangeText={setDetails}
+                      multiline
+                      maxLength={2000}
+                      testID="report-details"
+                    />
+                  )}
 
                   {failed ? (
                     <Text style={styles.error} testID="report-error">

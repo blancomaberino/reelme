@@ -19,8 +19,8 @@ rejection.
 | Requirement | Status | Where |
 |---|---|---|
 | **A method for filtering objectionable content** | ✅ | Moderation queue in Filament (T-049); places gate on `PlaceStatus`, shares on `ShareStatus`. |
-| **A mechanism to report offensive content** | ✅ | `POST /api/v1/reports` (T-049). In-app: the report control on a profile (`profile-report`), on a place, and on a review. |
-| **The ability to block abusive users** | ✅ | `POST/DELETE /api/v1/me/blocks/{username}` (T-054). In-app: **Block** on any other profile, undone from **Settings → Blocked accounts**. Effects are mutual and sever follows in both directions. |
+| **A mechanism to report offensive content** | ✅ | `POST /api/v1/reports` (T-049). In-app: on a profile (`profile-report`), on a place (`place-report`), and on each native review (its own endpoint + reason set). |
+| **The ability to block abusive users** | ✅ | `POST/DELETE /api/v1/me/blocks/{username}` (T-054). In-app: **Block** on any other profile, undone from **Settings → Blocked accounts**. Effects are mutual and sever follows in both directions. Reachable from a place: the sharer's `@handle` on a source card taps through to their profile. |
 | **Published contact information for a moderation response** | ⚠️ **needs a real address** | Copy is in place; the address itself is a decision — see §5. |
 
 > Blocking is deliberately **not** the same as reporting, and the copy says so:
@@ -118,8 +118,12 @@ Walk these on a **TestFlight build**, not a dev client — the difference is whe
 release-only problems live:
 
 - Sign up → verify email → share a link → see the place appear on the map.
-- Report a profile, then block it. Confirm it disappears from the feed and its
-  profile 404s, then unblock from Settings.
+- From a **place**, tap the sharer's `@handle` → their profile → **Block**.
+  Confirm the profile 404s afterwards, then unblock from Settings. (That path
+  is the one a reviewer will try: it is where you actually meet someone's
+  content.)
+- Report a **review** on a place, and confirm the reasons offered are the
+  review set (spam / offensive / off-topic / other), not the place set.
 - Delete the account, then sign back in inside the grace window and confirm the
   deletion is cancelled.
 - Decline the location permission and confirm the map still works (it falls back

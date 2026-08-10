@@ -91,6 +91,10 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
   const [hoursOpen, setHoursOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  // Which review's report sheet is open, null when none. Holds the SUBJECT too
+  // so the sheet can name what is being flagged — the whole point of showing it
+  // back is that nobody reports the wrong row.
+  const [reportReview, setReportReview] = useState<{ id: string; subject: string } | null>(null);
   const hours = useMemo(() => summarizeHours(place.opening_hours), [place.opening_hours]);
   const tags = useMemo(
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
@@ -341,6 +345,13 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
             name={r.author ? `@${r.author.username}` : t('place.anonymous')}
             rating={r.rating}
             text={r.body}
+            onReport={() => setReportReview({ id: String(r.id), subject: r.author ? `@${r.author.username}` : t('place.anonymous') })}
+            // NOT a bare "Report": the place's own report control is on the
+            // same screen with that exact label, so a screen-reader user met
+            // two identical buttons doing different things.
+            reportLabel={t('report.reviewAction', {
+              name: r.author ? `@${r.author.username}` : t('place.anonymous'),
+            })}
             c={c}
             styles={styles}
           />
@@ -392,6 +403,18 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
         onClose={() => setReportOpen(false)}
         target={{ type: 'place', id: String(place.id) }}
         subject={place.name}
+      />
+
+      {/* A SECOND instance rather than one sheet with a swapped target: the
+          sheet resets its state on the visible transition, and reusing one
+          would carry the place-report's chosen reason into a review report —
+          whose reasons are a different set entirely. Cheap: it renders nothing
+          until a review's flag is tapped. */}
+      <ReportSheet
+        visible={reportReview !== null}
+        onClose={() => setReportReview(null)}
+        target={{ type: 'review', id: reportReview?.id ?? '' }}
+        subject={reportReview?.subject ?? ''}
       />
     </ScrollView>
   );
@@ -451,6 +474,8 @@ function ReviewRow({
   rating,
   text,
   photo,
+  onReport,
+  reportLabel,
   c,
   styles,
 }: {
@@ -459,6 +484,9 @@ function ReviewRow({
   rating: number | null;
   text: string | null;
   photo?: string | null;
+  /** Native reviews only — Google's are not our UGC and have no id here. */
+  onReport?: () => void;
+  reportLabel?: string;
   c: Palette;
   styles: Styles;
 }) {
@@ -479,6 +507,21 @@ function ReviewRow({
         </Text>
         {text ? <Text style={styles.reviewText}>{text}</Text> : null}
       </View>
+      {/* A review is user-generated content, so Apple 1.2 wants a report path on
+          it — and the endpoint has existed since T-059 with nothing calling it.
+          Only for NATIVE reviews: a Google review is not our UGC, has no id in
+          our system, and the endpoint would 404. */}
+      {onReport ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={reportLabel}
+          onPress={onReport}
+          hitSlop={10}
+          style={({ pressed }) => [styles.reviewReport, pressed ? styles.actionPressed : null]}
+        >
+          <Ionicons name="flag-outline" size={15} color={c.muted} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -630,6 +673,7 @@ const makeStyles = (c: Palette) =>
     reviewBody: { flex: 1, gap: 3 },
     reviewName: { fontSize: 14, color: c.text, fontWeight: '600' },
     reviewStars: { color: c.gold },
+    reviewReport: { paddingLeft: 8, paddingTop: 4 },
     reviewText: { fontSize: 14, color: c.ink2, lineHeight: 19 },
     readOnGoogle: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, marginTop: 2 },
     sourceList: { gap: 12 },

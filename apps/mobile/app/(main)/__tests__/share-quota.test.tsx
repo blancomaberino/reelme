@@ -172,11 +172,51 @@ it('stops refusing once the reset time has passed', async () => {
     // left open in the foreground across midnight UTC would hold yesterday's
     // `remaining: 0` forever, refusing to share while displaying a reset time
     // that had already passed: a message contradicting itself, with no way out
-    // but backgrounding the app. `useQuotas` schedules one refetch AT the
-    // boundary, which is what this asserts.
-    await jest.advanceTimersByTimeAsync(6_500);
+    // but backgrounding the app. `useQuotas` refetches AT the boundary, which
+    // is what this asserts.
+    //
+    // Past MIN_QUOTA_REFETCH_MS (30s), not just past the 5s boundary: the hook
+    // floors its interval so a past-due `resets_at` cannot become a 1ms hot
+    // loop against /me. In production the boundary is midnight UTC and hours
+    // away, so the floor only ever binds in the last 30 seconds — being at most
+    // half a minute late to a daily reset is not a cost worth a polling storm.
+    await jest.advanceTimersByTimeAsync(31_000);
 
     await waitFor(() => expect(screen.queryByTestId('share-quota-reached')).toBeNull());
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('does not hammer /me when the reset time is already in the past', async () => {
+  jest.useFakeTimers();
+  try {
+    let meCalls = 0;
+    mock.onGet('/me').reply(() => {
+      meCalls += 1;
+      // A boundary two days BEHIND us — reachable with no bug on our side: a
+      // device clock ahead of the server's, or a snapshot restored from disk
+      // long after its window closed.
+      return [
+        200,
+        {
+          ...meWithQuota(0),
+          meta: { quotas: { ...meWithQuota(0).meta.quotas, resets_at: '2020-01-01T00:00:00+00:00' } },
+        },
+      ];
+    });
+
+    render(<ShareScreen />, { wrapper: Providers });
+    await waitFor(() => expect(meCalls).toBeGreaterThan(0));
+
+    const afterMount = meCalls;
+    await jest.advanceTimersByTimeAsync(60_000);
+
+    // `refetchInterval` is a REPEATING poll, not a one-shot. Answering a
+    // past-due boundary with "refetch immediately" polls a thousand times a
+    // second for as long as it stays past-due. Floored at 30s, a minute buys a
+    // couple of refetches — not hundreds.
+    expect(meCalls - afterMount).toBeLessThanOrEqual(3);
   } finally {
     jest.useRealTimers();
   }
