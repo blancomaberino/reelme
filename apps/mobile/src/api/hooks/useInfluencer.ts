@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from '../client';
 import type { InfluencerClaim, InfluencerResponse } from '../influencers';
-import type { MapPin, MapResponse } from '../places';
+import type { PlaceSummary } from '../places';
 import { queryKeys } from '../keys';
 
 /** An influencer's public profile + the viewer's follow state (T-036/T-039). */
@@ -113,20 +113,64 @@ export function useClaimInfluencer(id: string) {
  * the full pan/debounce/cluster machinery onto a read-only screen. The server
  * caps the response at 300 pins, which is far above any real influencer.
  */
-export function useInfluencerMap(id: string | null) {
+/**
+ * An influencer's places as a LIST — the direct sibling of `useUserPlaces`,
+ * and what both the profile and its map screen read.
+ *
+ * REPLACES a `useInfluencerMap` that called the viewport endpoint with
+ * `minLng/minLat/maxLng/maxLat` as separate params and a whole-globe extent.
+ * The API takes `bbox` as ONE comma-joined string and rejects a globe-spanning
+ * span outright, so every call 422'd — and the screen, which could not tell a
+ * failed request from an empty one, rendered "no places from this creator" for
+ * every influencer that had them. A list has no viewport to get wrong.
+ */
+/**
+ * Hard ceiling on how much of a creator's back catalogue this screen will pull.
+ *
+ * The counter on the profile counts EVERY promoted place, so a single 50-item
+ * page reintroduces exactly the disagreement this whole change removed — "137
+ * Lugares" over a list of 50 — just at a higher threshold. Following the cursor
+ * fixes that for every realistic creator.
+ *
+ * Bounded anyway, because "follow it until it ends" is an unbounded request
+ * count driven by data we do not control: a prolific account should cost a
+ * profile view four round trips, not forty. When the cap does bite the list is
+ * a prefix of the real set rather than a wrong one, and the map fits what it
+ * has.
+ */
+const PLACES_PAGE_SIZE = 50;
+const MAX_PLACES_PAGES = 4;
+
+export function useInfluencerPlaces(id: string | null) {
   return useQuery({
-    queryKey: [...queryKeys.influencer(id ?? ''), 'map'] as const,
-    queryFn: async (): Promise<MapPin[]> => {
-      const { data } = await api.get<MapResponse>(`/influencers/${encodeURIComponent(id as string)}/map`, {
-        // zoom MUST be at or above MapViewport's CLUSTER_ZOOM_CUTOFF (15).
-        // Below it the server returns clusters and an EMPTY `pins` array — this
-        // screen wants individual markers, so a lower zoom would render a
-        // blank map with no error.
-        params: { minLng: -180, minLat: -85, maxLng: 180, maxLat: 85, zoom: 15 },
-      });
-      return data.data.pins;
+    queryKey: [...queryKeys.influencer(id ?? ''), 'places'] as const,
+    queryFn: async (): Promise<PlaceSummary[]> => {
+      const places: PlaceSummary[] = [];
+      let cursor: string | null = null;
+
+      // The response type is named rather than inferred: `cursor` is assigned
+      // from `data` inside the loop that declares it, and tsc cannot infer
+      // through that cycle (TS7022).
+      type Page = {
+        data: PlaceSummary[];
+        meta?: { pagination?: { next_cursor?: string | null } };
+      };
+
+      for (let page = 0; page < MAX_PLACES_PAGES; page++) {
+        const response: { data: Page } = await api.get<Page>(
+          `/influencers/${encodeURIComponent(id as string)}/places`,
+          { params: { limit: PLACES_PAGE_SIZE, ...(cursor ? { cursor } : {}) } },
+        );
+
+        places.push(...response.data.data);
+        cursor = response.data.meta?.pagination?.next_cursor ?? null;
+
+        if (cursor === null) break;
+      }
+
+      return places;
     },
     enabled: !!id,
-    staleTime: 60_000,
+    staleTime: 30_000,
   });
 }
