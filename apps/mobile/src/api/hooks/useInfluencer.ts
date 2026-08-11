@@ -125,21 +125,18 @@ export function useClaimInfluencer(id: string) {
  * every influencer that had them. A list has no viewport to get wrong.
  */
 /**
- * Hard ceiling on how much of a creator's back catalogue this screen will pull.
+ * Mirrors `InfluencerController::PLACES_CAP` — the server caps the COUNTER at
+ * the same number, so the profile can never claim more places than this list
+ * can hold. It is also published as `meta.places_cap` on the profile payload,
+ * and `influencerPlacesCap()` below is the assertion that the two agree.
  *
- * The counter on the profile counts EVERY promoted place, so a single 50-item
- * page reintroduces exactly the disagreement this whole change removed — "137
- * Lugares" over a list of 50 — just at a higher threshold. Following the cursor
- * fixes that for every realistic creator.
- *
- * Bounded anyway, because "follow it until it ends" is an unbounded request
- * count driven by data we do not control: a prolific account should cost a
- * profile view four round trips, not forty. When the cap does bite the list is
- * a prefix of the real set rather than a wrong one, and the map fits what it
- * has.
+ * Capping only the client (which is what the first cut did) does not remove the
+ * counter-vs-list contradiction; it moves it from 50 to 200. The cap has to be
+ * the same number on both sides or it is not a cap, it is a discrepancy.
  */
+export const INFLUENCER_PLACES_CAP = 200;
 const PLACES_PAGE_SIZE = 50;
-const MAX_PLACES_PAGES = 4;
+const MAX_PLACES_PAGES = INFLUENCER_PLACES_CAP / PLACES_PAGE_SIZE;
 
 export function useInfluencerPlaces(id: string | null) {
   return useQuery({
