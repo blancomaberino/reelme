@@ -172,6 +172,22 @@ it('caps the counter at the same ceiling the list can reach, and says so', funct
         ->and($res->json('meta.places_capped'))->toBeTrue();
 });
 
+it('is not "capped" at exactly the cap', function () {
+    $influencer = Influencer::factory()->create();
+
+    foreach (range(1, InfluencerController::PLACES_CAP) as $n) {
+        influencerPlace($influencer, Place::factory()->active()->create(['name' => "P{$n}"]));
+    }
+
+    $res = $this->getJson("/api/v1/influencers/{$influencer->id}")->assertOk();
+
+    // THE boundary. `> CAP` and `>= CAP` both pass the CAP+1 and the 1-place
+    // tests; only exactly-CAP tells them apart. At the ceiling the count is
+    // complete, so a "+" would be a lie about data we have in full.
+    expect($res->json('data.counters.promoted_places'))->toBe(InfluencerController::PLACES_CAP)
+        ->and($res->json('meta.places_capped'))->toBeFalse();
+});
+
 it('does not claim it is capped when it is not', function () {
     $influencer = Influencer::factory()->create();
     influencerPlace($influencer, Place::factory()->active()->create());

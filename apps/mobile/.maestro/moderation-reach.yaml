@@ -20,8 +20,12 @@
 #   - API stack + Metro up via `./scripts/dev.sh start` — NOT a bare
 #     `npx expo start`, which drops EXPO_PUBLIC_API_URL and makes every request
 #     look like the device is offline.
-#   - Logged in, with at least one place in "Mis lugares" that has a source card
-#     (the dev seed has many; this flow takes the first row).
+#   - Logged in, and "Mis lugares" contains **Kraken** — this flow names that
+#     place throughout rather than taking "the first row", so the place it
+#     opens, the influencer it reaches, and the place carrying the seeded
+#     review are all the same one by construction.
+#   - Kraken's source card must carry an INFLUENCER credit (the flow asserts
+#     this up front, so a fixture without one fails where the message helps).
 #   - PART 2 needs a native review BY ANOTHER USER on that place — the list
 #     excludes your own, so a self-written one renders no report control. Seed
 #     and remove it around the run:
@@ -109,16 +113,19 @@ appId: pet.one.reelmap
 - extendedWaitUntil:
     visible: ".*Ver su mapa.*"
     timeout: 30000
+# BY NAME, not by index. The influencer's list is ordered by the API and this
+# flow needs the one place carrying the seeded review — "the first card" is a
+# different place the moment the ordering or the data changes, and the failure
+# lands three steps later on a missing review, which reads as a broken report
+# feature rather than a wrong fixture.
 - scrollUntilVisible:
     element:
-      id: "my-place-card"
+      text: "Kraken"
     direction: DOWN
     centerElement: true
     timeout: 20000
 - takeScreenshot: build/maestro/reach-1b-influencer
-- tapOn:
-    id: "my-place-card"
-    index: 0
+- tapOn: "Kraken"
 - extendedWaitUntil:
     visible: "Abrir en el mapa"
     timeout: 30000
