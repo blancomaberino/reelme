@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\CountryController;
 use App\Support\Contracts\ApiSchema;
 
 it('serves the whole catalog with localized names', function () {
@@ -41,5 +42,17 @@ it('is ordered by the localized name, so the list reads alphabetically in either
 });
 
 it('is public — the picker has to work before you finish signing up', function () {
-    $this->getJson('/api/v1/countries')->assertOk();
+    // The route's middleware, not just a 200: every other test here is already
+    // unauthenticated, so a bare `assertOk()` would pass for reasons unrelated
+    // to its own name and stay green if the endpoint answered an empty body.
+    // The controller is invokable, so the ACTION is the bare class name — no
+    // `@__invoke` suffix. Getting that wrong returns null, and `not->toContain`
+    // on null passes, which is how this assertion would quietly stop asserting.
+    $route = app('router')->getRoutes()->getByAction(CountryController::class);
+
+    expect($route)->not->toBeNull();
+    $middleware = $route->gatherMiddleware();
+
+    expect($middleware)->not->toContain('auth:sanctum')
+        ->and($this->getJson('/api/v1/countries')->assertOk()->json('data'))->toHaveCount(249);
 });

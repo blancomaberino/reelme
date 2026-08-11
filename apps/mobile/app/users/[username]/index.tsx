@@ -70,6 +70,15 @@ export default function UserProfileScreen() {
             </View>
             <Text style={styles.name}>{profile.name ?? `@${profile.username}`}</Text>
             <Text style={styles.username}>@{profile.username}</Text>
+            {/* Country, when they said one (T-110). Rendered here rather than
+                nowhere: the API exposes it on a public profile by design, and
+                edit-profile tells the user it will be shown. */}
+            {profile.country_code ? (
+              <View style={styles.country}>
+                <Ionicons name="location-outline" size={14} color={c.muted} />
+                <Text style={styles.countryText}>{profile.country_name ?? profile.country_code}</Text>
+              </View>
+            ) : null}
             {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
           </View>
 
@@ -246,6 +255,8 @@ const makeStyles = (c: Palette) =>
     avatarText: { fontSize: 32, fontWeight: '700', color: c.primary },
     name: { fontSize: 24, fontWeight: '700', color: c.text },
     username: { fontSize: 15, color: c.muted },
+    country: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+    countryText: { fontSize: 14, color: c.muted },
     bio: { fontSize: 14, color: c.ink2, textAlign: 'center', marginTop: 4 },
     mapButton: {
       flexDirection: 'row',

@@ -172,7 +172,7 @@ export const en = {
   'country.pickerTitle': 'Country',
   'country.searchPlaceholder': 'Search countries…',
   'country.searchClear': 'Clear country search',
-  'country.clear': 'Remove',
+  'country.clear': 'Remove country',
   'country.noResults': 'No countries for “{{query}}”',
   'country.loading': 'Loading countries…',
   'country.error': 'Couldn’t load the country list.',

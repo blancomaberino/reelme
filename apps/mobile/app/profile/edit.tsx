@@ -30,8 +30,13 @@ export default function EditProfileScreen() {
   // The whole {code, name} pair, seeded from the payload the API already
   // localized — so the field shows "España" on open without fetching the
   // 249-row catalog just to translate one code.
+  //
+  // Seeded off the CODE alone, falling back to it as the label. Requiring both
+  // meant a stored code the API could not name read as "unset", and the next
+  // Save — of any unrelated field — then PATCHed `country_code: null` and
+  // erased a country the user never touched.
   const [country, setCountry] = useState<Country | null>(
-    user?.country_code && user.country_name ? { code: user.country_code, name: user.country_name } : null,
+    user?.country_code ? { code: user.country_code, name: user.country_name ?? user.country_code } : null,
   );
   const [pickingCountry, setPickingCountry] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +86,7 @@ export default function EditProfileScreen() {
           keyboardType="numbers-and-punctuation"
           autoCapitalize="none"
         />
-        {user?.age != null ? <Text style={styles.age}>{t('editProfile.age', { age: user.age })}</Text> : null}
+        {user?.age != null ? <Text style={styles.hint}>{t('editProfile.age', { age: user.age })}</Text> : null}
 
         <PickerField
           label={t('editProfile.country')}
@@ -90,7 +95,7 @@ export default function EditProfileScreen() {
           onPress={() => setPickingCountry(true)}
           testID="country-field"
         />
-        <Text style={styles.fieldHint}>{t('editProfile.countryHint')}</Text>
+        <Text style={styles.hint}>{t('editProfile.countryHint')}</Text>
 
         <TagEditor
           label={t('editProfile.topics')}
@@ -137,14 +142,16 @@ export default function EditProfileScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button title={t('editProfile.save')} onPress={save} loading={update.isPending} />
-
-        <CountryPicker
-          visible={pickingCountry}
-          onClose={() => setPickingCountry(false)}
-          value={country?.code ?? null}
-          onSelect={setCountry}
-        />
       </ScrollView>
+
+      {/* A sibling of the scrollable, not a child of it: the Modal host is still
+          a flex child and would add the container's `gap` as dead scroll. */}
+      <CountryPicker
+        visible={pickingCountry}
+        onClose={() => setPickingCountry(false)}
+        value={country?.code ?? null}
+        onSelect={setCountry}
+      />
     </SafeAreaView>
   );
 }
@@ -254,8 +261,7 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.background },
     scroll: { padding: 20, gap: 14, paddingBottom: 40 },
-    age: { fontSize: 13, color: c.muted, marginTop: -6 },
-    fieldHint: { fontSize: 13, color: c.muted, marginTop: -6 },
+    hint: { fontSize: 13, color: c.muted, marginTop: -6 },
     error: { color: c.danger, fontSize: 14 },
     section: { gap: 8 },
     sectionLabel: { fontSize: 13, fontWeight: '600', color: c.text },

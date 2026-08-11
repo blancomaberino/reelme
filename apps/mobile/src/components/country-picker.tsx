@@ -74,16 +74,23 @@ export function CountryPicker({ visible, onClose, value, onSelect }: Props) {
       .map((m) => m.country);
   }, [countries, indexed, typed]);
 
-  const choose = (country: Country | null) => {
+  // Dismissing clears the query too. The Modal unmounts the TextInput on close
+  // while `q` lives out here and survives, so a backdrop tap left the next open
+  // showing a stale search and a pre-filtered list with no visible cause.
+  const dismiss = () => {
     setQ('');
-    onSelect(country);
     onClose();
+  };
+
+  const choose = (country: Country | null) => {
+    onSelect(country);
+    dismiss();
   };
 
   return (
     <SheetShell
       visible={visible}
-      onClose={onClose}
+      onClose={dismiss}
       title={t('country.pickerTitle')}
       // Clearing is a real answer ("I'd rather not say"), not an escape hatch —
       // so it sits in the header next to the title, never hidden in the list.
@@ -115,6 +122,11 @@ export function CountryPicker({ visible, onClose, value, onSelect }: Props) {
         keyExtractor={(country) => country.code}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        // The sheet is a fixed 88% of the screen inside a Modal, which does not
+        // resize for the keyboard — without this the last matching rows sit
+        // behind it and cannot be scrolled clear. Same fix filter-sheet's
+        // ScrollView already carries.
+        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.list}
         ItemSeparatorComponent={() => <View style={styles.separator} />}

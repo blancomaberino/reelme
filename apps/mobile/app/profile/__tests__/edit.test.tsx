@@ -18,6 +18,9 @@ const ME: Me = makeMe({
   name: 'Old Name',
   username: 'marce',
   email: 'm@one.pet',
+  // Spelled out because a test below asserts the visibility cards reflect it —
+  // a default the fixture merely happens to share would prove nothing.
+  is_public: true,
   favorite_topics: ['ramen'],
 });
 
@@ -118,10 +121,14 @@ describe('country', () => {
 
     // The API already localized it, so it is on screen at first paint. This is
     // also the "survives an app restart" assertion: a relaunch rehydrates the
-    // session from /me and lands exactly here.
-    // The accessibility label is what a screen-reader user gets, and it is the
-    // only place the field's label and value appear together.
+    // session from /me and lands exactly here. The accessibility label is what
+    // a screen-reader user gets, and the only place the field's label and value
+    // appear together.
     expect(screen.getByLabelText('Country: Uruguay')).toBeOnTheScreen();
+
+    // And it named it without the 249-row catalog, which is the point of the
+    // API sending `country_name` alongside the code.
+    expect(mock.history.get.some((r) => r.url === '/countries')).toBe(false);
   });
 
   it('picks a country in the sheet and PATCHes the CODE', async () => {
@@ -151,6 +158,33 @@ describe('country', () => {
     expect(sent).toMatchObject({ country_code: 'ES' });
   });
 
+  /**
+   * The seed used to require BOTH code and name. A stored code the API could
+   * not name then read as "unset", and the next Save — of any unrelated field —
+   * PATCHed `country_code: null`, erasing a country the user never touched.
+   */
+  it('keeps a stored code the API did not name, instead of wiping it on save', async () => {
+    useSessionStore.setState({
+      status: 'authed',
+      user: makeMe({ ...ME, country_code: 'UY', country_name: null }),
+    });
+    let sent: Record<string, unknown> = {};
+    mock.onPatch('/me').reply((cfg) => {
+      sent = JSON.parse(cfg.data);
+      return [200, { data: { user: ME } }];
+    });
+
+    render(<EditProfileScreen />, { wrapper: Providers });
+
+    // Falls back to showing the code — unreadable is still better than lost.
+    expect(screen.getByLabelText('Country: UY')).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled());
+
+    expect(sent.country_code).toBe('UY');
+  });
+
   it('clears the country back to null', async () => {
     useSessionStore.setState({
       status: 'authed',
@@ -165,7 +199,7 @@ describe('country', () => {
     render(<EditProfileScreen />, { wrapper: Providers });
 
     fireEvent.press(screen.getByTestId('country-field'));
-    fireEvent.press(await screen.findByLabelText('Remove'));
+    fireEvent.press(await screen.findByLabelText('Remove country'));
 
     await waitFor(() => expect(screen.getByLabelText('Country: Choose a country')).toBeOnTheScreen());
 

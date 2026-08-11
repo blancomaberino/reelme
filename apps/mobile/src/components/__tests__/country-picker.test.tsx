@@ -89,11 +89,14 @@ it('ranks a prefix match above a mid-word one', async () => {
   // has typed the beginning of the country they want.
   fireEvent.changeText(screen.getByTestId('country-search'), 'an');
 
+  // The WHOLE order, not just first place: "prefix first, then catalog order"
+  // would also put AD on top while getting the other two backwards.
   const rows = await screen.findAllByTestId(/^country-row-/);
-  expect(rows[0].props.testID).toBe('country-row-AD');
-  expect(rows.map((r) => r.props.testID)).toEqual(
-    expect.arrayContaining(['country-row-DE', 'country-row-ES']),
-  );
+  expect(rows.map((r) => r.props.testID)).toEqual([
+    'country-row-AD', // "andorra" — prefix, index 0
+    'country-row-ES', // "espana"  — index 3
+    'country-row-DE', // "alemania" — index 4
+  ]);
 });
 
 it('reports a chosen country to the caller by code AND name', async () => {
@@ -110,14 +113,14 @@ it('hides Remove when nothing is selected — there is nothing to undo', async (
   render(<Harness />, { wrapper: Providers });
   await screen.findByText('Uruguay');
 
-  expect(screen.queryByLabelText('Remove')).toBeNull();
+  expect(screen.queryByLabelText('Remove country')).toBeNull();
 });
 
 it('clears a selected country to null', async () => {
   const onPick = jest.fn();
   render(<Harness initial={{ code: 'ES', name: 'España' }} onPick={onPick} />, { wrapper: Providers });
 
-  fireEvent.press(await screen.findByLabelText('Remove'));
+  fireEvent.press(await screen.findByLabelText('Remove country'));
 
   // null, not '' — "I'd rather not say" has to reach the API as a cleared field.
   expect(onPick).toHaveBeenCalledWith(null);

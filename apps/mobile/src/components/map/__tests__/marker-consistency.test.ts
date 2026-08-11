@@ -33,7 +33,18 @@ it('uses the shared markers everywhere — no screen renders its own <Marker>', 
       // first version hit three files whose only crime was a comment saying
       // "PlaceMarker, not a bare <Marker>". A guard that flags its own
       // documentation gets weakened until it flags nothing.
-      ['grep', '-l', '-E', '^[[:space:]]*<Marker[[:space:]>/]', '--', 'app', 'src'],
+      //
+      // `|$` because every <Marker in this repo is written multi-line — the
+      // props start on the NEXT line. Requiring a character after `Marker`
+      // matched zero files, so the guard passed unconditionally for the whole
+      // time it was on main; the mutation check that "proved" it only ever
+      // exercised mini-map's one-line self-closing form.
+      //
+      // `--untracked` because the seventh divergent screen is an UNTRACKED new
+      // file at the moment its author runs the suite. Without it the guard goes
+      // green on the violation and only bites after the commit — i.e. after the
+      // review gate it exists to feed.
+      ['grep', '--untracked', '-l', '-E', '^[[:space:]]*<Marker([[:space:]>/]|$)', '--', 'app', 'src'],
       // FOUR levels: __tests__ → map → components → src → apps/mobile. Three
       // landed in src/, where the `app` and `src` pathspecs do not exist, so
       // the grep matched nothing and the test passed no matter what. A mutation
@@ -44,6 +55,15 @@ it('uses the shared markers everywhere — no screen renders its own <Marker>', 
   } catch (error) {
     const status = (error as { status?: number }).status;
     if (status !== 1) throw error; // 1 = no matches; anything else is a real failure
+  }
+
+  // POSITIVE CONTROL, before the assertion. `expect(hits).toEqual([])` is
+  // satisfied by a grep that found nothing for ANY reason, and that has now
+  // happened twice: once from the wrong cwd, once from a regex that could not
+  // match the repo's own JSX. Neither was visible at runtime. If the shared
+  // markers themselves stop matching, the search is broken, not the codebase.
+  for (const allowed of ALLOWED) {
+    expect(output).toContain(allowed);
   }
 
   const hits = output

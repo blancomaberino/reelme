@@ -38,7 +38,7 @@ it('queues the build and answers 202 rather than blocking', function () {
 
 it('writes an archive holding a file per kind of record', function () {
     Storage::fake(config('media.disk'));
-    $user = User::factory()->create();
+    $user = User::factory()->create(['country_code' => 'UY']);
     Share::factory()->for($user)->published()->create();
 
     $path = app(UserDataExporter::class)->export($user);
@@ -61,7 +61,9 @@ it('writes an archive holding a file per kind of record', function () {
     expect($names)->toContain('profile.json', 'shares.json', 'ledger_entries.json', 'README.txt');
 
     $profile = json_decode((string) $zip->getFromName('profile.json'), true);
-    expect($profile['username'])->toBe($user->username)
+    // Art. 15/20 covers everything the user told us, including where they are.
+    expect($profile['country_code'])->toBe('UY')
+        ->and($profile['username'])->toBe($user->username)
         ->and(json_decode((string) $zip->getFromName('shares.json'), true))->toHaveCount(1);
 
     $zip->close();

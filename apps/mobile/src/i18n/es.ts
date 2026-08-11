@@ -168,7 +168,7 @@ export const es: Record<MessageKey, string> = {
   'country.pickerTitle': 'País',
   'country.searchPlaceholder': 'Buscar países…',
   'country.searchClear': 'Borrar búsqueda de países',
-  'country.clear': 'Quitar',
+  'country.clear': 'Quitar país',
   'country.noResults': 'Sin países para «{{query}}»',
   'country.loading': 'Cargando países…',
   'country.error': 'No pudimos cargar la lista de países.',

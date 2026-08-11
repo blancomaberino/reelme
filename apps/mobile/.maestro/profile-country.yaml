@@ -70,7 +70,7 @@ appId: pet.one.reelmap
     timeout: 20000
 
 # Nothing is selected yet, so there is nothing to remove.
-- assertNotVisible: "Quitar"
+- assertNotVisible: "Quitar país"
 - takeScreenshot: build/maestro/country-2-picker
 
 # Accent-insensitive search: an ASCII keyboard has to find "España". Typing the
@@ -122,9 +122,9 @@ appId: pet.one.reelmap
 - tapOn:
     id: "country-field"
 - extendedWaitUntil:
-    visible: "Quitar"
+    visible: "Quitar país"
     timeout: 15000
-- tapOn: "Quitar"
+- tapOn: "Quitar país"
 - assertVisible: "País: Elegí un país"
 - tapOn: "Guardar"
 

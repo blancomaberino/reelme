@@ -106,7 +106,9 @@ final class Countries
      *
      * Sorted with a Collator, not `sort()`: byte order puts "Åland"/"Zimbabwe"
      * after every unaccented name, and Spanish readers expect "Angola" next to
-     * "Antigua". Falls back to a plain string sort if intl's collator is absent.
+     * "Antigua". ext-intl is a hard requirement rather than a soft one — the
+     * names on the line above come from `Locale::getDisplayRegion()`, so a
+     * fallback here could never run.
      *
      * @return list<array{code: string, name: string}>
      */
@@ -121,10 +123,8 @@ final class Countries
             self::CODES,
         );
 
-        $collator = class_exists(Collator::class) ? new Collator($locale) : null;
-        usort($rows, fn (array $a, array $b): int => $collator !== null
-            ? ($collator->compare($a['name'], $b['name']) ?: 0)
-            : strcmp($a['name'], $b['name']));
+        $collator = new Collator($locale);
+        usort($rows, fn (array $a, array $b): int => (int) $collator->compare($a['name'], $b['name']));
 
         return self::$catalogs[$locale] = $rows;
     }

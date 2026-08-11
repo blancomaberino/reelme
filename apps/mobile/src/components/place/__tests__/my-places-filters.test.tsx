@@ -4,8 +4,9 @@ import AxiosMockAdapter from 'axios-mock-adapter';
 import { type ReactNode, useState } from 'react';
 
 import { api } from '@/api/client';
-import type { MyPlacesFilters as Filters } from '@/api/keys';
+import { queryKeys, type MyPlacesFilters as Filters } from '@/api/keys';
 import { MyPlacesFilters } from '@/components/place/my-places-filters';
+import { useSettingsStore } from '@/stores/settings';
 
 let mock: AxiosMockAdapter;
 let qc: QueryClient;
@@ -83,7 +84,20 @@ it('falls back to the raw code when the country catalog is unavailable', async (
 
   render(<Harness initial={{ sort: 'recent', country: 'UY' }} />, { wrapper: Providers });
 
-  expect(await screen.findByLabelText('Remove UY filter')).toBeTruthy();
+  // Assert AFTER the query settles. At first paint the chip reads "UY" whatever
+  // the server said, so a `find` alone passes even on a 200 — it would be
+  // testing the loading state and calling it the failure state.
+  await waitFor(() =>
+    expect(qc.getQueryState(queryKeys.countries(useSettingsStore.getState().locale))?.status).toBe('error'),
+  );
+  expect(screen.getByLabelText('Remove UY filter')).toBeTruthy();
+});
+
+it('does not pull the 249-row catalog when there is no country to name', async () => {
+  render(<Harness countries={[]} initial={{ sort: 'recent' }} />, { wrapper: Providers });
+  await screen.findByLabelText('Filters');
+
+  expect(mock.history.get.some((r) => r.url === '/countries')).toBe(false);
 });
 
 it('toggles the sort order between recent and popular', async () => {

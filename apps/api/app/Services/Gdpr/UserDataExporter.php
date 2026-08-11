@@ -159,6 +159,7 @@ class UserDataExporter
             'favorite_topics' => $user->favorite_topics,
             'favorite_foods' => $user->favorite_foods,
             'locale' => $user->locale,
+            'country_code' => $user->country_code,
             'is_public' => $user->is_public,
             'is_influencer' => $user->is_influencer,
             'is_restaurant_owner' => $user->is_restaurant_owner,

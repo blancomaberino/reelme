@@ -22,7 +22,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->char('country_code', 2)->nullable()->after('is_public');
+            // No ->after(): Postgres ignores column ordering hints, and leaving
+            // one in implies a guarantee the grammar never makes (the same note
+            // 2026_08_06_120000_add_deletion_requested_at_to_users carries).
+            $table->char('country_code', 2)->nullable();
         });
     }
 

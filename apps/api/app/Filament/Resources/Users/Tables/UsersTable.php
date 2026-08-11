@@ -30,7 +30,12 @@ class UsersTable
                 // code, which is what the column actually holds.
                 TextColumn::make('country_code')
                     ->label('Country')
-                    ->formatStateUsing(fn (?string $state): string => Countries::name($state, config('app.locale')) ?? '—')
+                    // `placeholder`, not a `??` inside the formatter: Filament
+                    // short-circuits to the placeholder when the state is blank
+                    // and never calls formatStateUsing, so a fallback in there
+                    // would be dead code for every user with no country.
+                    ->formatStateUsing(fn (string $state): string => Countries::name($state, config('app.locale')) ?? $state)
+                    ->placeholder('—')
                     ->sortable()
                     ->toggleable(),
                 IconColumn::make('is_admin')

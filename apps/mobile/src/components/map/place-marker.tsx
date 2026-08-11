@@ -107,8 +107,18 @@ function PlaceMarkerBase({ pin, selected, detailed, onPress, showName = true }: 
 
 export const PlaceMarker = memo(
   PlaceMarkerBase,
+  // Every field the marker DRAWS, not just the identity. `id` alone was safe
+  // while pins came only from the viewport endpoint, where a place's row is
+  // fixed per fetch — but the mini-map is fed by `usePlace`, which polls while
+  // enrichment is still running precisely so the imagery can arrive late. The
+  // thumbnail lands, the object changes, the id does not, and the marker keeps
+  // the photo-less teardrop until the screen unmounts. All scalars, so the
+  // comparator stays cheap.
   (prev, next) =>
     prev.pin.id === next.pin.id &&
+    prev.pin.thumbnail_url === next.pin.thumbnail_url &&
+    prev.pin.name === next.pin.name &&
+    prev.pin.price_range === next.pin.price_range &&
     prev.selected === next.selected &&
     prev.detailed === next.detailed &&
     prev.showName === next.showName &&

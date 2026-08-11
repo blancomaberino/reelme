@@ -58,6 +58,25 @@ it('rejects anything that is not a real ISO 3166-1 alpha-2 code', function () {
     expect($user->fresh()->country_code)->toBe('UY');
 });
 
+/**
+ * The model is the backstop for every writer that is not the PATCH request or
+ * the Filament Select — a factory, a seeder, tinker, a future importer. Without
+ * it a code that slipped past those two would ship as
+ * `{"country_code": "zz", "country_name": null}`: a payload that breaks its own
+ * contract (`^[A-Z]{2}$`, and country_name null exactly when the code is).
+ */
+it('canonicalizes the country on write, whatever the writer', function () {
+    $user = User::factory()->create(['country_code' => 'uy']);
+    expect($user->fresh()->country_code)->toBe('UY');
+
+    // Not a country → stored as nothing, rather than as a code that renders as
+    // itself and looks like a place.
+    foreach (['ZZ', 'USA', 'U1', ''] as $bogus) {
+        $user->forceFill(['country_code' => $bogus])->save();
+        expect($user->fresh()->country_code)->toBeNull();
+    }
+});
+
 it('returns the country on GET /me, named in the request locale', function () {
     Sanctum::actingAs(User::factory()->create(['country_code' => 'ES']));
 

@@ -27,22 +27,28 @@ describe('foldSearch', () => {
   it('leaves ASCII and unknown characters alone', () => {
     expect(foldSearch('Uruguay 🇺🇾')).toBe('uruguay 🇺🇾');
   });
+
+  it('folds EVERY occurrence, not just the first', () => {
+    // The fold runs a /g regex. Repeated here because a carried `lastIndex`
+    // would leave the second call starting mid-string — asserting a value
+    // rather than `x === x`, which would pass for any implementation.
+    expect(foldSearch('Ñandú ñandú')).toBe('nandu nandu');
+    expect(foldSearch('Ñandú ñandú')).toBe('nandu nandu');
+  });
 });
 
 describe('haystackMatchIndex', () => {
   it('returns the earliest match across haystacks, so prefix beats mid-word', () => {
     expect(haystackMatchIndex(['chile', 'cl'], 'chi')).toBe(0);
     expect(haystackMatchIndex(['republica de chile'], 'chi')).toBe(13);
+    // The min ACROSS haystacks, not the first haystack that matches — the
+    // picker searches [name, code] and a code hit has to win. Dropping the
+    // `i < best` comparison passes both lines above and fails this one.
+    expect(haystackMatchIndex(['republica de chile', 'ch'], 'ch')).toBe(0);
   });
 
   it('is -1 for no match and 0 for an empty query', () => {
     expect(haystackMatchIndex(['uruguay'], 'zz')).toBe(-1);
     expect(haystackMatchIndex(['uruguay'], '')).toBe(0);
-  });
-
-  it('does not carry regex state between calls', () => {
-    // The fold uses a /g regex; a shared lastIndex would make the second call
-    // skip the start of the string and quietly stop matching.
-    expect(foldSearch('Türkiye')).toBe(foldSearch('Türkiye'));
   });
 });
