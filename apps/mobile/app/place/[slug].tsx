@@ -283,7 +283,7 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
 
       {/* Mini-map */}
       <View style={styles.block}>
-        <MiniMap lat={place.lat} lng={place.lng} onPress={openMap} />
+        <MiniMap place={place} onPress={openMap} />
       </View>
 
       {/* Actions */}
