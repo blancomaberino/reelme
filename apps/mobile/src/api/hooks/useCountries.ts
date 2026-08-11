@@ -30,6 +30,11 @@ export function useCountries(opts?: { enabled?: boolean }) {
     queryFn: fetchCountries,
     // A fixed list of 249 rows that only changes when ICU does.
     staleTime: 24 * 60 * 60_000,
+    // …and it has to SURVIVE to be worth caching. `staleTime` alone was a
+    // promise the default 5-minute `gcTime` broke: once the picker closed and
+    // the last observer unmounted, the entry was collected and the next open
+    // re-fetched. Nothing here is worth reclaiming.
+    gcTime: Infinity,
     enabled: opts?.enabled ?? true,
   });
 }

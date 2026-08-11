@@ -119,11 +119,7 @@ it('hides save-a-copy from the list owner', async () => {
 
   render(<SharedListScreen />, { wrapper: Providers });
 
-  // Exactly two: the list row AND the map pin's label. `not.toHaveLength(0)`
-  // could not fail — findAllByText rejects when there are no matches — so it
-  // no longer distinguished "row only" (the bug this screen was fixed for)
-  // from "row + shared marker".
-  expect(await screen.findAllByText('Clara')).toHaveLength(2);
+  expect(await screen.findAllByText('Clara')).toHaveLength(2); // list row + map pin
   expect(screen.queryByLabelText('Save a copy')).toBeNull();
 });
 

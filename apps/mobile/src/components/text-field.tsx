@@ -64,20 +64,21 @@ export function PickerField({
 }) {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const filled = Boolean(value);
+  // Empty string falls through to the placeholder, same as a null value.
+  const shown = value || placeholder;
 
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{label}</Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}: ${filled ? value : placeholder}`}
+        accessibilityLabel={`${label}: ${shown}`}
         testID={testID}
         onPress={onPress}
         style={({ pressed }) => [styles.input, styles.picker, pressed && styles.pickerPressed]}
       >
-        <Text style={filled ? styles.pickerValue : styles.pickerPlaceholder} numberOfLines={1}>
-          {filled ? value : placeholder}
+        <Text style={[styles.pickerText, !value && styles.pickerPlaceholder]} numberOfLines={1}>
+          {shown}
         </Text>
         <Ionicons name="chevron-forward" size={18} color={c.muted} />
       </Pressable>
@@ -105,6 +106,6 @@ const makeStyles = (c: Palette) =>
     // Laid over `input`, so the box geometry can never drift from the text one.
     picker: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
     pickerPressed: { opacity: 0.7 },
-    pickerValue: { flex: 1, fontSize: 16, color: c.text },
-    pickerPlaceholder: { flex: 1, fontSize: 16, color: c.placeholder },
+    pickerText: { flex: 1, fontSize: 16, color: c.text },
+    pickerPlaceholder: { color: c.placeholder },
   });

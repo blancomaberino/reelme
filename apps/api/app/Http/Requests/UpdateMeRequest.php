@@ -27,8 +27,10 @@ class UpdateMeRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        if ($this->has('country_code') && is_string($this->input('country_code'))) {
-            $this->merge(['country_code' => Countries::normalize($this->input('country_code'))]);
+        $code = $this->input('country_code');
+
+        if (is_string($code)) {
+            $this->merge(['country_code' => Countries::normalize($code)]);
         }
     }
 

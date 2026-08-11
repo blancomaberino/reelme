@@ -81,7 +81,7 @@ final class Countries
 
     public static function isValid(?string $code): bool
     {
-        return $code !== null && in_array($code, self::CODES, true);
+        return in_array($code, self::CODES, true);
     }
 
     /**

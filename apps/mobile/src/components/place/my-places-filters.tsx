@@ -37,11 +37,12 @@ export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, f
   // Chips and options read "Uruguay", not "UY" (T-110). Names come from the
   // localized API catalog and fall back to the raw code, so the facet is still
   // usable before the catalog lands.
-  // Only fetched when there is a country to name: a collection entirely in one
-  // country still shows a chip, but a collection with none shouldn't pull 249
-  // rows to label nothing.
-  const countryName = useCountryName({ enabled: countryFacets.length > 0 || Boolean(filters.country) });
   const [open, setOpen] = useState(false);
+  // Only fetched when a label is actually about to be rendered. The country
+  // options live INSIDE the sheet, so a user who opens the places tab and never
+  // opens the filters — the common case — needs none of it; the only label
+  // visible from outside is the active-country chip.
+  const countryName = useCountryName({ enabled: open || Boolean(filters.country) });
   // The tags actually on my places — the filter's candidate set + chip labels.
   const { data: myTags } = useMyPlacesTags();
   const tags = useMemo(() => myTags ?? [], [myTags]);

@@ -10,6 +10,9 @@ import { foldSearch, haystackMatchIndex } from '@/lib/search-text';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
+/** Stable empty catalog, so `indexed` does not re-run on every pre-load render. */
+const NO_COUNTRIES: Country[] = [];
+
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -54,7 +57,7 @@ export function CountryPicker({ visible, onClose, value, onSelect }: Props) {
   const { data, isLoading, isError } = useCountries({ enabled: visible });
   const [q, setQ] = useState('');
 
-  const countries = useMemo(() => data ?? [], [data]);
+  const countries = data ?? NO_COUNTRIES;
 
   // Fold each name once per catalog, not once per keystroke: typing then only
   // folds the query and runs indexOf.
@@ -189,6 +192,9 @@ const makeStyles = (c: Palette) =>
       paddingHorizontal: space.sm,
       paddingVertical: space.xs,
       marginBottom: space.sm,
+      // The same floor tag-autocomplete's search box carries: without it the
+      // query crops at large OS text sizes, where the row is exactly the text.
+      minHeight: 44,
     },
     search: { flex: 1, ...type.bodyLg, fontWeight: '400', color: c.text },
     list: { paddingBottom: space.md },

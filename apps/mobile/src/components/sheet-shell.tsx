@@ -44,6 +44,10 @@ export function SheetShell({ visible, onClose, title, action, footer, children }
   // with the pinned footer; a concrete pixel height (not a %, which never
   // resolved through the modal's hierarchy) makes the column deterministic.
   const sheetHeight = Math.round(screenH * 0.88);
+  // A Modal renders outside the safe-area provider, so SafeAreaView reports a
+  // zero bottom inset here — both branches below have to pad past the home
+  // indicator themselves.
+  const bottomInset = Math.max(insets.bottom, space.sm);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -62,12 +66,10 @@ export function SheetShell({ visible, onClose, title, action, footer, children }
 
           <View style={styles.body}>{children}</View>
 
-          {/* Pad past the home indicator manually: a Modal renders outside the
-              safe-area provider, so SafeAreaView reports zero bottom inset. */}
           {footer ? (
-            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, space.sm) + space.xs }]}>{footer}</View>
+            <View style={[styles.footer, { paddingBottom: bottomInset + space.xs }]}>{footer}</View>
           ) : (
-            <View style={{ height: Math.max(insets.bottom, space.sm) }} />
+            <View style={{ height: bottomInset }} />
           )}
         </View>
       </View>
