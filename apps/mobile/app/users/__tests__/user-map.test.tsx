@@ -40,6 +40,12 @@ it('renders their places as markers on a fit-to-bounds map', async () => {
 
   expect(await screen.findByTestId('MapView')).toBeOnTheScreen();
   expect(screen.getAllByTestId('Marker')).toHaveLength(2);
+
+  // The names come from the SHARED PlaceMarker's glyph. Counting markers alone
+  // cannot tell the app's pin from the platform's blank default — which is
+  // precisely what this screen rendered until now, and what the count let pass.
+  expect(screen.getByText('Clara Café')).toBeOnTheScreen();
+  expect(screen.getByText('Manteigaria')).toBeOnTheScreen();
 });
 
 it('shows an empty state (no map) when the user has no places', async () => {
