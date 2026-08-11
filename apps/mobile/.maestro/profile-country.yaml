@@ -92,6 +92,14 @@ appId: pet.one.reelmap
     timeout: 15000
 - tapOn: "Guardar"
 
+# `router.back()` only fires on a 2xx, so landing back on the profile IS the
+# save completing. Without this wait, `stopApp` below kills the PATCH in flight
+# often enough that the next run finds España already set and fails at the
+# "nothing to remove" assertion instead.
+- extendedWaitUntil:
+    visible: "Editar perfil"
+    timeout: 20000
+
 # --- It persisted -----------------------------------------------------------
 # A real terminate + plain relaunch (no URL), so what shows up came back from
 # /me rather than from React state that was never unmounted.
@@ -127,6 +135,35 @@ appId: pet.one.reelmap
 - tapOn: "Quitar país"
 - assertVisible: "País: Elegí un país"
 - tapOn: "Guardar"
+- extendedWaitUntil:
+    visible: "Editar perfil"
+    timeout: 20000
+
+# --- Prove the teardown, don't assert it ------------------------------------
+# The header comment promises this flow leaves the account as it found it. A
+# promise nothing checks is how the NEXT run fails for a reason that has nothing
+# to do with the feature — so relaunch and look.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- tapOn: ".*Perfil, tab.*"
+- extendedWaitUntil:
+    visible: "Editar perfil"
+    timeout: 30000
+- tapOn:
+    point: "50%,43%"
+- extendedWaitUntil:
+    visible: "Nombre"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "country-field"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- assertVisible: "País: Elegí un país"
 
 # --- Put the simulator back -------------------------------------------------
 # No deep link was used, so nothing is latched — but a plain relaunch is what

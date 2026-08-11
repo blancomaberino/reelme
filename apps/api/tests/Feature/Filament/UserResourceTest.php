@@ -176,6 +176,21 @@ it('edits a user country from the panel, and shows it by name in the table', fun
     Livewire::test(ListUsers::class)->assertSee('Spain');
 });
 
+it('clears a country back to null from the panel', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    // Starting FROM a value: setting null on a row that was already null proves
+    // nothing about whether the field can be emptied.
+    $user = User::factory()->create(['country_code' => 'ES']);
+
+    Livewire::test(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['country_code' => null])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($user->fresh()->country_code)->toBeNull();
+});
+
 /**
  * The Places form validates a country with `maxLength(2)`, which accepts "ZZ".
  * This resource must not inherit that: a Select can only ever submit an option,

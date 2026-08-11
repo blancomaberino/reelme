@@ -13,10 +13,10 @@ jest.mock('react-native-maps', () => {
   const React = require('react');
   const { View } = require('react-native');
   return {
-    Marker: ({ children, tracksViewChanges, accessibilityLabel, anchor, onPress }: Record<string, unknown>) =>
+    Marker: ({ children, tracksViewChanges, accessibilityLabel, anchor, onPress, coordinate }: Record<string, unknown>) =>
       React.createElement(
         View,
-        { testID: 'marker', tracksViewChanges, accessibilityLabel, anchor, onPress },
+        { testID: 'marker', tracksViewChanges, accessibilityLabel, anchor, onPress, coordinate },
         children as React.ReactNode,
       ),
   };
@@ -44,6 +44,7 @@ function pin(over: Partial<MapPin> = {}): MapPin {
 
 const noop = () => {};
 const tracks = () => screen.getByTestId('marker').props.tracksViewChanges;
+const coordinate = () => screen.getByTestId('marker').props.coordinate;
 const anchor = () => screen.getByTestId('marker').props.anchor;
 
 it('anchors the coordinate to the pointer tip when detailed and the dot centre when compact', () => {
@@ -130,4 +131,55 @@ it('reports the tapped pin id', () => {
   render(<PlaceMarker pin={pin({ id: '42' })} selected={false} detailed onPress={onPress} />);
   fireEvent.press(screen.getByTestId('marker'));
   expect(onPress).toHaveBeenCalledWith('42');
+});
+
+/**
+ * The memo comparator has to cover every field the marker DRAWS, and it has
+ * twice failed to. It started comparing only `pin.id` — safe while pins came
+ * from the viewport endpoint, where a row is fixed per fetch, and wrong the
+ * moment the mini-map began polling `usePlace` so enrichment could fill imagery
+ * in afterwards. It then grew `thumbnail_url`/`name`/`price_range` and STILL
+ * omitted `lat`/`lng`, i.e. the coordinate: a geocode correction mid-enrichment
+ * left the pin sitting at the old position with no way to tell from the code.
+ *
+ * `MARKER_FIELDS` is a `Record<keyof MarkerPlace, true>`, so a field added to
+ * the type without being compared no longer compiles. These cases pin the
+ * behaviour that guarantee exists for.
+ */
+describe('re-renders when the pin data changes under it', () => {
+  it('moves when the coordinate is corrected', () => {
+    const { rerender } = render(<PlaceMarker pin={pin()} selected={false} detailed onPress={noop} />);
+    expect(coordinate()).toEqual({ latitude: -34.9, longitude: -56.16 });
+
+    rerender(<PlaceMarker pin={pin({ lat: 38.71, lng: -9.14 })} selected={false} detailed onPress={noop} />);
+    expect(coordinate()).toEqual({ latitude: 38.71, longitude: -9.14 });
+  });
+
+  it('picks up a poster that arrived after enrichment', () => {
+    const { rerender } = render(<PlaceMarker pin={pin()} selected={false} detailed onPress={noop} />);
+    expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(0);
+
+    rerender(
+      <PlaceMarker pin={pin({ thumbnail_url: 'https://cdn.example/reel.jpg' })} selected={false} detailed onPress={noop} />,
+    );
+    expect(screen.UNSAFE_getByType(Image).props.source).toEqual({ uri: 'https://cdn.example/reel.jpg' });
+  });
+
+  it('picks up a renamed place', () => {
+    const { rerender } = render(<PlaceMarker pin={pin()} selected={false} detailed onPress={noop} />);
+    rerender(<PlaceMarker pin={pin({ name: 'Café Bertin' })} selected={false} detailed onPress={noop} />);
+
+    expect(screen.getByText('Café Bertin')).toBeTruthy();
+    expect(screen.queryByText('Café Brasilero')).toBeNull();
+  });
+});
+
+it('omits the name label when showName is false, and restores it when it flips', () => {
+  const { rerender } = render(<PlaceMarker pin={pin()} selected={false} detailed showName={false} onPress={noop} />);
+  expect(screen.queryByText('Café Brasilero')).toBeNull();
+
+  // The mini-map draws its own title above the map, so the pin label would be
+  // the same string twice. It has to come back when a real map uses the marker.
+  rerender(<PlaceMarker pin={pin()} selected={false} detailed onPress={noop} />);
+  expect(screen.getByText('Café Brasilero')).toBeTruthy();
 });
