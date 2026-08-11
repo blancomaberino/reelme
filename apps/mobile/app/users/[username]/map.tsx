@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useUserPlaces } from '@/api/hooks/useProfile';
+import { PlaceMarker } from '@/components/map/place-marker';
 import { fitRegion } from '@/lib/map-region';
 import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
@@ -21,6 +22,13 @@ export default function UserMapScreen() {
   const c = useColors();
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  // Stable identity: PlaceMarker is memoized on `onPress`, so an inline arrow
+  // would rebuild every marker on every render.
+  const openPlace = useCallback(
+    (slug: string) => router.push({ pathname: '/place/[slug]', params: { slug } }),
+    [],
+  );
   const { data: places, isLoading } = useUserPlaces(username ?? null);
 
   const region = useMemo(() => fitRegion(places ?? []), [places]);
@@ -44,13 +52,20 @@ export default function UserMapScreen() {
           initialRegion={region}
           showsPointsOfInterests={false}
         >
+          {/* PlaceMarker, not a bare <Marker>: every map in the app draws the
+              same pin. This screen had its own default red one — five surfaces
+              had, against the main map's photo pin — because PlaceMarker used
+              to require a viewport `MapPin` and these are fed by list
+              endpoints. It now takes the fields both shapes share. */}
           {(places ?? []).map((p) => (
-            <Marker
+            <PlaceMarker
               key={p.id}
-              coordinate={{ latitude: p.lat, longitude: p.lng }}
-              title={p.name}
-              description={p.city ?? undefined}
-              onCalloutPress={() => router.push({ pathname: '/place/[slug]', params: { slug: p.slug } })}
+              pin={p}
+              selected={false}
+              // Always the detailed photo pin: these maps fit a handful of places
+              // to bounds, which is the main map's zoomed-in state.
+              detailed
+              onPress={openPlace}
             />
           ))}
         </MapView>

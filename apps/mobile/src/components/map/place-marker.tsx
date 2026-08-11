@@ -5,13 +5,42 @@ import type { MapPin } from '@/api/places';
 
 import { DOT_ANCHOR, MARKER_ANCHOR, PinGlyph } from './pin-glyph';
 
+/**
+ * What a marker needs to draw itself — the fields common to a viewport `MapPin`
+ * and a list `PlaceSummary`.
+ *
+ * Typed as the intersection rather than `MapPin`, because that requirement was
+ * the whole reason five other map screens hand-rolled a bare `<Marker>`: they
+ * are fed by LIST endpoints, could not satisfy `MapPin`, and each quietly grew
+ * its own default red pin instead. A structural minimum is what lets every map
+ * in the app draw the same thing.
+ */
+export type MarkerPlace = Pick<MapPin, 'id' | 'name' | 'lat' | 'lng' | 'category' | 'price_range'> & {
+  // OPTIONAL, not just nullable: the contract marks it optional on the list
+  // shape and required-nullable on the viewport one. Taking `Pick<MapPin>`
+  // wholesale rejected every PlaceSummary — which is the sort of small
+  // mismatch that sends someone back to writing a bare <Marker>.
+  thumbnail_url?: string | null;
+};
+
+// No `PlaceSummary extends MarkerPlace ? …` alias here: a conditional type that
+// resolves to `never` is not a compile ERROR, so it would look like a guarantee
+// while asserting nothing. The real check is the call sites, which pass
+// PlaceSummary directly and fail loudly if the shape drifts.
+
 type Props = {
-  pin: MapPin;
+  pin: MarkerPlace;
   selected: boolean;
   /** Zoomed-in enough to show the full photo/teardrop + name; otherwise a dot. */
   detailed: boolean;
   /** Stable module/parent-level callback; reads the id from the event. */
   onPress: (id: string) => void;
+  /**
+   * Draw the name under the pin. On by default — it is what makes a pin legible
+   * among others. Off for a single-place preview whose title is already on the
+   * screen an inch above it, where the label is pure duplication.
+   */
+  showName?: boolean;
 };
 
 /**
@@ -20,7 +49,7 @@ type Props = {
  * `onPress` and `tracksViewChanges` off once settled, so Android doesn't
  * re-rasterize every marker every frame. Never pass inline closures/objects here.
  */
-function PlaceMarkerBase({ pin, selected, detailed, onPress }: Props) {
+function PlaceMarkerBase({ pin, selected, detailed, onPress, showName = true }: Props) {
   const showPhoto = detailed && pin.thumbnail_url != null;
 
   // react-native-maps rasterizes the marker's children into a bitmap and, with
@@ -65,7 +94,7 @@ function PlaceMarkerBase({ pin, selected, detailed, onPress }: Props) {
     >
       <PinGlyph
         thumbnailUrl={showPhoto ? pin.thumbnail_url : null}
-        name={detailed ? pin.name : undefined}
+        name={detailed && showName ? pin.name : undefined}
         compact={!detailed}
         category={pin.category}
         priceRange={pin.price_range}
@@ -82,5 +111,6 @@ export const PlaceMarker = memo(
     prev.pin.id === next.pin.id &&
     prev.selected === next.selected &&
     prev.detailed === next.detailed &&
+    prev.showName === next.showName &&
     prev.onPress === next.onPress,
 );

@@ -1,23 +1,32 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
 
+import { type MarkerPlace, PlaceMarker } from '@/components/map/place-marker';
 import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
 
 type Props = {
-  lat: number;
-  lng: number;
+  /**
+   * The place itself, not bare coordinates — so this preview draws the SAME pin
+   * as every other map in the app. It used to take only lat/lng, which left it
+   * no choice but the platform's default red marker: one of five surfaces that
+   * had quietly grown its own.
+   */
+  place: MarkerPlace;
   /** Tap-through target (navigates to the Map tab centered here). */
   onPress: () => void;
 };
+
+/** The map layer is pointerEvents="none" — the wrapping Pressable owns the tap. */
+const NO_MARKER_PRESS = () => {};
 
 /**
  * A small, non-interactive map preview on the place detail screen (T-033). The
  * MapView itself is gesture-disabled and wrapped so it can't steal the parent
  * ScrollView's pan; an overlay Pressable provides the tap-through.
  */
-export function MiniMap({ lat, lng, onPress }: Props) {
+export function MiniMap({ place, onPress }: Props) {
   const c = useColors();
   const t = useT();
   const styles = useMemo(() => makeStyles(c), [c]);
@@ -33,9 +42,16 @@ export function MiniMap({ lat, lng, onPress }: Props) {
           zoomEnabled={false}
           rotateEnabled={false}
           pitchEnabled={false}
-          region={{ latitude: lat, longitude: lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
+          region={{ latitude: place.lat, longitude: place.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }}
         >
-          <Marker coordinate={{ latitude: lat, longitude: lng }} tracksViewChanges={false} />
+          <PlaceMarker
+            pin={place}
+            selected={false}
+            detailed
+            // No label: the place's name is on screen directly above this map.
+            showName={false}
+            onPress={NO_MARKER_PRESS}
+          />
         </MapView>
       </View>
       <Pressable

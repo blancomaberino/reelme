@@ -94,8 +94,12 @@ it('renders a shared list with owner attribution and places (guest: no save-a-co
 
   render(<SharedListScreen />, { wrapper: Providers });
 
-  expect(await screen.findByText('Clara')).toBeOnTheScreen();
-  expect(screen.getByText('Manteigaria')).toBeOnTheScreen();
+  // `getAllByText`: the name now appears twice by design — in the list row AND
+  // as the label on its map pin, since this screen draws the app's shared
+  // PlaceMarker rather than the platform's blank default. A single-match query
+  // here was only ever unique by accident.
+  expect(await screen.findAllByText('Clara')).not.toHaveLength(0);
+  expect(screen.getAllByText('Manteigaria').length).toBeGreaterThan(0);
   expect(screen.getByText('Shared by @marce')).toBeOnTheScreen();
   // A guest cannot save a copy.
   expect(screen.queryByLabelText('Save a copy')).toBeNull();
@@ -129,7 +133,7 @@ it('hides save-a-copy from the list owner', async () => {
 
   render(<SharedListScreen />, { wrapper: Providers });
 
-  expect(await screen.findByText('Clara')).toBeOnTheScreen();
+  expect(await screen.findAllByText('Clara')).not.toHaveLength(0);
   expect(screen.queryByLabelText('Save a copy')).toBeNull();
 });
 

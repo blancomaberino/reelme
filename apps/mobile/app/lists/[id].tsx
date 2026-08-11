@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useDeleteList, useList, useUpdateList } from '@/api/hooks/useLists';
 import type { PlaceListSummary } from '@/api/lists';
 import { AddPlaceToListSheet } from '@/components/place/add-to-list-search';
 import { ScreenHeader } from '@/components/screen-header';
+import { PlaceMarker } from '@/components/map/place-marker';
 import { useT } from '@/i18n';
 import { listShareUrl, listWebUrl } from '@/lib/directions';
 import { fitRegion } from '@/lib/map-region';
@@ -21,6 +22,14 @@ export default function ListDetailScreen() {
   const t = useT();
   const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  // Stable identity: PlaceMarker is memoized on `onPress`, so an inline arrow
+  // would rebuild every marker on every render — the perf pattern that
+  // component exists for.
+  const openPlace = useCallback(
+    (slug: string) => router.push({ pathname: '/place/[slug]', params: { slug } }),
+    [],
+  );
   const { data: list, isLoading } = useList(id ?? null);
   const del = useDeleteList();
   const update = useUpdateList();
@@ -142,12 +151,14 @@ export default function ListDetailScreen() {
               showsPointsOfInterests={false}
             >
               {items.map((i) => (
-                <Marker
+                <PlaceMarker
                   key={i.place.id}
-                  coordinate={{ latitude: i.place.lat, longitude: i.place.lng }}
-                  pinColor={c.primary}
-                  title={i.place.name}
-                  onCalloutPress={() => router.push({ pathname: '/place/[slug]', params: { slug: i.place.slug } })}
+                  pin={i.place}
+                  selected={false}
+                  // Always the detailed photo pin: a list map fits a handful of
+                  // places to bounds, which is the main map's zoomed-in state.
+                  detailed
+                  onPress={openPlace}
                 />
               ))}
             </MapView>

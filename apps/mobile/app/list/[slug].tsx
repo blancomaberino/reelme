@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCopyList, usePublicList } from '@/api/hooks/useLists';
+import { PlaceMarker } from '@/components/map/place-marker';
 import { useT } from '@/i18n';
 import { fitRegion } from '@/lib/map-region';
 import { useFormat } from '@/lib/use-format';
@@ -24,6 +25,14 @@ export default function SharedListScreen() {
   const t = useT();
   const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
+
+  // Stable identity: PlaceMarker is memoized on `onPress`, so an inline arrow
+  // would rebuild every marker on every render — the perf pattern that
+  // component exists for.
+  const openPlace = useCallback(
+    (slug: string) => router.push({ pathname: '/place/[slug]', params: { slug } }),
+    [],
+  );
   const { data: list, isLoading, isError } = usePublicList(slug ?? null);
   const me = useSessionStore((s) => s.user);
   const authed = useSessionStore((s) => s.status === 'authed');
@@ -85,12 +94,14 @@ export default function SharedListScreen() {
           {region ? (
             <MapView style={styles.map} provider={PROVIDER_DEFAULT} initialRegion={region} showsPointsOfInterests={false}>
               {items.map((i) => (
-                <Marker
+                <PlaceMarker
                   key={i.place.id}
-                  coordinate={{ latitude: i.place.lat, longitude: i.place.lng }}
-                  pinColor={c.primary}
-                  title={i.place.name}
-                  onCalloutPress={() => router.push({ pathname: '/place/[slug]', params: { slug: i.place.slug } })}
+                  pin={i.place}
+                  selected={false}
+                  // Always the detailed photo pin: a list map fits a handful of
+                  // places to bounds, which is the main map's zoomed-in state.
+                  detailed
+                  onPress={openPlace}
                 />
               ))}
             </MapView>
