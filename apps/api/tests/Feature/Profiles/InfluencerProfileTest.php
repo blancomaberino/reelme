@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\InfluencerController;
 use App\Models\Influencer;
 use App\Models\Place;
 use App\Models\PlaceSource;
@@ -149,6 +150,38 @@ it('makes the counter, the list and the map agree by construction', function () 
         ->and($map)->toHaveCount(2)
         ->and(collect($list)->pluck('name')->sort()->values()->all())
         ->toBe(collect($map)->pluck('name')->sort()->values()->all());
+});
+
+it('caps the counter at the same ceiling the list can reach, and says so', function () {
+    $influencer = Influencer::factory()->create();
+
+    // One over the cap. Capping the CLIENT alone — which the first cut did —
+    // does not remove the counter-vs-list contradiction, it moves it: the
+    // profile would read "201 Lugares" over a list that stops at 200.
+    foreach (range(1, InfluencerController::PLACES_CAP + 1) as $n) {
+        influencerPlace($influencer, Place::factory()->active()->create(['name' => "P{$n}"]));
+    }
+
+    $res = $this->getJson("/api/v1/influencers/{$influencer->id}")->assertOk();
+
+    expect($res->json('data.counters.promoted_places'))->toBe(InfluencerController::PLACES_CAP)
+        // Published, not merely applied: the client pages this list itself and
+        // has to know where to stop, and a UI showing the ceiling should be
+        // able to render "200+" rather than a flat, wrong 200.
+        ->and($res->json('meta.places_cap'))->toBe(InfluencerController::PLACES_CAP)
+        ->and($res->json('meta.places_capped'))->toBeTrue();
+});
+
+it('does not claim it is capped when it is not', function () {
+    $influencer = Influencer::factory()->create();
+    influencerPlace($influencer, Place::factory()->active()->create());
+
+    $res = $this->getJson("/api/v1/influencers/{$influencer->id}")->assertOk();
+
+    // The flag drives a "+" in the UI; a permanently-true one would put it on
+    // every creator with a single place.
+    expect($res->json('data.counters.promoted_places'))->toBe(1)
+        ->and($res->json('meta.places_capped'))->toBeFalse();
 });
 
 it('404s an unknown influencer and exposes rate-limit headers', function () {

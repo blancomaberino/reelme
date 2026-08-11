@@ -90,21 +90,42 @@ appId: pet.one.reelmap
     timeout: 30000
 - takeScreenshot: build/maestro/reach-2-profile
 
-# === PART 2 — a review can be reported ======================================
-# `waitForAnimationToEnd` before the back tap, and it is not padding: the
-# profile is pushed OUTSIDE the tab navigator (no tab bar there, so there is no
-# tab to re-enter from), and a "Volver" tap fired while the push is still
-# animating gets absorbed — observed, the flow simply sat on the profile and
-# failed the next assertion.
+# === PART 1b — the influencer handle reaches their places, and one opens ====
+# Same card, the other handle. This half exists because a places LIST that
+# renders and does not navigate looks perfect in a screenshot: the profile's
+# counter, the list, and the map all agreed on paper while the map drew nothing
+# at all, for every creator, for as long as the screen had existed.
+#
+# Back to the place first — part 1 left us on the SHARER's profile. Same
+# animation wait as below: a back tap fired mid-push is absorbed.
 - waitForAnimationToEnd:
-    timeout: 5000
+    timeout: 6000
 - tapOn: "Volver"
-# Asserted on the source card, NOT on "Abrir en el mapa": going back restores
-# the previous SCROLL POSITION, so the top-of-page controls are off-screen and
-# an assertion on them fails on a screen that arrived perfectly well.
 - extendedWaitUntil:
     visible: ".*Abrir publicación original.*"
     timeout: 30000
+- tapOn:
+    id: "source-influencer-.*"
+- extendedWaitUntil:
+    visible: ".*Ver su mapa.*"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "my-place-card"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- takeScreenshot: build/maestro/reach-1b-influencer
+- tapOn:
+    id: "my-place-card"
+    index: 0
+- extendedWaitUntil:
+    visible: "Abrir en el mapa"
+    timeout: 30000
+
+# === PART 2 — a review can be reported ======================================
+# Part 1b already left us on a PLACE — the one opened from the influencer's
+# list — so there is no back-navigation to do; scroll straight to the review.
 - scrollUntilVisible:
     element:
       text: "RESENA DE PRUEBA"

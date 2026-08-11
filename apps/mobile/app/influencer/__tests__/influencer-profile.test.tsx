@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 
 import InfluencerProfileScreen from '../[id]/index';
 import { api } from '@/api/client';
+import { INFLUENCER_PLACES_CAP } from '@/api/hooks/useInfluencer';
 import type { InfluencerProfile } from '@/api/influencers';
 import { useSessionStore } from '@/stores/session';
 
@@ -228,6 +229,57 @@ it('follows the cursor so the list can match the counter past one page', async (
 
   const second = mock.history.get.filter((c) => c.url?.includes('/places'))[1];
   expect(second?.params).toEqual({ limit: 50, cursor: 'CURSOR2' });
+});
+
+it('opens a place from the list', async () => {
+  respond(influencer());
+  mock.onGet('/influencers/7/places').reply(200, {
+    data: [
+      { id: '1', name: 'Kraken', slug: 'kraken', lat: -34.9, lng: -56.1, city: 'Piriápolis', country_code: 'UY', status: 'active', thumbnail_url: null, category: null, price_range: null },
+    ],
+  });
+
+  render(<InfluencerProfileScreen />, { wrapper: Providers });
+  fireEvent.press(await screen.findByLabelText('Kraken'));
+
+  // Rendering the list is not the feature — reaching a place from it is. A card
+  // that draws and does not navigate looks completely correct in a screenshot.
+  expect(mockRouter.push).toHaveBeenCalledWith({
+    pathname: '/place/[slug]',
+    params: { slug: 'kraken' },
+  });
+});
+
+it('stops at the cap the server publishes, not one of its own', async () => {
+  // The API caps `counters.promoted_places` at the same number and reports it
+  // as `meta.places_cap`. If these two ever diverge the profile shows a count
+  // the list cannot reach — which is the bug this cap exists to prevent, not a
+  // smaller version of it.
+  respond(influencer({ counters: { promoted_places: INFLUENCER_PLACES_CAP } }));
+
+  let pages = 0;
+  mock.onGet('/influencers/7/places').reply(() => {
+    pages += 1;
+    return [
+      200,
+      {
+        data: Array.from({ length: 50 }, (_, i) => ({
+          id: `${pages}-${i}`, name: `P${pages}-${i}`, slug: `p-${pages}-${i}`,
+          lat: -34.9, lng: -56.1, city: null, country_code: 'UY', status: 'active',
+          thumbnail_url: null, category: null, price_range: null,
+        })),
+        // Never exhausts — only the cap can stop this.
+        meta: { pagination: { next_cursor: `C${pages}`, prev_cursor: null, limit: 50 } },
+      },
+    ];
+  });
+
+  render(<InfluencerProfileScreen />, { wrapper: Providers });
+  await screen.findByText('P1-0');
+
+  await waitFor(() => expect(pages).toBe(INFLUENCER_PLACES_CAP / 50));
+  // And it really stops — an off-by-one here is an infinite pager in the app.
+  expect(pages).toBe(4);
 });
 
 it('routes to their map', async () => {
