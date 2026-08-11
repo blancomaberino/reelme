@@ -155,3 +155,41 @@ it('prevents an admin from banning themselves', function () {
 
     expect($admin->fresh()->trashed())->toBeFalse();
 });
+
+// --- Country (T-110) ---
+
+it('edits a user country from the panel, and shows it by name in the table', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $user = User::factory()->create(['country_code' => null]);
+
+    Livewire::test(EditUser::class, ['record' => $user->getKey()])
+        ->assertFormFieldExists('country_code')
+        ->fillForm(['country_code' => 'ES'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($user->fresh()->country_code)->toBe('ES');
+
+    // The column renders the name, not the stored code — an admin scanning the
+    // list should not have to know that BQ is Bonaire.
+    Livewire::test(ListUsers::class)->assertSee('Spain');
+});
+
+/**
+ * The Places form validates a country with `maxLength(2)`, which accepts "ZZ".
+ * This resource must not inherit that: a Select can only ever submit an option,
+ * and the option list is the API's own allow-list.
+ */
+it('offers only real ISO countries — the loose place-form check is not copied here', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $user = User::factory()->create();
+
+    Livewire::test(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['country_code' => 'ZZ'])
+        ->call('save')
+        ->assertHasFormErrors(['country_code']);
+
+    expect($user->fresh()->country_code)->not->toBe('ZZ');
+});

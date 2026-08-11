@@ -37,9 +37,16 @@ appId: pet.one.reelmap
 - extendedWaitUntil:
     visible: "Editar perfil"
     timeout: 30000
-- tapOn: "Editar perfil"
+
+# By POINT, not by label. `tapOn: "Editar perfil"` matches the right element and
+# then taps one row too high, landing on "Mis compartidos" — the same offset
+# already documented for "Ajustes" on this screen, and `maestro hierarchy`
+# reports the correct bounds throughout, so it is the TAP that misses, not the
+# match. 43% of 956pt is the middle of the row at [24,387][416,436].
+- tapOn:
+    point: "50%,43%"
 - extendedWaitUntil:
-    visible: "Guardar"
+    visible: "Nombre"
     timeout: 30000
 
 # The field sits below the date of birth; Maestro does NOT scroll on its own.
@@ -94,7 +101,14 @@ appId: pet.one.reelmap
     visible: "Filtros"
     timeout: 90000
 - tapOn: ".*Perfil, tab.*"
-- tapOn: "Editar perfil"
+- extendedWaitUntil:
+    visible: "Editar perfil"
+    timeout: 30000
+- tapOn:
+    point: "50%,43%"
+- extendedWaitUntil:
+    visible: "Nombre"
+    timeout: 30000
 - scrollUntilVisible:
     element:
       id: "country-field"
