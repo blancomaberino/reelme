@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\Countries;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -15,6 +16,20 @@ class UpdateMeRequest extends FormRequest
     public function authorize(): bool
     {
         return $this->user() !== null;
+    }
+
+    /**
+     * Uppercase `country_code` BEFORE validation, so `uy` is accepted and stored
+     * as `UY` rather than rejected by the allow-list and then written in a casing
+     * that would never match `places.country_code`. Normalizing after validation
+     * would be too late for the `in:` check; normalizing in the controller would
+     * be too late for the DB.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('country_code') && is_string($this->input('country_code'))) {
+            $this->merge(['country_code' => Countries::normalize($this->input('country_code'))]);
+        }
     }
 
     /**
@@ -40,6 +55,11 @@ class UpdateMeRequest extends FormRequest
             'favorite_foods' => ['sometimes', 'nullable', 'array', 'max:20'],
             'favorite_foods.*' => ['nullable', 'string', 'max:40'],
             'is_public' => ['sometimes', 'boolean'],
+            // Against the real ISO 3166-1 alpha-2 list, NOT `max:2` — the Filament
+            // place form's loose length check is what lets `ZZ` into places, and
+            // ICU would happily render a bogus code back as its own name.
+            // Nullable so the user can un-say where they are.
+            'country_code' => ['sometimes', 'nullable', 'string', Rule::in(Countries::CODES)],
         ];
     }
 }

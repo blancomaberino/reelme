@@ -35,6 +35,7 @@ use Laravel\Scout\Searchable;
  * @property list<string>|null $favorite_foods
  * @property string|null $avatar_path
  * @property bool $is_public
+ * @property string|null $country_code
  * @property string $locale
  * @property bool $is_influencer
  * @property Carbon|null $email_verified_at
@@ -47,7 +48,7 @@ use Laravel\Scout\Searchable;
  * @property Carbon|null $two_factor_confirmed_at
  * @property int|null $two_factor_last_used_ts
  */
-#[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'birthdate', 'favorite_topics', 'favorite_foods', 'is_public', 'preferred_analysis_model'])]
+#[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'birthdate', 'favorite_topics', 'favorite_foods', 'is_public', 'country_code', 'preferred_analysis_model'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable implements FilamentUser, HasLocalePreference, MustVerifyEmailContract
 {

@@ -7,6 +7,7 @@ import RegisterScreen from '../app/(auth)/register';
 import WelcomeScreen from '../app/(auth)/welcome';
 import ProfileScreen from '../app/(main)/profile';
 import { useSessionStore } from '@/stores/session';
+import { makeMe } from '@/test/me-fixture';
 
 // Drive the real theme hook so both palette branches are exercised.
 const mockColorScheme = jest.fn<'light' | 'dark' | null, []>(() => 'light');
@@ -56,26 +57,7 @@ describe('auth screens render across color schemes', () => {
 
   it('profile shows the signed-in user and a logout control', () => {
     useSessionStore.setState({
-      user: {
-        id: '1',
-        name: 'Maya',
-        username: 'maya',
-        email: 'maya@example.com',
-        avatar_path: null,
-        bio: null,
-        birthdate: null,
-        age: null,
-        favorite_topics: [],
-        favorite_foods: [],
-        is_influencer: false,
-        is_restaurant_owner: false,
-        is_admin: false,
-        is_public: true,
-        preferred_analysis_model: null,
-        stripe_connect_onboarded: false,
-        email_verified_at: null,
-        created_at: null,
-      },
+      user: makeMe({ name: 'Maya', username: 'maya', email: 'maya@example.com' }),
       status: 'authed',
     });
     render(<ProfileScreen />, { wrapper: Providers });

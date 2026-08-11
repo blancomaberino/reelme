@@ -18,6 +18,10 @@ export type Me = {
   is_restaurant_owner: boolean;
   is_admin: boolean;
   is_public: boolean;
+  /** ISO 3166-1 alpha-2, or null when unset. The value the client round-trips. */
+  country_code: string | null;
+  /** `country_code` localized by the API (Accept-Language) — display only. */
+  country_name: string | null;
   preferred_analysis_model: string | null;
   stripe_connect_onboarded: boolean;
   email_verified_at: string | null;

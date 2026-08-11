@@ -5,7 +5,18 @@
   "description": "The `profile` object of GET /api/v1/users/{username} (T-036). Public fields only — never email, roles beyond is_influencer, or billing data.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "username", "name", "bio", "avatar_path", "is_influencer", "counters", "created_at"],
+  "required": [
+    "id",
+    "username",
+    "name",
+    "bio",
+    "avatar_path",
+    "is_influencer",
+    "country_code",
+    "country_name",
+    "counters",
+    "created_at"
+  ],
   "properties": {
     "id": { "type": "string" },
     "username": { "type": "string" },
@@ -13,6 +24,15 @@
     "bio": { "type": ["string", "null"] },
     "avatar_path": { "type": ["string", "null"] },
     "is_influencer": { "type": "boolean" },
+    "country_code": {
+      "description": "ISO 3166-1 alpha-2, uppercase. Null when the user has not said where they are. Public by owner decision (T-110): coarse like `bio`, and what regional discovery needs.",
+      "type": ["string", "null"],
+      "pattern": "^[A-Z]{2}$"
+    },
+    "country_name": {
+      "description": "`country_code` rendered in the request locale (?locale= → Accept-Language). Server-resolved so no client ships a country dataset. Null exactly when `country_code` is.",
+      "type": ["string", "null"]
+    },
     "counters": {
       "type": "object",
       "additionalProperties": false,

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/country.json",
+  "title": "Country",
+  "description": "One row of GET /api/v1/countries (T-110): an ISO 3166-1 alpha-2 code with its name in the request locale. The catalog is the single localized source of country names — the profile picker, the my-places filter chips and every `country_name` in a profile payload spell a country the same way because they all come from here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["code", "name"],
+  "properties": {
+    "code": {
+      "description": "ISO 3166-1 alpha-2, uppercase. The stored and exchanged value; `name` is display only.",
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "name": {
+      "description": "Localized display name (?locale= → Accept-Language → app default).",
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

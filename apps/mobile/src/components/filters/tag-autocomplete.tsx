@@ -4,7 +4,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { TagSummary } from '@/api/places';
 import { useT } from '@/i18n';
-import { foldSearch, haystackMatchIndex, tagHaystacks, tagLabelForSlug } from '@/lib/tags';
+import { foldSearch, haystackMatchIndex } from '@/lib/search-text';
+import { tagHaystacks, tagLabelForSlug } from '@/lib/tags';
 import { useFormat } from '@/lib/use-format';
 import { type Palette, useColors } from '@/theme/colors';
 

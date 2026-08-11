@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
+use App\Support\Countries;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -38,6 +40,18 @@ class UserForm
                     ->visibleOn('create'),
                 Textarea::make('bio')
                     ->columnSpanFull(),
+                // A Select over the same allow-list the API validates against —
+                // NOT the `maxLength(2)` text input the Places form uses, which
+                // accepts "ZZ" and any other two characters. Searchable because
+                // 249 options in a dropdown is not a list anyone scrolls.
+                Select::make('country_code')
+                    ->label('Country')
+                    ->options(fn (): array => collect(Countries::catalog(config('app.locale')))
+                        ->pluck('name', 'code')
+                        ->all())
+                    ->searchable()
+                    ->native(false)
+                    ->nullable(),
                 // Role flags — the point of the resource. Stripe columns and model
                 // preference are intentionally NOT editable at M0.
                 Toggle::make('is_admin'),

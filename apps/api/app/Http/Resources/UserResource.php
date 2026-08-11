@@ -3,6 +3,8 @@
 namespace App\Http\Resources;
 
 use App\Models\User;
+use App\Support\Countries;
+use App\Support\RequestLocale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -35,6 +37,11 @@ class UserResource extends JsonResource
             'is_restaurant_owner' => $this->is_restaurant_owner,
             'is_admin' => $this->is_admin,
             'is_public' => $this->is_public,
+            // Store the code, serve the name (T-110 decision 2): clients round-trip
+            // `country_code` and display `country_name`, which follows the request
+            // locale — so no build ships a country dataset of its own.
+            'country_code' => $this->country_code,
+            'country_name' => Countries::name($this->country_code, RequestLocale::resolve($request)),
             'preferred_analysis_model' => $this->preferred_analysis_model,
             'stripe_connect_onboarded' => $this->stripe_connect_onboarded_at !== null,
             'email_verified_at' => $this->email_verified_at?->toIso8601ZuluString(),

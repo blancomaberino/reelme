@@ -1,0 +1,124 @@
+# Setting your country on the profile (E2E, iOS simulator) — T-110.
+#
+# What jest cannot prove here, and why this exists:
+#
+#  1. Reachability. `render(<EditProfileScreen/>)` bypasses navigation, so the
+#     country field passes every unit test whether or not anyone can get to the
+#     screen it lives on. This walks Perfil → Ajustes-adjacent "Editar perfil".
+#  2. That the picker is usable at 249 rows on a real list. Jest's fixture has
+#     five; a FlatList with the whole catalog is where a wrong `keyExtractor`,
+#     a collapsed row height or a keyboard that eats the sheet actually show up.
+#  3. That the value SURVIVES A RESTART — the acceptance criterion the unit test
+#     can only approximate by seeding the store. Here the app is really
+#     terminated and relaunched, so what comes back is what /me returned.
+#
+# PRECONDITIONS
+#   - API stack + Metro up via `./scripts/dev.sh start` — NOT a bare
+#     `npx expo start`, which drops EXPO_PUBLIC_API_URL and makes the catalog
+#     request look like the device is offline.
+#   - Logged in.
+#   - The app runs in Spanish (the default locale), so the labels below are the
+#     es strings, not the en ones the unit tests assert on. That also means the
+#     picker rows are the SPANISH country names — "España", not "Spain".
+#
+# TEARDOWN: this flow leaves the account's country set to España. It clears it
+# again at the end, so a re-run starts from the same place.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/profile-country.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+
+# --- Reach the edit-profile screen the way a user does ----------------------
+- tapOn: ".*Perfil, tab.*"
+- extendedWaitUntil:
+    visible: "Editar perfil"
+    timeout: 30000
+- tapOn: "Editar perfil"
+- extendedWaitUntil:
+    visible: "Guardar"
+    timeout: 30000
+
+# The field sits below the date of birth; Maestro does NOT scroll on its own.
+- scrollUntilVisible:
+    element:
+      id: "country-field"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- takeScreenshot: build/maestro/country-1-field
+
+# Unset reads as a prompt, not as a value.
+- assertVisible: "País: Elegí un país"
+
+# --- The picker -------------------------------------------------------------
+- tapOn:
+    id: "country-field"
+- extendedWaitUntil:
+    visible:
+      id: "country-search"
+    timeout: 20000
+
+# Nothing is selected yet, so there is nothing to remove.
+- assertNotVisible: "Quitar"
+- takeScreenshot: build/maestro/country-2-picker
+
+# Accent-insensitive search: an ASCII keyboard has to find "España". Typing the
+# accent is exactly what a user will not do.
+- tapOn:
+    id: "country-search"
+- inputText: "espana"
+- extendedWaitUntil:
+    visible: "España"
+    timeout: 15000
+- takeScreenshot: build/maestro/country-3-search
+
+- tapOn:
+    id: "country-row-ES"
+
+# The sheet closes itself and the field now shows the LOCALIZED name.
+- extendedWaitUntil:
+    visible: "País: España"
+    timeout: 15000
+- tapOn: "Guardar"
+
+# --- It persisted -----------------------------------------------------------
+# A real terminate + plain relaunch (no URL), so what shows up came back from
+# /me rather than from React state that was never unmounted.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- tapOn: ".*Perfil, tab.*"
+- tapOn: "Editar perfil"
+- scrollUntilVisible:
+    element:
+      id: "country-field"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- assertVisible: "País: España"
+- takeScreenshot: build/maestro/country-4-persisted
+
+# --- Clearing works, and is also this flow's teardown -----------------------
+- tapOn:
+    id: "country-field"
+- extendedWaitUntil:
+    visible: "Quitar"
+    timeout: 15000
+- tapOn: "Quitar"
+- assertVisible: "País: Elegí un país"
+- tapOn: "Guardar"
+
+# --- Put the simulator back -------------------------------------------------
+# No deep link was used, so nothing is latched — but a plain relaunch is what
+# the next Cmd+R will do anyway, and it leaves the app on home.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000

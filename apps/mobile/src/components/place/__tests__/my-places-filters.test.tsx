@@ -45,24 +45,45 @@ beforeEach(() => {
   mock = new AxiosMockAdapter(api);
   mock.onGet('/tags').reply(200, { data: [] });
   mock.onGet('/me/places/tags').reply(200, { data: [] });
+  // The localized country catalog (T-110) — what turns "UY" into "Uruguay".
+  mock.onGet('/countries').reply(200, {
+    data: [
+      { code: 'AR', name: 'Argentina' },
+      { code: 'UY', name: 'Uruguay' },
+    ],
+  });
 });
 afterEach(() => {
   mock.restore();
   qc.clear();
 });
 
-it('picks a country in the sheet and shows it as a removable chip', async () => {
+it('picks a country in the sheet and shows it as a removable chip, named not coded', async () => {
   render(<Harness />, { wrapper: Providers });
 
-  // Country codes are hidden until the sheet opens.
-  expect(screen.queryByText('UY')).toBeNull();
+  // Countries are hidden until the sheet opens.
+  expect(screen.queryByText('Uruguay')).toBeNull();
   fireEvent.press(screen.getByLabelText('Filters'));
-  fireEvent.press(await screen.findByLabelText('UY'));
+
+  // The option reads "Uruguay", never the stored "UY" (T-110) — the facet value
+  // is still the code, which is what the removal assertion below depends on.
+  fireEvent.press(await screen.findByLabelText('Uruguay'));
+  expect(screen.queryByLabelText('UY')).toBeNull();
 
   // Applied country now shows as a chip; removing it clears the facet.
-  const chip = await screen.findByLabelText('Remove UY filter');
+  const chip = await screen.findByLabelText('Remove Uruguay filter');
   fireEvent.press(chip);
-  await waitFor(() => expect(screen.queryByLabelText('Remove UY filter')).toBeNull());
+  await waitFor(() => expect(screen.queryByLabelText('Remove Uruguay filter')).toBeNull());
+});
+
+it('falls back to the raw code when the country catalog is unavailable', async () => {
+  // A chip that renders nothing (or crashes) because a secondary request failed
+  // is worse than one that reads "UY" — the filter still has to be removable.
+  mock.onGet('/countries').reply(500);
+
+  render(<Harness initial={{ sort: 'recent', country: 'UY' }} />, { wrapper: Providers });
+
+  expect(await screen.findByLabelText('Remove UY filter')).toBeTruthy();
 });
 
 it('toggles the sort order between recent and popular', async () => {
@@ -81,13 +102,14 @@ it('clear removes every applied facet at once', async () => {
     wrapper: Providers,
   });
 
-  // Two facets are pre-applied → both show as chips.
-  expect(screen.getByLabelText('Remove AR filter')).toBeTruthy();
+  // Two facets are pre-applied → both show as chips. `find`, not `get`: the
+  // chip starts as "AR" and becomes "Argentina" when the catalog lands.
+  expect(await screen.findByLabelText('Remove Argentina filter')).toBeTruthy();
   fireEvent.press(screen.getByLabelText('Filters'));
   fireEvent.press(await screen.findByLabelText('Clear'));
 
   await waitFor(() => {
-    expect(screen.queryByLabelText('Remove AR filter')).toBeNull();
+    expect(screen.queryByLabelText('Remove Argentina filter')).toBeNull();
     expect(screen.queryByLabelText(/Remove .* filter/)).toBeNull();
   });
 });

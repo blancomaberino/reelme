@@ -4,9 +4,11 @@ import { useMemo, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import type { Country } from '@/api/countries';
 import { useUpdateMe } from '@/api/hooks/useUpdateMe';
 import { Button } from '@/components/button';
-import { TextField } from '@/components/text-field';
+import { CountryPicker } from '@/components/country-picker';
+import { PickerField, TextField } from '@/components/text-field';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
 import { useSessionStore } from '@/stores/session';
@@ -25,6 +27,13 @@ export default function EditProfileScreen() {
   const [topics, setTopics] = useState<string[]>(user?.favorite_topics ?? []);
   const [foods, setFoods] = useState<string[]>(user?.favorite_foods ?? []);
   const [isPublic, setIsPublic] = useState(user?.is_public ?? true);
+  // The whole {code, name} pair, seeded from the payload the API already
+  // localized — so the field shows "España" on open without fetching the
+  // 249-row catalog just to translate one code.
+  const [country, setCountry] = useState<Country | null>(
+    user?.country_code && user.country_name ? { code: user.country_code, name: user.country_name } : null,
+  );
+  const [pickingCountry, setPickingCountry] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const save = () => {
@@ -38,6 +47,9 @@ export default function EditProfileScreen() {
         favorite_topics: topics,
         favorite_foods: foods,
         is_public: isPublic,
+        // The CODE, never the display name: the API validates against the real
+        // ISO list, and null is how the user un-says where they are.
+        country_code: country?.code ?? null,
       },
       {
         onSuccess: () => router.back(),
@@ -70,6 +82,15 @@ export default function EditProfileScreen() {
           autoCapitalize="none"
         />
         {user?.age != null ? <Text style={styles.age}>{t('editProfile.age', { age: user.age })}</Text> : null}
+
+        <PickerField
+          label={t('editProfile.country')}
+          value={country?.name}
+          placeholder={t('editProfile.countryPlaceholder')}
+          onPress={() => setPickingCountry(true)}
+          testID="country-field"
+        />
+        <Text style={styles.fieldHint}>{t('editProfile.countryHint')}</Text>
 
         <TagEditor
           label={t('editProfile.topics')}
@@ -116,6 +137,13 @@ export default function EditProfileScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Button title={t('editProfile.save')} onPress={save} loading={update.isPending} />
+
+        <CountryPicker
+          visible={pickingCountry}
+          onClose={() => setPickingCountry(false)}
+          value={country?.code ?? null}
+          onSelect={setCountry}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -227,6 +255,7 @@ const makeStyles = (c: Palette) =>
     safe: { flex: 1, backgroundColor: c.background },
     scroll: { padding: 20, gap: 14, paddingBottom: 40 },
     age: { fontSize: 13, color: c.muted, marginTop: -6 },
+    fieldHint: { fontSize: 13, color: c.muted, marginTop: -6 },
     error: { color: c.danger, fontSize: 14 },
     section: { gap: 8 },
     sectionLabel: { fontSize: 13, fontWeight: '600', color: c.text },

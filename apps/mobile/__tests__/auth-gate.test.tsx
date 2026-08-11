@@ -5,25 +5,11 @@ import RootLayout from '../app/_layout';
 import { api } from '@/api/client';
 import { clearToken, getToken, setToken } from '@/api/token';
 import { useSessionStore } from '@/stores/session';
+import { makeMe } from '@/test/me-fixture';
 
 import { mockRouter } from '../jest.setup';
 
-const USER = {
-  id: '1',
-  name: 'Maya',
-  username: 'maya',
-  email: 'maya@example.com',
-  avatar_path: null,
-  bio: null,
-  is_influencer: false,
-  is_restaurant_owner: false,
-  is_admin: false,
-  is_public: true,
-  preferred_analysis_model: null,
-  stripe_connect_onboarded: false,
-  email_verified_at: null,
-  created_at: null,
-};
+const USER = makeMe({ name: 'Maya', username: 'maya', email: 'maya@example.com' });
 
 let mock: AxiosMockAdapter;
 

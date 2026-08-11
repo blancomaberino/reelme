@@ -7,6 +7,7 @@ import ProfileScreen from '../profile';
 import { api } from '@/api/client';
 import type { Me } from '@/api/types';
 import { useSessionStore } from '@/stores/session';
+import { makeMe } from '@/test/me-fixture';
 import { mockRouter } from '../../../jest.setup';
 
 /**
@@ -27,27 +28,11 @@ let qc: QueryClient;
 let mock: AxiosMockAdapter;
 
 function me(overrides: Partial<Me> = {}): Me {
-  return {
-    id: '1',
-    name: 'Ana',
-    username: 'ana',
-    email: 'ana@example.com',
-    avatar_path: null,
-    bio: null,
-    birthdate: null,
-    age: null,
-    favorite_topics: [],
-    favorite_foods: [],
-    is_influencer: false,
-    is_restaurant_owner: false,
-    is_admin: false,
-    is_public: true,
-    preferred_analysis_model: null,
-    stripe_connect_onboarded: false,
+  return makeMe({
     email_verified_at: '2026-01-01T00:00:00Z',
     created_at: '2026-01-01T00:00:00Z',
     ...overrides,
-  };
+  });
 }
 
 function profileBody(counters: { followers: number; following: number; published_shares: number }) {

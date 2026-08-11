@@ -9,6 +9,7 @@ import type { PublicPlaceList } from '@/api/lists';
 import type { PlaceSummary } from '@/api/places';
 import type { Me } from '@/api/types';
 import { useSessionStore } from '@/stores/session';
+import { makeMe } from '@/test/me-fixture';
 
 import { mockRouter } from '../../../jest.setup';
 
@@ -39,26 +40,7 @@ function place(id: string, name: string): PlaceSummary {
 }
 
 function fakeMe(id: string): Me {
-  return {
-    id,
-    name: 'Viewer',
-    username: 'viewer',
-    email: 'v@example.com',
-    avatar_path: null,
-    bio: null,
-    birthdate: null,
-    age: null,
-    favorite_topics: [],
-    favorite_foods: [],
-    is_influencer: false,
-    is_restaurant_owner: false,
-    is_admin: false,
-    is_public: true,
-    preferred_analysis_model: null,
-    stripe_connect_onboarded: false,
-    email_verified_at: null,
-    created_at: null,
-  };
+  return makeMe({ id, name: 'Viewer', username: 'viewer', email: 'v@example.com' });
 }
 
 const LIST: PublicPlaceList = {

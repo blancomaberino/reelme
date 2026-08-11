@@ -51,6 +51,10 @@ export const queryKeys = {
   search: (q: string, types: string) => ['search', q, types] as const,
   /** Broad tag catalog searched client-side by the filter autocomplete. */
   tagsCatalog: () => ['tags', 'catalog'] as const,
+  /** Localized ISO 3166-1 country catalog (T-110). Keyed by locale because the
+   *  whole payload is the localization — sharing one entry across languages
+   *  would leave the picker in the previous language after a toggle. */
+  countries: (locale: string) => ['countries', locale] as const,
   /** Distinct payment-discount cards for the map filter (T-079). */
   paymentCards: () => ['places', 'payment-cards'] as const,
   placesByTag: (slug: string) => ['places', 'tag', slug] as const,
