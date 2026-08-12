@@ -199,12 +199,15 @@ it('clears a country back to null from the panel', function () {
 it('offers only real ISO countries — the loose place-form check is not copied here', function () {
     $this->actingAs(User::factory()->admin()->create());
 
-    $user = User::factory()->create();
+    // Starting FROM a value. With a null country, `not->toBe('ZZ')` passes
+    // whether the submit was REJECTED or silently coerced to null by the
+    // model mutator — the two outcomes this test exists to tell apart.
+    $user = User::factory()->create(['country_code' => 'ES']);
 
     Livewire::test(EditUser::class, ['record' => $user->getKey()])
         ->fillForm(['country_code' => 'ZZ'])
         ->call('save')
         ->assertHasFormErrors(['country_code']);
 
-    expect($user->fresh()->country_code)->not->toBe('ZZ');
+    expect($user->fresh()->country_code)->toBe('ES');
 });

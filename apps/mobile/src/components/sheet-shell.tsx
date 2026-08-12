@@ -1,7 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo } from 'react';
 import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useT } from '@/i18n';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
@@ -35,6 +37,7 @@ type Props = {
  * app uses, so no provider is needed.
  */
 export function SheetShell({ visible, onClose, title, action, footer, children }: Props) {
+  const t = useT();
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
   const { height: screenH } = useWindowDimensions();
@@ -52,16 +55,43 @@ export function SheetShell({ visible, onClose, title, action, footer, children }
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.root}>
-        <Pressable style={[StyleSheet.absoluteFill, styles.backdrop]} onPress={onClose} />
+        {/* Labelled, because it is a control: unlabelled it is invisible to a
+            screen reader, and for a sheet with no footer it was the ONLY way
+            out short of the Android hardware back button. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('common.close')}
+          style={[StyleSheet.absoluteFill, styles.backdrop]}
+          onPress={onClose}
+        />
         <View style={[styles.sheet, { height: sheetHeight }]}>
           <View style={styles.handle} />
           <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            {action ? (
-              <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} hitSlop={8}>
-                <Text style={styles.action}>{action.label}</Text>
-              </Pressable>
-            ) : null}
+            <Text style={styles.title} numberOfLines={1}>
+              {title}
+            </Text>
+            <View style={styles.headerActions}>
+              {action ? (
+                <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress} hitSlop={8}>
+                  <Text style={styles.action}>{action.label}</Text>
+                </Pressable>
+              ) : null}
+              {/* A visible exit, but only for a sheet that has no footer. A
+                  footer here is always a commit button that also dismisses
+                  (the filter sheet's "Apply"), so a second control beside it
+                  would be two ways to leave and no way to tell them apart. */}
+              {footer ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.close')}
+                  testID="sheet-close"
+                  onPress={onClose}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close" size={22} color={c.muted} />
+                </Pressable>
+              )}
+            </View>
           </View>
 
           <View style={styles.body}>{children}</View>
@@ -97,8 +127,9 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.border,
       marginBottom: 10,
     },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-    title: { ...type.title, color: c.text },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm, marginBottom: 4 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+    title: { ...type.title, color: c.text, flexShrink: 1 },
     action: { ...type.bodyLg, fontWeight: '700', color: c.primary },
     // flex:1 fills the space between the fixed header and pinned footer inside
     // the fixed-height sheet, so the body scrolls and the footer never overlaps.

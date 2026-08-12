@@ -58,20 +58,50 @@ appId: pet.one.reelmap
     timeout: 20000
 - takeScreenshot: build/maestro/country-1-field
 
-# Unset reads as a prompt, not as a value.
-- assertVisible: "País: Elegí un país"
-
-# --- The picker -------------------------------------------------------------
+# --- Start from "unset", whatever the last run left behind --------------------
+# NOT an assertion. A run that dies mid-flow leaves a country set, and every
+# check below would then fail for a reason that has nothing to do with the
+# feature — which is exactly how an E2E flow gets a reputation for flaking and
+# stops being trusted. Clearing is idempotent; asserting is not.
 - tapOn:
     id: "country-field"
 - extendedWaitUntil:
     visible:
       id: "country-search"
     timeout: 20000
+- runFlow:
+    when:
+      visible: "Quitar país"
+    commands:
+      - tapOn: "Quitar país"
+      - tapOn:
+          id: "country-field"
+      - extendedWaitUntil:
+          visible:
+            id: "country-search"
+          timeout: 20000
 
 # Nothing is selected yet, so there is nothing to remove.
 - assertNotVisible: "Quitar país"
 - takeScreenshot: build/maestro/country-2-picker
+
+# There is a way OUT that isn't "pick a country". This sheet has no footer, so
+# before the close control its only dismissal was an unlabelled backdrop — i.e.
+# none at all for a screen-reader user.
+- assertVisible: "Cerrar"
+- tapOn:
+    id: "sheet-close"
+- extendedWaitUntil:
+    visible: "País: Elegí un país"
+    timeout: 15000
+
+# …and reopening starts clean rather than on the previous search.
+- tapOn:
+    id: "country-field"
+- extendedWaitUntil:
+    visible:
+      id: "country-search"
+    timeout: 20000
 
 # Accent-insensitive search: an ASCII keyboard has to find "España". Typing the
 # accent is exactly what a user will not do.
