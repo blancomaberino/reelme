@@ -2,6 +2,7 @@
 
 use App\Enums\SuggestionStatus;
 use App\Filament\Resources\PlaceEditSuggestions\Pages\ListPlaceEditSuggestions;
+use App\Filament\Resources\PlaceEditSuggestions\PlaceEditSuggestionResource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
 use App\Models\PlaceEditSuggestion;
@@ -121,4 +122,48 @@ it('defaults to the pending queue and hides what has been decided', function () 
         ->assertCanSeeTableRecords([$open])
         ->assertSee('Still Open')
         ->assertDontSee('Already Done');
+});
+
+/**
+ * Approving a proposal the place has already caught up with is a real outcome —
+ * `PlaceEditor` writes nothing — and in the table it looks identical to a
+ * successful apply: the row goes green either way. Without the warning, a
+ * moderator walks away believing they changed something.
+ */
+it('says so out loud when an approval changes nothing', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $place = Place::factory()->create(['phone' => '+598 2 900 0000']);
+    $suggestion = PlaceEditSuggestion::factory()->create([
+        'place_id' => $place->id,
+        // Proposes exactly what the place already holds — somebody fixed it first.
+        'changes' => ['phone' => ['from' => '+598 2 111 1111', 'to' => '+598 2 900 0000']],
+    ]);
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->callTableAction('approve', $suggestion)
+        ->assertNotified('Approved — nothing to change');
+
+    $suggestion->refresh();
+    expect($suggestion->status)->toBe(SuggestionStatus::Approved)
+        // No audit row is invented for a write that did not happen.
+        ->and($suggestion->place_edit_id)->toBeNull()
+        ->and(PlaceEdit::query()->where('place_id', $place->id)->count())->toBe(0);
+});
+
+/**
+ * The queue is read-and-decide. A moderator who could hand-write or delete a
+ * suggestion would be editing the place through a second door — one that skips
+ * the field allow-list and the audit trail the Places resource enforces.
+ */
+it('offers no way to create, edit or delete a suggestion', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    $suggestion = PlaceEditSuggestion::factory()->create();
+
+    expect(PlaceEditSuggestionResource::canCreate())->toBeFalse()
+        ->and(PlaceEditSuggestionResource::canEdit($suggestion))->toBeFalse()
+        ->and(PlaceEditSuggestionResource::canDelete($suggestion))->toBeFalse();
+
+    // And the routes those pages would live at do not exist.
+    expect(array_keys(PlaceEditSuggestionResource::getPages()))->toBe(['index']);
 });

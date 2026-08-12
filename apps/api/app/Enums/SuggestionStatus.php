@@ -21,10 +21,4 @@ enum SuggestionStatus: string
 
     /** Declined, with a reason. */
     case Rejected = 'rejected';
-
-    /** Settled either way — no longer anybody's work. */
-    public function isTerminal(): bool
-    {
-        return $this !== self::Pending;
-    }
 }
