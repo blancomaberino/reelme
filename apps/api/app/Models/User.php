@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ClaimStatus;
+use App\Support\Countries;
 use App\Support\RequestLocale;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
@@ -35,6 +36,7 @@ use Laravel\Scout\Searchable;
  * @property list<string>|null $favorite_foods
  * @property string|null $avatar_path
  * @property bool $is_public
+ * @property string|null $country_code
  * @property string $locale
  * @property bool $is_influencer
  * @property Carbon|null $email_verified_at
@@ -47,7 +49,7 @@ use Laravel\Scout\Searchable;
  * @property Carbon|null $two_factor_confirmed_at
  * @property int|null $two_factor_last_used_ts
  */
-#[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'birthdate', 'favorite_topics', 'favorite_foods', 'is_public', 'preferred_analysis_model'])]
+#[Fillable(['name', 'username', 'email', 'password', 'avatar_path', 'bio', 'birthdate', 'favorite_topics', 'favorite_foods', 'is_public', 'country_code', 'preferred_analysis_model'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable implements FilamentUser, HasLocalePreference, MustVerifyEmailContract
 {
@@ -289,6 +291,30 @@ class User extends Authenticatable implements FilamentUser, HasLocalePreference,
     public function hasTwoFactorEnabled(): bool
     {
         return $this->two_factor_confirmed_at !== null && $this->two_factor_secret !== null;
+    }
+
+    /**
+     * The country is canonicalized on WRITE, at the model, so every writer is
+     * covered by one rule (T-110).
+     *
+     * `PATCH /me` validates against {@see Countries::CODES} and the Filament
+     * Select can only submit an option — but a factory, a seeder, tinker or a
+     * future importer answers to neither, and a code that slipped past them
+     * would ship as `{"country_code": "zz", "country_name": null}`: a payload
+     * that violates its own contract (`^[A-Z]{2}$`, and `country_name` null
+     * exactly when the code is). Anything not a real country stores as null,
+     * because "somewhere ICU has never heard of" is not a place a person is.
+     *
+     * A classic mutator rather than an `Attribute`: there is no getter to pair
+     * it with (reads come straight off the column, which is the whole point),
+     * and a set-only `Attribute` infers `TGet = never`, which PHPStan then
+     * cannot reconcile with any annotation because `TSet` is invariant.
+     */
+    public function setCountryCodeAttribute(?string $value): void
+    {
+        $code = Countries::normalize($value);
+
+        $this->attributes['country_code'] = Countries::isValid($code) ? $code : null;
     }
 
     /**

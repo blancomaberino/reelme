@@ -15,6 +15,9 @@ export type UpdateMeInput = {
   favorite_foods?: string[];
   /** Profile visibility: false makes the profile + its maps/lists 404 to others. */
   is_public?: boolean;
+  /** ISO 3166-1 alpha-2; null clears it. Never the display name — the API
+   *  validates against the real ISO list and rejects anything else. */
+  country_code?: string | null;
 };
 
 /**

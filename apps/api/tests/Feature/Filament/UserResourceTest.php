@@ -155,3 +155,59 @@ it('prevents an admin from banning themselves', function () {
 
     expect($admin->fresh()->trashed())->toBeFalse();
 });
+
+// --- Country (T-110) ---
+
+it('edits a user country from the panel, and shows it by name in the table', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $user = User::factory()->create(['country_code' => null]);
+
+    Livewire::test(EditUser::class, ['record' => $user->getKey()])
+        ->assertFormFieldExists('country_code')
+        ->fillForm(['country_code' => 'ES'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($user->fresh()->country_code)->toBe('ES');
+
+    // The column renders the name, not the stored code — an admin scanning the
+    // list should not have to know that BQ is Bonaire.
+    Livewire::test(ListUsers::class)->assertSee('Spain');
+});
+
+it('clears a country back to null from the panel', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    // Starting FROM a value: setting null on a row that was already null proves
+    // nothing about whether the field can be emptied.
+    $user = User::factory()->create(['country_code' => 'ES']);
+
+    Livewire::test(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['country_code' => null])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($user->fresh()->country_code)->toBeNull();
+});
+
+/**
+ * The Places form validates a country with `maxLength(2)`, which accepts "ZZ".
+ * This resource must not inherit that: a Select can only ever submit an option,
+ * and the option list is the API's own allow-list.
+ */
+it('offers only real ISO countries — the loose place-form check is not copied here', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    // Starting FROM a value. With a null country, `not->toBe('ZZ')` passes
+    // whether the submit was REJECTED or silently coerced to null by the
+    // model mutator — the two outcomes this test exists to tell apart.
+    $user = User::factory()->create(['country_code' => 'ES']);
+
+    Livewire::test(EditUser::class, ['record' => $user->getKey()])
+        ->fillForm(['country_code' => 'ZZ'])
+        ->call('save')
+        ->assertHasFormErrors(['country_code']);
+
+    expect($user->fresh()->country_code)->toBe('ES');
+});

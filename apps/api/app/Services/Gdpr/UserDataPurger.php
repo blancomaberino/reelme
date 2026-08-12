@@ -433,6 +433,9 @@ class UserDataPurger
             'birthdate' => null,
             'favorite_topics' => null,
             'favorite_foods' => null,
+            // Self-declared and publicly displayed — the same class of personal
+            // data as `bio`, so erasure has to reach it too (T-110).
+            'country_code' => null,
             'preferred_analysis_model' => null,
             'remember_token' => null,
             'two_factor_secret' => null,

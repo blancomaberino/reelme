@@ -7,6 +7,7 @@ import SettingsScreen from '../index';
 import { api } from '@/api/client';
 import type { Me } from '@/api/types';
 import { useSessionStore } from '@/stores/session';
+import { makeMe } from '@/test/me-fixture';
 
 /**
  * The analysis-model picker in Settings (T-020 API, T-039 UI).
@@ -27,27 +28,7 @@ const MODELS = [
 ];
 
 function me(over: Partial<Me> = {}): Me {
-  return {
-    id: '1',
-    name: 'Ada',
-    username: 'ada',
-    email: 'ada@example.com',
-    avatar_path: null,
-    bio: null,
-    birthdate: null,
-    age: null,
-    favorite_topics: [],
-    favorite_foods: [],
-    is_influencer: false,
-    is_restaurant_owner: false,
-    is_admin: false,
-    is_public: true,
-    preferred_analysis_model: null,
-    stripe_connect_onboarded: false,
-    email_verified_at: null,
-    created_at: null,
-    ...over,
-  };
+  return makeMe({ name: 'Ada', username: 'ada', email: 'ada@example.com', ...over });
 }
 
 function Providers({ children }: { children: ReactNode }) {

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Users\Tables;
 
 use App\Models\User;
+use App\Support\Countries;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
@@ -24,6 +25,19 @@ class UsersTable
                 TextColumn::make('email')
                     ->label('Email address')
                     ->searchable(),
+                // The name, not the code: an admin scanning the list should not
+                // have to know that BQ is Bonaire. Sorting stays on the stored
+                // code, which is what the column actually holds.
+                TextColumn::make('country_code')
+                    ->label('Country')
+                    // `placeholder`, not a `??` inside the formatter: Filament
+                    // short-circuits to the placeholder when the state is blank
+                    // and never calls formatStateUsing, so a fallback in there
+                    // would be dead code for every user with no country.
+                    ->formatStateUsing(fn (string $state): string => Countries::name($state, config('app.locale')) ?? $state)
+                    ->placeholder('—')
+                    ->sortable()
+                    ->toggleable(),
                 IconColumn::make('is_admin')
                     ->label('Admin')
                     ->boolean(),

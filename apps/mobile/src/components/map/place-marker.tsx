@@ -105,10 +105,40 @@ function PlaceMarkerBase({ pin, selected, detailed, onPress, showName = true }: 
   );
 }
 
+/**
+ * Every field of {@link MarkerPlace}, as a `Record` keyed by the type — so
+ * adding a field there without adding it here is a COMPILE error.
+ *
+ * The comparator used to list fields by hand. First it compared only `pin.id`,
+ * which was safe while pins came from the viewport endpoint (a row is fixed per
+ * fetch) and wrong the moment the mini-map started polling `usePlace` so that
+ * enrichment could fill imagery in late. Then it grew `thumbnail_url`/`name`/
+ * `price_range` — and still missed `lat`/`lng`, which are the marker's actual
+ * COORDINATE, so a geocode correction left the pin at the old position. A
+ * hand-maintained list of "everything that matters" drifts every time the type
+ * moves; this one cannot.
+ */
+const MARKER_FIELDS: Record<keyof MarkerPlace, true> = {
+  id: true,
+  name: true,
+  lat: true,
+  lng: true,
+  category: true,
+  price_range: true,
+  thumbnail_url: true,
+};
+
+const MARKER_KEYS = Object.keys(MARKER_FIELDS) as (keyof MarkerPlace)[];
+
+/** Shallow equality over every field the marker draws. All scalars — cheap. */
+function samePin(a: MarkerPlace, b: MarkerPlace): boolean {
+  return MARKER_KEYS.every((key) => a[key] === b[key]);
+}
+
 export const PlaceMarker = memo(
   PlaceMarkerBase,
   (prev, next) =>
-    prev.pin.id === next.pin.id &&
+    samePin(prev.pin, next.pin) &&
     prev.selected === next.selected &&
     prev.detailed === next.detailed &&
     prev.showName === next.showName &&

@@ -3,6 +3,8 @@
 namespace App\Http\Resources;
 
 use App\Models\User;
+use App\Support\Countries;
+use App\Support\RequestLocale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -30,6 +32,11 @@ class PublicUserResource extends JsonResource
             'bio' => $this->bio,
             'avatar_path' => $this->avatar_path,
             'is_influencer' => (bool) $this->is_influencer,
+            // Public by owner decision (T-110 #1): it mirrors `bio` — coarse
+            // (country, never city) and it is what regional discovery needs. The
+            // profile itself 404s when private, so this cannot leak from one.
+            'country_code' => $this->country_code,
+            'country_name' => Countries::name($this->country_code, RequestLocale::resolve($request)),
             'counters' => [
                 'published_shares' => (int) ($this->getAttribute('published_shares_count') ?? 0),
                 'followers' => (int) ($this->getAttribute('followers_count') ?? 0),

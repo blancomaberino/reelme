@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Auth\SocialController;
 use App\Http\Controllers\Api\V1\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Api\V1\BlockController;
+use App\Http\Controllers\Api\V1\CountryController;
 use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\FeedController;
 use App\Http\Controllers\Api\V1\FeedDismissalController;
@@ -82,6 +83,11 @@ Route::prefix('v1')->group(function () {
     // Tags + federated search (T-031, 03 §2.11): public, same interactive
     // read limiter as the map (typing in a search box pans like a map does).
     Route::get('/tags', [TagController::class, 'index'])->middleware('throttle:map')->withoutMiddleware('throttle:api');
+
+    // Localized country catalog (T-110): the picker on edit-profile and the
+    // my-places country chips both read it, so it gets the interactive read
+    // limiter rather than the 60/min default a filter sheet would trip.
+    Route::get('/countries', CountryController::class)->middleware('throttle:map')->withoutMiddleware('throttle:api');
     Route::get('/search', SearchController::class)->middleware('throttle:map')->withoutMiddleware('throttle:api');
 
     // Native reviews (T-059): public read; writes are authenticated below.

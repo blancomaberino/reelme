@@ -8,15 +8,16 @@ import { api } from '@/api/client';
 import { clearToken, getToken } from '@/api/token';
 import type { Me } from '@/api/types';
 import { useSessionStore } from '@/stores/session';
+import { makeMe } from '@/test/me-fixture';
 
 import { mockRouter } from '../../../jest.setup';
 
-const VERIFIED_USER: Me = {
-  id: '1', name: 'V', username: 'v', email: 'v@example.com', avatar_path: null, bio: null,
-  birthdate: null, age: null, favorite_topics: [], favorite_foods: [], is_influencer: false,
-  is_restaurant_owner: false, is_admin: false, is_public: true, preferred_analysis_model: null,
-  stripe_connect_onboarded: false, email_verified_at: '2026-07-14T00:00:00Z', created_at: null,
-};
+const VERIFIED_USER: Me = makeMe({
+  name: 'V',
+  username: 'v',
+  email: 'v@example.com',
+  email_verified_at: '2026-07-14T00:00:00Z',
+});
 
 let mock: AxiosMockAdapter;
 let qc: QueryClient;

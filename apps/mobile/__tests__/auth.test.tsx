@@ -10,31 +10,13 @@ import { fetchMe } from '@/api/hooks/useMe';
 import { clearToken, getToken } from '@/api/token';
 import { ValidationError } from '@/api/types';
 import { useSessionStore } from '@/stores/session';
+import { makeMe } from '@/test/me-fixture';
 
 import { mockRouter } from '../jest.setup';
 
 let mock: AxiosMockAdapter;
 
-const USER = {
-  id: '1',
-  name: 'Maya',
-  username: 'maya',
-  email: 'maya@example.com',
-  avatar_path: null,
-  bio: null,
-  birthdate: null,
-  age: null,
-  favorite_topics: [],
-  favorite_foods: [],
-  is_influencer: false,
-  is_restaurant_owner: false,
-  is_admin: false,
-  is_public: true,
-  preferred_analysis_model: null,
-  stripe_connect_onboarded: false,
-  email_verified_at: null,
-  created_at: null,
-};
+const USER = makeMe({ name: 'Maya', username: 'maya', email: 'maya@example.com' });
 
 let qc: QueryClient;
 

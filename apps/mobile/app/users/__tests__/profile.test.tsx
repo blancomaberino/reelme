@@ -8,16 +8,12 @@ import UserProfileScreen from '../[username]/index';
 import { api } from '@/api/client';
 import type { Me } from '@/api/types';
 import { useSessionStore } from '@/stores/session';
+import { makeMe } from '@/test/me-fixture';
 
 import { mockRouter } from '../../../jest.setup';
 
 function me(username: string): Me {
-  return {
-    id: '1', name: 'Me', username, email: 'me@example.com', avatar_path: null, bio: null, birthdate: null,
-    age: null, favorite_topics: [], favorite_foods: [], is_influencer: false, is_restaurant_owner: false,
-    is_admin: false, is_public: true, preferred_analysis_model: null, stripe_connect_onboarded: false,
-    email_verified_at: '2026-07-14T00:00:00Z', created_at: null,
-  };
+  return makeMe({ name: 'Me', username, email: 'me@example.com', email_verified_at: '2026-07-14T00:00:00Z' });
 }
 
 function profileResponse(viewer: { following: boolean; follow_id: string | null }) {

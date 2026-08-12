@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 
+import { useCountryName } from '@/api/hooks/useCountries';
 import { useMyPlacesTags } from '@/api/hooks/useTags';
 import type { MyPlacesFilters as Filters } from '@/api/keys';
 import { FilterGroup, FilterSheet, OptionPill } from '@/components/filters/filter-sheet';
@@ -33,7 +34,15 @@ function facetCount(f: Filters): number {
 export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, filters, onChange }: Props) {
   const t = useT();
   const fmt = useFormat();
+  // Chips and options read "Uruguay", not "UY" (T-110). Names come from the
+  // localized API catalog and fall back to the raw code, so the facet is still
+  // usable before the catalog lands.
   const [open, setOpen] = useState(false);
+  // Only fetched when a label is actually about to be rendered. The country
+  // options live INSIDE the sheet, so a user who opens the places tab and never
+  // opens the filters — the common case — needs none of it; the only label
+  // visible from outside is the active-country chip.
+  const countryName = useCountryName({ enabled: open || Boolean(filters.country) });
   // The tags actually on my places — the filter's candidate set + chip labels.
   const { data: myTags } = useMyPlacesTags();
   const tags = useMemo(() => myTags ?? [], [myTags]);
@@ -62,7 +71,9 @@ export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, f
     if (filters.hasOffers) {
       out.push({ key: 'offers', label: t('filters.hasOffers'), onRemove: () => onChange({ hasOffers: false }) });
     }
-    if (filters.country) out.push({ key: 'country', label: filters.country, onRemove: () => onChange({ country: null }) });
+    if (filters.country) {
+      out.push({ key: 'country', label: countryName(filters.country), onRemove: () => onChange({ country: null }) });
+    }
     if (filters.type) out.push({ key: 'type', label: fmt.tag(filters.type), onRemove: () => onChange({ type: null }) });
     for (const slug of activeTags) {
       out.push({
@@ -72,7 +83,7 @@ export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, f
       });
     }
     return out;
-  }, [filters.hasOffers, filters.country, filters.type, activeTags, tags, fmt, t, onChange]);
+  }, [filters.hasOffers, filters.country, filters.type, activeTags, tags, fmt, t, countryName, onChange]);
 
   const toggleTag = (slug: string) =>
     onChange({ tags: activeTags.includes(slug) ? activeTags.filter((s) => s !== slug) : [...activeTags, slug] });
@@ -118,7 +129,7 @@ export function MyPlacesFilters({ countries: countryFacets, types: typeFacets, f
             {countries.map((code) => (
               <OptionPill
                 key={`country-${code}`}
-                label={code}
+                label={countryName(code)}
                 selected={filters.country === code}
                 onPress={() => onChange({ country: filters.country === code ? null : code })}
               />
