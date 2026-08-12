@@ -159,3 +159,16 @@ country → centroid/bbox source, which is its own decision.
   the container and that `getDisplayRegion()` is display-only (never errors on a
   bogus code), so validation needs an explicit allow-list. The Hermes/ICU question
   is closed — names are resolved server-side.
+- **2026-08-12** — **DONE.** Merged to `main` as `18b836b` (PR #191). Both owner
+  decisions implemented as settled; the open PR-level question resolved to
+  `GET /api/v1/countries` (one localized source feeds the picker, the my-places
+  chips and every `country_name`, so the app ships no country dataset).
+  Validation uses a bundled 249-code table because `getDisplayRegion()` never
+  fails — it echoes unknown input and is display-only. Scope additions worth
+  recording: the country also RENDERS on the public profile (it was exposed by
+  the API and promised by the edit screen's hint, and displayed nowhere), and
+  GDPR export/erasure were both missing the new column.
+  Follow-ups recorded in the app repo's `.claude/state/HANDOFF.md`: `places`
+  still validates its country with a loose `maxLength(2)` (needs an `XX`
+  sentinel decision + backfill before it can adopt the allow-list), plus the
+  deferred #190 marker findings and several extraction candidates.

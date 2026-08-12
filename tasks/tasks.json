@@ -2935,7 +2935,7 @@
       "id": "T-110",
       "title": "Users can set their country on their profile",
       "phase": "M1",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-036",
         "T-039"
