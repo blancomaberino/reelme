@@ -68,3 +68,22 @@ it('shows it to a verified operator and routes to their offers', () => {
 
   expect(mockRouter.push).toHaveBeenCalledWith('/restaurant/offers');
 });
+
+it('hides the suggested-changes row from a user with no venues (T-083)', () => {
+  useSessionStore.setState({ user: me(), status: 'authed' });
+
+  render(<ProfileScreen />, { wrapper });
+
+  // Without a verified claim there are no venues, so the row would open a
+  // screen that can only ever say "nothing here".
+  expect(screen.queryByTestId('profile-suggestions')).toBeNull();
+});
+
+it('routes a verified operator to what people are proposing about their venues', () => {
+  useSessionStore.setState({ user: me({ is_restaurant_owner: true }), status: 'authed' });
+
+  render(<ProfileScreen />, { wrapper });
+  fireEvent.press(screen.getByTestId('profile-suggestions'));
+
+  expect(mockRouter.push).toHaveBeenCalledWith('/restaurant/suggestions');
+});

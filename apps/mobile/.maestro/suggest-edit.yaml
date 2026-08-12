@@ -1,0 +1,120 @@
+# Suggesting an edit to a place (E2E, iOS simulator) — T-083.
+#
+# What jest cannot prove here:
+#
+#  1. Reachability. `render(<SuggestEditSheet/>)` proves the form works and says
+#     nothing about whether a person can get to it. This walks the real path:
+#     Mis lugares → a place → the row at the foot of the info block.
+#  2. That the form is USABLE on a real sheet — five inputs under a pinned
+#     footer, with the keyboard up. A KeyboardAvoidingView that covers its own
+#     submit button passes every unit test.
+#  3. That the disabled→enabled transition on the button is real. Jest asserts
+#     the prop; here it is a control a finger can or cannot press.
+#
+# PRECONDITIONS
+#   - API stack + Metro up via `./scripts/dev.sh start` — NOT a bare
+#     `npx expo start`, which drops EXPO_PUBLIC_API_URL and makes every request
+#     look like the device is offline.
+#   - Logged in, with at least one place in "Mis lugares".
+#   - The app runs in Spanish (the default locale), so the labels below are the
+#     es strings, not the en ones the unit tests assert on.
+#
+# TEARDOWN: none needed on the device. The account under test is not a verified
+# operator of the place it corrects, so the suggestion QUEUES — the place itself
+# is untouched and the app is left on the map. It does leave one pending row in
+# the dev database, visible at /admin/place-edit-suggestions, which is where the
+# other half of this feature is exercised by hand.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/suggest-edit.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+
+# --- Reach a place the way a user does --------------------------------------
+# Via the "Mis lugares" list rather than the map, for the reason recorded in
+# report-content.yaml: map annotations are native views with no testIDs, so
+# tapping a pin means guessing at coordinates.
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- tapOn: ".*Mis lugares, tab.*"
+- extendedWaitUntil:
+    visible: "Mis lugares"
+    timeout: 30000
+- tapOn:
+    index: 0
+    id: "my-place-card"
+
+# --- The control sits at the foot of the info block, and is findable ---------
+- scrollUntilVisible:
+    element:
+      id: "place-suggest-edit"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- assertVisible:
+    id: "place-suggest-edit"
+- takeScreenshot: build/maestro/suggest-1-entry
+
+# The account under test does not operate this venue, so it must offer to
+# SUGGEST rather than promise a direct edit. Getting this backwards would tell
+# a diner their change is live when it is sitting in a queue.
+- assertVisible: "¿Hay algo mal? Sugerí un cambio"
+
+# --- The sheet opens prefilled, and refuses an empty diff -------------------
+- tapOn:
+    id: "place-suggest-edit"
+- extendedWaitUntil:
+    visible: "Sugerir un cambio"
+    timeout: 15000
+- assertVisible: "Un moderador revisa los cambios antes de publicarlos. Gracias por ayudar a mantener esto al día."
+
+# Nothing has been typed, so there is nothing to send. The API answers 422 on an
+# empty diff either way; the point of the disabled state is that nobody meets
+# that error by tapping the only button on the sheet.
+- assertVisible:
+    id: "suggest-submit"
+    enabled: false
+- takeScreenshot: build/maestro/suggest-2-sheet
+
+# --- Change something, and the button comes alive ---------------------------
+- tapOn:
+    id: "suggest-phone"
+- eraseText
+- inputText: "+598 2 900 0000"
+# A tap on the sheet's own heading, not `hideKeyboard` — Maestro cannot dismiss
+# this keyboard ("Couldn't hide the keyboard… custom input or no standard
+# dismiss action") and fails the flow outright. The heading is static text
+# INSIDE the sheet; tapping the backdrop would close it instead.
+- tapOn: "Sugerir un cambio"
+- assertVisible:
+    id: "suggest-submit"
+    enabled: true
+- takeScreenshot: build/maestro/suggest-3-dirty
+
+# --- Send it, and the app says what happened next ---------------------------
+# The receipt matters: a queued proposal produces no visible change on the place
+# behind the sheet, so without this the person cannot tell it worked at all.
+- tapOn:
+    id: "suggest-submit"
+- extendedWaitUntil:
+    visible: "¡Gracias!"
+    timeout: 20000
+- assertVisible: "Enviamos tu sugerencia a revisión. Si todo cierra, va a aparecer acá en breve."
+- takeScreenshot: build/maestro/suggest-4-queued
+- tapOn: "OK"
+
+# --- The place itself is UNCHANGED ------------------------------------------
+# The whole contract of the queued path. If the phone number above had landed on
+# the place, this would be an unmoderated write from an arbitrary account.
+- assertNotVisible: "+598 2 900 0000"
+
+# --- Leave the app where we found it ----------------------------------------
+# stop + plain launch (no URL, which is what Cmd+R replays), then confirm we
+# land on the map rather than inside this flow's screens.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- assertNotVisible: "Sugerir un cambio"

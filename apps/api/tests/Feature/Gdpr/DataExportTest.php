@@ -3,6 +3,7 @@
 use App\Jobs\Gdpr\ExportUserData;
 use App\Models\Device;
 use App\Models\Place;
+use App\Models\PlaceEditSuggestion;
 use App\Models\PlaceList;
 use App\Models\PlatformAccount;
 use App\Models\Share;
@@ -40,6 +41,10 @@ it('writes an archive holding a file per kind of record', function () {
     Storage::fake(config('media.disk'));
     $user = User::factory()->create(['country_code' => 'UY']);
     Share::factory()->for($user)->published()->create();
+    PlaceEditSuggestion::factory()->create([
+        'user_id' => $user->id,
+        'place_id' => Place::factory()->create(['name' => 'Cantina Vieja']),
+    ]);
 
     $path = app(UserDataExporter::class)->export($user);
 
@@ -59,6 +64,14 @@ it('writes an archive holding a file per kind of record', function () {
     }
 
     expect($names)->toContain('profile.json', 'shares.json', 'ledger_entries.json', 'README.txt');
+    // Art. 15/20 reaches the corrections they proposed to a business, too —
+    // their own submission, in their own words. Asserted on the CONTENT: the
+    // file exists holding `[]` whether or not the collector reads the table.
+    expect($names)->toContain('place_edit_suggestions.json');
+    $suggestions = json_decode((string) $zip->getFromName('place_edit_suggestions.json'), true);
+    expect($suggestions)->toHaveCount(1)
+        ->and($suggestions[0]['place'])->toBe('Cantina Vieja')
+        ->and($suggestions[0]['status'])->toBe('pending');
 
     $profile = json_decode((string) $zip->getFromName('profile.json'), true);
     // Art. 15/20 covers everything the user told us, including where they are.

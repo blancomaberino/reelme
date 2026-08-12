@@ -127,6 +127,22 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={18} color={c.muted} />
           </Pressable>
         ) : null}
+        {/* What people are proposing about your venues (T-083). Same gate as the
+            offers row: without a verified claim there are no venues to have
+            suggestions about, so the row would open an empty screen. */}
+        {user?.is_restaurant_owner ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('suggest.venue.title')}
+            onPress={() => router.push('/restaurant/suggestions')}
+            style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+            testID="profile-suggestions"
+          >
+            <Ionicons name="create-outline" size={20} color={c.text} />
+            <Text style={styles.settingsLabel}>{t('suggest.venue.title')}</Text>
+            <Ionicons name="chevron-forward" size={18} color={c.muted} />
+          </Pressable>
+        ) : null}
         {/* The till (T-047). Same gate as the offers screen — an operator needs
             this in reach during service, not buried under offer management. */}
         {user?.is_restaurant_owner ? (

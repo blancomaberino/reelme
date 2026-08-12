@@ -81,6 +81,9 @@ export const queryKeys = {
   offer: (id: string) => ['offers', id] as const,
   /** The venues the caller operates — a verified place claim each (T-041/T-042). */
   venues: () => ['me', 'venues'] as const,
+  /** Corrections still awaiting moderation on those venues (T-083). Nested under
+   *  `venues` so approving one and re-fetching the venue list stay one prefix. */
+  venueSuggestions: () => ['me', 'venues', 'suggestions'] as const,
   /** One redemption, polled while it is live (T-047). */
   redemption: (id: string) => ['redemptions', id] as const,
   /** The diner's own codes. */

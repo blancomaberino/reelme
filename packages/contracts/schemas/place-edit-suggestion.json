@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/place-edit-suggestion.json",
+  "title": "PlaceEditSuggestion",
+  "description": "A proposed correction to a place's business info (T-083): the response to POST /api/v1/places/{place}/suggestions, and one row of GET /api/v1/me/venues/suggestions. The submitter is deliberately absent — an operator judges the proposal, not the person who filed it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "place_id", "status", "is_owner_submission", "changes", "created_at", "reviewed_at"],
+  "properties": {
+    "id": { "type": "string" },
+    "place_id": { "type": "string" },
+    "place": {
+      "type": "object",
+      "description": "Present only where the row is listed across venues, so the screen can name the restaurant without a second request.",
+      "additionalProperties": false,
+      "required": ["id", "name", "slug"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "approved", "rejected"],
+      "description": "A verified operator's own edit comes back `approved` — it applied on submit. Everyone else's is `pending` until a moderator decides."
+    },
+    "is_owner_submission": {
+      "type": "boolean",
+      "description": "The row was the venue operator's own edit rather than a proposal awaiting review."
+    },
+    "changes": {
+      "type": "array",
+      "description": "One entry per changed field, in the allow-list's fixed order — a list rather than an object because JSON key order is not something a client may rely on, and both surfaces render these in order.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "from", "to"],
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "name",
+              "address_line1",
+              "address_line2",
+              "city",
+              "region",
+              "postal_code",
+              "country_code",
+              "cuisine_primary",
+              "price_range",
+              "phone",
+              "website",
+              "opening_hours_json"
+            ],
+            "description": "Column name — the same vocabulary the submit endpoint accepts. The picture fields are absent by design: a suggestion may not propose an image URL."
+          },
+          "from": {
+            "type": ["string", "number", "array", "null"],
+            "description": "The value the submitter was looking at, captured at submit time. A reviewer compares it against the place as it is now to spot a proposal that has been overtaken."
+          },
+          "to": { "type": ["string", "number", "array", "null"] }
+        }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "reviewed_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

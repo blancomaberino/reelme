@@ -136,6 +136,19 @@ export type PlaceDetail = {
   city: string | null;
   country_code: string;
   address: string | null;
+  /**
+   * The street line on its own, beside the joined display string above (T-083).
+   * The suggest-an-edit form corrects this field and cannot parse it back out
+   * of "Calle X, Montevideo, UY". Optional so older cached payloads still type.
+   */
+  address_line1?: string | null;
+  /**
+   * Whether THIS viewer may edit the place directly — a verified operator
+   * (T-041/T-083). Everyone else's changes go to the moderation queue, so this
+   * chooses between "edit" and "suggest a change", never whether the control
+   * appears. Optional for older cached payloads; absent reads as false.
+   */
+  can_edit?: boolean;
   google_place_id: string | null;
   opening_hours: OpeningHours | null;
   phone: string | null;
