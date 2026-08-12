@@ -59,7 +59,12 @@ class SuggestPlaceEditRequest extends FormRequest
             'cuisine_primary' => ['sometimes', 'nullable', 'string', 'max:120'],
             'price_range' => ['sometimes', 'nullable', 'integer', 'between:1,4'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:32'],
-            'website' => ['sometimes', 'nullable', 'url', 'max:2048'],
+            // `url:http,https`, not a bare `url`: this is untrusted input into a
+            // field the app and the admin panel both render as a link, and the
+            // bare rule accepts any scheme — `javascript:` included. The mobile
+            // client happens to gate on http(s) before opening one, but "the
+            // current client guards it" is not a reason to store it.
+            'website' => ['sometimes', 'nullable', 'url:http,https', 'max:2048'],
             // One rule per line, as the curator form stores them. Bounded so a
             // proposal stays something a moderator can read in one screen.
             'opening_hours_json' => ['sometimes', 'nullable', 'array', 'max:14'],

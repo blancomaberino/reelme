@@ -90,8 +90,15 @@ it('offers no approve or reject — a moderator decides these', async () => {
   await screen.findByText('Cantina Vieja');
 
   expect(screen.getByText('Awaiting review')).toBeOnTheScreen();
-  expect(screen.queryByText('Approve')).toBeNull();
-  expect(screen.queryByText('Reject')).toBeNull();
+
+  // STRUCTURAL, not `queryByText('Approve')`: the app has no such copy, so
+  // asserting on those literals would pass whether or not a decision control
+  // exists — a real one would be labelled from the dictionary and slip
+  // straight past. The only button on this screen is the venue's own name.
+  const names = screen
+    .getAllByRole('button')
+    .map((node) => node.props.accessibilityLabel);
+  expect(names).toEqual(['Go back', 'Cantina Vieja']);
 });
 
 it('taps the venue through to its page, so a proposal can be checked against it', async () => {

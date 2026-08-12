@@ -107,6 +107,13 @@ appId: pet.one.reelmap
 # --- The place itself is UNCHANGED ------------------------------------------
 # The whole contract of the queued path. If the phone number above had landed on
 # the place, this would be an unmoderated write from an arbitrary account.
+#
+# The positive control comes FIRST and is not decoration: `assertNotVisible` is
+# satisfied by a screen that scrolled away, by a screen that failed to render,
+# and by the app having crashed. Proving the info block is still on screen is
+# what makes the absence below mean something.
+- assertVisible:
+    id: "place-suggest-edit"
 - assertNotVisible: "+598 2 900 0000"
 
 # --- Leave the app where we found it ----------------------------------------

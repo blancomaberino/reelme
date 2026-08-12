@@ -8,6 +8,7 @@ use App\Models\PlaceEdit;
 use App\Models\PlaceEditSuggestion;
 use App\Models\User;
 use App\Services\Places\PlaceSuggestionService;
+use Illuminate\Validation\ValidationException;
 
 /** A viewport over Montevideo, for the map-pin regressions below. */
 const MONTEVIDEO_BBOX = '-56.30,-35.00,-56.00,-34.80';
@@ -185,6 +186,27 @@ describe('the field allow-list', function () {
         expect(array_diff(PlaceEditSuggestion::FIELDS, Place::CURATED_FIELDS))->toBe([]);
     });
 
+    /**
+     * The contract lists these field names AGAIN, by hand, as the `field` enum
+     * in place-edit-suggestion.json — and the mobile screen's label map is
+     * exhaustive over the TypeScript generated from it. So adding a field here
+     * and not there ships an API that emits a value its own schema rejects and
+     * its own client cannot name, and nothing else in the build would notice:
+     * the contract tests only validate payloads that happen to carry the new
+     * field. This is the enforcement.
+     */
+    it('is mirrored exactly by the contract schema every client generates from', function () {
+        // Through the config the contract tests already resolve schemas with —
+        // a hardcoded relative path is correct on a laptop and wrong inside the
+        // Sail container, where the monorepo is mounted elsewhere.
+        $path = config('contracts.schemas_path').'/place-edit-suggestion.json';
+        $schema = json_decode((string) file_get_contents($path), true);
+
+        $enum = $schema['properties']['changes']['items']['properties']['field']['enum'] ?? null;
+
+        expect($enum)->toBe(PlaceEditSuggestion::FIELDS);
+    });
+
     it('excludes the picture fields — a stranger may not propose an image URL', function () {
         foreach (['image_url', 'thumbnail_url', 'gallery_json'] as $picture) {
             expect(Place::CURATED_FIELDS)->toContain($picture)
@@ -196,7 +218,13 @@ describe('the field allow-list', function () {
         // Extra keys are ignored by the request (they are not in `rules()`), so
         // the assertion that matters is what LANDS: a suggestion carrying only
         // the allow-listed change, and a place whose hero is untouched.
-        $place = Place::factory()->create(['image_url' => null, 'phone' => null]);
+        // Starts FROM a real hero, not from null: "still null" would pass for a
+        // patch that was refused AND for one that silently wrote nothing yet,
+        // whereas "still the ORIGINAL" only passes if the field is untouchable.
+        $place = Place::factory()->create([
+            'image_url' => 'https://cdn.example/real-hero.jpg',
+            'phone' => null,
+        ]);
 
         $this->actingAs(User::factory()->create())
             ->postJson("/api/v1/places/{$place->id}/suggestions", [
@@ -207,11 +235,11 @@ describe('the field allow-list', function () {
             ->assertJsonCount(1, 'data.changes')
             ->assertJsonPath('data.changes.0.field', 'phone');
 
-        expect($place->fresh()->image_url)->toBeNull();
+        expect($place->fresh()->image_url)->toBe('https://cdn.example/real-hero.jpg');
     });
 
     it('refuses a picture URL even from the operator, whose edit applies on submit', function () {
-        $place = Place::factory()->create(['image_url' => null]);
+        $place = Place::factory()->create(['image_url' => 'https://cdn.example/real-hero.jpg']);
         $owner = operatorOfPlace($place);
 
         $this->actingAs($owner)
@@ -221,7 +249,7 @@ describe('the field allow-list', function () {
             ])
             ->assertCreated();
 
-        expect($place->fresh()->image_url)->toBeNull();
+        expect($place->fresh()->image_url)->toBe('https://cdn.example/real-hero.jpg');
     });
 
     it('validates the country against the bundled ISO list, not a bare length check', function () {
@@ -310,8 +338,29 @@ describe('moderating', function () {
             ->and($place->fresh()->phone)->toBe('+598 2 111 1111');
     });
 
+    it('refuses to decide a row somebody already settled', function () {
+        $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+        $suggestion = PlaceEditSuggestion::factory()->create([
+            'place_id' => $place->id,
+            'changes' => ['phone' => ['from' => '+598 2 111 1111', 'to' => '+598 2 900 0000']],
+        ]);
+        $moderator = User::factory()->create();
+
+        app(PlaceSuggestionService::class)->approve($suggestion, $moderator);
+        // A curator corrects it again afterwards — the state a second approval
+        // would silently undo.
+        $place->update(['phone' => '+598 2 777 7777']);
+
+        expect(fn () => app(PlaceSuggestionService::class)->approve($suggestion->fresh(), $moderator))
+            ->toThrow(ValidationException::class);
+        expect(fn () => app(PlaceSuggestionService::class)->reject($suggestion->fresh(), $moderator, 'changed my mind'))
+            ->toThrow(ValidationException::class);
+
+        expect($place->fresh()->phone)->toBe('+598 2 777 7777');
+    });
+
     it('never writes a field outside the allow-list, even from a hand-edited row', function () {
-        $place = Place::factory()->create(['image_url' => null]);
+        $place = Place::factory()->create(['image_url' => 'https://cdn.example/real-hero.jpg']);
         $suggestion = PlaceEditSuggestion::factory()->create([
             'place_id' => $place->id,
             // A row that got into the table by some route other than the API —
@@ -326,7 +375,7 @@ describe('moderating', function () {
         app(PlaceSuggestionService::class)->approve($suggestion, User::factory()->create());
 
         $place->refresh();
-        expect($place->image_url)->toBeNull()
+        expect($place->image_url)->toBe('https://cdn.example/real-hero.jpg')
             ->and($place->phone)->toBe('+598 2 900 0000');
     });
 });
@@ -351,7 +400,12 @@ describe('an operator\'s pending list', function () {
         $submitter = User::factory()->create(['username' => 'the_diner']);
         PlaceEditSuggestion::factory()->create(['place_id' => $place->id, 'user_id' => $submitter->id]);
 
-        $body = $this->actingAs($owner)->getJson('/api/v1/me/venues/suggestions')->assertOk()->getContent();
+        $res = $this->actingAs($owner)->getJson('/api/v1/me/venues/suggestions')->assertOk();
+        $body = $res->getContent();
+
+        // Positive control FIRST: an empty response contains no username either,
+        // so "the name is absent" says nothing until the row is present.
+        $res->assertJsonCount(1, 'data');
 
         expect($body)->not->toContain('the_diner')
             ->and($body)->not->toContain($submitter->email);

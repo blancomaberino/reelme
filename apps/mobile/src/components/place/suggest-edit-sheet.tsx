@@ -8,25 +8,10 @@ import { SUGGEST_FIELDS, type SuggestEditInput, type SuggestFormField } from '@/
 import { Button } from '@/components/button';
 import { SheetShell } from '@/components/sheet-shell';
 import { TextField } from '@/components/text-field';
-import { type MessageKey, useT } from '@/i18n';
+import { useT } from '@/i18n';
+import { SUGGESTION_FIELD_LABEL } from '@/lib/suggestion-labels';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
-
-/**
- * Field → label copy, exhaustively.
- *
- * `satisfies Record<SuggestFormField, MessageKey>` rather than a template cast:
- * a cast only requires comparability, so adding a field with no copy would
- * typecheck and then render the literal key `suggest.field.region` to a user —
- * and the es/en parity test passes when a key is missing from BOTH.
- */
-const FIELD_LABEL = {
-  name: 'suggest.field.name',
-  address_line1: 'suggest.field.address',
-  city: 'suggest.field.city',
-  phone: 'suggest.field.phone',
-  website: 'suggest.field.website',
-} satisfies Record<SuggestFormField, MessageKey>;
 
 type Form = Record<SuggestFormField, string>;
 
@@ -129,6 +114,10 @@ export function SuggestEditSheet({ visible, onClose, place, onQueued }: Props) {
       visible={visible}
       onClose={onClose}
       title={owner ? t('suggest.title.owner') : t('suggest.title')}
+      // Save is disabled until something changes, so it is not a way out — a
+      // sheet opened and read would otherwise offer a dead button, an unlabelled
+      // backdrop and nothing else.
+      showClose
       footer={
         <Button
           title={owner ? t('suggest.save') : t('suggest.submit')}
@@ -167,7 +156,7 @@ export function SuggestEditSheet({ visible, onClose, place, onQueued }: Props) {
           {SUGGEST_FIELDS.map((field) => (
             <TextField
               key={field}
-              label={t(FIELD_LABEL[field])}
+              label={t(SUGGESTION_FIELD_LABEL[field])}
               value={form[field]}
               onChangeText={(value) => setForm((prev) => ({ ...prev, [field]: value }))}
               placeholder={t('suggest.placeholder.empty')}

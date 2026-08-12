@@ -5,33 +5,13 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useVenueSuggestions } from '@/api/hooks/useSuggestEdit';
-import type { PlaceEditSuggestion, SuggestionChange, SuggestionField } from '@/api/suggestions';
+import type { PlaceEditSuggestion, SuggestionChange } from '@/api/suggestions';
 import { Button } from '@/components/button';
 import { ScreenHeader } from '@/components/screen-header';
-import { type MessageKey, useT } from '@/i18n';
+import { useT } from '@/i18n';
+import { SUGGESTION_FIELD_LABEL } from '@/lib/suggestion-labels';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
-
-/**
- * Column → label copy, exhaustively — the API's full allow-list, not just the
- * five fields the app's own form edits: a curator or a future surface can
- * propose any of them, and this screen has to name whatever arrives rather than
- * printing a raw column name at a restaurant owner.
- */
-const FIELD_LABEL = {
-  name: 'suggest.field.name',
-  address_line1: 'suggest.field.address',
-  address_line2: 'suggest.field.address2',
-  city: 'suggest.field.city',
-  region: 'suggest.field.region',
-  postal_code: 'suggest.field.postalCode',
-  country_code: 'suggest.field.country',
-  cuisine_primary: 'suggest.field.cuisine',
-  price_range: 'suggest.field.priceRange',
-  phone: 'suggest.field.phone',
-  website: 'suggest.field.website',
-  opening_hours_json: 'suggest.field.hours',
-} satisfies Record<SuggestionField, MessageKey>;
 
 /**
  * What people are proposing about the venues you run (T-083).
@@ -126,7 +106,7 @@ function ChangeRow({ change, styles }: { change: SuggestionChange; styles: Style
 
   return (
     <View style={styles.change}>
-      <Text style={styles.field}>{t(FIELD_LABEL[change.field])}</Text>
+      <Text style={styles.field}>{t(SUGGESTION_FIELD_LABEL[change.field])}</Text>
       <View style={styles.values}>
         <Text style={styles.from} numberOfLines={2}>
           {display(change.from) ?? t('suggest.venue.empty.value')}

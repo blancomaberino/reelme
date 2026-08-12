@@ -250,3 +250,22 @@ it('never fires an Alert of its own — the receipt is the caller\'s to give', a
   await waitFor(() => expect(mock.history.post).toHaveLength(1));
   expect(alert).not.toHaveBeenCalled();
 });
+
+/**
+ * `SheetShell` hides its ✕ when a footer is present, on the reasoning that a
+ * footer IS the way out — true for the filter sheet's "Apply", false here: this
+ * footer is disabled until something changes, so a sheet opened and read would
+ * offer a dead button and an unlabelled backdrop and nothing else.
+ */
+it('keeps a visible way out even while the only footer button is dead', () => {
+  const onClose = jest.fn();
+
+  render(<SuggestEditSheet visible onClose={onClose} place={makePlace()} onQueued={jest.fn()} />, {
+    wrapper: Providers,
+  });
+
+  expect(screen.getByTestId('suggest-submit')).toBeDisabled();
+
+  fireEvent.press(screen.getByTestId('sheet-close'));
+  expect(onClose).toHaveBeenCalled();
+});

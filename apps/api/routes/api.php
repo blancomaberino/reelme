@@ -191,9 +191,13 @@ Route::prefix('v1')->group(function () {
         // Suggested edits to a place's business info (T-083). Open to every
         // signed-in user — a verified operator's proposal applies on submit, a
         // stranger's queues for moderation, and the service decides which.
-        // Throttled like the other light writes; the read is the operator's own
-        // pending list, scoped by verified claim inside the controller.
-        Route::middleware('throttle:30,1')->group(function () {
+        //
+        // On the `reviews` limiter, NOT the generic write throttle, for the
+        // reason spelled out above `POST /reports`: this is a spam-adjacent user
+        // write that lands in a moderation queue, and a flooded queue is as bad
+        // as flooded reviews. It carries a daily cap as well as a per-minute one,
+        // which 30/min alone does not.
+        Route::middleware('throttle:reviews')->group(function () {
             Route::post('/places/{place}/suggestions', [PlaceEditSuggestionController::class, 'store']);
         });
         Route::get('/me/venues/suggestions', [PlaceEditSuggestionController::class, 'forMyVenues']);

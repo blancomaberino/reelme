@@ -37,8 +37,20 @@ export type SuggestEditInput = {
   website?: string | null;
 };
 
-/** The form's fields, in the order they are shown — one list, so the field set,
- *  the dirty check and the reset cannot drift apart. */
-export const SUGGEST_FIELDS = ['name', 'address_line1', 'city', 'phone', 'website'] as const;
+/**
+ * The form's fields, in the order they are shown — one list, so the field set,
+ * the dirty check and the reset cannot drift apart.
+ *
+ * `satisfies readonly SuggestionField[]` is the compile-time proof that every
+ * one of them is a field the API actually accepts. Without it a typo, or a
+ * column the allow-list later drops, would typecheck here and 422 on device.
+ */
+export const SUGGEST_FIELDS = [
+  'name',
+  'address_line1',
+  'city',
+  'phone',
+  'website',
+] as const satisfies readonly SuggestionField[];
 
 export type SuggestFormField = (typeof SUGGEST_FIELDS)[number];

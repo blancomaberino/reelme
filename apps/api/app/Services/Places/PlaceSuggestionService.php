@@ -88,6 +88,8 @@ class PlaceSuggestionService
      */
     public function approve(PlaceEditSuggestion $suggestion, User $reviewer): PlaceEditSuggestion
     {
+        $this->assertPending($suggestion);
+
         return DB::transaction(function () use ($suggestion, $reviewer): PlaceEditSuggestion {
             $place = $suggestion->place;
 
@@ -116,6 +118,8 @@ class PlaceSuggestionService
     /** Decline a pending suggestion, recording why. */
     public function reject(PlaceEditSuggestion $suggestion, User $reviewer, ?string $reason = null): PlaceEditSuggestion
     {
+        $this->assertPending($suggestion);
+
         $suggestion->forceFill([
             'status' => SuggestionStatus::Rejected,
             'reviewed_by_user_id' => $reviewer->id,
@@ -124,6 +128,26 @@ class PlaceSuggestionService
         ])->save();
 
         return $suggestion;
+    }
+
+    /**
+     * A decision can only be made once.
+     *
+     * The guard lives here rather than only on the Filament action's `visible()`,
+     * because re-approving a settled row is not a harmless repeat: `approve()`
+     * re-diffs against the place as it is NOW, so approving a year-old proposal
+     * a second time would write its values back over whatever corrected them
+     * since — and record a fresh audit row saying a human meant to.
+     *
+     * @throws ValidationException
+     */
+    private function assertPending(PlaceEditSuggestion $suggestion): void
+    {
+        if (! $suggestion->isPending()) {
+            throw ValidationException::withMessages([
+                'status' => 'This suggestion has already been decided.',
+            ]);
+        }
     }
 
     /**
