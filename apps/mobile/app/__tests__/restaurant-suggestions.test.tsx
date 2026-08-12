@@ -121,10 +121,16 @@ it('says there is nothing pending rather than showing an empty page', async () =
   expect(await screen.findByText('Nothing pending')).toBeOnTheScreen();
 });
 
-it('offers a retry when the list fails to load', async () => {
-  mock.onGet('/me/venues/suggestions').reply(500);
+it('offers a retry that actually re-asks, and recovers', async () => {
+  // Fails once, then succeeds: a retry button asserted only for its EXISTENCE
+  // is the shape that ships a button wired to nothing.
+  mock.onGet('/me/venues/suggestions').replyOnce(500);
+  mock.onGet('/me/venues/suggestions').reply(200, { data: [SUGGESTION], meta: {} });
 
   render(<RestaurantSuggestionsScreen />, { wrapper });
 
-  expect(await screen.findByText('Try again')).toBeOnTheScreen();
+  fireEvent.press(await screen.findByText('Try again'));
+
+  expect(await screen.findByText('Cantina Vieja')).toBeOnTheScreen();
+  expect(mock.history.get.filter((r) => r.url === '/me/venues/suggestions')).toHaveLength(2);
 });

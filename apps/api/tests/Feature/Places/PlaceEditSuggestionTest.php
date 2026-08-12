@@ -359,6 +359,35 @@ describe('moderating', function () {
         expect($place->fresh()->phone)->toBe('+598 2 777 7777');
     });
 
+    /**
+     * Two moderators deciding the same row in the same second. The guard reads
+     * the LOCKED row, so the second transaction sees the first one's verdict —
+     * without the lock both would read `pending` from their own in-memory copy
+     * and the row would end up rejected with the place already patched, which is
+     * a rejection that changed the place.
+     *
+     * Simulated deterministically rather than with real threads: the second
+     * caller holds a STALE instance, which is exactly the state a concurrent
+     * request has when it reaches the guard.
+     */
+    it('refuses a second decision made from a stale copy of the row', function () {
+        $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+        $suggestion = PlaceEditSuggestion::factory()->create([
+            'place_id' => $place->id,
+            'changes' => ['phone' => ['from' => '+598 2 111 1111', 'to' => '+598 2 900 0000']],
+        ]);
+        $stale = PlaceEditSuggestion::query()->findOrFail($suggestion->id);
+
+        app(PlaceSuggestionService::class)->approve($suggestion, User::factory()->create());
+
+        expect($stale->isPending())->toBeTrue()
+            ->and(fn () => app(PlaceSuggestionService::class)->reject($stale, User::factory()->create(), 'no'))
+            ->toThrow(ValidationException::class);
+
+        expect($suggestion->fresh()->status)->toBe(SuggestionStatus::Approved)
+            ->and($place->fresh()->phone)->toBe('+598 2 900 0000');
+    });
+
     it('never writes a field outside the allow-list, even from a hand-edited row', function () {
         $place = Place::factory()->create(['image_url' => 'https://cdn.example/real-hero.jpg']);
         $suggestion = PlaceEditSuggestion::factory()->create([

@@ -65,6 +65,12 @@ class PlaceSuggestionService
         // index, so this updateOrCreate is a convenience and not the guarantee.
         // Re-submitting supersedes: someone correcting their own typo should not
         // have to wait for the first attempt to be rejected.
+        //
+        // The double-submit race needs nothing here: `updateOrCreate` delegates
+        // to `createOrFirst`, which already catches the unique violation (inside
+        // a savepoint, so an enclosing transaction survives) and re-reads the
+        // winning row. Hand-rolling that retry would duplicate the framework and
+        // skip the `fill()` that makes the second submit supersede the first.
         return PlaceEditSuggestion::query()->updateOrCreate(
             [
                 'place_id' => $place->id,
@@ -88,66 +94,83 @@ class PlaceSuggestionService
      */
     public function approve(PlaceEditSuggestion $suggestion, User $reviewer): PlaceEditSuggestion
     {
-        $this->assertPending($suggestion);
-
         return DB::transaction(function () use ($suggestion, $reviewer): PlaceEditSuggestion {
-            $place = $suggestion->place;
+            $locked = $this->lockPending($suggestion);
+            $place = $locked->place;
 
             $edit = $place === null ? null : $this->editor->apply(
                 $place,
-                $suggestion->patch(),
+                $locked->patch(),
                 // A human accepted this, so it locks the fields it changes for the
                 // same reason a Filament edit does: enrichment must not undo a
                 // correction a person made on purpose.
                 PlaceEdit::ORIGIN_MANUAL,
                 $reviewer->id,
-                "Approved suggestion #{$suggestion->id}",
+                "Approved suggestion #{$locked->id}",
             );
 
-            $suggestion->forceFill([
+            $locked->forceFill([
                 'status' => SuggestionStatus::Approved,
                 'reviewed_by_user_id' => $reviewer->id,
                 'reviewed_at' => now(),
                 'place_edit_id' => $edit?->id,
             ])->save();
 
-            return $suggestion;
+            return $locked;
         });
     }
 
     /** Decline a pending suggestion, recording why. */
-    public function reject(PlaceEditSuggestion $suggestion, User $reviewer, ?string $reason = null): PlaceEditSuggestion
+    public function reject(PlaceEditSuggestion $suggestion, User $reviewer, string $reason): PlaceEditSuggestion
     {
-        $this->assertPending($suggestion);
+        return DB::transaction(function () use ($suggestion, $reviewer, $reason): PlaceEditSuggestion {
+            $locked = $this->lockPending($suggestion);
 
-        $suggestion->forceFill([
-            'status' => SuggestionStatus::Rejected,
-            'reviewed_by_user_id' => $reviewer->id,
-            'reviewed_at' => now(),
-            'reason' => $reason,
-        ])->save();
+            $locked->forceFill([
+                'status' => SuggestionStatus::Rejected,
+                'reviewed_by_user_id' => $reviewer->id,
+                'reviewed_at' => now(),
+                'reason' => $reason,
+            ])->save();
 
-        return $suggestion;
+            return $locked;
+        });
     }
 
     /**
-     * A decision can only be made once.
+     * Take the row's decision lock and confirm it is still undecided.
      *
-     * The guard lives here rather than only on the Filament action's `visible()`,
-     * because re-approving a settled row is not a harmless repeat: `approve()`
-     * re-diffs against the place as it is NOW, so approving a year-old proposal
-     * a second time would write its values back over whatever corrected them
-     * since — and record a fresh audit row saying a human meant to.
+     * A decision can only be made once. The guard lives here rather than only on
+     * the Filament action's `visible()`, because re-deciding a settled row is not
+     * a harmless repeat: `approve()` re-diffs against the place as it is NOW, so
+     * approving a year-old proposal a second time would write its values back
+     * over whatever corrected them since — and record a fresh audit row saying a
+     * human meant to.
+     *
+     * The check reads the LOCKED row rather than the caller's instance, and the
+     * caller runs it inside a transaction. Checking `$suggestion->isPending()`
+     * from memory and then writing is a read-then-write straddling no lock: two
+     * moderators clicking Approve and Reject in the same second both pass the
+     * guard, and the row ends up rejected with the place already patched — a
+     * rejection that changed the place. Same reasoning, and the same mechanism,
+     * as {@see PlaceEditor::apply()}'s locked refetch (T-085).
      *
      * @throws ValidationException
      */
-    private function assertPending(PlaceEditSuggestion $suggestion): void
+    private function lockPending(PlaceEditSuggestion $suggestion): PlaceEditSuggestion
     {
-        if (! $suggestion->isPending()) {
+        $locked = PlaceEditSuggestion::query()
+            ->whereKey($suggestion->getKey())
+            ->lockForUpdate()
+            ->first();
+
+        if ($locked === null || ! $locked->isPending()) {
             throw ValidationException::withMessages([
                 'status' => 'This suggestion has already been decided.',
             ]);
         }
+
+        return $locked;
     }
 
     /**

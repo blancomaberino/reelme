@@ -19,15 +19,28 @@
 #   - The app runs in Spanish (the default locale), so the labels below are the
 #     es strings, not the en ones the unit tests assert on.
 #
+# REPEATABILITY: the value typed below is generated per run, and that is not
+# cosmetic. A flow that types a FIXED string is only repeatable while the field
+# still differs from it — and this flow's own output can remove that difference:
+# approve the suggestion it leaves (which is exactly what the admin walk does)
+# and the place now HOLDS that phone number, so the next run's edit is a no-op,
+# the Save button stays disabled, and the run fails on its own leftovers rather
+# than on the feature. A per-run value cannot collide with anything.
+#
 # TEARDOWN: none needed on the device. The account under test is not a verified
 # operator of the place it corrects, so the suggestion QUEUES — the place itself
 # is untouched and the app is left on the map. It does leave one pending row in
-# the dev database, visible at /admin/place-edit-suggestions, which is where the
-# other half of this feature is exercised by hand.
+# the dev database (a re-run supersedes it rather than adding a second, per the
+# partial unique index), visible at /admin/place-edit-suggestions, which is where
+# the other half of this feature is exercised by hand.
 #
 # Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/suggest-edit.yaml
 appId: pet.one.reelmap
 ---
+# A phone number no previous run can have left on the place. Millisecond-derived
+# rather than a counter, because there is no state to keep a counter in.
+- evalScript: ${output.phone = '+598 2 9' + String(Date.now()).slice(-6)}
+
 - launchApp
 
 # --- Reach a place the way a user does --------------------------------------
@@ -81,7 +94,14 @@ appId: pet.one.reelmap
 - tapOn:
     id: "suggest-phone"
 - eraseText
-- inputText: "+598 2 900 0000"
+- inputText: ${output.phone}
+# Proves the interpolation is LIVE, and it is the only step that can. Maestro
+# prints the raw `${output.phone}` in its log either way, and the
+# `assertNotVisible` further down passes both when the value is absent and when
+# the template was never expanded — a literal `${output.phone}` is not on screen
+# either. Here the field genuinely holds what was typed, so this fails if the
+# template is being taken literally.
+- assertVisible: ${output.phone}
 # A tap on the sheet's own heading, not `hideKeyboard` — Maestro cannot dismiss
 # this keyboard ("Couldn't hide the keyboard… custom input or no standard
 # dismiss action") and fails the flow outright. The heading is static text
@@ -114,7 +134,7 @@ appId: pet.one.reelmap
 # what makes the absence below mean something.
 - assertVisible:
     id: "place-suggest-edit"
-- assertNotVisible: "+598 2 900 0000"
+- assertNotVisible: ${output.phone}
 
 # --- Leave the app where we found it ----------------------------------------
 # stop + plain launch (no URL, which is what Cmd+R replays), then confirm we
