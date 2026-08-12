@@ -39,7 +39,20 @@ appId: pet.one.reelmap
 ---
 # A phone number no previous run can have left on the place. Millisecond-derived
 # rather than a counter, because there is no state to keep a counter in.
-- evalScript: ${output.phone = '+598 2 9' + String(Date.now()).slice(-6)}
+- evalScript: ${output.stamp = String(Date.now()).slice(-6)}
+- evalScript: ${output.phone = '+598 2 9' + output.stamp}
+# The SELECTOR form of the same number. Maestro compiles text selectors as
+# regular expressions — verified, not assumed: an `assertVisible` of
+# "¿Hay algo mal. Sugerí un cambio" matches the literal "?" on screen, which only
+# a live regex can do. A raw phone number is therefore a pattern, and it opens
+# with `+`, a dangling quantifier.
+#
+# Built by construction rather than with a `.replace()` escape: any escape regex
+# general enough to be worth writing contains `${...}`, and Maestro substitutes
+# its OWN `${}` variables inside the script before running it, which silently
+# corrupts the pattern. (It did — the assertion failed with an escape that was
+# correct as JavaScript.) One metacharacter, escaped where it is produced.
+- evalScript: ${output.phoneRe = '\\+598 2 9' + output.stamp}
 
 - launchApp
 
@@ -72,7 +85,7 @@ appId: pet.one.reelmap
 # The account under test does not operate this venue, so it must offer to
 # SUGGEST rather than promise a direct edit. Getting this backwards would tell
 # a diner their change is live when it is sitting in a queue.
-- assertVisible: "¿Hay algo mal? Sugerí un cambio"
+- assertVisible: '¿Hay algo mal\? Sugerí un cambio'
 
 # --- The sheet opens prefilled, and refuses an empty diff -------------------
 - tapOn:
@@ -101,7 +114,7 @@ appId: pet.one.reelmap
 # the template was never expanded — a literal `${output.phone}` is not on screen
 # either. Here the field genuinely holds what was typed, so this fails if the
 # template is being taken literally.
-- assertVisible: ${output.phone}
+- assertVisible: ${output.phoneRe}
 # A tap on the sheet's own heading, not `hideKeyboard` — Maestro cannot dismiss
 # this keyboard ("Couldn't hide the keyboard… custom input or no standard
 # dismiss action") and fails the flow outright. The heading is static text
@@ -134,7 +147,7 @@ appId: pet.one.reelmap
 # what makes the absence below mean something.
 - assertVisible:
     id: "place-suggest-edit"
-- assertNotVisible: ${output.phone}
+- assertNotVisible: ${output.phoneRe}
 
 # --- Leave the app where we found it ----------------------------------------
 # stop + plain launch (no URL, which is what Cmd+R replays), then confirm we
