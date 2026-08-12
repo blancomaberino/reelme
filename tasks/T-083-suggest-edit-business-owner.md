@@ -92,3 +92,31 @@ and source post.
   explicit allow-list.
 - Keep the owner-direct apply and moderator-approve on **one** `applyChanges`
   service so the audit trail and field-whitelist are identical for both.
+
+## Log
+
+**2026-08-12 — implemented, PR #192 open** (branch `feat/T-083-suggest-edit`).
+
+Built as specified, with two deliberate deviations worth recording:
+
+- **The column is `changes`, not `changes_json`.** It carries the identical
+  `{field:{from,to}}` shape as `place_edits.changes`, is rendered by the same
+  code, and sits beside it in the same feature. Matching the closest sibling beat
+  matching the spec's field name.
+- **The mobile form does not edit opening hours**, though the API allow-list
+  accepts them. `opening_hours_json` carries two different shapes and the app
+  renders only one: enrichment writes Google's `{periods, weekday_text}`, which
+  is what `summarizeHours()` understands, while T-084's curator textarea writes a
+  list of rule strings — for which `summarizeHours()` returns
+  `{openNow: null, weekly: []}` and the hours row **disappears from the place
+  screen**. A form submitting lines would replace the first shape with the second.
+  Pre-existing bug, out of scope, needs its own task: hand-typed hours are
+  invisible on device today.
+
+Owner-facing scope followed the spec exactly: verified operators **edit directly
+and SEE pending proposals**; moderators decide. Owner-approval of other people's
+suggestions is the natural next step if the queue gets long — the service is
+already the single path either would use.
+
+Also not done, deliberately: nothing notifies the submitter of the verdict. The
+T-040 notification centre is the vehicle if wanted.
