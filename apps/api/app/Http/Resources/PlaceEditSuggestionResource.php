@@ -45,6 +45,19 @@ class PlaceEditSuggestionResource extends JsonResource
             // a client may rely on, and the two surfaces that render this both
             // show the fields in a fixed order.
             'changes' => $this->changeList(),
+            // The submitter's own words (T-112) — "this place closed down". For
+            // a note-only row this IS the proposal, and `changes` is empty, so
+            // both surfaces have to render it or show the operator a blank card.
+            //
+            // Yes, this puts unmoderated free text in front of the venue: the
+            // operator list is pending-only, so they see it before a moderator
+            // does. That is the trade taken on purpose — the operator is the one
+            // person who can answer "did this place close down", and holding the
+            // note back until review makes the whole feature slower than the
+            // thing it replaces. It stays bounded (2000 chars), attributable,
+            // and on the `reviews` limiter, and the SUBMITTER is still hidden,
+            // so a note cannot be used to put a name in front of a business.
+            'note' => $this->note,
             'created_at' => $this->created_at->toIso8601String(),
             'reviewed_at' => $this->reviewed_at?->toIso8601String(),
         ];

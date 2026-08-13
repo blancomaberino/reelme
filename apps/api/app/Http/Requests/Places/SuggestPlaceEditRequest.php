@@ -69,7 +69,25 @@ class SuggestPlaceEditRequest extends FormRequest
             // proposal stays something a moderator can read in one screen.
             'opening_hours_json' => ['sometimes', 'nullable', 'array', 'max:14'],
             'opening_hours_json.*' => ['string', 'max:120'],
+            // "Something else is wrong" (T-112) — not a column on `places`, so
+            // it is validated here and read by `note()` rather than by `patch()`.
+            'note' => ['sometimes', 'nullable', 'string', 'max:'.PlaceEditSuggestion::NOTE_MAX],
         ];
+    }
+
+    /**
+     * The submitter's free-text note, or null when they left it blank.
+     *
+     * Trimmed to null HERE rather than in the service, because "  " and "" and
+     * absent all have to mean the same thing before anything downstream decides
+     * whether this submission carries anything at all — the empty-form refusal
+     * turns on exactly that question.
+     */
+    public function note(): ?string
+    {
+        $note = trim((string) $this->safe()->input('note', ''));
+
+        return $note === '' ? null : $note;
     }
 
     /**

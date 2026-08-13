@@ -24,6 +24,15 @@ beforeEach(function () {
 });
 
 it('ends every session immediately and schedules the purge', function () {
+    // Frozen, because the `purge_at` assertion below compares two ISO strings
+    // for EXACT equality: one computed inside the request, one computed after
+    // it. When the wall clock ticks over a second between them the test fails
+    // on `02:04:00` vs `02:03:59` — nothing to do with the code under test.
+    // Observed twice (locally, then on CI). Freezing keeps the assertion exact,
+    // which is the point of it — a tolerance would also pass for a response
+    // that returned `now()`, the bug the comment below is guarding against.
+    $this->freezeTime();
+
     $user = User::factory()->create();
     $token = $user->createToken('phone')->plainTextToken;
     $user->createToken('tablet');

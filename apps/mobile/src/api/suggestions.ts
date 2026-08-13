@@ -35,7 +35,19 @@ export type SuggestEditInput = {
   city?: string | null;
   phone?: string | null;
   website?: string | null;
+  /**
+   * "Something else is wrong" (T-112) — free text for everything the fields
+   * above cannot express.
+   *
+   * NOT a `SuggestionField`: it is not a column on `places` and never becomes
+   * part of the diff. A submission carrying only this is valid; one carrying
+   * neither it nor a field change is what the API refuses.
+   */
+  note?: string | null;
 };
+
+/** How long a note may be — the API's `PlaceEditSuggestion::NOTE_MAX`. */
+export const NOTE_MAX_LENGTH = 2000;
 
 /**
  * The form's fields, in the order they are shown — one list, so the field set,

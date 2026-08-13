@@ -394,6 +394,67 @@ it('cuts both pointers on a suggested edit — the submitter and the reviewer', 
         ->and($reviewed->fresh()->reviewed_by_user_id)->toBeNull();
 });
 
+/**
+ * The free-text note (T-112) is the one part of this table that anonymising is
+ * not enough for.
+ *
+ * T-083's rule — keep the row, null `user_id` — rests on a field patch being
+ * the BUSINESS's record rather than the submitter's. A note is 2000 characters
+ * of somebody's own words, which is exactly where PII lands, and it is why
+ * `reports` are deleted outright rather than anonymised. So the split is on
+ * what the row would be worth without the prose.
+ */
+it('deletes a note-only suggestion and strips the note from the ones it keeps', function () {
+    ['user' => $user] = gdprPurgeFixture();
+
+    // Nothing in it but the person's words: no patch, nothing a venue could act
+    // on once they are gone.
+    $noteOnly = PlaceEditSuggestion::factory()->noteOnly('My sister worked here until March.')
+        ->create(['user_id' => $user->id]);
+    // A patch AND a note — the patch is the venue's record and survives.
+    $mixed = PlaceEditSuggestion::factory()->create([
+        'user_id' => $user->id,
+        'changes' => ['phone' => ['from' => null, 'to' => '+598 2 900 0000']],
+        'note' => 'Also, I go there every Tuesday with my kids.',
+    ]);
+    // Already applied. "We acted on it" is not a lawful basis for keeping the
+    // prose either — the diff and the audit row are what survive.
+    $approved = PlaceEditSuggestion::factory()->approved()->create([
+        'user_id' => $user->id,
+        'changes' => ['city' => ['from' => 'Montevideo', 'to' => 'Canelones']],
+        'note' => 'I live around the corner from it.',
+    ]);
+    // Somebody else's row, in the same states — the purge must not reach it.
+    $stranger = PlaceEditSuggestion::factory()->noteOnly('Not this user\'s note.')->create();
+
+    app(UserDataPurger::class)->purge($user);
+
+    expect(PlaceEditSuggestion::query()->find($noteOnly->id))->toBeNull()
+        ->and($mixed->fresh()->note)->toBeNull()
+        // The correction itself is untouched: a venue still needs its phone fixed.
+        ->and($mixed->fresh()->patch())->toBe(['phone' => '+598 2 900 0000'])
+        ->and($mixed->fresh()->user_id)->toBeNull()
+        ->and($approved->fresh()->note)->toBeNull()
+        ->and($approved->fresh()->status)->toBe(SuggestionStatus::Approved)
+        ->and($stranger->fresh()->note)->toBe('Not this user\'s note.');
+});
+
+/**
+ * Idempotence, which every step of this purge is built for: the deferred Stripe
+ * pass and any manual retry run the whole thing again.
+ */
+it('purges suggestion notes the same way on a second run', function () {
+    ['user' => $user] = gdprPurgeFixture();
+    PlaceEditSuggestion::factory()->noteOnly()->create(['user_id' => $user->id]);
+    $mixed = PlaceEditSuggestion::factory()->create(['user_id' => $user->id, 'note' => 'something']);
+
+    app(UserDataPurger::class)->purge($user);
+    app(UserDataPurger::class)->purge($user->fresh());
+
+    expect(PlaceEditSuggestion::query()->count())->toBe(1)
+        ->and($mixed->fresh()->note)->toBeNull();
+});
+
 it('leaves the follow counters of everyone else correct', function () {
     ['user' => $user] = gdprPurgeFixture();
     $followed = User::factory()->create(['followers_count' => 1]);

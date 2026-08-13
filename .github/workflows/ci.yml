@@ -13,6 +13,29 @@ concurrency:
 permissions:
   contents: read
 
+# Action majors are kept on the Node 24 runtime. GitHub deprecated Node 20 for
+# actions and now force-runs those on 24, printing a deprecation annotation on
+# EVERY job — a permanent warning that trains people to ignore CI annotations,
+# and a countdown to the day the force-run stops being a courtesy.
+#
+# The floor is therefore checkout@v5 / setup-node@v5 / cache@v5 /
+# paths-filter@v4 — the first major of each to declare node24. We run the
+# latest instead, having read the majors in between: checkout v6 (creds to a
+# separate file) and v7 (blocks fork checkout on pull_request_target /
+# workflow_run — triggers this workflow does not use); setup-node v5/v6 (auto
+# caching, which changes nothing here because every call sets `cache: npm`
+# explicitly) and v7 (ESM); cache v6 (ESM). setup-php@v2 already targets node24,
+# which is why it never appeared in the warnings.
+#
+# Do not downgrade any of these below the floor without re-reading the above.
+#
+# Every checkout passes `persist-credentials: false`. By default the action
+# writes the job token into `.git/config`, where every later step can read it
+# — including the third-party code that `composer install` and `npm ci` fetch
+# and execute moments afterwards. Nothing here needs it: the only `git` in
+# this file is a local `git diff` for contract drift. If a job ever does need
+# to push or fetch, give THAT step the credential rather than all of them.
+
 jobs:
   # Detect which areas a PR touches so unrelated jobs skip. On `main` pushes
   # every job runs regardless (see each job's `if`) — the M0 exit criterion.
@@ -25,8 +48,10 @@ jobs:
       mobile: ${{ steps.filter.outputs.mobile }}
       contracts: ${{ steps.filter.outputs.contracts }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # see the note above
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -96,7 +121,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # see the note above
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -106,7 +133,7 @@ jobs:
           coverage: none
 
       - name: Cache Composer packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.composer/cache
           key: composer-${{ runner.os }}-${{ hashFiles('apps/api/composer.lock') }}
@@ -160,10 +187,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # see the note above
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -190,10 +219,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # see the note above
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm

@@ -44,6 +44,10 @@ it('writes an archive holding a file per kind of record', function () {
     PlaceEditSuggestion::factory()->create([
         'user_id' => $user->id,
         'place_id' => Place::factory()->create(['name' => 'Cantina Vieja']),
+        // Their own free prose (T-112). Named explicitly because the export is
+        // the half of an erasure decision that is easiest to forget: T-110 shipped
+        // a purge whose mirror-image export gap was a blocking review finding.
+        'note' => 'The pin is on the wrong side of the street.',
     ]);
 
     $path = app(UserDataExporter::class)->export($user);
@@ -71,7 +75,12 @@ it('writes an archive holding a file per kind of record', function () {
     $suggestions = json_decode((string) $zip->getFromName('place_edit_suggestions.json'), true);
     expect($suggestions)->toHaveCount(1)
         ->and($suggestions[0]['place'])->toBe('Cantina Vieja')
-        ->and($suggestions[0]['status'])->toBe('pending');
+        ->and($suggestions[0]['status'])->toBe('pending')
+        // By name: `note` is the only content of a note-only row, and an export
+        // that shipped the empty `changes` without it would tell someone they
+        // had suggested nothing.
+        ->and($suggestions[0])->toHaveKey('note')
+        ->and($suggestions[0]['note'])->toBe('The pin is on the wrong side of the street.');
 
     $profile = json_decode((string) $zip->getFromName('profile.json'), true);
     // Art. 15/20 covers everything the user told us, including where they are.

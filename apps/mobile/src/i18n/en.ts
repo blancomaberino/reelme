@@ -130,6 +130,13 @@ export const en = {
   'suggest.field.phone': 'Phone',
   'suggest.field.website': 'Website',
   'suggest.field.hours': 'Opening hours',
+  // The "something else is wrong" box (T-112). Deliberately open-ended: the
+  // things people most want to correct — "this closed down", "the photo is of
+  // another restaurant" — are exactly the ones the five fields above cannot say.
+  'suggest.field.note': 'Anything else?',
+  'suggest.field.notePlaceholder': 'e.g. this place closed down, or the pin is on the wrong side of the street',
+  'suggest.field.noteHint': 'Tell us in your own words. A moderator reads it.',
+  'suggest.venue.note': 'They wrote',
   'suggest.venue.title': 'Suggested changes',
   'suggest.venue.intro': 'What people are proposing about your venues. A moderator reviews each one.',
   'suggest.venue.pending': 'Awaiting review',

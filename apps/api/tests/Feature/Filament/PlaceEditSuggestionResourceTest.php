@@ -152,6 +152,178 @@ it('says so out loud when an approval changes nothing', function () {
 });
 
 /**
+ * A note-only row (T-112) is the whole finding — there is no diff to read, so
+ * if the queue does not render the prose it renders nothing at all.
+ */
+it('shows the note in the row, and marks the row as a note', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    PlaceEditSuggestion::factory()->noteOnly('The pin is on the wrong side of the street.')->create();
+    // The contrast case, in the same table: the badge is only evidence of
+    // anything if it says something DIFFERENT for a field patch. Asserting the
+    // absence of "Field edit" would not do it — the filter's own option label
+    // carries that string whether or not a row does.
+    PlaceEditSuggestion::factory()->create([
+        'changes' => ['phone' => ['from' => null, 'to' => '+598 2 900 0000']],
+    ]);
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->assertSuccessful()
+        ->assertSee('The pin is on the wrong side of the street.')
+        // Visibly distinct from a field patch, so a reviewer knows before
+        // opening anything that this one needs a person to go and look. The
+        // badge deliberately does not read "Note" — that is the column's own
+        // label, and this assertion would then pass on an empty table.
+        ->assertSee('Note only')
+        ->assertSee('Field edit')
+        // And the empty diff still shows its placeholder rather than a blank cell.
+        ->assertSee('(nothing)');
+});
+
+/**
+ * The queue opens on PENDING, where "Reviewer note" and "Reviewed by" are empty
+ * on every row — and eleven columns in one table left the note about forty
+ * pixels wide, one word per line. Hiding the two dead ones by default is what
+ * buys prose the room to be read; a future edit that un-hides them takes it
+ * straight back.
+ */
+it('opens with the note visible and the always-empty review columns hidden', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create();
+
+    // On the RENDERED headers, not on `assertTableColumnHidden` — that asks the
+    // column's `hidden()` closures and knows nothing about the toggle state,
+    // so it passes for a column sitting right there on the page (verified: it
+    // did). What a moderator sees is the header row.
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->assertSee('Note')
+        ->assertSee('Proposed change')
+        ->assertDontSee('Reviewer note')
+        ->assertDontSee('Reviewed by')
+        // The floor that makes the column readable. A percentage does not
+        // survive `table-layout: auto` — measured on the real queue at the same
+        // 69px it was trying to fix.
+        ->assertTableColumnHasExtraAttributes('note', ['style' => 'min-width: 20rem'], $suggestion);
+});
+
+/**
+ * The "with a note" filter, exercised BOTH ways.
+ *
+ * Its `queries()` arms are hand-written SQL, so nothing else in the build knows
+ * whether they are the right way round — a swapped pair renders a filter that
+ * works, returns rows, and answers the opposite question. Rendering the table
+ * proves only that the filter compiles.
+ */
+it('filters the queue down to the rows carrying a note, and back', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $withNote = PlaceEditSuggestion::factory()->noteOnly()->create();
+    $fieldOnly = PlaceEditSuggestion::factory()->create();
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->filterTable('note', true)
+        ->assertCanSeeTableRecords([$withNote])
+        ->assertCanNotSeeTableRecords([$fieldOnly])
+        ->filterTable('note', false)
+        ->assertCanSeeTableRecords([$fieldOnly])
+        ->assertCanNotSeeTableRecords([$withNote])
+        // Blank is "don't filter", not "match nothing" — the arm most easily
+        // written as a no-op that silently empties the queue.
+        ->removeTableFilter('note')
+        ->assertCanSeeTableRecords([$withNote, $fieldOnly]);
+});
+
+it('settles a note-only row with Actioned and records what was done', function () {
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
+
+    $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+    $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create(['place_id' => $place->id]);
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->callTableAction('actioned', $suggestion, ['reason' => 'Confirmed closed by phone; hid the place.'])
+        ->assertNotified('Suggestion actioned');
+
+    $suggestion->refresh();
+    expect($suggestion->status)->toBe(SuggestionStatus::Actioned)
+        ->and($suggestion->reason)->toBe('Confirmed closed by phone; hid the place.')
+        ->and($suggestion->reviewed_by_user_id)->toBe($admin->id)
+        // The row is settled; the place was dealt with by hand, not by this verb.
+        ->and($place->fresh()->phone)->toBe('+598 2 111 1111')
+        ->and(PlaceEdit::query()->where('place_id', $place->id)->count())->toBe(0);
+});
+
+it('refuses to mark something actioned without saying what was done', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create();
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->callTableAction('actioned', $suggestion, ['reason' => ''])
+        ->assertHasTableActionErrors(['reason']);
+
+    expect($suggestion->fresh()->status)->toBe(SuggestionStatus::Pending);
+});
+
+/**
+ * The two verbs must not be interchangeable. Actioned on a row proposing a
+ * phone number would settle a real correction with nothing written to the
+ * place; Approve on a note-only row would claim an edit that never happened.
+ */
+it('offers each verb only to the kind of row it is for', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $noteOnly = PlaceEditSuggestion::factory()->noteOnly()->create();
+    $withPatch = PlaceEditSuggestion::factory()->create([
+        'changes' => ['phone' => ['from' => null, 'to' => '+598 2 900 0000']],
+        'note' => 'And the hours are wrong too.',
+    ]);
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->assertCanSeeTableRecords([$noteOnly, $withPatch])
+        ->assertTableActionHidden('approve', $noteOnly)
+        ->assertTableActionVisible('actioned', $noteOnly)
+        ->assertTableActionVisible('approve', $withPatch)
+        ->assertTableActionHidden('actioned', $withPatch)
+        // Rejection stays available to both — it is the abuse path for prose.
+        ->assertTableActionVisible('reject', $noteOnly);
+});
+
+it('puts the note in front of the moderator approving the fields beside it', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $suggestion = PlaceEditSuggestion::factory()->create([
+        'changes' => ['phone' => ['from' => null, 'to' => '+598 2 900 0000']],
+        'note' => 'They also moved to the corner unit.',
+    ]);
+
+    // Approving settles the WHOLE row, note included, so the words being closed
+    // have to be readable at the moment of closing them.
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->mountTableAction('approve', $suggestion)
+        ->assertSee('They also moved to the corner unit.');
+});
+
+it('leaves an actioned row undecidable, and says who settled it and how', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    $reviewer = User::factory()->admin()->create(['username' => 'the_moderator']);
+    $settled = PlaceEditSuggestion::factory()->noteOnly()->actioned('Hid the place; confirmed closed.')
+        ->create(['reviewed_by_user_id' => $reviewer->id]);
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->filterTable('status', SuggestionStatus::Actioned->value)
+        ->assertCanSeeTableRecords([$settled])
+        // The two columns hidden on the pending queue are the interesting ones
+        // HERE, so the toggle has to actually bring them back — including the
+        // `reviewedBy` relation behind one of them, which nothing else loads
+        // now that the column is off by default.
+        ->toggleAllTableColumns()
+        ->assertSee('Hid the place; confirmed closed.')
+        ->assertSee('the_moderator')
+        ->assertTableActionHidden('actioned', $settled)
+        ->assertTableActionHidden('approve', $settled)
+        ->assertTableActionHidden('reject', $settled);
+});
+
+/**
  * The queue is read-and-decide. A moderator who could hand-write or delete a
  * suggestion would be editing the place through a second door — one that skips
  * the field allow-list and the audit trail the Places resource enforces.

@@ -17,9 +17,9 @@ export interface PlaceEditSuggestion {
     slug: string;
   };
   /**
-   * A verified operator's own edit comes back `approved` — it applied on submit. Everyone else's is `pending` until a moderator decides.
+   * A verified operator's own FIELD edit comes back `approved` — it applied on submit. Everything else is `pending` until a moderator decides, including an operator's own submission when it carries a note. `actioned` settles a note-only row: there was no patch to apply, and a human dealt with it by hand (T-112).
    */
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'actioned';
   /**
    * The row was the venue operator's own edit rather than a proposal awaiting review.
    */
@@ -50,6 +50,10 @@ export interface PlaceEditSuggestion {
     from: string | number | unknown[] | null;
     to: string | number | unknown[] | null;
   }[];
+  /**
+   * Free text the submitter wrote for everything the field form cannot express — "this place closed down", "the pin is on the wrong side of the street" (T-112). A row may carry a note, a set of field changes, or both; a note-only row has an empty `changes`, so any surface rendering these must survive that.
+   */
+  note: string | null;
   created_at: string;
   reviewed_at: string | null;
 }
