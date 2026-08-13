@@ -168,7 +168,7 @@ class PlaceEditSuggestionsTable
                         // settles the row — which would quietly close the note
                         // too, so the note is put in front of the reviewer at the
                         // moment they decide, not just in the table behind it.
-                        .($record->hasNote() ? "\n\nThey also wrote: \"{$record->note}\" — deal with that before settling this row." : ''))
+                        .self::quotedNote($record, 'They also wrote', ' — deal with that before settling this row.'))
                     // Hidden on a note-only row: there is nothing to apply, so
                     // "approved" would be a claim about an edit that never
                     // happened. The service refuses it too — this only keeps the
@@ -202,9 +202,11 @@ class PlaceEditSuggestionsTable
                     ->color('info')
                     ->requiresConfirmation()
                     ->modalHeading('Mark as actioned')
-                    ->modalDescription(fn (PlaceEditSuggestion $record): string => 'They wrote: "'
-                        .(string) $record->note
-                        .'". Do whatever it calls for on the place itself, then record it here. This settles the row; it does not change the place.')
+                    ->modalDescription(fn (PlaceEditSuggestion $record): string => trim(self::quotedNote(
+                        $record,
+                        'They wrote',
+                        '. Do whatever it calls for on the place itself, then record it here. This settles the row; it does not change the place.',
+                    )))
                     ->schema([
                         Textarea::make('reason')
                             ->label('What did you do?')
@@ -231,7 +233,7 @@ class PlaceEditSuggestionsTable
                         // Rejecting a note-only row is the abuse path (nonsense,
                         // an insult, a duplicate), so the words being refused
                         // have to be readable at the moment of refusing them.
-                        .($record->hasNote() ? "\n\nThey wrote: \"{$record->note}\"" : ''))
+                        .self::quotedNote($record, 'They wrote'))
                     ->schema([
                         Textarea::make('reason')
                             ->label('Why')
@@ -246,6 +248,27 @@ class PlaceEditSuggestionsTable
                         Notification::make()->success()->title('Suggestion rejected')->send();
                     }),
             ]);
+    }
+
+    /**
+     * The submitter's note as a quoted block for a decision modal, or '' when
+     * there is none (T-112).
+     *
+     * All three verbs put the note in front of the moderator, and before this
+     * they did it three times in two different ways — one string interpolation,
+     * one `(string)` concatenation — which is how the quoting drifts. One place
+     * decides how somebody's words are presented.
+     *
+     * Escaping is Blade's: the modal renders the description with `{{ }}`, so
+     * this returns a plain string and must NOT be wrapped in `HtmlString`.
+     */
+    private static function quotedNote(PlaceEditSuggestion $record, string $lead, string $tail = ''): string
+    {
+        if (! $record->hasNote()) {
+            return '';
+        }
+
+        return "\n\n{$lead}: \"{$record->note}\"{$tail}";
     }
 
     /**

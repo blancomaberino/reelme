@@ -205,6 +205,33 @@ it('opens with the note visible and the always-empty review columns hidden', fun
         ->assertTableColumnHasExtraAttributes('note', ['style' => 'min-width: 20rem'], $suggestion);
 });
 
+/**
+ * The "with a note" filter, exercised BOTH ways.
+ *
+ * Its `queries()` arms are hand-written SQL, so nothing else in the build knows
+ * whether they are the right way round — a swapped pair renders a filter that
+ * works, returns rows, and answers the opposite question. Rendering the table
+ * proves only that the filter compiles.
+ */
+it('filters the queue down to the rows carrying a note, and back', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $withNote = PlaceEditSuggestion::factory()->noteOnly()->create();
+    $fieldOnly = PlaceEditSuggestion::factory()->create();
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->filterTable('note', true)
+        ->assertCanSeeTableRecords([$withNote])
+        ->assertCanNotSeeTableRecords([$fieldOnly])
+        ->filterTable('note', false)
+        ->assertCanSeeTableRecords([$fieldOnly])
+        ->assertCanNotSeeTableRecords([$withNote])
+        // Blank is "don't filter", not "match nothing" — the arm most easily
+        // written as a no-op that silently empties the queue.
+        ->removeTableFilter('note')
+        ->assertCanSeeTableRecords([$withNote, $fieldOnly]);
+});
+
 it('settles a note-only row with Actioned and records what was done', function () {
     $admin = User::factory()->admin()->create();
     $this->actingAs($admin);
@@ -275,13 +302,22 @@ it('puts the note in front of the moderator approving the fields beside it', fun
         ->assertSee('They also moved to the corner unit.');
 });
 
-it('leaves an actioned row undecidable', function () {
+it('leaves an actioned row undecidable, and says who settled it and how', function () {
     $this->actingAs(User::factory()->admin()->create());
-    $settled = PlaceEditSuggestion::factory()->noteOnly()->actioned()->create();
+    $reviewer = User::factory()->admin()->create(['username' => 'the_moderator']);
+    $settled = PlaceEditSuggestion::factory()->noteOnly()->actioned('Hid the place; confirmed closed.')
+        ->create(['reviewed_by_user_id' => $reviewer->id]);
 
     Livewire::test(ListPlaceEditSuggestions::class)
         ->filterTable('status', SuggestionStatus::Actioned->value)
         ->assertCanSeeTableRecords([$settled])
+        // The two columns hidden on the pending queue are the interesting ones
+        // HERE, so the toggle has to actually bring them back — including the
+        // `reviewedBy` relation behind one of them, which nothing else loads
+        // now that the column is off by default.
+        ->toggleAllTableColumns()
+        ->assertSee('Hid the place; confirmed closed.')
+        ->assertSee('the_moderator')
         ->assertTableActionHidden('actioned', $settled)
         ->assertTableActionHidden('approve', $settled)
         ->assertTableActionHidden('reject', $settled);

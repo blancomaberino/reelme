@@ -66,7 +66,10 @@ class PlaceEditSuggestionResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['place', 'user']);
+        // `reviewedBy` too: its column is hidden by default (T-112) but it is the
+        // interesting one on the settled views, and toggling it on without the
+        // eager load is a query per row.
+        return parent::getEloquentQuery()->with(['place', 'user', 'reviewedBy']);
     }
 
     public static function getPages(): array

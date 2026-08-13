@@ -134,8 +134,8 @@ export const en = {
   // things people most want to correct — "this closed down", "the photo is of
   // another restaurant" — are exactly the ones the five fields above cannot say.
   'suggest.field.note': 'Anything else?',
-  'suggest.note.placeholder': 'e.g. this place closed down, or the pin is on the wrong side of the street',
-  'suggest.note.hint': 'Tell us in your own words. A moderator reads it.',
+  'suggest.field.notePlaceholder': 'e.g. this place closed down, or the pin is on the wrong side of the street',
+  'suggest.field.noteHint': 'Tell us in your own words. A moderator reads it.',
   'suggest.venue.note': 'They wrote',
   'suggest.venue.title': 'Suggested changes',
   'suggest.venue.intro': 'What people are proposing about your venues. A moderator reviews each one.',

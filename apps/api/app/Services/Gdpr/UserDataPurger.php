@@ -61,7 +61,10 @@ class UserDataPurger
             $counts = array_merge($counts, $this->deletePersonalRows($user));
             // Strictly before `anonymiseRetainedRows()`, which nulls `user_id`
             // on this very table and would leave these rows unfindable.
-            $counts['suggestion_notes'] = $this->purgeSuggestionNotes($user);
+            // Named for what the number IS: rows deleted. The notes cleared on
+            // the rows that survive are not counted, and a key called
+            // `suggestion_notes` would read as though they were.
+            $counts['note_only_suggestions'] = $this->purgeSuggestionNotes($user);
             $this->anonymiseRetainedRows($user);
             $this->scrubUserRow($user);
         });
@@ -419,7 +422,7 @@ class UserDataPurger
      *
      * - **note-only rows are deleted.** There is nothing else in them — no
      *   patch, nothing the venue could act on once the words are gone. Keeping
-     *   an empty `{}` row with a null author is keeping a record of nobody
+     *   an empty-diff row with a null author is keeping a record of nobody
      *   saying nothing.
      * - **every other row keeps its patch and loses its note.** The field diff
      *   is the venue's record and an approved one is already part of its

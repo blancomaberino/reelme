@@ -205,7 +205,7 @@ export function SuggestEditSheet({ visible, onClose, place, onQueued }: Props) {
             label={t('suggest.field.note')}
             value={form.note}
             onChangeText={(value) => setForm((prev) => ({ ...prev, note: value }))}
-            placeholder={t('suggest.note.placeholder')}
+            placeholder={t('suggest.field.notePlaceholder')}
             testID="suggest-note"
             multiline
             numberOfLines={4}
@@ -216,7 +216,7 @@ export function SuggestEditSheet({ visible, onClose, place, onQueued }: Props) {
             textAlignVertical="top"
             style={styles.noteInput}
           />
-          <Text style={styles.hint}>{t('suggest.note.hint')}</Text>
+          <Text style={styles.hint}>{t('suggest.field.noteHint')}</Text>
 
           {suggest.isError ? <Text style={styles.error}>{t('common.error.general')}</Text> : null}
 
