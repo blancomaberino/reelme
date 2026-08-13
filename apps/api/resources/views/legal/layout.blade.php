@@ -13,9 +13,7 @@
   a connection to a font CDN in order to render is self-refuting, and it would
   also be the only third-party request on the page.
 --}}
-@php($isPrivacy = $doc === 'privacy')
-@php($otherDoc = $isPrivacy ? 'terms' : 'privacy')
-@php($otherLocale = $locale === 'es' ? 'en' : 'es')
+@php($otherDoc = $doc === 'privacy' ? 'terms' : 'privacy')
 <!DOCTYPE html>
 <html lang="{{ $locale }}">
 <head>
@@ -25,7 +23,14 @@
   <meta name="description" content="@yield('summary')">
   <meta name="color-scheme" content="light dark">
   <link rel="canonical" href="{{ url("/{$doc}/{$locale}") }}">
-  <link rel="alternate" hreflang="{{ $otherLocale }}" href="{{ url("/{$doc}/{$otherLocale}") }}">
+  {{-- One alternate per OTHER locale, derived from the list rather than a
+       hardcoded pair: with a third language the pair would silently advertise
+       only one of them. --}}
+  @foreach ($locales as $code)
+    @if ($code !== $locale)
+      <link rel="alternate" hreflang="{{ $code }}" href="{{ url("/{$doc}/{$code}") }}">
+    @endif
+  @endforeach
   <style>
     :root {
       --bg: #f6f7f9; --card: #ffffff; --ink: #14181f; --muted: #66707d;
@@ -143,7 +148,7 @@
       <a class="brand" href="{{ url('/') }}"><span class="dot"></span> Reelmap</a>
       <span class="spacer"></span>
       <div class="langs">
-        @foreach (\App\Http\Controllers\Legal\LegalDocumentController::LOCALES as $code)
+        @foreach ($locales as $code)
           @if ($code === $locale)
             <span aria-current="page">{{ strtoupper($code) }}</span>
           @else

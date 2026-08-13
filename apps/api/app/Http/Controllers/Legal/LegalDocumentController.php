@@ -81,6 +81,10 @@ final class LegalDocumentController extends Controller
         return view("legal.{$doc}.{$locale}", [
             'doc' => $doc,
             'locale' => $locale,
+            // Passed in rather than read off this class from the template: the
+            // layout renders a language switch, it should not have to know
+            // which controller produced it.
+            'locales' => self::LOCALES,
             'updatedIso' => self::UPDATED[$doc],
             'updated' => $this->formatDate(self::UPDATED[$doc], $locale),
         ]);

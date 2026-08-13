@@ -18,6 +18,8 @@ declare(strict_types=1);
  *     so a changed env default would make the published policy a false
  *     statement with no failing test anywhere. These bind the two together.
  */
+use App\Http\Controllers\Legal\LegalDocumentController;
+
 const LEGAL_CONTACT = 'hola@reelmap.app';
 
 it('serves both documents in both locales without authentication', function (string $path, string $heading) {
@@ -79,6 +81,29 @@ it('does not let the server app locale decide the language of a contract', funct
 
     $this->withHeaders(NO_LANGUAGE_PREFERENCE)
         ->get('/terms')->assertOk()->assertSee('Términos y condiciones');
+});
+
+it('has a written document for every locale it claims to serve', function () {
+    /*
+     * The route constraint and the negotiator both come from
+     * `RequestLocale::SUPPORTED`, which exists for the API's tag localization —
+     * NOT for these documents. Adding `pt` there to localize the app would make
+     * `/privacy/pt` a routable URL whose view does not exist: a 500 on the one
+     * page a store reviewer is guaranteed to open, from a change made somewhere
+     * else entirely, with nothing else in the suite touching it.
+     *
+     * So the coupling is asserted rather than assumed. This fails the moment a
+     * locale is added without the prose to go with it, which is the moment to
+     * either write the translation or give these routes their own list.
+     */
+    foreach (LegalDocumentController::LOCALES as $locale) {
+        foreach (['privacy', 'terms'] as $doc) {
+            expect(view()->exists("legal.{$doc}.{$locale}"))
+                ->toBeTrue("Locale '{$locale}' is routable but legal.{$doc}.{$locale} does not exist");
+
+            $this->get("/{$doc}/{$locale}")->assertOk();
+        }
+    }
 });
 
 it('rejects an unknown pinned locale rather than guessing', function () {
