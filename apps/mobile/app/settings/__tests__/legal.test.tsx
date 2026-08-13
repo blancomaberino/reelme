@@ -22,6 +22,11 @@ let qc: QueryClient;
 let mock: AxiosMockAdapter;
 let openURL: jest.SpyInstance;
 
+// `process.env` is shared across every suite in a jest worker, and one case here
+// deletes this key — so it has to be put back, or a later suite inherits an
+// unset API origin from a file it never read.
+const ORIGINAL_API_URL = process.env.EXPO_PUBLIC_API_URL;
+
 function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
@@ -39,6 +44,11 @@ beforeEach(() => {
 afterEach(() => {
   mock.restore();
   openURL.mockRestore();
+  if (ORIGINAL_API_URL === undefined) {
+    delete process.env.EXPO_PUBLIC_API_URL;
+  } else {
+    process.env.EXPO_PUBLIC_API_URL = ORIGINAL_API_URL;
+  }
 });
 
 it('offers both documents to a signed-out visitor', () => {

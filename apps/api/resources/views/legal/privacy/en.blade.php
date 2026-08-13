@@ -258,7 +258,7 @@
     <li>
       <strong>Deleted:</strong> your profile, your photo, your linked-account tokens, your devices and
       sessions, your notifications, your followers and follows, your reviews, your lists, your private tags,
-      your reports (and any naming you), your invitations, your profile and venue claims, any posts you shared
+      your reports (and any that name you), your invitations, your profile and venue claims, any posts you shared
       that never published along with their files, and your exported data archive. You are also removed from
       people search.
     </li>

@@ -20,6 +20,10 @@ let qc: QueryClient;
 let mock: AxiosMockAdapter;
 let openURL: jest.SpyInstance;
 
+// See settings/__tests__/legal.test.tsx: `process.env` is worker-wide, so a
+// suite that writes this key restores it rather than leaving it for the next.
+const ORIGINAL_API_URL = process.env.EXPO_PUBLIC_API_URL;
+
 function Providers({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
@@ -36,6 +40,11 @@ beforeEach(() => {
 afterEach(() => {
   mock.restore();
   openURL.mockRestore();
+  if (ORIGINAL_API_URL === undefined) {
+    delete process.env.EXPO_PUBLIC_API_URL;
+  } else {
+    process.env.EXPO_PUBLIC_API_URL = ORIGINAL_API_URL;
+  }
 });
 
 it('tells the user what they are agreeing to, at the moment they agree', () => {

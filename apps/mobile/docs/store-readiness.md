@@ -129,12 +129,14 @@ Two things about these documents are load-bearing and tested rather than trusted
 These need accounts, credentials, or a decision. **Do not mark T-054 done until
 they are complete.**
 
-1. ~~**Host the privacy policy and terms.**~~ **Written and served** — see §5.
-   What remains is deployment, not authorship: the URLs go live when T-055
-   provisions `api.reelmap.app`. Paste `https://api.reelmap.app/privacy/es` and
-   `/privacy/en` into App Store Connect and the Play Console. (If you later put
-   up a marketing site, 301 `reelmap.app/privacy` at these rather than forking a
-   second copy of the text.)
+1. ⚠️ **Host the privacy policy and terms — STILL OPEN.** The documents are
+   written and served by the app (see §5), so the authorship half is done, but
+   **no public URL exists yet** and both stores require one before a build can
+   be submitted. This item closes only when T-055 has provisioned
+   `api.reelmap.app` and `https://api.reelmap.app/privacy/es` actually answers
+   over the public internet. Then paste that and `/privacy/en` into App Store
+   Connect and the Play Console. (If you later put up a marketing site, 301
+   `reelmap.app/privacy` at these rather than forking a second copy of the text.)
 2. ~~**Publish a moderation contact address.**~~ **Done** — `hola@reelmap.app`
    is published in both documents, in both languages. **You must actually make
    that mailbox exist and monitor it**: Apple checks that a report has somewhere

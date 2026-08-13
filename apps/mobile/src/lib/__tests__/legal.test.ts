@@ -4,7 +4,15 @@ import { apiWebUrl } from '../web-urls';
 const ORIGINAL = process.env.EXPO_PUBLIC_API_URL;
 
 afterEach(() => {
-  process.env.EXPO_PUBLIC_API_URL = ORIGINAL;
+  // `process.env` is shared across every suite in a jest worker, and assigning
+  // an undefined original back stores the STRING "undefined" — which is truthy,
+  // so a later suite reading it would build `undefined/privacy/es` instead of
+  // taking the unset branch. Restore by deleting when there was nothing there.
+  if (ORIGINAL === undefined) {
+    delete process.env.EXPO_PUBLIC_API_URL;
+  } else {
+    process.env.EXPO_PUBLIC_API_URL = ORIGINAL;
+  }
 });
 
 it('pins the locale into the published document URL', () => {
