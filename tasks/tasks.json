@@ -3001,7 +3001,7 @@
       "id": "T-112",
       "title": "Free-text note on a suggested edit (\"something else is wrong\")",
       "phase": "M4",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-083"
       ],
@@ -3026,7 +3026,7 @@
         "The report flow stays the abuse channel; no second correction path"
       ],
       "agent": "executor",
-      "notes": "Full spec in tasks/T-112-suggestion-free-text-note.md. Requested 2026-08-12 during T-083 verification. Owner decisions taken up front: same queue as T-083 (not reports), and a new 'Actioned' verb for note-only rows."
+      "notes": "Full spec in tasks/T-112-suggestion-free-text-note.md. Requested 2026-08-12 during T-083 verification. Owner decisions taken up front: same queue as T-083 (not reports), and a new 'Actioned' verb for note-only rows. | DONE 2026-08-13: merged as 8b784e9 (PR #193). Two CodeRabbit rounds (4 then 2 findings), all fixed; deb456d merged unreviewed and recorded on the PR."
     }
   ]
 }
