@@ -119,9 +119,17 @@
       padding: 12px 16px; margin: 0 0 16px; }
     .note p:last-child { margin-bottom: 0; }
 
-    table { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: 14px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: block;
-      overflow-x: auto; }
+    /* The horizontal scroll lives on a WRAPPER, not on the table.
+       `display: block` on a <table> drops row/column semantics in several
+       browser + screen-reader combinations, and this table is the one place in
+       the policy that encodes a relationship rather than a sentence — purpose ↔
+       data ↔ legal basis. Losing that leaves a blind reader with nine
+       unattached phrases. The wrapper is focusable so the scroll area can be
+       reached by keyboard at all. */
+    .table-wrap { overflow-x: auto; margin: 0 0 18px; }
+    .table-wrap:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
     th { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 

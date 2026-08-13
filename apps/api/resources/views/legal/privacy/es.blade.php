@@ -103,6 +103,7 @@
   </p>
 
   <h2 id="para-que">Para qué los usamos y con qué base legal</h2>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="Para qué usamos tus datos y con qué base legal">
   <table>
     <thead>
       <tr><th>Para qué</th><th>Qué usamos</th><th>Base legal</th></tr>
@@ -145,6 +146,7 @@
       </tr>
     </tbody>
   </table>
+  </div>
 
   <h2 id="ia">Cómo se analiza lo que compartís</h2>
   <p>

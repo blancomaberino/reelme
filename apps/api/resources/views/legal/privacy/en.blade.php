@@ -104,6 +104,7 @@
   </p>
 
   <h2 id="why">What we use it for, and on what legal basis</h2>
+  <div class="table-wrap" tabindex="0" role="region" aria-label="What we use your data for, and on what legal basis">
   <table>
     <thead>
       <tr><th>Purpose</th><th>Data used</th><th>Legal basis</th></tr>
@@ -146,6 +147,7 @@
       </tr>
     </tbody>
   </table>
+  </div>
 
   <h2 id="ai">How what you share gets analysed</h2>
   <p>

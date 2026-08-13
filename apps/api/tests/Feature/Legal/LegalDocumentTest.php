@@ -175,6 +175,14 @@ it('states the same export retention and link lifetime the exporter uses', funct
     $en->assertSee("{$retention} days", false);
     $en->assertSee("{$ttl} hours", false);
     $en->assertSee("{$oembed} days", false);
+
+    // Spanish too — and it is the more important of the two, being the default
+    // locale of these pages. English-only assertions here meant a Spanish-only
+    // edit could drop one of these numbers and pass the whole suite.
+    $es = $this->get('/privacy/es')->assertOk();
+    $es->assertSee("{$retention} días", false);
+    $es->assertSee("{$ttl} horas", false);
+    $es->assertSee("{$oembed} días", false);
 });
 
 it('discloses that analysis can leave our infrastructure for OpenRouter', function () {
@@ -196,7 +204,23 @@ it('answers the tracking question both store questionnaires ask', function () {
     $this->get('/privacy/en')->assertOk()
         ->assertSee('no advertising tracking', false)
         ->assertSee('no data shared with data brokers', false);
+
+    $this->get('/privacy/es')->assertOk()
+        ->assertSee('no hace seguimiento publicitario', false)
+        ->assertSee('ningún dato compartido con intermediarios de datos', false);
 });
+
+it('keeps the legal-basis table a real table, in a reachable scroll region', function (string $path) {
+    // The table is the one place the policy encodes a RELATIONSHIP rather than
+    // a sentence — purpose ↔ data ↔ legal basis. Scrolling it by putting
+    // `display: block` on the <table>, the obvious way, drops row and column
+    // semantics in several screen readers and leaves nine unattached phrases;
+    // and an overflow area with nothing focusable in it cannot be scrolled by
+    // keyboard at all. Asserted so the obvious way cannot come back.
+    $html = $this->get($path)->assertOk()->getContent();
+
+    expect($html)->toMatch('/<div class="table-wrap" tabindex="0" role="region" aria-label="[^"]+">\s*<table>/');
+})->with(['/privacy/es', '/privacy/en']);
 
 it('renders the effective date in a human and a machine readable form', function () {
     $this->get('/privacy/es')->assertOk()
