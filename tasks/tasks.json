@@ -2142,7 +2142,7 @@
       "id": "T-083",
       "title": "'Suggest an edit' flow for place info + business-owner management",
       "phase": "M4",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [
         "T-030",
         "T-041"
@@ -2170,7 +2170,7 @@
         "Tests: any user can suggest; owner edit applies; non-owner queues; approve patches"
       ],
       "agent": "executor",
-      "notes": "Full spec in tasks/T-083-suggest-edit-business-owner.md. Entry reconstructed 2026-07-19. Overlaps T-084 (manual editability) - coordinate. PR #192 open 2026-08-12 (awaiting CI + review)."
+      "notes": "Full spec in tasks/T-083-suggest-edit-business-owner.md. Entry reconstructed 2026-07-19. Overlaps T-084 (manual editability) - coordinate. Merged 2026-08-12 as 1accd89 (PR #192)."
     },
     {
       "id": "T-084",

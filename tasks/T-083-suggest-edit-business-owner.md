@@ -120,3 +120,20 @@ already the single path either would use.
 
 Also not done, deliberately: nothing notifies the submitter of the verdict. The
 T-040 notification centre is the vehicle if wanted.
+
+**2026-08-12 — merged** as `1accd89` (PR #192), three review rounds.
+
+Round 1 found seven; round 2 found two Majors — a decision guard that read
+`isPending()` from an in-memory instance and then wrote (the transaction did not
+help: under READ COMMITTED both callers read `pending`), and a Maestro flow whose
+fixed typed value stops being a change the moment anyone approves what a previous
+run left. Round 2 also carried an **outside-diff-range** finding, which has no
+review thread and so was invisible to both the unresolved-thread gate and an
+inline-comment query: Maestro compiles text selectors as regular expressions
+(verified — `"¿Hay algo mal. Sugerí un cambio"` matches the literal `?`).
+
+Merged with the last two commits unreviewed, recorded in the PR.
+
+Follow-ups filed: **T-112** (free-text note, owner decisions taken). Still open
+and unowned: opening hours carry two shapes and the app renders only one, so
+hand-typed curator hours are invisible on device.
