@@ -2996,6 +2996,37 @@
       ],
       "agent": "executor",
       "notes": "Flagged but deliberately not bundled in T-100 (commit 1cad142): `expo install --check` reports 17 outdated packages including expo 57.0.4->57.0.9, react-native 0.86.0->0.86.2, reanimated, screens, worklets, and expo-secure-store 57.0.0->57.0.1. On 2026-07-30 the app took a native SIGBUS (EXC_ARM_DA_ALIGN, pointer-authentication failure) with the faulting frame in ExpoModulesCore.ConcurrentFunctionDefinition.call -> JavaScriptValuesBuffer.deinit -> jsi::Value::~Value() — i.e. inside Expo's ASYNC native-function bridge, not app JS. expo-secure-store is one of the skewed packages and is the async module that runs at boot (auth token, settings x2, and the map viewport since T-100), so boot fires several concurrent async Expo calls. Version skew is the leading hypothesis; the crash was seen once and did not reproduce over 6 relaunches after a Metro cache clear, so it is intermittent and must be chased with a repeat-launch harness rather than a single try."
+    },
+    {
+      "id": "T-112",
+      "title": "Free-text note on a suggested edit (\"something else is wrong\")",
+      "phase": "M4",
+      "status": "pending",
+      "depends_on": [
+        "T-083"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/PlaceEditSuggestion.php",
+        "apps/api/app/Services/Places/PlaceSuggestionService.php",
+        "apps/api/app/Filament/Resources/PlaceEditSuggestions/",
+        "apps/api/app/Services/Gdpr/UserDataPurger.php",
+        "apps/mobile/src/components/place/suggest-edit-sheet.tsx"
+      ],
+      "spec_refs": [
+        "02-data-model.md",
+        "03-api-design.md#places"
+      ],
+      "acceptance": [
+        "note column + validation; a note-only suggestion queues, an empty submission is still refused",
+        "Filament shows the note and offers 'Actioned' on note-only rows, with a record of what was done",
+        "Mobile: multiline field included in the dirty check, copy in both dictionaries",
+        "GDPR: erasure handles free prose (purger AND exporter, asserted by name) — NOT a copy of T-083's anonymise-only rule",
+        "The report flow stays the abuse channel; no second correction path"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-112-suggestion-free-text-note.md. Requested 2026-08-12 during T-083 verification. Owner decisions taken up front: same queue as T-083 (not reports), and a new 'Actioned' verb for note-only rows."
     }
   ]
 }
