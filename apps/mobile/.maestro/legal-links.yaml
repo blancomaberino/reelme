@@ -1,0 +1,92 @@
+# Legal documents — reachable from inside the app (E2E, iOS simulator).
+#
+# Apple requires the privacy policy to be reachable from within the app, and
+# jest cannot prove the two things that actually matter here:
+#
+#  1. That the rows can be REACHED. They are the last section of Settings,
+#     below the fold, and `render(<SettingsScreen/>)` sees the whole tree at
+#     once — a section that only exists off-screen passes every unit test.
+#  2. That the tap OPENS SOMETHING. The unit tests assert `Linking.openURL` was
+#     called with the right string; whether iOS then renders a page at that URL
+#     is a different claim, and a wrong origin fails only here.
+#
+# The app runs in Spanish (the default locale), so the labels below are the es
+# strings, not the en ones the unit tests assert on.
+#
+# Preconditions: API stack + Metro up (`./scripts/dev.sh start`). Unlike the
+# privacy flow, nothing here asserts on an authed-only label, so it should run
+# against a signed-out app too — though it has only actually been run signed in.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/legal-links.yaml
+#
+# Navigation is by tapping real controls, never a deep link — one of those sets
+# the app's launch URL and strands the next Cmd+R on this screen.
+appId: pet.one.reelmap
+---
+- launchApp
+
+# --- Reachability: profile tab -> Ajustes -----------------------------------
+- extendedWaitUntil:
+    visible: ".*Perfil.*"
+    timeout: 60000
+- tapOn: ".*Perfil, tab.*"
+
+# Waited on by id, then tapped by POINT — `tapOn: id: profile-settings` lands
+# on "Invitar amigos", the row above, reproducibly (re-verified 2026-08-13).
+# The wait is by id, so this fails loudly if the row disappears; the tap is by
+# the row's measured centre — `maestro hierarchy` reports [24,681][416,730] on
+# a 956pt screen, and 74% is the centre of that.
+#
+# If this starts landing on the wrong row, a row was added to or removed from
+# the profile screen. Re-read the bounds; do not nudge the number blindly.
+- extendedWaitUntil:
+    visible:
+      id: "profile-settings"
+    timeout: 20000
+- tapOn:
+    point: "50%,74%"
+# "Idioma", not "Seguridad": the language section renders whether or not there
+# is a session, so this flow passes signed in AND signed out. The security
+# section is authed-only, and anchoring on it would tie this flow to a logged-in
+# dev app for no reason — these rows are deliberately not behind that gate.
+#
+# (The signed-OUT case is asserted in jest, in app/settings/__tests__/legal
+# .test.tsx. This flow has only ever been run against a signed-in app.)
+- extendedWaitUntil:
+    visible: "Idioma"
+    timeout: 20000
+
+# --- The Legal section, at the very bottom ----------------------------------
+# Scrolling is part of the reachability claim, not scaffolding: this is what a
+# reviewer looking for the privacy policy actually does.
+- scrollUntilVisible:
+    element:
+      id: "settings-legal-privacy"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "settings-legal-terms"
+- assertVisible: "Política de privacidad"
+- assertVisible: "Términos y condiciones"
+- takeScreenshot: build/maestro/legal-rows
+
+# --- The tap actually opens the published document --------------------------
+# This leaves the app for the browser, so there is nothing of ours to assert
+# against afterwards; the screenshot is the evidence, and the restore below is
+# what makes leaving safe.
+- tapOn:
+    id: "settings-legal-privacy"
+- waitForAnimationToEnd:
+    timeout: 10000
+- takeScreenshot: build/maestro/legal-privacy-page
+
+# --- Leave the app where we found it ----------------------------------------
+# CLAUDE.md asks for the restore to be VERIFIED, not asserted. Stop, launch with
+# no URL (what Cmd+R replays), and confirm we land on the map — not back in
+# Settings, and not in the browser.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000
+- assertNotVisible: "Política de privacidad"

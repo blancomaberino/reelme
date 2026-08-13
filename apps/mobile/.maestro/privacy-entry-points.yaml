@@ -40,20 +40,25 @@ appId: pet.one.reelmap
 # Waited on by id, then tapped by POINT.
 #
 # `tapOn: id: profile-settings` and `tapOn: "Ajustes"` BOTH land on "Invitar
-# amigos" — the row above — reproducibly on this screen. `maestro hierarchy`
-# reports the row's real bounds as [24,632][416,681] in a 956pt-tall screen, so
-# the element is found correctly and the TAP is what misses. 69% is the centre
-# of those bounds (Maestro only accepts integer percentages).
+# amigos" — the row above — reproducibly on this screen, so the element is found
+# correctly and the TAP is what misses. The point is the centre of the row's
+# real bounds from `maestro hierarchy`, in a 956pt-tall screen.
 #
 # The wait is still by id, so this fails loudly if the row ever disappears
 # rather than silently tapping empty space, and every assertion the flow
 # actually exists to make is id-based.
+#
+# 2026-08-13: was 69%, for bounds [24,632][416,681]. The profile screen gained a
+# row since, moving this one to [24,681][416,730] — so 69% had started landing
+# on "Invitar amigos" and this flow was FAILING before it ever got to a privacy
+# assertion. Found while adding legal-links.yaml, which navigates the same way.
+# When it drifts again, re-read the bounds; do not nudge the number blindly.
 - extendedWaitUntil:
     visible:
       id: "profile-settings"
     timeout: 20000
 - tapOn:
-    point: "50%,69%"
+    point: "50%,74%"
 - extendedWaitUntil:
     visible: "Seguridad"
     timeout: 20000

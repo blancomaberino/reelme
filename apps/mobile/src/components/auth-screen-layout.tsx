@@ -53,6 +53,10 @@ export function useAuthFormStyles() {
         muted: { color: c.muted },
         link: { color: c.primary, fontWeight: '600' },
         banner: { backgroundColor: c.primarySoft, borderRadius: 12, padding: 12 },
+        // Consent line under the register button (T-054): smaller and centred,
+        // so it reads as a disclosure attached to the action rather than
+        // another form field competing for attention.
+        consent: { color: c.muted, fontSize: 13, lineHeight: 18, textAlign: 'center', marginTop: 4 },
         bannerText: { color: c.primary, fontSize: 14, fontWeight: '600', textAlign: 'center' },
       }),
     [c],
