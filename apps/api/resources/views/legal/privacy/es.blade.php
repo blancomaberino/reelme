@@ -5,7 +5,7 @@
 @section('updated-label', 'Vigente desde el')
 @section('toc-label', 'Contenido')
 @section('other-doc', 'Términos y condiciones →')
-@section('footer-contact', 'Consultas sobre privacidad: hola@reelmap.app')
+@section('footer-contact', 'Consultas sobre privacidad: {{ $contact }}')
 
 @section('toc')
   <li><a href="#responsable">Quién es responsable de tus datos</a></li>
@@ -27,14 +27,14 @@
 @section('body')
   <h2 id="responsable">Quién es responsable de tus datos</h2>
   <p>
-    Reelmap es una aplicación desarrollada y operada por <strong>Marcelo Blanco</strong>, con domicilio en
-    Montevideo, Uruguay. A los efectos de la Ley N.º 18.331 de Protección de Datos Personales y, cuando
-    corresponda, del Reglamento General de Protección de Datos de la Unión Europea (RGPD), es el
-    <strong>responsable del tratamiento</strong> de los datos que se describen acá.
+    Reelmap es una aplicación desarrollada y operada por <strong>{{ $controller }}</strong>, con domicilio en
+    {{ $domicile }}. A los efectos de la Ley N.º 18.331 de Protección de Datos Personales y, cuando
+    corresponda, del Reglamento General de Protección de Datos de la Unión Europea (RGPD), es
+    <strong>quien responde por el tratamiento</strong> de los datos que se describen acá.
   </p>
   <p>
     Para cualquier consulta, reclamo o pedido sobre tus datos, escribinos a
-    <a href="mailto:hola@reelmap.app">hola@reelmap.app</a>. Es la misma dirección que usamos para moderación
+    <a href="mailto:{{ $contact }}">{{ $contact }}</a>. Es la misma dirección que usamos para moderación
     y soporte, y la leemos.
   </p>
 
@@ -244,7 +244,7 @@
     <li><strong>Supresión:</strong> <em>Ajustes → Privacidad y datos → Borrar mi cuenta</em>.</li>
   </ul>
   <p>
-    Para todo lo demás, escribinos a <a href="mailto:hola@reelmap.app">hola@reelmap.app</a>. Respondemos
+    Para todo lo demás, escribinos a <a href="mailto:{{ $contact }}">{{ $contact }}</a>. Respondemos
     dentro de los plazos legales aplicables. Si considerás que no atendimos bien tu pedido, podés reclamar
     ante la Unidad Reguladora y de Control de Datos Personales (URCDP) de Uruguay o, si estás en la Unión
     Europea, ante la autoridad de control de tu país.
@@ -294,7 +294,7 @@
     Reelmap no está dirigida a menores de 13 años y no recogemos datos de forma consciente de personas de
     esa edad. Si detectamos una cuenta de alguien menor de 13, la eliminamos. Si sos madre, padre o tutor y
     creés que un menor a tu cargo creó una cuenta, escribinos a
-    <a href="mailto:hola@reelmap.app">hola@reelmap.app</a> y la damos de baja.
+    <a href="mailto:{{ $contact }}">{{ $contact }}</a> y la damos de baja.
   </p>
 
   <h2 id="seguridad">Seguridad</h2>

@@ -20,7 +20,23 @@ declare(strict_types=1);
  */
 use App\Http\Controllers\Legal\LegalDocumentController;
 
-const LEGAL_CONTACT = 'hola@reelmap.app';
+/*
+ * A FICTITIOUS identity, deliberately.
+ *
+ * The whole point of moving these values into config is that the operator's
+ * real name and domicile are personal data and stay out of the repository — so
+ * putting them back here, in a file that gets committed just like the views
+ * did, would defeat the exercise while leaving every test green.
+ */
+const LEGAL_CONTROLLER = 'Test Operator Ltd';
+const LEGAL_DOMICILE = 'Testville, Testland';
+const LEGAL_CONTACT = 'legal@example.test';
+
+beforeEach(function () {
+    config()->set('legal.controller', LEGAL_CONTROLLER);
+    config()->set('legal.domicile', LEGAL_DOMICILE);
+    config()->set('legal.contact_email', LEGAL_CONTACT);
+});
 
 it('serves both documents in both locales without authentication', function (string $path, string $heading) {
     $this->get($path)
@@ -141,10 +157,76 @@ it('carries the Apple third-party-beneficiary rider a custom EULA requires', fun
 });
 
 it('publishes a reachable moderation and privacy contact on every page', function (string $path) {
-    // Apple checks that a report has somewhere to go, and §5.2 of
+    // Apple checks that a report has somewhere to go, and §6.2 of
     // store-readiness.md is not satisfied by copy that names no address.
     $this->get($path)->assertOk()->assertSee(LEGAL_CONTACT, false);
 })->with(['/privacy/es', '/privacy/en', '/terms/es', '/terms/en']);
+
+it('names the configured party as the responsible one, in both documents', function (string $path) {
+    $this->get($path)->assertOk()
+        ->assertSee(LEGAL_CONTROLLER, false)
+        ->assertSee(LEGAL_DOMICILE, false);
+})->with(['/privacy/es', '/privacy/en', '/terms/es', '/terms/en']);
+
+it('publishes nothing at all when the legal identity is not configured', function (string $missing) {
+    /*
+     * The reason this file exists in its current shape.
+     *
+     * The operator's name and domicile are personal data belonging to a private
+     * individual, and an unconfigured deployment has no business publishing
+     * them — nor publishing a privacy policy that names no data controller,
+     * which is not a rougher draft of one but an invalid one.
+     *
+     * So an incomplete identity must serve NOTHING, and it must do so loudly.
+     * Parameterised over each field separately because a guard that only checks
+     * the first value it reads passes a test that clears all three.
+     */
+    config()->set("legal.{$missing}", null);
+
+    foreach (['/privacy', '/privacy/es', '/privacy/en', '/terms', '/terms/es', '/terms/en'] as $path) {
+        $response = $this->get($path);
+
+        expect($response->getStatusCode())->toBe(503);
+        // Not merely "not a 200": assert the withheld values are absent from
+        // whatever the error path does render.
+        $response->assertDontSee(LEGAL_CONTROLLER, false);
+        $response->assertDontSee(LEGAL_DOMICILE, false);
+    }
+})->with(['controller', 'domicile', 'contact_email']);
+
+it('keeps the identity out of the view sources entirely', function (string $view) {
+    /*
+     * The guard against quietly undoing all of the above.
+     *
+     * Config indirection only protects the operator for as long as nobody
+     * pastes a literal back in — and a hard-coded name renders perfectly, ships
+     * green, and is invisible in review unless someone happens to read that
+     * paragraph. So the sources themselves are checked: every document must
+     * still go through the variables, and none may carry a literal email.
+     *
+     * Note this test cannot name what it is looking for — writing the real name
+     * here would commit the very string the change exists to keep out of the
+     * repository. It asserts the SHAPE instead: variables present, literals
+     * absent.
+     */
+    $source = file_get_contents(resource_path("views/legal/{$view}.blade.php"));
+
+    expect($source)->toContain('{{ $controller }}')
+        ->and($source)->toContain('{{ $domicile }}')
+        ->and($source)->toContain('{{ $contact }}')
+        // Any literal address, not just the current one.
+        ->and($source)->not->toMatch('/[\w.+-]+@[\w-]+\.[\w.]+/');
+})->with(['privacy/es', 'privacy/en', 'terms/es', 'terms/en']);
+
+it('treats a blank or whitespace-only identity as unconfigured', function () {
+    // `LEGAL_CONTROLLER_NAME=` in an env file yields "", not null, and a stray
+    // space yields " ". Both are somebody having NOT filled this in, and a
+    // truthiness check that accepted " " would publish a policy whose
+    // controller is a space.
+    config()->set('legal.controller', '   ');
+
+    $this->get('/privacy/es')->assertStatus(503);
+});
 
 it('states the same media retention window the pipeline actually enforces', function () {
     $hours = (int) config('media.retention.original_hours');

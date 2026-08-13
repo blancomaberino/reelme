@@ -11,16 +11,17 @@ by remembering.
 
 ## 1. Apple Guideline 1.2 — user-generated content
 
-Apple rejects UGC apps that lack these. **All five are now shipped** — the
-moderation contact and the EULA clause were the last two, and both landed with
-the legal documents (§5).
+Apple rejects UGC apps that lack these. **Four of the five are shipped in code.**
+The fifth, the moderation contact, is written and asserted but its value comes
+from the environment and is not set yet (§5) — a checklist that reads "all five
+✅" is exactly how that gets missed and becomes a rejection.
 
 | Requirement | Status | Where |
 |---|---|---|
 | **A method for filtering objectionable content** | ✅ | Moderation queue in Filament (T-049); places gate on `PlaceStatus`, shares on `ShareStatus`. |
 | **A mechanism to report offensive content** | ✅ | `POST /api/v1/reports` (T-049). In-app: on a profile (`profile-report`), on a place (`place-report`), and on each native review (its own endpoint + reason set). |
 | **The ability to block abusive users** | ✅ | `POST/DELETE /api/v1/me/blocks/{username}` (T-054). In-app: **Block** on any other profile, undone from **Settings → Blocked accounts**. Effects are mutual and sever follows in both directions. Reachable from a place: the sharer's `@handle` on a source card taps through to their profile. |
-| **Published contact information for a moderation response** | ✅ | `hola@reelmap.app`, published in both legal documents in both languages. Asserted by `LegalDocumentTest` on all four pages, so it cannot quietly disappear in an edit. |
+| **Published contact information for a moderation response** | ⚠️ **needs `LEGAL_CONTACT_EMAIL` set** | The address is published in both documents in both languages, and asserted by `LegalDocumentTest` on all four pages so it cannot quietly disappear — but it comes from the environment (§5) and there is no default. Unset ⇒ the pages 503. |
 | **A EULA with zero tolerance for objectionable content and abusive users** | ✅ | Terms §6, both languages, with the 24-hour commitment to act on reports. Users agree to it at the moment of registration — the consent line under **Create account** links both documents. |
 
 > Blocking is deliberately **not** the same as reporting, and the copy says so:
@@ -120,7 +121,32 @@ Two things about these documents are load-bearing and tested rather than trusted
   images — asserted. A privacy policy that phones a CDN to render is both ironic
   and an extra disclosure.
 
-> ⚠️ The one thing still missing is **hosting**: these URLs only exist once
+**Who they name comes from the environment, not the repository.** The operator is
+a private individual, so their name and domicile are personal data in their own
+right and are not committed here. `config/legal.php` reads three variables:
+
+```
+LEGAL_CONTROLLER_NAME       e.g. a person's full legal name, or a company name
+LEGAL_CONTROLLER_DOMICILE   e.g. "Montevideo, Uruguay"
+LEGAL_CONTACT_EMAIL         the published moderation / privacy address
+```
+
+There are **no defaults**, and with any of them unset — or blank, or whitespace —
+both documents return **503** rather than publishing a contract with no party to
+it. That is deliberate: the two silent alternatives are leaking a name that was
+meant to be withheld, or serving a privacy policy naming no data controller,
+which is not a rougher draft of one but an invalid one.
+
+> ⚠️ **This fails loudly, and it fails in production if you forget.** A build
+> submitted while these are unset points App Review at a 503. Set them on the
+> host in the same pass as the rest of the T-055 environment.
+
+These fill in **identity, not jurisdiction**. The documents are written for
+Uruguayan law with GDPR terms retained for EU users; moving to another country,
+or from a person to a company, is a rewrite of the prose rather than a change of
+values.
+
+> ⚠️ The other thing still missing is **hosting**: these URLs only exist once
 > T-055 provisions the API. Until then there is nothing to paste into App Store
 > Connect. See §6.1.
 
@@ -137,11 +163,13 @@ they are complete.**
    over the public internet. Then paste that and `/privacy/en` into App Store
    Connect and the Play Console. (If you later put up a marketing site, 301
    `reelmap.app/privacy` at these rather than forking a second copy of the text.)
-2. ~~**Publish a moderation contact address.**~~ **Done** — `hola@reelmap.app`
-   is published in both documents, in both languages. **You must actually make
-   that mailbox exist and monitor it**: Apple checks that a report has somewhere
-   to go, and the address is now a published commitment, including a 24-hour
-   response window in the terms.
+2. ⚠️ **Set the legal identity, and publish a moderation contact — STILL OPEN.**
+   `LEGAL_CONTROLLER_NAME`, `LEGAL_CONTROLLER_DOMICILE` and
+   `LEGAL_CONTACT_EMAIL` (see §5). The documents carry the plumbing but no
+   values, and return 503 until they have them. **The mailbox must actually
+   exist and be monitored**: Apple checks that a report has somewhere to go, and
+   the address becomes a published commitment, including the 24-hour response
+   window the terms state.
 3. **Read the two documents, and have them reviewed.** They were drafted against
    what the code actually does — every retention window, third-party recipient
    and deletion behaviour in them was read out of the schema and config, not

@@ -5,7 +5,7 @@
 @section('updated-label', 'In effect since')
 @section('toc-label', 'Contents')
 @section('other-doc', 'Terms of Service →')
-@section('footer-contact', 'Privacy enquiries: hola@reelmap.app')
+@section('footer-contact', 'Privacy enquiries: {{ $contact }}')
 
 @section('toc')
   <li><a href="#controller">Who is responsible for your data</a></li>
@@ -27,14 +27,14 @@
 @section('body')
   <h2 id="controller">Who is responsible for your data</h2>
   <p>
-    Reelmap is built and operated by <strong>Marcelo Blanco</strong>, based in Montevideo, Uruguay. For the
+    Reelmap is built and operated by <strong>{{ $controller }}</strong>, based in {{ $domicile }}. For the
     purposes of Uruguayan Law No. 18.331 on the Protection of Personal Data and, where it applies, the
-    European Union's General Data Protection Regulation (GDPR), he is the <strong>data controller</strong>
+    European Union's General Data Protection Regulation (GDPR), they are the <strong>data controller</strong>
     for everything described here.
   </p>
   <p>
     For any question, complaint or request about your data, write to
-    <a href="mailto:hola@reelmap.app">hola@reelmap.app</a>. It is the same address we use for moderation and
+    <a href="mailto:{{ $contact }}">{{ $contact }}</a>. It is the same address we use for moderation and
     support, and it is monitored.
   </p>
 
@@ -237,7 +237,7 @@
     <li><strong>Erasure:</strong> <em>Settings → Privacy &amp; data → Delete my account</em>.</li>
   </ul>
   <p>
-    For anything else, write to <a href="mailto:hola@reelmap.app">hola@reelmap.app</a>. We respond within the
+    For anything else, write to <a href="mailto:{{ $contact }}">{{ $contact }}</a>. We respond within the
     applicable statutory deadlines. If you think we handled your request badly, you can complain to Uruguay's
     Personal Data Regulatory and Control Unit (URCDP) or, if you are in the European Union, to your country's
     supervisory authority.
@@ -287,7 +287,7 @@
     Reelmap is not directed at children under 13 and we do not knowingly collect data from anyone that age.
     If we find an account belonging to someone under 13, we delete it. If you are a parent or guardian and
     believe a child in your care has created an account, write to
-    <a href="mailto:hola@reelmap.app">hola@reelmap.app</a> and we will remove it.
+    <a href="mailto:{{ $contact }}">{{ $contact }}</a> and we will remove it.
   </p>
 
   <h2 id="security">Security</h2>

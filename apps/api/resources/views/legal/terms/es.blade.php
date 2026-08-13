@@ -5,7 +5,7 @@
 @section('updated-label', 'Vigente desde el')
 @section('toc-label', 'Contenido')
 @section('other-doc', '← Política de privacidad')
-@section('footer-contact', 'Contacto y moderación: hola@reelmap.app')
+@section('footer-contact', 'Contacto y moderación: {{ $contact }}')
 
 @section('toc')
   <li><a href="#aceptacion">Aceptación de estos términos</a></li>
@@ -28,8 +28,8 @@
 @section('body')
   <h2 id="aceptacion">Aceptación de estos términos</h2>
   <p>
-    Estos términos son el contrato entre vos y <strong>Marcelo Blanco</strong>, con domicilio en Montevideo,
-    Uruguay, que desarrolla y opera Reelmap. Al crear una cuenta o usar la aplicación, aceptás lo que dice
+    Estos términos son el contrato entre vos y <strong>{{ $controller }}</strong>, con domicilio en
+    {{ $domicile }}, que desarrolla y opera Reelmap. Al crear una cuenta o usar la aplicación, aceptás lo que dice
     acá. Si no estás de acuerdo con alguna parte, no uses el servicio.
   </p>
   <p>
@@ -132,7 +132,7 @@
   </ul>
   <p>
     Para denuncias urgentes o que no encajen en ninguna pantalla, escribinos a
-    <a href="mailto:hola@reelmap.app">hola@reelmap.app</a>.
+    <a href="mailto:{{ $contact }}">{{ $contact }}</a>.
   </p>
 
   <h2 id="derechos-autor">Derechos de autor y retiros</h2>
@@ -143,7 +143,7 @@
   </p>
   <p>
     Si sos titular de un derecho y creés que algo en Reelmap lo infringe, escribinos a
-    <a href="mailto:hola@reelmap.app">hola@reelmap.app</a> indicando qué contenido es y dónde está, qué
+    <a href="mailto:{{ $contact }}">{{ $contact }}</a> indicando qué contenido es y dónde está, qué
     derecho tenés sobre él, tus datos de contacto y una declaración de buena fe. Retiramos el material que
     corresponda y damos de baja a quienes infrinjan de forma reiterada. Si creés que retiramos algo tuyo por
     error, respondé a esa misma dirección y lo revisamos.
@@ -228,6 +228,6 @@
     nueva versión.
   </p>
   <p class="contact">
-    Cualquier duda sobre estos términos: <a href="mailto:hola@reelmap.app">hola@reelmap.app</a>.
+    Cualquier duda sobre estos términos: <a href="mailto:{{ $contact }}">{{ $contact }}</a>.
   </p>
 @endsection

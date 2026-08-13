@@ -77,8 +77,9 @@ final class LegalDocumentController extends Controller
     private function document(string $doc, Request $request, ?string $locale): View
     {
         $locale = $this->resolveLocale($request, $locale);
+        $identity = $this->identity();
 
-        return view("legal.{$doc}.{$locale}", [
+        return view("legal.{$doc}.{$locale}", $identity + [
             'doc' => $doc,
             'locale' => $locale,
             // Passed in rather than read off this class from the template: the
@@ -106,6 +107,39 @@ final class LegalDocumentController extends Controller
         return $locale === 'es'
             ? "{$date->day} de {$month} de {$date->year}"
             : "{$date->day} {$month} {$date->year}";
+    }
+
+    /**
+     * Who the documents name — read from config, never hard-coded.
+     *
+     * The operator is an individual, so their name and domicile are personal
+     * data in their own right; they are not committed to the repository. An
+     * unconfigured deployment therefore has nothing legitimate to publish, and
+     * this refuses rather than improvising.
+     *
+     * 503, not a placeholder: the two silent alternatives are publishing a name
+     * that was meant to be withheld, or publishing a privacy policy that names
+     * no data controller — which is not a rougher draft of a privacy policy, it
+     * is an invalid one, and it would sail through every test that only checks
+     * for a 200. A missing legal identity is a deployment that is not ready to
+     * serve these pages at all.
+     *
+     * @return array{controller: string, domicile: string, contact: string}
+     */
+    private function identity(): array
+    {
+        $controller = trim((string) config('legal.controller'));
+        $domicile = trim((string) config('legal.domicile'));
+        $contact = trim((string) config('legal.contact_email'));
+
+        abort_if(
+            $controller === '' || $domicile === '' || $contact === '',
+            503,
+            'The legal documents are not configured for publication. Set LEGAL_CONTROLLER_NAME, '
+            .'LEGAL_CONTROLLER_DOMICILE and LEGAL_CONTACT_EMAIL.',
+        );
+
+        return ['controller' => $controller, 'domicile' => $domicile, 'contact' => $contact];
     }
 
     /**
