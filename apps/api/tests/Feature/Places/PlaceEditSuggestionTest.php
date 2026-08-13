@@ -181,6 +181,240 @@ describe('suggesting an edit', function () {
     });
 });
 
+/**
+ * "Something else is wrong" (T-112).
+ *
+ * The five-field form cannot say "this place closed down", and the only other
+ * free-text box on that screen files a REPORT — a moderation event against the
+ * venue, triaged with take-down and ban. So the note rides the suggestion, and
+ * what has to hold is: a note alone is a real proposal, an empty submission is
+ * still refused, and a note never settles as an edit that never happened.
+ */
+describe('a free-text note', function () {
+    it('queues a note on its own, with an empty diff', function () {
+        $place = Place::factory()->create();
+
+        $this->actingAs(User::factory()->create())
+            ->postJson("/api/v1/places/{$place->id}/suggestions", [
+                'note' => 'This place closed down last month.',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.note', 'This place closed down last month.')
+            // `changes` is NOT NULL, so a note-only row stores `{}` — every
+            // renderer downstream has to survive that.
+            ->assertJsonCount(0, 'data.changes');
+
+        $suggestion = PlaceEditSuggestion::query()->sole();
+        expect($suggestion->getAttribute('changes'))->toBe([])
+            ->and($suggestion->isNoteOnly())->toBeTrue();
+    });
+
+    it('carries a note alongside field changes', function () {
+        $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson("/api/v1/places/{$place->id}/suggestions", [
+                'phone' => '+598 2 900 0000',
+                'note' => 'The prices on the menu photo are two years old.',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.changes.0.field', 'phone')
+            ->assertJsonPath('data.note', 'The prices on the menu photo are two years old.');
+
+        expect(PlaceEditSuggestion::query()->sole()->isNoteOnly())->toBeFalse();
+    });
+
+    it('still refuses a submission carrying neither a change nor a note', function () {
+        $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson("/api/v1/places/{$place->id}/suggestions", [
+                'phone' => '+598 2 111 1111',
+                // Whitespace is not something written: the trim happens before
+                // the "does this carry anything" question is asked.
+                'note' => '   ',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.details.changes.0', 'This suggestion does not change anything.');
+
+        expect(PlaceEditSuggestion::query()->count())->toBe(0);
+    });
+
+    it('bounds the note at the same length as a report\'s details', function () {
+        $place = Place::factory()->create();
+
+        $this->actingAs(User::factory()->create())
+            ->postJson("/api/v1/places/{$place->id}/suggestions", [
+                'note' => str_repeat('a', PlaceEditSuggestion::NOTE_MAX + 1),
+            ])
+            ->assertStatus(422);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson("/api/v1/places/{$place->id}/suggestions", [
+                'note' => str_repeat('a', PlaceEditSuggestion::NOTE_MAX),
+            ])
+            ->assertCreated();
+    });
+
+    /**
+     * The decision this task took explicitly. An operator's FIELD edit applies
+     * on submit — but a note asks a human for something, and auto-approving the
+     * row it rides on would file that question as already answered, in a state
+     * the queue does not show by default. So the note queues no matter who wrote
+     * it, and the row still says it came from the venue.
+     */
+    it('queues a verified operator\'s note instead of auto-approving it', function () {
+        $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+        $owner = operatorOfPlace($place);
+
+        $this->actingAs($owner)
+            ->postJson("/api/v1/places/{$place->id}/suggestions", [
+                'phone' => '+598 2 900 0000',
+                'note' => 'We also moved to the corner unit — the pin is wrong.',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'pending')
+            // Still flagged as theirs, which is how the moderator knows this is
+            // the venue talking and not a passer-by.
+            ->assertJsonPath('data.is_owner_submission', true);
+
+        // Nothing applied: the whole submission waits, patch included.
+        expect($place->fresh()->phone)->toBe('+598 2 111 1111')
+            ->and(PlaceEdit::query()->where('place_id', $place->id)->count())->toBe(0);
+    });
+
+    it('keeps the operator\'s instant save when they write no note', function () {
+        $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+        $owner = operatorOfPlace($place);
+
+        $this->actingAs($owner)
+            ->postJson("/api/v1/places/{$place->id}/suggestions", ['phone' => '+598 2 900 0000'])
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'approved');
+
+        expect($place->fresh()->phone)->toBe('+598 2 900 0000');
+    });
+
+    it('supersedes the submitter\'s own open note rather than filing a second', function () {
+        $place = Place::factory()->create();
+        $user = User::factory()->create();
+
+        $first = $this->actingAs($user)
+            ->postJson("/api/v1/places/{$place->id}/suggestions", ['note' => 'Closed.'])
+            ->assertCreated()->json('data.id');
+
+        $second = $this->actingAs($user)
+            ->postJson("/api/v1/places/{$place->id}/suggestions", ['note' => 'Closed — a barber shop now.'])
+            ->assertCreated()->json('data.id');
+
+        expect($second)->toBe($first)
+            ->and(PlaceEditSuggestion::query()->count())->toBe(1)
+            ->and(PlaceEditSuggestion::query()->sole()->note)->toBe('Closed — a barber shop now.');
+    });
+
+    it('shows the note to the operator whose venue it is about', function () {
+        $place = Place::factory()->create();
+        $owner = operatorOfPlace($place);
+        PlaceEditSuggestion::factory()->noteOnly()->create(['place_id' => $place->id]);
+
+        $this->actingAs($owner)
+            ->getJson('/api/v1/me/venues/suggestions')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            // Without this the operator's card is blank: `changes` is empty and
+            // the note is the entire proposal.
+            ->assertJsonPath('data.0.note', 'This place closed down last month.')
+            ->assertJsonCount(0, 'data.0.changes');
+    });
+});
+
+describe('actioning a note', function () {
+    it('settles a note-only row and records what was done', function () {
+        $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+        $moderator = User::factory()->create();
+        $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create(['place_id' => $place->id]);
+
+        app(PlaceSuggestionService::class)->action($suggestion, $moderator, 'Confirmed closed by phone; hid the place.');
+
+        $suggestion->refresh();
+        expect($suggestion->status)->toBe(SuggestionStatus::Actioned)
+            ->and($suggestion->reason)->toBe('Confirmed closed by phone; hid the place.')
+            ->and($suggestion->reviewed_by_user_id)->toBe($moderator->id)
+            ->and($suggestion->reviewed_at)->not->toBeNull()
+            // The verb settles the ROW. Whatever the moderator did to the place
+            // they did by hand, through the surfaces that audit it.
+            ->and($suggestion->place_edit_id)->toBeNull()
+            ->and($place->fresh()->phone)->toBe('+598 2 111 1111')
+            ->and(PlaceEdit::query()->where('place_id', $place->id)->count())->toBe(0);
+    });
+
+    /**
+     * The trap this guard exists for: Actioned must not become the one click
+     * that makes an awkward row go away. A row proposing a phone number has a
+     * real patch to apply or refuse, and settling it as "dealt with" would leave
+     * the correction unwritten under a green-ish badge nobody re-reads.
+     */
+    it('refuses a row that still proposes a field change', function () {
+        $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+        $suggestion = PlaceEditSuggestion::factory()->create([
+            'place_id' => $place->id,
+            'changes' => ['phone' => ['from' => '+598 2 111 1111', 'to' => '+598 2 900 0000']],
+            'note' => 'And the hours are wrong too.',
+        ]);
+
+        expect(fn () => app(PlaceSuggestionService::class)->action($suggestion, User::factory()->create(), 'meh'))
+            ->toThrow(ValidationException::class);
+
+        expect($suggestion->fresh()->status)->toBe(SuggestionStatus::Pending);
+    });
+
+    /** The mirror image: approving a note-only row would claim an edit that never happened. */
+    it('refuses to approve a row with nothing to apply', function () {
+        $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create();
+
+        expect(fn () => app(PlaceSuggestionService::class)->approve($suggestion, User::factory()->create()))
+            ->toThrow(ValidationException::class);
+
+        expect($suggestion->fresh()->status)->toBe(SuggestionStatus::Pending);
+    });
+
+    it('cannot re-decide a row it already settled', function () {
+        $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create();
+        $moderator = User::factory()->create();
+
+        app(PlaceSuggestionService::class)->action($suggestion, $moderator, 'Hid the place.');
+
+        // Same `lockPending()` guard as approve/reject — a settled row is
+        // settled, whichever verb comes at it next.
+        expect(fn () => app(PlaceSuggestionService::class)->action($suggestion->fresh(), $moderator, 'again'))
+            ->toThrow(ValidationException::class);
+        expect(fn () => app(PlaceSuggestionService::class)->reject($suggestion->fresh(), $moderator, 'no'))
+            ->toThrow(ValidationException::class);
+
+        expect($suggestion->fresh()->reason)->toBe('Hid the place.');
+    });
+
+    it('can still be rejected outright — the abuse path for prose', function () {
+        $suggestion = PlaceEditSuggestion::factory()->noteOnly('total nonsense')->create();
+
+        app(PlaceSuggestionService::class)->reject($suggestion, User::factory()->create(), 'Nonsense.');
+
+        expect($suggestion->fresh()->status)->toBe(SuggestionStatus::Rejected);
+    });
+
+    it('keeps an actioned row out of the operator\'s pending list', function () {
+        $place = Place::factory()->create();
+        $owner = operatorOfPlace($place);
+        PlaceEditSuggestion::factory()->noteOnly()->actioned()->create(['place_id' => $place->id]);
+
+        $this->actingAs($owner)
+            ->getJson('/api/v1/me/venues/suggestions')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    });
+});
+
 describe('the field allow-list', function () {
     it('is a strict subset of the curated fields the editor can write', function () {
         expect(array_diff(PlaceEditSuggestion::FIELDS, Place::CURATED_FIELDS))->toBe([]);

@@ -44,7 +44,7 @@ class PlaceEditSuggestionController extends Controller
             404,
         );
 
-        $suggestion = $suggestions->submit($place, $this->user($request), $request->patch());
+        $suggestion = $suggestions->submit($place, $this->user($request), $request->patch(), $request->note());
 
         return ApiResponse::item(new PlaceEditSuggestionResource($suggestion), status: 201);
     }

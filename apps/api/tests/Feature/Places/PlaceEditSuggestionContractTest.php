@@ -40,6 +40,38 @@ it('validates an operator\'s pending row, with its place block', function () {
 });
 
 /**
+ * A note-only row (T-112) is the payload shape most likely to break a client:
+ * `changes` is EMPTY and the whole proposal lives in `note`. The schema marks
+ * `note` required-but-nullable so a client cannot treat its absence as "no
+ * note" — a distinction `tsc` sees only if the field is actually emitted.
+ */
+it('validates a note-only payload, whose entire content is the note', function () {
+    $place = Place::factory()->create();
+
+    $row = $this->actingAs(User::factory()->create())
+        ->postJson("/api/v1/places/{$place->id}/suggestions", ['note' => 'This place closed down.'])
+        ->assertCreated()
+        ->json('data');
+
+    assertMatchesContract($row, 'place-edit-suggestion');
+    expect($row['changes'])->toBe([])
+        ->and($row['note'])->toBe('This place closed down.');
+});
+
+it('emits an explicit null note rather than omitting the key', function () {
+    $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+
+    $row = $this->actingAs(User::factory()->create())
+        ->postJson("/api/v1/places/{$place->id}/suggestions", ['phone' => '+598 2 900 0000'])
+        ->assertCreated()
+        ->json('data');
+
+    assertMatchesContract($row, 'place-edit-suggestion');
+    expect($row)->toHaveKey('note')
+        ->and($row['note'])->toBeNull();
+});
+
+/**
  * The value types are the part of this schema most likely to drift: opening
  * hours are an array, price range is an integer, everything else is a string,
  * and `from` is null for a field that was empty. One payload carrying all four

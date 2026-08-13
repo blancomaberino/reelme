@@ -4,7 +4,12 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } fr
 
 import { useSuggestEdit } from '@/api/hooks/useSuggestEdit';
 import type { PlaceDetail } from '@/api/places';
-import { SUGGEST_FIELDS, type SuggestEditInput, type SuggestFormField } from '@/api/suggestions';
+import {
+  NOTE_MAX_LENGTH,
+  SUGGEST_FIELDS,
+  type SuggestEditInput,
+  type SuggestFormField,
+} from '@/api/suggestions';
 import { Button } from '@/components/button';
 import { SheetShell } from '@/components/sheet-shell';
 import { TextField } from '@/components/text-field';
@@ -13,7 +18,15 @@ import { SUGGESTION_FIELD_LABEL } from '@/lib/suggestion-labels';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
-type Form = Record<SuggestFormField, string>;
+/**
+ * The five place fields plus the free-text note (T-112).
+ *
+ * `note` rides in the same state object rather than a `useState` of its own so
+ * that the seed/reset below cannot forget it — a note left behind on re-open is
+ * the same bug as a stale phone number, and one that only shows up when someone
+ * abandons the sheet and comes back.
+ */
+type Form = Record<SuggestFormField | 'note', string>;
 
 type Props = {
   visible: boolean;
@@ -55,6 +68,10 @@ export function SuggestEditSheet({ visible, onClose, place, onQueued }: Props) {
       city: place.city ?? '',
       phone: place.phone ?? '',
       website: place.website ?? '',
+      // Always blank: the note is a message, not a value being corrected. There
+      // is nothing on the place for it to be seeded FROM, and a previous
+      // submission's words must not reappear pre-filled.
+      note: '',
     }),
     [place.name, place.address_line1, place.city, place.phone, place.website],
   );
@@ -91,10 +108,18 @@ export function SuggestEditSheet({ visible, onClose, place, onQueued }: Props) {
       // disabled for it below rather than letting the API 422.
       out[field] = next === '' ? null : next;
     }
+    // Only when they wrote something. Trimmed here as well as on the API, so
+    // whitespace never enables the button for a submission the server refuses.
+    const note = form.note.trim();
+    if (note !== '') out.note = note;
+
     return out as SuggestEditInput;
   }, [form, initial]);
 
   const nameEmptied = form.name.trim() === '';
+  // A note alone is a complete proposal — the whole point of T-112 — so it
+  // counts toward `dirty` exactly like a field change. `nameEmptied` still
+  // blocks: a blank required name is a form the API would refuse, note or not.
   const dirty = Object.keys(patch).length > 0 && !nameEmptied;
 
   const submit = () => {
@@ -104,6 +129,11 @@ export function SuggestEditSheet({ visible, onClose, place, onQueued }: Props) {
         onClose();
         // Only the queued path needs a receipt. An operator's edit is its own
         // confirmation — the screen behind the sheet already shows the change.
+        //
+        // Driven by the status the API returned rather than by `owner`, which is
+        // what makes it right for T-112 with no change: an operator who ALSO
+        // wrote a note gets `pending` back, because a note queues no matter who
+        // sent it — and they see the receipt, which is the truth.
         if (suggestion.status !== 'approved') onQueued();
       },
     });
@@ -165,6 +195,29 @@ export function SuggestEditSheet({ visible, onClose, place, onQueued }: Props) {
             />
           ))}
 
+          {/* The "something else is wrong" box (T-112), last because it is the
+              fallback: everything the five fields above cannot say — "this
+              closed down", "the photo is of another restaurant". It goes to the
+              SUGGESTION queue, not to reports; the flag control on the screen
+              behind stays the abuse channel, and the two must keep reading
+              differently. */}
+          <TextField
+            label={t('suggest.field.note')}
+            value={form.note}
+            onChangeText={(value) => setForm((prev) => ({ ...prev, note: value }))}
+            placeholder={t('suggest.note.placeholder')}
+            testID="suggest-note"
+            multiline
+            numberOfLines={4}
+            maxLength={NOTE_MAX_LENGTH}
+            autoCapitalize="sentences"
+            // Left-aligned text in a tall box: RN centres multiline content
+            // vertically on Android, which reads as a mis-rendered field.
+            textAlignVertical="top"
+            style={styles.noteInput}
+          />
+          <Text style={styles.hint}>{t('suggest.note.hint')}</Text>
+
           {suggest.isError ? <Text style={styles.error}>{t('common.error.general')}</Text> : null}
 
           {/* Bottom breathing room: the last field must clear the pinned footer
@@ -207,6 +260,10 @@ const makeStyles = (c: Palette) =>
     noteText: { ...type.bodySm, flex: 1, lineHeight: 18 },
     noteTextOwner: { color: c.green },
     noteTextReview: { color: c.secondary },
+    // Tall enough to read as "write a few sentences" rather than as another
+    // one-line field that happens to wrap.
+    noteInput: { minHeight: 96, paddingTop: space.sm },
+    hint: { ...type.caption, color: c.muted, marginTop: -space.xxs },
     error: { ...type.bodySm, color: c.danger },
     tail: { height: space.xl },
   });

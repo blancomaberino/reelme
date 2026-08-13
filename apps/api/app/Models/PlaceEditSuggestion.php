@@ -21,6 +21,12 @@ use Illuminate\Support\Carbon;
  * submitter was looking at, which is how a reviewer spots a proposal that the
  * place has already moved past.
  *
+ * A row may also carry a free-text `note` (T-112) — "this place closed down",
+ * everything the five-field form cannot express. A note-only row is valid and
+ * stores an empty `changes`, so every renderer here has to survive an empty
+ * diff. On disk that is `[]` rather than `{}`: the column goes through the
+ * `array` cast, and PHP encodes an empty array as a JSON list.
+ *
  * @property int $id
  * @property int $place_id
  * @property int|null $user_id
@@ -33,6 +39,7 @@ use Illuminate\Support\Carbon;
  *                             hand-edited row crashing a moderation queue. The shape is asserted where it
  *                             is written, and re-checked where it is read.
  * @property array<string, mixed> $changes
+ * @property string|null $note
  * @property SuggestionStatus $status
  * @property bool $is_owner_submission
  * @property int|null $reviewed_by_user_id
@@ -68,7 +75,7 @@ class PlaceEditSuggestion extends Model
     ];
 
     protected $fillable = [
-        'place_id', 'user_id', 'changes', 'status', 'is_owner_submission',
+        'place_id', 'user_id', 'changes', 'note', 'status', 'is_owner_submission',
         'reviewed_by_user_id', 'reviewed_at', 'reason', 'place_edit_id',
     ];
 
@@ -85,10 +92,38 @@ class PlaceEditSuggestion extends Model
         ];
     }
 
+    /**
+     * How long a submitter's note may be (T-112).
+     *
+     * The same 2000 as `reports.details`, deliberately: it is the other
+     * free-text box on the same screen, and a limit that differed between them
+     * would be a limit somebody hit by choosing the "wrong" one.
+     */
+    public const NOTE_MAX = 2000;
+
     /** Still somebody's work. */
     public function isPending(): bool
     {
         return $this->status === SuggestionStatus::Pending;
+    }
+
+    /** Did the submitter write something a field diff cannot say? (T-112) */
+    public function hasNote(): bool
+    {
+        return $this->note !== null && $this->note !== '';
+    }
+
+    /**
+     * A note with no applicable field patch — the shape the `Actioned` verb
+     * exists for.
+     *
+     * Asked of {@see patch()} rather than of the raw `changes` column, so a row
+     * whose only proposed field is one the allow-list rejects is treated as what
+     * it actually is: prose plus nothing that can be applied.
+     */
+    public function isNoteOnly(): bool
+    {
+        return $this->hasNote() && $this->patch() === [];
     }
 
     /**

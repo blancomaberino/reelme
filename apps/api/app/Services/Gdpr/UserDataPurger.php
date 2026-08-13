@@ -59,6 +59,9 @@ class UserDataPurger
             $counts['shares'] = $shares;
             $counts['identity'] = $this->releaseInfluencerIdentity($user);
             $counts = array_merge($counts, $this->deletePersonalRows($user));
+            // Strictly before `anonymiseRetainedRows()`, which nulls `user_id`
+            // on this very table and would leave these rows unfindable.
+            $counts['suggestion_notes'] = $this->purgeSuggestionNotes($user);
             $this->anonymiseRetainedRows($user);
             $this->scrubUserRow($user);
         });
@@ -378,6 +381,10 @@ class UserDataPurger
         // Note the order against the partial unique index on
         // (place_id, user_id) WHERE status = 'pending': nulling the column can
         // never collide, because NULLs are distinct in a Postgres unique index.
+        //
+        // The FREE-TEXT note is a different question, answered by
+        // {@see purgeSuggestionNotes()} — which the caller runs BEFORE this
+        // method, while these rows can still be found by `user_id`.
         DB::table('place_edit_suggestions')->where('user_id', $id)->update(['user_id' => null]);
         DB::table('place_edit_suggestions')->where('reviewed_by_user_id', $id)->update(['reviewed_by_user_id' => null]);
 
@@ -394,6 +401,66 @@ class UserDataPurger
         // A code THIS user scanned as venue staff: the redemption is the
         // restaurant's billing record, the scanner's identity is not.
         DB::table('redemptions')->where('redeemed_by_user_id', $id)->update(['redeemed_by_user_id' => null]);
+    }
+
+    /**
+     * The free prose on a suggested edit (T-112) — the one part of that table
+     * anonymising is not enough for.
+     *
+     * T-083 keeps suggestion rows and nulls `user_id`, on the reasoning that a
+     * field patch is the business's record rather than the submitter's. A NOTE
+     * breaks that reasoning: it is 2000 characters in a person's own words,
+     * which is exactly where PII lands, and it is precisely why `reports` are
+     * deleted outright a few lines up rather than anonymised. An unattributed
+     * paragraph saying "my sister worked here until March" still identifies
+     * people.
+     *
+     * So the split is on what the row would be worth WITHOUT the prose:
+     *
+     * - **note-only rows are deleted.** There is nothing else in them — no
+     *   patch, nothing the venue could act on once the words are gone. Keeping
+     *   an empty `{}` row with a null author is keeping a record of nobody
+     *   saying nothing.
+     * - **every other row keeps its patch and loses its note.** The field diff
+     *   is the venue's record and an approved one is already part of its
+     *   history, so the row survives with `changes` intact and `note` cleared.
+     *
+     * Deliberately NOT restricted to pending/rejected rows: an approved or
+     * actioned row's note is the same prose by the same person, and "we already
+     * acted on it" is not a lawful basis for keeping their words. What survives
+     * is what was DONE — the diff, the `place_edits` row and the reviewer's own
+     * `reason`, which is the moderator's writing and not this user's.
+     *
+     * Note-only is asked of the COLUMN here, not of
+     * {@see PlaceEditSuggestion::isNoteOnly()}, which additionally treats a row
+     * whose only field is off the allow-list as note-only. The looser SQL keeps
+     * such a row instead of deleting it — and clears its note either way, so
+     * nothing this person wrote survives on either side of the split.
+     *
+     * @return int rows deleted, for the purge log line
+     */
+    private function purgeSuggestionNotes(User $user): int
+    {
+        $deleted = DB::table('place_edit_suggestions')
+            ->where('user_id', $user->id)
+            ->whereNotNull('note')
+            // BOTH empty shapes, and the list one is not hypothetical: the
+            // column is written through Eloquent's `array` cast, and PHP encodes
+            // an empty array as `[]`, never `{}`. Every note-only row in the
+            // table is therefore `[]` today — matching only `{}` deleted nothing
+            // at all, which is a purge that reports success having kept the
+            // prose. Compared as jsonb rather than as text, because Postgres
+            // normalises jsonb on write and a string comparison would turn on
+            // whitespace the column does not preserve.
+            ->whereRaw("changes IN ('{}'::jsonb, '[]'::jsonb)")
+            ->delete();
+
+        DB::table('place_edit_suggestions')
+            ->where('user_id', $user->id)
+            ->whereNotNull('note')
+            ->update(['note' => null]);
+
+        return $deleted;
     }
 
     /**

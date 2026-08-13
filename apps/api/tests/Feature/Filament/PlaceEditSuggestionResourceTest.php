@@ -152,6 +152,116 @@ it('says so out loud when an approval changes nothing', function () {
 });
 
 /**
+ * A note-only row (T-112) is the whole finding — there is no diff to read, so
+ * if the queue does not render the prose it renders nothing at all.
+ */
+it('shows the note in the row, and marks the row as a note', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    PlaceEditSuggestion::factory()->noteOnly('The pin is on the wrong side of the street.')->create();
+    // The contrast case, in the same table: the badge is only evidence of
+    // anything if it says something DIFFERENT for a field patch. Asserting the
+    // absence of "Field edit" would not do it — the filter's own option label
+    // carries that string whether or not a row does.
+    PlaceEditSuggestion::factory()->create([
+        'changes' => ['phone' => ['from' => null, 'to' => '+598 2 900 0000']],
+    ]);
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->assertSuccessful()
+        ->assertSee('The pin is on the wrong side of the street.')
+        // Visibly distinct from a field patch, so a reviewer knows before
+        // opening anything that this one needs a person to go and look. The
+        // badge deliberately does not read "Note" — that is the column's own
+        // label, and this assertion would then pass on an empty table.
+        ->assertSee('Note only')
+        ->assertSee('Field edit')
+        // And the empty diff still shows its placeholder rather than a blank cell.
+        ->assertSee('(nothing)');
+});
+
+it('settles a note-only row with Actioned and records what was done', function () {
+    $admin = User::factory()->admin()->create();
+    $this->actingAs($admin);
+
+    $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
+    $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create(['place_id' => $place->id]);
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->callTableAction('actioned', $suggestion, ['reason' => 'Confirmed closed by phone; hid the place.'])
+        ->assertNotified('Suggestion actioned');
+
+    $suggestion->refresh();
+    expect($suggestion->status)->toBe(SuggestionStatus::Actioned)
+        ->and($suggestion->reason)->toBe('Confirmed closed by phone; hid the place.')
+        ->and($suggestion->reviewed_by_user_id)->toBe($admin->id)
+        // The row is settled; the place was dealt with by hand, not by this verb.
+        ->and($place->fresh()->phone)->toBe('+598 2 111 1111')
+        ->and(PlaceEdit::query()->where('place_id', $place->id)->count())->toBe(0);
+});
+
+it('refuses to mark something actioned without saying what was done', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create();
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->callTableAction('actioned', $suggestion, ['reason' => ''])
+        ->assertHasTableActionErrors(['reason']);
+
+    expect($suggestion->fresh()->status)->toBe(SuggestionStatus::Pending);
+});
+
+/**
+ * The two verbs must not be interchangeable. Actioned on a row proposing a
+ * phone number would settle a real correction with nothing written to the
+ * place; Approve on a note-only row would claim an edit that never happened.
+ */
+it('offers each verb only to the kind of row it is for', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $noteOnly = PlaceEditSuggestion::factory()->noteOnly()->create();
+    $withPatch = PlaceEditSuggestion::factory()->create([
+        'changes' => ['phone' => ['from' => null, 'to' => '+598 2 900 0000']],
+        'note' => 'And the hours are wrong too.',
+    ]);
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->assertCanSeeTableRecords([$noteOnly, $withPatch])
+        ->assertTableActionHidden('approve', $noteOnly)
+        ->assertTableActionVisible('actioned', $noteOnly)
+        ->assertTableActionVisible('approve', $withPatch)
+        ->assertTableActionHidden('actioned', $withPatch)
+        // Rejection stays available to both — it is the abuse path for prose.
+        ->assertTableActionVisible('reject', $noteOnly);
+});
+
+it('puts the note in front of the moderator approving the fields beside it', function () {
+    $this->actingAs(User::factory()->admin()->create());
+
+    $suggestion = PlaceEditSuggestion::factory()->create([
+        'changes' => ['phone' => ['from' => null, 'to' => '+598 2 900 0000']],
+        'note' => 'They also moved to the corner unit.',
+    ]);
+
+    // Approving settles the WHOLE row, note included, so the words being closed
+    // have to be readable at the moment of closing them.
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->mountTableAction('approve', $suggestion)
+        ->assertSee('They also moved to the corner unit.');
+});
+
+it('leaves an actioned row undecidable', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    $settled = PlaceEditSuggestion::factory()->noteOnly()->actioned()->create();
+
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->filterTable('status', SuggestionStatus::Actioned->value)
+        ->assertCanSeeTableRecords([$settled])
+        ->assertTableActionHidden('actioned', $settled)
+        ->assertTableActionHidden('approve', $settled)
+        ->assertTableActionHidden('reject', $settled);
+});
+
+/**
  * The queue is read-and-decide. A moderator who could hand-write or delete a
  * suggestion would be editing the place through a second door — one that skips
  * the field allow-list and the audit trail the Places resource enforces.

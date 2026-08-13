@@ -5,7 +5,7 @@
   "description": "A proposed correction to a place's business info (T-083): the response to POST /api/v1/places/{place}/suggestions, and one row of GET /api/v1/me/venues/suggestions. The submitter is deliberately absent — an operator judges the proposal, not the person who filed it.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "place_id", "status", "is_owner_submission", "changes", "created_at", "reviewed_at"],
+  "required": ["id", "place_id", "status", "is_owner_submission", "changes", "note", "created_at", "reviewed_at"],
   "properties": {
     "id": { "type": "string" },
     "place_id": { "type": "string" },
@@ -22,8 +22,8 @@
     },
     "status": {
       "type": "string",
-      "enum": ["pending", "approved", "rejected"],
-      "description": "A verified operator's own edit comes back `approved` — it applied on submit. Everyone else's is `pending` until a moderator decides."
+      "enum": ["pending", "approved", "rejected", "actioned"],
+      "description": "A verified operator's own FIELD edit comes back `approved` — it applied on submit. Everything else is `pending` until a moderator decides, including an operator's own submission when it carries a note. `actioned` settles a note-only row: there was no patch to apply, and a human dealt with it by hand (T-112)."
     },
     "is_owner_submission": {
       "type": "boolean",
@@ -62,6 +62,11 @@
           "to": { "type": ["string", "number", "array", "null"] }
         }
       }
+    },
+    "note": {
+      "type": ["string", "null"],
+      "maxLength": 2000,
+      "description": "Free text the submitter wrote for everything the field form cannot express — \"this place closed down\", \"the pin is on the wrong side of the street\" (T-112). A row may carry a note, a set of field changes, or both; a note-only row has an empty `changes`, so any surface rendering these must survive that."
     },
     "created_at": { "type": "string", "format": "date-time" },
     "reviewed_at": { "type": ["string", "null"], "format": "date-time" }

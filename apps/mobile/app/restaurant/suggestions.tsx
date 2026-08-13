@@ -95,6 +95,16 @@ function SuggestionCard({
         <ChangeRow key={change.field} change={change} styles={styles} />
       ))}
 
+      {/* The free-text note (T-112). Not optional garnish: a note-only row has
+          an EMPTY `changes`, so without this the operator gets a card with a
+          venue name, "awaiting review", and no hint of what anyone said. */}
+      {suggestion.note ? (
+        <View style={styles.change} testID={`suggestion-note-${suggestion.id}`}>
+          <Text style={styles.field}>{t('suggest.venue.note')}</Text>
+          <Text style={styles.noteBody}>{suggestion.note}</Text>
+        </View>
+      ) : null}
+
       <Text style={styles.pending}>{t('suggest.venue.pending')}</Text>
     </View>
   );
@@ -161,6 +171,9 @@ const makeStyles = (c: Palette) =>
     // Wraps rather than scrolls: an address is longer than a phone number, and
     // a row that clipped it would hide the half being proposed.
     values: { flexDirection: 'row', alignItems: 'flex-start', flexWrap: 'wrap', gap: space.xs },
+    // Somebody's own words, so they wrap in full rather than truncating the way
+    // a field value does — the sentence IS the finding on a note-only row.
+    noteBody: { ...type.body, color: c.text },
     from: { ...type.body, color: c.muted, textDecorationLine: 'line-through', flexShrink: 1 },
     arrow: { ...type.body, color: c.muted },
     to: { ...type.body, color: c.text, fontWeight: '600', flexShrink: 1 },

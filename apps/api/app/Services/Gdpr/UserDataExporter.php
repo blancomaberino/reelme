@@ -285,6 +285,14 @@ class UserDataExporter
      * {@see reports()}: an edit suggestion is not an accusation, and knowing a
      * phone-number fix was accepted tells a bad actor nothing they could exploit.
      *
+     * `note` is here for the same reason `reports.details` is: it is free prose
+     * this person wrote, and it is the ONLY content of a note-only row — an
+     * export that shipped the empty `changes` beside it would hand someone a
+     * file that says they suggested nothing. It is also the half of T-112's
+     * erasure decision that is easiest to forget, which is why
+     * {@see UserDataPurger::purgeSuggestionNotes()} and this line are asserted
+     * by name in their respective tests.
+     *
      * @return list<array<string, mixed>>
      */
     private function placeEditSuggestions(User $user): array
@@ -296,6 +304,7 @@ class UserDataExporter
             ->get([
                 'places.name as place',
                 'place_edit_suggestions.changes',
+                'place_edit_suggestions.note',
                 'place_edit_suggestions.status',
                 'place_edit_suggestions.created_at',
             ])

@@ -14,6 +14,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -46,6 +47,26 @@ class PlaceEditSuggestionsTable
                     // the name — the row is still the venue's to act on.
                     ->placeholder('(deleted)')
                     ->searchable(),
+                // What KIND of row this is, before the reviewer reads a word of
+                // it. A note-only row needs a different verb (Actioned) and a
+                // different kind of attention — going and looking at the place —
+                // so it must not be scannable only by noticing an empty diff.
+                TextColumn::make('kind')
+                    ->label('Kind')
+                    ->badge()
+                    // "Note only" rather than "Note": the column beside it is
+                    // LABELLED Note, and a badge sharing that word makes any
+                    // assertion about the badge satisfiable by the header.
+                    ->state(fn (PlaceEditSuggestion $record): string => match (true) {
+                        $record->isNoteOnly() => 'Note only',
+                        $record->hasNote() => 'Edit + note',
+                        default => 'Field edit',
+                    })
+                    ->color(fn (string $state): string => match ($state) {
+                        'Note only' => 'info',
+                        'Edit + note' => 'warning',
+                        default => 'gray',
+                    }),
                 TextColumn::make('changes')
                     ->label('Proposed change')
                     // `->state()` rather than `formatStateUsing`: a column whose
@@ -55,6 +76,17 @@ class PlaceEditSuggestionsTable
                     ->state(fn (PlaceEditSuggestion $record): ?string => self::describe($record))
                     ->placeholder('(nothing)')
                     ->wrap(),
+                // The note IS the finding on a note-only row, so it is rendered
+                // in the table rather than behind a view page — same reasoning
+                // as the diff beside it. Bounded here because 2000 characters
+                // would push every other row off the screen; the full text is on
+                // the tooltip and in the decision modals.
+                TextColumn::make('note')
+                    ->label('Note')
+                    ->placeholder('—')
+                    ->wrap()
+                    ->limit(180)
+                    ->tooltip(fn (PlaceEditSuggestion $record): ?string => $record->note),
                 IconColumn::make('is_owner_submission')
                     ->label('Operator')
                     ->boolean()
@@ -65,8 +97,15 @@ class PlaceEditSuggestionsTable
                         SuggestionStatus::Approved => 'success',
                         SuggestionStatus::Pending => 'warning',
                         SuggestionStatus::Rejected => 'danger',
+                        // Settled, but nothing was applied from the row itself —
+                        // not the same fact as an approval, and it must not read
+                        // like one.
+                        SuggestionStatus::Actioned => 'info',
                     }),
-                TextColumn::make('reason')->placeholder('—')->toggleable(),
+                // Doubles as "what was done about it" on an actioned row — one
+                // column, because both are the reviewer's written record of how
+                // the row was settled.
+                TextColumn::make('reason')->label('Reviewer note')->placeholder('—')->toggleable(),
                 TextColumn::make('reviewedBy.username')
                     ->label('Reviewed by')
                     ->placeholder('—')
@@ -81,6 +120,18 @@ class PlaceEditSuggestionsTable
                     ->options(SuggestionStatus::class)
                     ->default(SuggestionStatus::Pending->value),
                 TernaryFilter::make('is_owner_submission')->label('Operator edits'),
+                // Notes are the rows that need a person to go and look at
+                // something, so they are worth being able to work as a batch.
+                TernaryFilter::make('note')
+                    ->label('With a note')
+                    ->nullable()
+                    ->trueLabel('With a note')
+                    ->falseLabel('Field edits only')
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->whereNotNull('note'),
+                        false: fn (Builder $query): Builder => $query->whereNull('note'),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
             ])
             ->recordActions([
                 Action::make('approve')
@@ -92,8 +143,17 @@ class PlaceEditSuggestionsTable
                     // may have scrolled out of view behind the modal.
                     ->modalDescription(fn (PlaceEditSuggestion $record): string => 'Apply this change to the place: '
                         .(self::describe($record) ?? 'nothing')
-                        .'. Every field it changes becomes human-locked, so enrichment will not overwrite it.')
-                    ->visible(fn (PlaceEditSuggestion $record): bool => $record->isPending())
+                        .'. Every field it changes becomes human-locked, so enrichment will not overwrite it.'
+                        // A row can carry both. Approving applies the fields and
+                        // settles the row — which would quietly close the note
+                        // too, so the note is put in front of the reviewer at the
+                        // moment they decide, not just in the table behind it.
+                        .($record->hasNote() ? "\n\nThey also wrote: \"{$record->note}\" — deal with that before settling this row." : ''))
+                    // Hidden on a note-only row: there is nothing to apply, so
+                    // "approved" would be a claim about an edit that never
+                    // happened. The service refuses it too — this only keeps the
+                    // button off a screen where it would be the wrong answer.
+                    ->visible(fn (PlaceEditSuggestion $record): bool => $record->isPending() && ! $record->isNoteOnly())
                     ->action(function (PlaceEditSuggestion $record): void {
                         $applied = app(PlaceSuggestionService::class)->approve($record, self::admin());
 
@@ -112,12 +172,46 @@ class PlaceEditSuggestionsTable
 
                         Notification::make()->success()->title('Suggestion applied')->send();
                     }),
+                // The verb a note needs (T-112). `approve` means "apply the
+                // patch", and "this place closed down" has none — what settles
+                // it is a person doing something, and the only record of that is
+                // what they write here.
+                Action::make('actioned')
+                    ->label('Actioned')
+                    ->icon('heroicon-o-clipboard-document-check')
+                    ->color('info')
+                    ->requiresConfirmation()
+                    ->modalHeading('Mark as actioned')
+                    ->modalDescription(fn (PlaceEditSuggestion $record): string => 'They wrote: "'
+                        .(string) $record->note
+                        .'". Do whatever it calls for on the place itself, then record it here. This settles the row; it does not change the place.')
+                    ->schema([
+                        Textarea::make('reason')
+                            ->label('What did you do?')
+                            ->required()
+                            ->minLength(3)
+                            ->maxLength(500)
+                            ->helperText('The only record of how this was resolved — "hid the place, confirmed closed by phone".'),
+                    ])
+                    // Note-only rows exclusively. A row proposing a field change
+                    // has a real patch to apply or refuse, and Actioned must not
+                    // become the one click that makes an awkward row go away
+                    // without anything reaching the place.
+                    ->visible(fn (PlaceEditSuggestion $record): bool => $record->isPending() && $record->isNoteOnly())
+                    ->action(function (PlaceEditSuggestion $record, array $data): void {
+                        app(PlaceSuggestionService::class)->action($record, self::admin(), $data['reason']);
+                        Notification::make()->success()->title('Suggestion actioned')->send();
+                    }),
                 Action::make('reject')
                     ->label('Reject')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->modalDescription('Decline this suggestion. The place is not changed.')
+                    ->modalDescription(fn (PlaceEditSuggestion $record): string => 'Decline this suggestion. The place is not changed.'
+                        // Rejecting a note-only row is the abuse path (nonsense,
+                        // an insult, a duplicate), so the words being refused
+                        // have to be readable at the moment of refusing them.
+                        .($record->hasNote() ? "\n\nThey wrote: \"{$record->note}\"" : ''))
                     ->schema([
                         Textarea::make('reason')
                             ->label('Why')

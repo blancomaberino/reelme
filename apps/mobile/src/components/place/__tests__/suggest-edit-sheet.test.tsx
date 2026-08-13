@@ -58,6 +58,7 @@ function queued() {
       status: 'pending',
       is_owner_submission: false,
       changes: [{ field: 'phone', from: '+598 2 111 1111', to: '+598 2 900 0000' }],
+      note: null,
       created_at: '2026-08-12T10:00:00+00:00',
       reviewed_at: null,
     },
@@ -139,6 +140,97 @@ it('sends only the changed fields, and clears an emptied optional one', async ()
     phone: '+598 2 900 0000',
     website: null,
   });
+});
+
+/**
+ * "Something else is wrong" (T-112). The examples that matter most — "this
+ * place closed down", "the pin is on the wrong side of the street" — are
+ * exactly the ones the five fields cannot express, so a note ALONE has to be a
+ * complete submission. If it did not count toward the dirty check, the box
+ * would be a field that renders and does nothing.
+ */
+it('enables the button on a note alone, and sends it with no field change', async () => {
+  mock.onPost('/places/cantina-vieja-abc123/suggestions').reply(201, {
+    data: { ...queued().data, changes: [], note: 'This place closed down.' },
+  });
+
+  render(<SuggestEditSheet visible onClose={jest.fn()} place={makePlace()} onQueued={jest.fn()} />, {
+    wrapper: Providers,
+  });
+
+  const submit = screen.getByTestId('suggest-submit');
+  expect(submit).toBeDisabled();
+
+  // Whitespace is not something written — same rule the fields follow, and the
+  // same one the API applies before deciding the submission is empty.
+  fireEvent.changeText(screen.getByTestId('suggest-note'), '   ');
+  expect(submit).toBeDisabled();
+
+  fireEvent.changeText(screen.getByTestId('suggest-note'), 'This place closed down.');
+  expect(submit).toBeEnabled();
+
+  fireEvent.press(submit);
+  await waitFor(() => expect(mock.history.post).toHaveLength(1));
+
+  expect(JSON.parse(mock.history.post[0].data)).toEqual({ note: 'This place closed down.' });
+});
+
+it('sends a note alongside the fields when they wrote both', async () => {
+  mock.onPost('/places/cantina-vieja-abc123/suggestions').reply(201, queued());
+
+  render(<SuggestEditSheet visible onClose={jest.fn()} place={makePlace()} onQueued={jest.fn()} />, {
+    wrapper: Providers,
+  });
+
+  fireEvent.changeText(screen.getByTestId('suggest-phone'), '+598 2 900 0000');
+  fireEvent.changeText(screen.getByTestId('suggest-note'), 'The menu prices are out of date.');
+  fireEvent.press(screen.getByTestId('suggest-submit'));
+
+  await waitFor(() => expect(mock.history.post).toHaveLength(1));
+
+  expect(JSON.parse(mock.history.post[0].data)).toEqual({
+    phone: '+598 2 900 0000',
+    note: 'The menu prices are out of date.',
+  });
+});
+
+/**
+ * An operator's FIELD edit applies on submit, but a note queues no matter who
+ * wrote it — so the API answers `pending` and the receipt is the honest thing
+ * to show. The sheet already keys on the returned status rather than on
+ * `can_edit`, which is what makes this correct; this is the test that keeps it
+ * that way.
+ */
+it('gives an operator the queued receipt when their submission carried a note', async () => {
+  mock.onPost('/places/cantina-vieja-abc123/suggestions').reply(201, {
+    data: { ...queued().data, is_owner_submission: true, note: 'The pin is wrong.' },
+  });
+  const onQueued = jest.fn();
+
+  render(
+    <SuggestEditSheet visible onClose={jest.fn()} place={makePlace({ can_edit: true })} onQueued={onQueued} />,
+    { wrapper: Providers },
+  );
+
+  fireEvent.changeText(screen.getByTestId('suggest-note'), 'The pin is wrong.');
+  fireEvent.press(screen.getByTestId('suggest-submit'));
+
+  await waitFor(() => expect(onQueued).toHaveBeenCalled());
+});
+
+it('does not carry an abandoned note into the next person\'s sheet', () => {
+  const place = makePlace();
+  const { rerender } = render(
+    <SuggestEditSheet visible onClose={jest.fn()} place={place} onQueued={jest.fn()} />,
+    { wrapper: Providers },
+  );
+
+  fireEvent.changeText(screen.getByTestId('suggest-note'), 'half a thought');
+  rerender(<SuggestEditSheet visible={false} onClose={jest.fn()} place={place} onQueued={jest.fn()} />);
+  rerender(<SuggestEditSheet visible onClose={jest.fn()} place={place} onQueued={jest.fn()} />);
+
+  expect(screen.getByTestId('suggest-note').props.value).toBe('');
+  expect(screen.getByTestId('suggest-submit')).toBeDisabled();
 });
 
 it('tells a suggester their change is queued, and closes', async () => {

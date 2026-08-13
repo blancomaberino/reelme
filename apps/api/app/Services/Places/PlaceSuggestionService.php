@@ -34,11 +34,17 @@ class PlaceSuggestionService
      * A verified operator's proposal ({@see User::ownsPlace()}) applies
      * immediately and is filed as already-approved; everyone else's queues.
      *
-     * @param  array<string, mixed>  $patch  field => proposed value
+     * A `$note` (T-112) is the "something else is wrong" box — free prose for
+     * everything the five-field form cannot express. It makes a submission
+     * substantive on its own: a note with no field change is a valid proposal,
+     * and only a submission carrying NEITHER is refused.
      *
-     * @throws ValidationException when the patch changes nothing
+     * @param  array<string, mixed>  $patch  field => proposed value
+     * @param  string|null  $note  free text, already trimmed to null when blank
+     *
+     * @throws ValidationException when the submission carries nothing at all
      */
-    public function submit(Place $place, User $user, array $patch): PlaceEditSuggestion
+    public function submit(Place $place, User $user, array $patch, ?string $note = null): PlaceEditSuggestion
     {
         // Only ever the suggestion allow-list — narrower than PlaceEditor's own
         // curated set, and applied here rather than trusted from the request so
@@ -47,9 +53,11 @@ class PlaceSuggestionService
         $patch = array_intersect_key($patch, array_flip(PlaceEditSuggestion::FIELDS));
         $changes = $this->editor->diff($place, $patch);
 
-        if ($changes === []) {
-            // An unchanged form is not a moderation task. Refused rather than
-            // filed, because a queue of no-op rows is a queue nobody triages.
+        if ($changes === [] && $note === null) {
+            // An unchanged form with nothing written on it is not a moderation
+            // task. Refused rather than filed, because a queue of no-op rows is
+            // a queue nobody triages. A NOTE alone is a different matter — it is
+            // the whole finding for "this place closed down".
             throw ValidationException::withMessages([
                 'changes' => 'This suggestion does not change anything.',
             ]);
@@ -57,7 +65,15 @@ class PlaceSuggestionService
 
         $isOwner = $user->ownsPlace($place);
 
-        if ($isOwner) {
+        // The operator's fast path is for FIELD edits only. A note asks a human
+        // for something — to check whether the place really closed, to fix what
+        // the form cannot reach — and auto-approving the row it rides on would
+        // file that question as already answered, in a state the queue does not
+        // show by default. So a note queues no matter who wrote it; the row keeps
+        // `is_owner_submission`, which is how the moderator knows it came from
+        // the venue itself. An operator who only wants to edit their own fields
+        // leaves the box empty and keeps the instant save.
+        if ($isOwner && $note === null) {
             return $this->applyAsOwner($place, $user, $patch, $changes);
         }
 
@@ -77,7 +93,7 @@ class PlaceSuggestionService
                 'user_id' => $user->id,
                 'status' => SuggestionStatus::Pending,
             ],
-            ['changes' => $changes, 'is_owner_submission' => false],
+            ['changes' => $changes, 'note' => $note, 'is_owner_submission' => $isOwner],
         );
     }
 
@@ -96,6 +112,17 @@ class PlaceSuggestionService
     {
         return DB::transaction(function () use ($suggestion, $reviewer): PlaceEditSuggestion {
             $locked = $this->lockPending($suggestion);
+
+            if ($locked->isNoteOnly()) {
+                // Nothing to apply, so "approved" would be a claim about an edit
+                // that never happened — green in the queue, null `place_edit_id`,
+                // and no record anywhere of what was actually done about "this
+                // place closed down". {@see action()} is the verb for these.
+                throw ValidationException::withMessages([
+                    'status' => 'This suggestion has no field change to apply. Use Actioned instead.',
+                ]);
+            }
+
             $place = $locked->place;
 
             $edit = $place === null ? null : $this->editor->apply(
@@ -131,6 +158,51 @@ class PlaceSuggestionService
                 'reviewed_by_user_id' => $reviewer->id,
                 'reviewed_at' => now(),
                 'reason' => $reason,
+            ])->save();
+
+            return $locked;
+        });
+    }
+
+    /**
+     * Settle a note-only proposal: the moderator dealt with it by hand (T-112).
+     *
+     * "This place closed down" has no patch to apply — what resolves it is a
+     * person going and doing something (correcting a field the form cannot
+     * reach, hiding the place, or deciding it needed nothing). This records that
+     * it was done and what was done, which is the part that would otherwise be
+     * lost: `approve` would claim an edit that never happened, and `reject`
+     * would say the submitter was wrong when they were right.
+     *
+     * Deliberately refused on a row that still carries an applicable field
+     * patch. Otherwise Actioned becomes the one-click way to make any awkward
+     * row go away, and a real correction settles green with nothing written to
+     * the place — the exact failure the queue exists to prevent.
+     *
+     * @param  string  $note  what the moderator actually did, recorded on `reason`
+     *
+     * @throws ValidationException
+     */
+    public function action(PlaceEditSuggestion $suggestion, User $reviewer, string $note): PlaceEditSuggestion
+    {
+        return DB::transaction(function () use ($suggestion, $reviewer, $note): PlaceEditSuggestion {
+            $locked = $this->lockPending($suggestion);
+
+            if ($locked->patch() !== []) {
+                throw ValidationException::withMessages([
+                    'status' => 'This suggestion proposes a field change. Approve or reject it instead.',
+                ]);
+            }
+
+            $locked->forceFill([
+                'status' => SuggestionStatus::Actioned,
+                'reviewed_by_user_id' => $reviewer->id,
+                'reviewed_at' => now(),
+                // Same column as a rejection's reason: both are the reviewer's
+                // one written record of how this row was settled, and splitting
+                // them into two nullable text columns would mean every renderer
+                // had to know which verb it was looking at to find the words.
+                'reason' => $note,
             ])->save();
 
             return $locked;
