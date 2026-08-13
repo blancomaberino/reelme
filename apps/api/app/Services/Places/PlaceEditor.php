@@ -58,28 +58,13 @@ class PlaceEditor
             if ($origin !== PlaceEdit::ORIGIN_MANUAL) {
                 $patch = $locked->withoutLockedFields($patch);
             }
-            if ($patch === []) {
-                return null;
-            }
-
-            // Capture before-values (cast) so the diff is over real, effective changes.
-            $before = [];
-            foreach (array_keys($patch) as $field) {
-                $before[$field] = $locked->getAttribute($field);
-            }
-
-            $locked->fill($patch);
-
-            $changes = [];
-            foreach ($patch as $field => $_) {
-                $to = $locked->getAttribute($field);
-                if ($this->differs($before[$field], $to)) {
-                    $changes[$field] = ['from' => $before[$field], 'to' => $to];
-                }
-            }
+            // The effective diff, against the just-locked authoritative row.
+            $changes = $this->diff($locked, $patch);
             if ($changes === []) {
                 return null;
             }
+
+            $locked->fill($patch);
 
             // A human edit takes ownership of every field it changed.
             if ($origin === PlaceEdit::ORIGIN_MANUAL) {
@@ -103,6 +88,52 @@ class PlaceEditor
 
             return $edit;
         });
+    }
+
+    /**
+     * The effective, curated-field diff a patch would produce against a place —
+     * `{field: {from, to}}`, empty when it would change nothing.
+     *
+     * Public because a *proposed* edit (T-083) has to be diffed at submit time,
+     * hours before anyone applies it: the moderation queue shows `from → to`, and
+     * a form submitted with nothing touched must be refused rather than queued as
+     * an empty proposal. Same comparison as {@see apply()} by construction — apply
+     * calls this — so a suggestion can never claim a change the write path would
+     * then treat as a no-op.
+     *
+     * Runs against a copy: the caller's instance is not modified.
+     *
+     * @param  array<string, mixed>  $patch  field => new value; non-curated keys ignored
+     * @return array<string, array{from: mixed, to: mixed}>
+     */
+    public function diff(Place $place, array $patch): array
+    {
+        $patch = array_intersect_key($patch, array_flip(Place::CURATED_FIELDS));
+        if ($patch === []) {
+            return [];
+        }
+
+        // Capture before-values (cast) so the diff is over real, effective changes.
+        $probe = clone $place;
+        $before = [];
+        foreach (array_keys($patch) as $field) {
+            $before[$field] = $probe->getAttribute($field);
+        }
+
+        // Fill so each proposed value is compared the way it would be STORED —
+        // "3" and 3 are the same price range, and a raw string comparison would
+        // record a change nobody made.
+        $probe->fill($patch);
+
+        $changes = [];
+        foreach (array_keys($patch) as $field) {
+            $to = $probe->getAttribute($field);
+            if ($this->differs($before[$field], $to)) {
+                $changes[$field] = ['from' => $before[$field], 'to' => $to];
+            }
+        }
+
+        return $changes;
     }
 
     /** Two cast attribute values differ — arrays compared by content, not identity. */

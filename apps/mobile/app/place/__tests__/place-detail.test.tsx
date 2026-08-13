@@ -159,13 +159,15 @@ it('opens directions in the maps app', async () => {
 it('renders an open/closed hours summary when hours are present', async () => {
   const withHours = {
     ...PLACE,
-    // Open every day 00:00–23:59 → always "Open now" regardless of test clock.
-    opening_hours: {
-      periods: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
-        open: { day, time: '0000' },
-        close: { day, time: '2359' },
-      })),
-    },
+    // Google's 24/7 sentinel — a single day-0 open with NO close — which
+    // `summarizeHours` treats as open for the whole week.
+    //
+    // NOT seven 00:00–23:59 periods, which is what this was and which claimed in
+    // a comment to be clock-independent. The match is end-EXCLUSIVE
+    // (`candidate < end`), so a period closing at 23:59 is genuinely shut for
+    // the minute 23:59:00–23:59:59 — a 1-in-1440 flake that duly failed in CI
+    // at 23:59 UTC and passes every time anyone runs it by hand during the day.
+    opening_hours: { periods: [{ open: { day: 0, time: '0000' } }] },
   };
   mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours });
 
@@ -588,5 +590,78 @@ describe('reporting (T-049)', () => {
       reportable_id: PLACE.id,
       reason: 'wrong_place',
     });
+  });
+});
+
+/**
+ * Suggest an edit (T-083).
+ *
+ * Every case here goes through the REAL row on the REAL screen. A sheet
+ * rendered directly in a test proves the sheet works and says nothing about
+ * whether anyone can reach it — which is the failure mode this project keeps
+ * shipping.
+ */
+describe('suggesting an edit', function () {
+  it('is reachable from the place page and patches only what changed', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+    mock.onPost(`/places/${PLACE.slug}/suggestions`).reply(201, {
+      data: {
+        id: '7',
+        place_id: PLACE.id,
+        status: 'pending',
+        is_owner_submission: false,
+        changes: [{ field: 'phone', from: PLACE.phone, to: '+59829021622' }],
+        created_at: '2026-08-12T10:00:00+00:00',
+        reviewed_at: null,
+      },
+      meta: {},
+    });
+    useSessionStore.setState({ user: null, status: 'authed' });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    fireEvent.press(screen.getByTestId('place-suggest-edit'));
+    fireEvent.changeText(await screen.findByTestId('suggest-phone'), '+59829021622');
+    fireEvent.press(screen.getByTestId('suggest-submit'));
+
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(JSON.parse(mock.history.post[0].data)).toEqual({ phone: '+59829021622' });
+  });
+
+  it('offers a guest nothing — the endpoint needs an account', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+    useSessionStore.setState({ user: null, status: 'guest' });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    expect(screen.queryByTestId('place-suggest-edit')).toBeNull();
+  });
+
+  it('words the row as an edit for the operator who may make one', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: { ...PLACE, can_edit: true } });
+    useSessionStore.setState({ user: null, status: 'authed' });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    // Same control, different promise. `can_edit` comes from the API, so a
+    // revoked claim re-words this on the next fetch rather than at next launch.
+    // By accessible NAME, not by text content: the label is what a screen
+    // reader announces, and it has to agree with what the row says.
+    expect(screen.getByLabelText('Edit business info')).toBeOnTheScreen();
+    expect(screen.getByText('Edit business info')).toBeOnTheScreen();
+  });
+
+  it('words it as a suggestion for everyone else', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+    useSessionStore.setState({ user: null, status: 'authed' });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    expect(screen.getByLabelText('Something wrong? Suggest a change')).toBeOnTheScreen();
+    expect(screen.getByText('Something wrong? Suggest a change')).toBeOnTheScreen();
   });
 });

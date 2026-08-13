@@ -20,7 +20,15 @@ export interface PlaceDetail {
   price_range: number | null;
   city: string | null;
   country_code: string;
+  /**
+   * Whether THIS viewer may edit the place directly — a verified operator (T-041/T-083). False for guests and for everyone else, whose changes go through the suggestion queue instead. Re-derived from the claim on every request.
+   */
+  can_edit: boolean;
   address: string;
+  /**
+   * The street line on its own (T-083), beside the display string `address` built from it. The suggest-an-edit form corrects this field and cannot parse it back out of the joined address.
+   */
+  address_line1: string | null;
   google_place_id: string | null;
   opening_hours: {} | unknown[] | null;
   phone: string | null;

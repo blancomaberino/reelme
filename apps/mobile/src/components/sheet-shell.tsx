@@ -19,6 +19,17 @@ type Props = {
    * pads past the home indicator so the last row clears it.
    */
   footer?: ReactNode;
+  /**
+   * Force the header ✕ even though a footer is present.
+   *
+   * The default (✕ only when there is no footer) assumes a footer is a commit
+   * button that also dismisses. That stops being true the moment the button can
+   * be DISABLED — the suggest-edit form's Save is disabled until something
+   * changes, so a sheet opened and read leaves a dead button and no visible exit
+   * at all. Opt in there rather than always showing both, which would give the
+   * filter sheet two ways to leave and no way to tell them apart.
+   */
+  showClose?: boolean;
   /** Fills the space between the fixed header and the footer. */
   children: ReactNode;
 };
@@ -36,7 +47,7 @@ type Props = {
  * RN `Modal` rather than a gesture library: it is what every other sheet in the
  * app uses, so no provider is needed.
  */
-export function SheetShell({ visible, onClose, title, action, footer, children }: Props) {
+export function SheetShell({ visible, onClose, title, action, footer, showClose, children }: Props) {
   const t = useT();
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
@@ -76,11 +87,12 @@ export function SheetShell({ visible, onClose, title, action, footer, children }
                   <Text style={styles.action}>{action.label}</Text>
                 </Pressable>
               ) : null}
-              {/* A visible exit, but only for a sheet that has no footer. A
-                  footer here is always a commit button that also dismisses
-                  (the filter sheet's "Apply"), so a second control beside it
-                  would be two ways to leave and no way to tell them apart. */}
-              {footer ? null : (
+              {/* A visible exit. Hidden only when the footer IS one: a commit
+                  button that also dismisses (the filter sheet's "Apply") makes a
+                  second control beside it two ways to leave and no way to tell
+                  them apart. A footer whose button can be disabled is not a way
+                  out, so those callers pass `showClose`. */}
+              {footer && !showClose ? null : (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('common.close')}

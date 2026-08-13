@@ -372,6 +372,14 @@ class UserDataPurger
         // Suggested edits to a business: the edit is the business's record now,
         // the suggester is not part of it.
         DB::table('place_edits')->where('user_id', $id)->update(['user_id' => null]);
+        // Same rule for the PROPOSALS (T-083), both ends of one. A pending row
+        // is still a correction a venue needs, and an approved one is already
+        // part of that venue's history — what has to go is the name attached.
+        // Note the order against the partial unique index on
+        // (place_id, user_id) WHERE status = 'pending': nulling the column can
+        // never collide, because NULLs are distinct in a Postgres unique index.
+        DB::table('place_edit_suggestions')->where('user_id', $id)->update(['user_id' => null]);
+        DB::table('place_edit_suggestions')->where('reviewed_by_user_id', $id)->update(['reviewed_by_user_id' => null]);
 
         // Moderation history: keep WHAT was decided, drop WHO decided it.
         DB::table('place_merges')->where('performed_by_user_id', $id)->update(['performed_by_user_id' => null]);

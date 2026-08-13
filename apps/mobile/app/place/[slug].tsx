@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { usePlace } from '@/api/hooks/usePlace';
@@ -18,6 +18,7 @@ import { PlaceGallery } from '@/components/place/place-gallery';
 import { ReviewSources } from '@/components/place/review-sources';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { SourceCard } from '@/components/place/source-card';
+import { SuggestEditSheet } from '@/components/place/suggest-edit-sheet';
 import { Thumbnail } from '@/components/place/thumbnail';
 import { Skeleton, SkeletonGroup } from '@/components/skeleton';
 import { useT } from '@/i18n';
@@ -91,6 +92,7 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
   const [hoursOpen, setHoursOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
   // Which review's report sheet is open, null when none. Holds the SUBJECT too
   // so the sheet can name what is being flagged — the whole point of showing it
   // back is that nobody reports the wrong row.
@@ -279,6 +281,28 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
             </Row>
           </Pressable>
         ) : null}
+
+        {/* Correct what is above (T-083). Sits at the FOOT of the info block,
+            attached by a hairline, because it is about those five lines and
+            nothing else — as a button in the action row it would have competed
+            with "Directions" and read as something you do to the venue rather
+            than to the listing. Signed-in only: the endpoint needs an account,
+            and a control that always answers "sign in first" is a dead end.
+            Verified operators get the same row with the owner's wording; the
+            server, not this label, decides whether it applies or queues. */}
+        {authed ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={place.can_edit ? t('suggest.title.owner') : t('suggest.entry')}
+            onPress={() => setSuggestOpen(true)}
+            testID="place-suggest-edit"
+            style={({ pressed }) => [styles.suggestRow, pressed && styles.suggestRowPressed]}
+          >
+            <Ionicons name={place.can_edit ? 'create-outline' : 'help-circle-outline'} size={17} color={c.muted} />
+            <Text style={styles.suggestText}>{place.can_edit ? t('suggest.title.owner') : t('suggest.entry')}</Text>
+            <Ionicons name="chevron-forward" size={16} color={c.muted} />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* Mini-map */}
@@ -396,6 +420,15 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
         updatedAt={place.dishes_updated_at}
         language={place.dishes_language}
         sources={place.sources ?? []}
+      />
+
+      <SuggestEditSheet
+        visible={suggestOpen}
+        onClose={() => setSuggestOpen(false)}
+        place={place}
+        // The receipt for a QUEUED proposal only. An operator's edit needs none:
+        // it has already landed on the screen behind the sheet.
+        onQueued={() => Alert.alert(t('suggest.queued.title'), t('suggest.queued.body'))}
       />
 
       <ReportSheet
@@ -635,6 +668,20 @@ const makeStyles = (c: Palette) =>
     weekly: { paddingLeft: 30, gap: 4, paddingBottom: 4 },
     weeklyLine: { fontSize: 14, color: c.muted },
     link: { color: c.primary },
+    // The "something here is wrong" row: attached to the info block by a
+    // hairline and muted throughout, so it is findable without competing with
+    // the primary actions below it.
+    suggestRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingTop: 12,
+      marginTop: 4,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
+    suggestRowPressed: { opacity: 0.6 },
+    suggestText: { flex: 1, fontSize: 14, color: c.muted, fontWeight: '600' },
     actions: { flexDirection: 'row', gap: 12 },
     action: {
       flex: 1,

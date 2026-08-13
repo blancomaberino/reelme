@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\OfferController;
 use App\Http\Controllers\Api\V1\PlaceClaimController;
 use App\Http\Controllers\Api\V1\PlaceController;
+use App\Http\Controllers\Api\V1\PlaceEditSuggestionController;
 use App\Http\Controllers\Api\V1\PlaceListController;
 use App\Http\Controllers\Api\V1\PlatformAccountController;
 use App\Http\Controllers\Api\V1\ProfileController;
@@ -186,6 +187,20 @@ Route::prefix('v1')->group(function () {
             Route::post('/places/{place}/claim', [PlaceClaimController::class, 'store']);
             Route::post('/places/{place}/claim/verify', [PlaceClaimController::class, 'verify']);
         });
+
+        // Suggested edits to a place's business info (T-083). Open to every
+        // signed-in user — a verified operator's proposal applies on submit, a
+        // stranger's queues for moderation, and the service decides which.
+        //
+        // On the `reviews` limiter, NOT the generic write throttle, for the
+        // reason spelled out above `POST /reports`: this is a spam-adjacent user
+        // write that lands in a moderation queue, and a flooded queue is as bad
+        // as flooded reviews. It carries a daily cap as well as a per-minute one,
+        // which 30/min alone does not.
+        Route::middleware('throttle:reviews')->group(function () {
+            Route::post('/places/{place}/suggestions', [PlaceEditSuggestionController::class, 'store']);
+        });
+        Route::get('/me/venues/suggestions', [PlaceEditSuggestionController::class, 'forMyVenues']);
 
         // Wallet + payouts (T-045, 03 §2.14). Reads are on the interactive
         // limiter; the payout request is throttled hard — it moves real money

@@ -132,6 +132,7 @@ class UserDataExporter
             'lists' => $this->lists($user),
             'place_tags' => $this->placeTags($user),
             'reviews' => $this->reviews($user),
+            'place_edit_suggestions' => $this->placeEditSuggestions($user),
             'reports' => $this->reports($user),
             'follows' => $this->follows($user),
             'notifications' => $this->notifications($user),
@@ -273,6 +274,31 @@ class UserDataExporter
             ->join('places', 'reviews.place_id', '=', 'places.id')
             ->where('reviews.user_id', $user->id)
             ->get(['places.name as place', 'reviews.rating', 'reviews.body', 'reviews.created_at'])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
+     * Corrections this person proposed to a business listing (T-083).
+     *
+     * Their own submission, so their own data — including the verdict, unlike
+     * {@see reports()}: an edit suggestion is not an accusation, and knowing a
+     * phone-number fix was accepted tells a bad actor nothing they could exploit.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function placeEditSuggestions(User $user): array
+    {
+        return DB::table('place_edit_suggestions')
+            ->join('places', 'place_edit_suggestions.place_id', '=', 'places.id')
+            ->where('place_edit_suggestions.user_id', $user->id)
+            ->orderBy('place_edit_suggestions.id')
+            ->get([
+                'places.name as place',
+                'place_edit_suggestions.changes',
+                'place_edit_suggestions.status',
+                'place_edit_suggestions.created_at',
+            ])
             ->map(fn ($row) => (array) $row)
             ->all();
     }

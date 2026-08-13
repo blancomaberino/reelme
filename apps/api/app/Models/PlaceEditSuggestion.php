@@ -1,0 +1,166 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\SuggestionStatus;
+use App\Services\Places\PlaceEditor;
+use Database\Factories\PlaceEditSuggestionFactory;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
+
+/**
+ * A proposed correction to a place's business info (T-083) — "the phone number
+ * is wrong", from anyone signed in.
+ *
+ * This table holds *proposals*; {@see PlaceEdit} still holds what was applied,
+ * and an approved row points at the edit it produced. `changes` is the same
+ * `{field: {from, to}}` diff shape, captured at submit time: `from` is what the
+ * submitter was looking at, which is how a reviewer spots a proposal that the
+ * place has already moved past.
+ *
+ * @property int $id
+ * @property int $place_id
+ * @property int|null $user_id
+ *                             Note the loose `$changes` type. The intended shape is
+ *                             `{field: {from, to}}` — what {@see PlaceEditor::diff()} produces and what
+ *                             {@see PlaceEdit} declares — but this column is jsonb read back through an
+ *                             `array` cast, so what comes OUT is whatever is in the row. Declaring the
+ *                             precise shape would make PHPStan prove the runtime guards in `patch()` and in
+ *                             the two renderers unreachable, and deleting them would leave a legacy or
+ *                             hand-edited row crashing a moderation queue. The shape is asserted where it
+ *                             is written, and re-checked where it is read.
+ * @property array<string, mixed> $changes
+ * @property SuggestionStatus $status
+ * @property bool $is_owner_submission
+ * @property int|null $reviewed_by_user_id
+ * @property Carbon|null $reviewed_at
+ * @property string|null $reason
+ * @property int|null $place_edit_id
+ * @property Carbon $created_at
+ * @property Carbon $updated_at
+ */
+class PlaceEditSuggestion extends Model
+{
+    /** @use HasFactory<PlaceEditSuggestionFactory> */
+    use HasFactory;
+
+    /**
+     * The curated fields a *suggestion* may propose — a strict subset of
+     * {@see Place::CURATED_FIELDS}, and the only allow-list either path
+     * validates against.
+     *
+     * The picture fields (`image_url`, `thumbnail_url`, `gallery_json`) are
+     * deliberately absent. They are URLs the app renders as the venue's hero and
+     * as its map marker, so accepting one from an arbitrary signed-in stranger
+     * is an image-injection surface with a moderation step that only ever sees
+     * a link, not what it will serve tomorrow. Pictures stay a curator/enrichment
+     * concern (T-084/T-099).
+     *
+     * @var list<string>
+     */
+    public const FIELDS = [
+        'name', 'address_line1', 'address_line2', 'city', 'region', 'postal_code',
+        'country_code', 'cuisine_primary', 'price_range', 'phone', 'website',
+        'opening_hours_json',
+    ];
+
+    protected $fillable = [
+        'place_id', 'user_id', 'changes', 'status', 'is_owner_submission',
+        'reviewed_by_user_id', 'reviewed_at', 'reason', 'place_edit_id',
+    ];
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'changes' => 'array',
+            'status' => SuggestionStatus::class,
+            'is_owner_submission' => 'boolean',
+            'reviewed_at' => 'datetime',
+        ];
+    }
+
+    /** Still somebody's work. */
+    public function isPending(): bool
+    {
+        return $this->status === SuggestionStatus::Pending;
+    }
+
+    /**
+     * The flat patch this suggestion proposes — `{field: to}`, which is what
+     * {@see PlaceEditor::apply()} takes. Derived rather than
+     * stored a second time: two copies of the same proposal is one copy too many.
+     *
+     * @return array<string, mixed>
+     */
+    public function patch(): array
+    {
+        $patch = [];
+
+        // `getAttribute()`, NOT `$this->changes`. Eloquent's HasAttributes
+        // declares `protected $changes` (the dirty-attribute tracker), so INSIDE
+        // the model that property wins over `__get` and the column is silently
+        // invisible — every read comes back as the empty tracker array, and a
+        // suggestion applies nothing at all. From outside the model the property
+        // is inaccessible and `__get` reaches the column as normal, which is why
+        // the resource and the Filament table can spell it the short way.
+        /** @var array<string, mixed> $changes */
+        $changes = $this->getAttribute('changes') ?? [];
+
+        foreach ($changes as $field => $change) {
+            if (is_array($change) && array_key_exists('to', $change)) {
+                $patch[$field] = $change['to'];
+            }
+        }
+
+        // Confined HERE rather than only at submit time. `changes` is a jsonb
+        // column, and everything that applies a suggestion goes through this
+        // method — so a row that got into the table by another route (a console
+        // command, an import, a future surface) still cannot write a field the
+        // allow-list excludes. PlaceEditor's own filter is the wider *curated*
+        // set, which includes the picture URLs a suggestion may never propose.
+        return array_intersect_key($patch, array_flip(self::FIELDS));
+    }
+
+    /**
+     * @param  Builder<PlaceEditSuggestion>  $query
+     * @return Builder<PlaceEditSuggestion>
+     */
+    public function scopePending(Builder $query): Builder
+    {
+        return $query->where('status', SuggestionStatus::Pending);
+    }
+
+    /** @return BelongsTo<Place, $this> */
+    public function place(): BelongsTo
+    {
+        return $this->belongsTo(Place::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function reviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by_user_id');
+    }
+
+    /**
+     * The audit row an approval produced, if it changed anything.
+     *
+     * @return BelongsTo<PlaceEdit, $this>
+     */
+    public function placeEdit(): BelongsTo
+    {
+        return $this->belongsTo(PlaceEdit::class);
+    }
+}

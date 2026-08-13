@@ -81,6 +81,24 @@ describe('summarizeHours', () => {
     expect(s.weekly).toEqual(['Sunday: Closed', 'Monday: 9 AM–11 PM']);
   });
 
+  /**
+   * The end of a window is EXCLUSIVE, which makes "open until 23:59" mean shut
+   * for that final minute. Worth pinning rather than leaving to be rediscovered:
+   * a test fixture built as seven 00:00–23:59 periods called itself
+   * clock-independent, and failed in CI exactly once, at 23:59 UTC.
+   */
+  it('treats a window as closed at its own closing minute', () => {
+    const tillMidnightIsh = {
+      periods: [{ open: { day: 3, time: '0000' }, close: { day: 3, time: '2359' } }],
+    };
+
+    expect(summarizeHours(tillMidnightIsh, new Date(2026, 7, 12, 23, 58, 0)).openNow).toBe(true);
+    expect(summarizeHours(tillMidnightIsh, new Date(2026, 7, 12, 23, 59, 0)).openNow).toBe(false);
+    // Which is why an always-open fixture must use the sentinel, not 23:59.
+    expect(summarizeHours({ periods: [{ open: { day: 0, time: '0000' } }] },
+      new Date(2026, 7, 12, 23, 59, 0)).label).toBe('Open now');
+  });
+
   it('never throws on malformed periods', () => {
     // @ts-expect-error deliberately malformed
     expect(() => summarizeHours({ periods: [{ open: null }, { foo: 'bar' }] }, wed1430)).not.toThrow();

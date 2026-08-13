@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Place;
+use App\Models\User;
 use App\Models\UserPlaceTag;
 use App\Services\Places\PlaceAggregations;
 use Illuminate\Http\Request;
@@ -83,6 +84,20 @@ class PlaceResource extends JsonResource
             'city' => $this->city,
             'country_code' => $this->country_code,
             'address' => $this->formattedAddress(),
+            // The street line on its own, beside the display string built from
+            // it. The suggest-an-edit form (T-083) has to round-trip what it is
+            // correcting, and it cannot parse a street back out of
+            // "Calle X, Montevideo, UY" — every other suggestable field was
+            // already readable under its own name.
+            'address_line1' => $this->address_line1,
+            // Whether THIS viewer may edit the place directly — a verified
+            // operator (T-041). Drives the client's choice between "suggest a
+            // change" and "edit", and is re-derived from the claim on every
+            // request, so a revoked claim revokes the direct edit with it.
+            // Guests get false rather than a missing key: an absent boolean
+            // reads as "unknown" at the call site and is one `??` from being
+            // treated as true.
+            'can_edit' => $this->viewerOwnsPlace($request),
             'google_place_id' => $this->google_place_id,
             'opening_hours' => $this->opening_hours_json,
             'phone' => $this->phone,
@@ -149,6 +164,21 @@ class PlaceResource extends JsonResource
                 fn () => UserPlaceTagResource::collection($this->myTags),
             ),
         ];
+    }
+
+    /**
+     * Does the authenticated viewer operate this place (T-041)?
+     *
+     * Resolved through the `sanctum` guard exactly as `my_tags` is, because this
+     * resource is served from a PUBLIC route: `$request->user()` with no guard
+     * named consults the session/web guard and answers null for every token
+     * request, which would silently tell every operator they may not edit.
+     */
+    private function viewerOwnsPlace(Request $request): bool
+    {
+        $viewer = $request->user('sanctum');
+
+        return $viewer instanceof User && $viewer->ownsPlace($this->resource);
     }
 
     /** Comma-join the non-null address parts (line1, city, region, country). */

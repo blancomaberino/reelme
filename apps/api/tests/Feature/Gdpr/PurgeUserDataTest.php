@@ -6,12 +6,14 @@ use App\Enums\PayoutStatus;
 use App\Enums\RedemptionStatus;
 use App\Enums\ReportStatus;
 use App\Enums\ShareStatus;
+use App\Enums\SuggestionStatus;
 use App\Models\Device;
 use App\Models\Influencer;
 use App\Models\MediaAsset;
 use App\Models\Offer;
 use App\Models\Payout;
 use App\Models\Place;
+use App\Models\PlaceEditSuggestion;
 use App\Models\PlaceList;
 use App\Models\PlaceSource;
 use App\Models\PlatformAccount;
@@ -373,6 +375,23 @@ it('cuts every retained pointer at the purged user', function () {
     expect(DB::table('place_edits')->where('user_id', $user->id)->count())->toBe(0)
         ->and(DB::table('place_edits')->whereNull('user_id')->count())->toBe(1)
         ->and(Redemption::find($redemption->id)->redeemed_by_user_id)->toBeNull();
+});
+
+it('cuts both pointers on a suggested edit — the submitter and the reviewer', function () {
+    ['user' => $user] = gdprPurgeFixture();
+
+    // The two ends of one row, and both name a person: a pending proposal this
+    // user filed, and a settled one this user (as an admin) decided.
+    $mine = PlaceEditSuggestion::factory()->create(['user_id' => $user->id]);
+    $reviewed = PlaceEditSuggestion::factory()->approved()->create(['reviewed_by_user_id' => $user->id]);
+
+    app(UserDataPurger::class)->purge($user);
+
+    // The rows STAY — a correction is the venue's to act on, and a moderation
+    // decision is the record we keep — but neither may still name this person.
+    expect($mine->fresh()->user_id)->toBeNull()
+        ->and($mine->fresh()->status)->toBe(SuggestionStatus::Pending)
+        ->and($reviewed->fresh()->reviewed_by_user_id)->toBeNull();
 });
 
 it('leaves the follow counters of everyone else correct', function () {
