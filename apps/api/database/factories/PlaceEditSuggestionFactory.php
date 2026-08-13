@@ -7,6 +7,7 @@ use App\Models\Place;
 use App\Models\PlaceEditSuggestion;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use InvalidArgumentException;
 
 /**
  * @extends Factory<PlaceEditSuggestion>
@@ -51,6 +52,23 @@ class PlaceEditSuggestionFactory extends Factory
      */
     public function noteOnly(string $note = self::DEFAULT_NOTE): static
     {
+        // Trimmed and refused when blank, mirroring
+        // {@see SuggestPlaceEditRequest::note()} — which is what makes "   " and
+        // "" and absent the same thing before anything decides whether a
+        // submission carries something. Without this, `noteOnly('')` mints the
+        // one row the whole feature refuses to create: an empty diff AND no
+        // note, which `submit()` 422s and `action()` will not settle. Throwing
+        // beats silently substituting a default: the caller asked for a state
+        // that cannot exist, and a test built on it would assert against a row
+        // no user could ever produce.
+        $note = trim($note);
+
+        if ($note === '') {
+            throw new InvalidArgumentException(
+                'noteOnly() needs a note — a row with an empty diff and no note is one no submit path can create.'
+            );
+        }
+
         return $this->state(fn (): array => [
             'changes' => [],
             'note' => $note,

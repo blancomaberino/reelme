@@ -388,6 +388,23 @@ describe('actioning a note', function () {
     });
 
     /**
+     * The factory must not be able to mint the row the feature refuses to
+     * create. `noteOnly('')` would leave an empty diff AND no note — nothing
+     * `submit()` accepts and nothing `action()` will settle — and a moderation
+     * test resting on it would assert against a row no user could produce.
+     */
+    it('refuses to build a note-only state with a blank note', function () {
+        expect(fn () => PlaceEditSuggestion::factory()->noteOnly(''))
+            ->toThrow(InvalidArgumentException::class)
+            ->and(fn () => PlaceEditSuggestion::factory()->noteOnly('   '))
+            ->toThrow(InvalidArgumentException::class);
+
+        // And the trim is a trim, not a rejection of anything with spaces.
+        expect(PlaceEditSuggestion::factory()->noteOnly('  closed  ')->create()->note)
+            ->toBe('closed');
+    });
+
+    /**
      * A row with no patch AND no note. `submit()` cannot produce one — it
      * refuses a submission carrying neither — but a seeder, an import or a
      * console command can, and settling it as Actioned would record a decision

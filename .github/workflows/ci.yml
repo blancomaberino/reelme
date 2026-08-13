@@ -28,6 +28,13 @@ permissions:
 # which is why it never appeared in the warnings.
 #
 # Do not downgrade any of these below the floor without re-reading the above.
+#
+# Every checkout passes `persist-credentials: false`. By default the action
+# writes the job token into `.git/config`, where every later step can read it
+# — including the third-party code that `composer install` and `npm ci` fetch
+# and execute moments afterwards. Nothing here needs it: the only `git` in
+# this file is a local `git diff` for contract drift. If a job ever does need
+# to push or fetch, give THAT step the credential rather than all of them.
 
 jobs:
   # Detect which areas a PR touches so unrelated jobs skip. On `main` pushes
@@ -42,6 +49,8 @@ jobs:
       contracts: ${{ steps.filter.outputs.contracts }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # see the note above
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -113,6 +122,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # see the note above
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -177,6 +188,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # see the note above
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -207,6 +220,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # see the note above
 
       - name: Setup Node
         uses: actions/setup-node@v7
