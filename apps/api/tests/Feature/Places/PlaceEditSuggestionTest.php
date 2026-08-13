@@ -627,9 +627,15 @@ describe('moderating', function () {
         // would silently undo.
         $place->update(['phone' => '+598 2 777 7777']);
 
-        expect(fn () => app(PlaceSuggestionService::class)->approve($suggestion->fresh(), $moderator))
+        // The STALE `$suggestion`, not `->fresh()`. A re-read would hand the
+        // service a copy that already says `approved`, so the guard would be
+        // satisfied by memory and never asked to prefer the locked row — the
+        // test would pass against exactly the implementation it forbids. (T-083
+        // wrote it the weaker way; the grounding scan in /coderabbit now flags
+        // the shape, which is how this one surfaced.)
+        expect(fn () => app(PlaceSuggestionService::class)->approve($suggestion, $moderator))
             ->toThrow(ValidationException::class);
-        expect(fn () => app(PlaceSuggestionService::class)->reject($suggestion->fresh(), $moderator, 'changed my mind'))
+        expect(fn () => app(PlaceSuggestionService::class)->reject($suggestion, $moderator, 'changed my mind'))
             ->toThrow(ValidationException::class);
 
         expect($place->fresh()->phone)->toBe('+598 2 777 7777');
