@@ -3027,6 +3027,36 @@
       ],
       "agent": "executor",
       "notes": "Full spec in tasks/T-112-suggestion-free-text-note.md. Requested 2026-08-12 during T-083 verification. Owner decisions taken up front: same queue as T-083 (not reports), and a new 'Actioned' verb for note-only rows. | DONE 2026-08-13: merged as 8b784e9 (PR #193). Two CodeRabbit rounds (4 then 2 findings), all fixed; deb456d merged unreviewed and recorded on the PR."
+    },
+    {
+      "id": "T-113",
+      "title": "Age gate on signup: a neutral age screen, enforced not merely stated",
+      "phase": "M5",
+      "status": "in_progress",
+      "depends_on": [
+        "T-054"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Http/Requests/Auth/RegisterRequest.php",
+        "apps/api/app/Http/Controllers/Api/V1/Auth/RegisterController.php",
+        "apps/api/config/legal.php",
+        "apps/api/database/migrations/",
+        "apps/mobile/app/(auth)/register.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md#auth",
+        "07-risks-decisions.md#risk-register"
+      ],
+      "acceptance": [
+        "Registration requires a date of birth, rejects under-13 with a distinct error code, and NEVER persists the date",
+        "Only the outcome is stored (users.age_verified_at); asserted that the date reaches no column",
+        "The enforced age and the age the published terms STATE come from one config value, asserted equal",
+        "Mobile: a neutral date entry on the register screen, localized, with the rejection surfaced clearly",
+        "GDPR export includes the verification timestamp; purge handles it"
+      ],
+      "agent": "executor",
+      "notes": "Requested 2026-08-13 during T-054 review. The terms say \"at least 13 years old\" and NOTHING enforced it — the claim was true of the document and false of the app.\n\nOWNER DECISIONS taken up front: (a) a NEUTRAL AGE SCREEN — the date of birth is validated and DISCARDED, with only an `age_verified_at` timestamp stored, so the gate does not become a reason to collect a new identifier from every user and §3 of store-readiness.md stays true as written; (b) minimum age 13 EVERYWHERE, matching the terms, which already carry a clause deferring to a higher local minimum where the law sets one.\n\nTRAP: RegisterController does `User::create($request->safe()->except('device_name'))`. The date is currently dropped only because it is absent from the model's Fillable attribute — that is an ACCIDENT, not a guarantee, and it silently reverses the day someone adds the column for another reason. Exclude it explicitly and assert the non-persistence.\n\nBRANCHING DEVIATION (ADR): branched from feat/T-054-legal-documents rather than main, and must merge after PR #194. The enforced age has to be the same value the published terms state, and that config file (config/legal.php) exists only on that branch. Branching from main would mean two divergent copies of it."
     }
   ]
 }
