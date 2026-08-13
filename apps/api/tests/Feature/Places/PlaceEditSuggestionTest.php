@@ -241,6 +241,24 @@ describe('a free-text note', function () {
         expect(PlaceEditSuggestion::query()->count())->toBe(0);
     });
 
+    /**
+     * The limit is written down THREE times — the PHP const, `maxLength` in
+     * place-edit-suggestion.json, and the mobile field's `maxLength` prop — and
+     * nothing else in the build compares them. A boundary test derived from
+     * `NOTE_MAX` moves with the const, so it stays green while the schema (and
+     * therefore every generated client) keeps promising the old number.
+     */
+    it('agrees with the contract schema on how long a note may be', function () {
+        $path = config('contracts.schemas_path').'/place-edit-suggestion.json';
+        $schema = json_decode((string) file_get_contents($path), true);
+
+        expect($schema['properties']['note']['maxLength'] ?? null)->toBe(PlaceEditSuggestion::NOTE_MAX)
+            // Pinned to the literal as well, because both sides moving together
+            // to a wrong number is still drift — this is the value `reports.
+            // details` uses, and the two boxes sit on the same screen.
+            ->and(PlaceEditSuggestion::NOTE_MAX)->toBe(2000);
+    });
+
     it('bounds the note at the same length as a report\'s details', function () {
         $place = Place::factory()->create();
 
@@ -369,6 +387,22 @@ describe('actioning a note', function () {
         expect($suggestion->fresh()->status)->toBe(SuggestionStatus::Pending);
     });
 
+    /**
+     * A row with no patch AND no note. `submit()` cannot produce one — it
+     * refuses a submission carrying neither — but a seeder, an import or a
+     * console command can, and settling it as Actioned would record a decision
+     * about nothing: no field written, no finding to point at, and a reviewer's
+     * note answering a question nobody asked.
+     */
+    it('refuses to action a row that says nothing at all', function () {
+        $empty = PlaceEditSuggestion::factory()->create(['changes' => [], 'note' => null]);
+
+        expect(fn () => app(PlaceSuggestionService::class)->action($empty, User::factory()->create(), 'done'))
+            ->toThrow(ValidationException::class);
+
+        expect($empty->fresh()->status)->toBe(SuggestionStatus::Pending);
+    });
+
     /** The mirror image: approving a note-only row would claim an edit that never happened. */
     it('refuses to approve a row with nothing to apply', function () {
         $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create();
@@ -383,13 +417,21 @@ describe('actioning a note', function () {
         $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create();
         $moderator = User::factory()->create();
 
-        app(PlaceSuggestionService::class)->action($suggestion, $moderator, 'Hid the place.');
+        // A SEPARATE instance settles it, so `$suggestion` below still holds
+        // `pending` in memory — which is the state the guard must not trust.
+        // Deciding with `->fresh()` instead would re-read the row first, so the
+        // caller's own copy already says `actioned` and the guard is never asked
+        // to prefer the locked row over memory: the test would pass against an
+        // implementation that only checked `$suggestion->isPending()`.
+        app(PlaceSuggestionService::class)->action($suggestion->fresh(), $moderator, 'Hid the place.');
+
+        expect($suggestion->isPending())->toBeTrue();
 
         // Same `lockPending()` guard as approve/reject — a settled row is
         // settled, whichever verb comes at it next.
-        expect(fn () => app(PlaceSuggestionService::class)->action($suggestion->fresh(), $moderator, 'again'))
+        expect(fn () => app(PlaceSuggestionService::class)->action($suggestion, $moderator, 'again'))
             ->toThrow(ValidationException::class);
-        expect(fn () => app(PlaceSuggestionService::class)->reject($suggestion->fresh(), $moderator, 'no'))
+        expect(fn () => app(PlaceSuggestionService::class)->reject($suggestion, $moderator, 'no'))
             ->toThrow(ValidationException::class);
 
         expect($suggestion->fresh()->reason)->toBe('Hid the place.');

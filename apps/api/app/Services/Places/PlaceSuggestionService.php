@@ -188,9 +188,17 @@ class PlaceSuggestionService
         return DB::transaction(function () use ($suggestion, $reviewer, $note): PlaceEditSuggestion {
             $locked = $this->lockPending($suggestion);
 
-            if ($locked->patch() !== []) {
+            // `isNoteOnly()`, not `patch() === []` — the same predicate
+            // `approve()` refuses on and the same one the Filament button is
+            // gated by, so the rule "Actioned is for note-only rows" is true in
+            // one place instead of approximately true in three. The looser
+            // check also let through a row with NO patch and NO note (not from
+            // `submit()`, but reachable from a seeder, an import or a console
+            // command), which would settle as Actioned with no finding recorded
+            // anywhere — a decision about nothing.
+            if (! $locked->isNoteOnly()) {
                 throw ValidationException::withMessages([
-                    'status' => 'This suggestion proposes a field change. Approve or reject it instead.',
+                    'status' => 'This suggestion is not a note-only proposal. Approve or reject it instead.',
                 ]);
             }
 
