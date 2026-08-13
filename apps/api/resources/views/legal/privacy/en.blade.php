@@ -284,8 +284,9 @@
 
   <h2 id="children">Children</h2>
   <p>
-    Reelmap is not directed at children under 13 and we do not knowingly collect data from anyone that age.
-    If we find an account belonging to someone under 13, we delete it. If you are a parent or guardian and
+    Reelmap is not directed at children under {{ $minimumAge }} and we do not knowingly collect data from
+    anyone that age. If we find an account belonging to someone under {{ $minimumAge }}, we delete it. If you
+    are a parent or guardian and
     believe a child in your care has created an account, write to
     <a href="mailto:{{ $contact }}">{{ $contact }}</a> and we will remove it.
   </p>

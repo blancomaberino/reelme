@@ -39,7 +39,7 @@
 
   <h2 id="who">Who can use Reelmap</h2>
   <p>
-    You must be at least <strong>13 years old</strong> to create an account. If the minimum age for consenting
+    You must be at least <strong>{{ $minimumAge }} years old</strong> to create an account. If the minimum age for consenting
     to the processing of personal data is higher in your country, that age applies instead. By registering you
     confirm you meet that requirement.
   </p>

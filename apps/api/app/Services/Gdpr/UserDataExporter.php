@@ -157,6 +157,11 @@ class UserDataExporter
             'bio' => $user->bio,
             'avatar_path' => $user->avatar_path,
             'birthdate' => $user->birthdate?->toDateString(),
+            // The outcome of the signup age check (T-113). Included because an
+            // access request should show everything held about the person —
+            // including that a check was made, and when. The date it was made
+            // against is not here because it is not held anywhere.
+            'age_verified_at' => $user->age_verified_at?->toIso8601String(),
             'favorite_topics' => $user->favorite_topics,
             'favorite_foods' => $user->favorite_foods,
             'locale' => $user->locale,

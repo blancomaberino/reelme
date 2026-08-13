@@ -9,7 +9,7 @@ import { useUiStore } from '@/stores/ui';
 
 import { resetClientCache } from './query-client';
 import { clearToken, getToken } from './token';
-import { EmailNotVerifiedError, NetworkError, ValidationError, type FieldErrors } from './types';
+import { AgeRestrictedError, EmailNotVerifiedError, NetworkError, ValidationError, type FieldErrors } from './types';
 
 type ApiErrorEnvelope = {
   error?: { code?: string; message?: string; details?: Record<string, string[] | string> };
@@ -76,6 +76,16 @@ api.interceptors.response.use(
       if (!bootstrapping) {
         router.replace('/(auth)/login');
       }
+    }
+
+    // The signup age gate (T-113). Checked BEFORE the generic 422 branch below:
+    // `age_restricted` is a 422 whose details are `{minimum_age, field}`, not
+    // per-field message arrays, so the generic mapping would turn it into
+    // nonsense field errors like `minimum_age: "13"` and the screen would show
+    // the user a stray number instead of a reason.
+    if (status === 422 && error.response?.data?.error?.code === 'age_restricted') {
+      const minimum = Number(error.response?.data?.error?.details?.minimum_age);
+      return Promise.reject(new AgeRestrictedError(Number.isFinite(minimum) ? minimum : 0));
     }
 
     if (status === 422) {

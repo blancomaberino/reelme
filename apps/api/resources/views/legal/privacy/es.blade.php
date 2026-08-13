@@ -291,8 +291,8 @@
 
   <h2 id="menores">Menores de edad</h2>
   <p>
-    Reelmap no está dirigida a menores de 13 años y no recogemos datos de forma consciente de personas de
-    esa edad. Si detectamos una cuenta de alguien menor de 13, la eliminamos. Si sos madre, padre o tutor y
+    Reelmap no está dirigida a menores de {{ $minimumAge }} años y no recogemos datos de forma consciente de
+    personas de esa edad. Si detectamos una cuenta de alguien menor de {{ $minimumAge }}, la eliminamos. Si sos madre, padre o tutor y
     creés que un menor a tu cargo creó una cuenta, escribinos a
     <a href="mailto:{{ $contact }}">{{ $contact }}</a> y la damos de baja.
   </p>

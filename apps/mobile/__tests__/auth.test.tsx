@@ -83,7 +83,13 @@ it('register duplicate-email 422 maps to the email field', async () => {
   let error: unknown;
   await act(async () => {
     try {
-      await result.current.mutateAsync({ name: 'A', username: 'a', email: 'taken@example.com', password: 'secret123!' });
+      await result.current.mutateAsync({
+        name: 'A',
+        username: 'a',
+        email: 'taken@example.com',
+        password: 'secret123!',
+        date_of_birth: '1990-01-01',
+      });
     } catch (e) {
       error = e;
     }

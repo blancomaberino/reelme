@@ -60,6 +60,7 @@ class ApiExceptionRenderer
         return match (true) {
             $e instanceof ValidationException => [422, 'validation_failed', $e->getMessage(), $e->errors()],
             $e instanceof EmailNotVerifiedException => [403, 'email_not_verified', $e->getMessage(), $e->details()],
+            $e instanceof AgeRestrictedException => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
             $e instanceof ClaimException => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
             $e instanceof RedemptionInvalid => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
             $e instanceof PayoutFailed => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],

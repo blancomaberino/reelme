@@ -374,6 +374,12 @@ export const en = {
   // Consent line under the register button (T-054). Split into fragments
   // because the two document names are tappable links inside the sentence —
   // one interpolated string cannot carry a pressable span.
+  'auth.field.dateOfBirth': 'Date of birth',
+  'auth.field.dateOfBirthPlaceholder': 'YYYY-MM-DD',
+  // The neutral age screen (T-113). Says plainly that the date is not kept —
+  // asking for a birthday is exactly the moment someone wonders why.
+  'auth.register.dateOfBirthHint': 'We only use this to check your age. It is not saved.',
+  'auth.register.tooYoung': 'You need to be at least {{age}} to use Reelmap.',
   'auth.register.legalPrefix': 'By creating an account you agree to our ',
   'auth.register.legalTerms': 'Terms of Service',
   'auth.register.legalJoin': ' and ',

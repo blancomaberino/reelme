@@ -15,6 +15,7 @@ pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->in('Feature', 'Load');
 
+require_once __DIR__.'/Helpers/AuthHelpers.php';
 require_once __DIR__.'/Helpers/PipelineHelpers.php';
 require_once __DIR__.'/Helpers/PipelineE2EHelpers.php';
 require_once __DIR__.'/Helpers/ContractHelpers.php';
