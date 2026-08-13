@@ -179,6 +179,32 @@ it('shows the note in the row, and marks the row as a note', function () {
         ->assertSee('(nothing)');
 });
 
+/**
+ * The queue opens on PENDING, where "Reviewer note" and "Reviewed by" are empty
+ * on every row — and eleven columns in one table left the note about forty
+ * pixels wide, one word per line. Hiding the two dead ones by default is what
+ * buys prose the room to be read; a future edit that un-hides them takes it
+ * straight back.
+ */
+it('opens with the note visible and the always-empty review columns hidden', function () {
+    $this->actingAs(User::factory()->admin()->create());
+    $suggestion = PlaceEditSuggestion::factory()->noteOnly()->create();
+
+    // On the RENDERED headers, not on `assertTableColumnHidden` — that asks the
+    // column's `hidden()` closures and knows nothing about the toggle state,
+    // so it passes for a column sitting right there on the page (verified: it
+    // did). What a moderator sees is the header row.
+    Livewire::test(ListPlaceEditSuggestions::class)
+        ->assertSee('Note')
+        ->assertSee('Proposed change')
+        ->assertDontSee('Reviewer note')
+        ->assertDontSee('Reviewed by')
+        // The floor that makes the column readable. A percentage does not
+        // survive `table-layout: auto` — measured on the real queue at the same
+        // 69px it was trying to fix.
+        ->assertTableColumnHasExtraAttributes('note', ['style' => 'min-width: 20rem'], $suggestion);
+});
+
 it('settles a note-only row with Actioned and records what was done', function () {
     $admin = User::factory()->admin()->create();
     $this->actingAs($admin);

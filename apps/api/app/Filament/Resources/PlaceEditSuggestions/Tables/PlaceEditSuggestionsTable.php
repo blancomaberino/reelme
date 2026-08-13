@@ -86,6 +86,16 @@ class PlaceEditSuggestionsTable
                     ->placeholder('—')
                     ->wrap()
                     ->limit(180)
+                    // A wrapped column with no floor gets whatever the other ten
+                    // leave it — measured at 69px on the real queue, which is
+                    // one word per line and a row twenty lines tall. A
+                    // PERCENTAGE does not fix it: the table is `table-layout:
+                    // auto`, where a percentage is a suggestion the browser
+                    // drops as soon as the other columns' min-content fills the
+                    // row (verified — `width: 30%` rendered at those same 69px).
+                    // A min-width is a floor the auto algorithm has to respect.
+                    ->extraHeaderAttributes(['style' => 'min-width: 20rem'])
+                    ->extraAttributes(['style' => 'min-width: 20rem'])
                     ->tooltip(fn (PlaceEditSuggestion $record): ?string => $record->note),
                 IconColumn::make('is_owner_submission')
                     ->label('Operator')
@@ -105,11 +115,21 @@ class PlaceEditSuggestionsTable
                 // Doubles as "what was done about it" on an actioned row — one
                 // column, because both are the reviewer's written record of how
                 // the row was settled.
-                TextColumn::make('reason')->label('Reviewer note')->placeholder('—')->toggleable(),
+                //
+                // Both of these are hidden by default now: they are empty on
+                // every row of the PENDING queue, which is the view this page
+                // opens on, and the space they were holding is what a note needs
+                // to be readable. Still one click away for the settled views,
+                // where they are the interesting columns.
+                TextColumn::make('reason')
+                    ->label('Reviewer note')
+                    ->placeholder('—')
+                    ->wrap()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('reviewedBy.username')
                     ->label('Reviewed by')
                     ->placeholder('—')
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('created_at')->dateTime()->sortable(),
             ])
             // Oldest first: this is a work queue, and a correction that has been

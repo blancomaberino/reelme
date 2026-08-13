@@ -1,0 +1,123 @@
+# "Something else is wrong" — the free-text note on a suggested edit (T-112).
+#
+# Companion to suggest-edit.yaml, which walks the FIELD path. This walks the one
+# thing that path cannot reach: a submission whose entire content is prose.
+#
+# What jest cannot prove here:
+#
+#  1. That the note field is reachable at all. It sits BELOW five inputs inside
+#     a sheet's own ScrollView, under a pinned footer — `render()` finds it by
+#     testID whether or not a finger could ever scroll to it.
+#  2. That a note ALONE enables Enviar. This is the whole feature: if the note
+#     did not count toward the dirty check, the box would render, take typing,
+#     and leave the only button on the sheet dead.
+#  3. That a multiline field with the keyboard up does not cover its own submit
+#     button — the failure a KeyboardAvoidingView unit test cannot have.
+#
+# PRECONDITIONS — as suggest-edit.yaml: API stack + Metro up via
+# `./scripts/dev.sh start`, logged in, at least one place in "Mis lugares",
+# app in Spanish.
+#
+# REPEATABILITY: the note is stamped per run. Unlike the phone field there is
+# nothing on the place a note could collide with — a note is always a change,
+# so the button would enable even for a repeated string — but the stamp is what
+# makes the "did MY note land" assertions mean something on a database that
+# already holds previous runs.
+#
+# TEARDOWN: none on the device. The account is not a verified operator, so the
+# proposal QUEUES and the place is untouched. It leaves one pending row in dev
+# (superseding this account's previous one for the same place, per the partial
+# unique index) — settle it at /admin/place-edit-suggestions with **Actioned**,
+# which is the verb this task added for exactly these rows.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/suggest-edit-note.yaml
+appId: pet.one.reelmap
+---
+- evalScript: ${output.stamp = String(Date.now()).slice(-6)}
+- evalScript: ${output.note = 'Cerro hace un mes, ahora hay una barberia ' + output.stamp}
+
+- launchApp
+
+# --- Reach a place the way a user does --------------------------------------
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- tapOn: ".*Mis lugares, tab.*"
+- extendedWaitUntil:
+    visible: "Mis lugares"
+    timeout: 30000
+- tapOn:
+    index: 0
+    id: "my-place-card"
+
+- scrollUntilVisible:
+    element:
+      id: "place-suggest-edit"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- tapOn:
+    id: "place-suggest-edit"
+- extendedWaitUntil:
+    visible: "Sugerir un cambio"
+    timeout: 15000
+
+# --- The note field is reachable, below the five place fields ---------------
+# scrollUntilVisible inside the sheet's own ScrollView. If the field were
+# unreachable — clipped by the sheet, or under the pinned footer — this is the
+# step that fails, and it is the one a unit test cannot stand in for.
+- scrollUntilVisible:
+    element:
+      id: "suggest-note"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- assertVisible: "¿Otra cosa? Contanos"
+- assertVisible: "Contanos con tus palabras. Un moderador lo lee."
+# Nothing typed anywhere: the button is still dead. The positive control for
+# everything below — without it, "enabled" later proves nothing.
+- assertVisible:
+    id: "suggest-submit"
+    enabled: false
+- takeScreenshot: build/maestro/suggest-note-1-field
+
+# --- A note ALONE brings the button alive -----------------------------------
+# No field is touched. If the note did not count toward the dirty check this
+# button would stay disabled and the whole task would be a text box wired to
+# nothing.
+- tapOn:
+    id: "suggest-note"
+- inputText: ${output.note}
+- assertVisible: ${output.note}
+# The heading, not `hideKeyboard` — Maestro cannot dismiss this keyboard (see
+# suggest-edit.yaml). Tapping the backdrop would close the sheet instead.
+- tapOn: "Sugerir un cambio"
+- assertVisible:
+    id: "suggest-submit"
+    enabled: true
+- takeScreenshot: build/maestro/suggest-note-2-dirty
+
+# --- Send it: a note-only proposal queues like any other --------------------
+- tapOn:
+    id: "suggest-submit"
+- extendedWaitUntil:
+    visible: "¡Gracias!"
+    timeout: 20000
+- assertVisible: "Enviamos tu sugerencia a revisión. Si todo cierra, va a aparecer acá en breve."
+- takeScreenshot: build/maestro/suggest-note-3-queued
+- tapOn: "OK"
+
+# --- The place is untouched -------------------------------------------------
+# Positive control first: `assertNotVisible` is satisfied by a screen that
+# scrolled away, failed to render, or crashed.
+- assertVisible:
+    id: "place-suggest-edit"
+- assertNotVisible: ${output.note}
+
+# --- Leave the app where we found it ----------------------------------------
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- assertNotVisible: "Sugerir un cambio"
