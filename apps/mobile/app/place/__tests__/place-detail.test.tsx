@@ -159,13 +159,15 @@ it('opens directions in the maps app', async () => {
 it('renders an open/closed hours summary when hours are present', async () => {
   const withHours = {
     ...PLACE,
-    // Open every day 00:00–23:59 → always "Open now" regardless of test clock.
-    opening_hours: {
-      periods: [0, 1, 2, 3, 4, 5, 6].map((day) => ({
-        open: { day, time: '0000' },
-        close: { day, time: '2359' },
-      })),
-    },
+    // Google's 24/7 sentinel — a single day-0 open with NO close — which
+    // `summarizeHours` treats as open for the whole week.
+    //
+    // NOT seven 00:00–23:59 periods, which is what this was and which claimed in
+    // a comment to be clock-independent. The match is end-EXCLUSIVE
+    // (`candidate < end`), so a period closing at 23:59 is genuinely shut for
+    // the minute 23:59:00–23:59:59 — a 1-in-1440 flake that duly failed in CI
+    // at 23:59 UTC and passes every time anyone runs it by hand during the day.
+    opening_hours: { periods: [{ open: { day: 0, time: '0000' } }] },
   };
   mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours });
 
