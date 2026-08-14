@@ -3062,7 +3062,7 @@
       "id": "T-114",
       "title": "The mobile lint gate cannot fail — `expo lint` reports nothing",
       "phase": "M5",
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [],
       "estimate": "S",
       "paths": [
@@ -3102,6 +3102,29 @@
       ],
       "agent": "executor",
       "notes": "Found 2026-08-14 by the T-113 grounding pass flagging UserDataExporter::profile() as a hand-written field list.\n\nTHE ASYMMETRY: if a column is personal enough that ERASURE has to reach it, it is personal enough that PORTABILITY has to return it. Right now the purger scrubs 12 columns the export omits. Most are correctly omitted and the reasons differ:\n  - credentials, which an export must NOT contain (password, remember_token, two_factor_secret, two_factor_recovery_codes) — the exporter already makes this argument for platform_accounts tokens;\n  - derived or covered elsewhere (followers_count, following_count — the follows section has the graph; two_factor_confirmed_at / two_factor_last_used_ts — two_factor_enabled is exported as a derived bool);\n  - row metadata (updated_at, purged_at); is_admin is arguable.\n\nTHE REAL GAP IS ONE FIELD: `preferred_analysis_model`. It is a preference the user sets themselves in Settings → Analysis model, the purger nulls it as personal (T-110 added country_code on the same reasoning), and a GDPR Art. 20 export leaves it out.\n\nDo NOT fix it as a one-line addition. The value is the enforced version: a test that reads the scrub list and fails when a column belongs to neither the export nor a documented exclusion — otherwise the next person to add a personal column repeats this exactly, and nothing notices."
+    },
+    {
+      "id": "T-116",
+      "title": "packages/contracts has no lint gate at all",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-114"
+      ],
+      "estimate": "S",
+      "paths": [
+        "packages/contracts/package.json",
+        "packages/contracts/eslint.config.js",
+        ".github/workflows/ci.yml"
+      ],
+      "spec_refs": [],
+      "acceptance": [
+        "`npm run lint -w @reelmap/contracts` exists, lints every .ts in the workspace, and FAILS on a deliberately introduced error — proven both ways",
+        "The Contracts CI job runs it",
+        "Whatever backlog it surfaces is fixed or explicitly baselined, listed rather than silent"
+      ],
+      "agent": "executor",
+      "notes": "Found 2026-08-14 while fixing T-114. `packages/contracts` has 23 TypeScript files, no eslint.config.js, and no `lint` script — so the Contracts CI job runs `typecheck` and `test` and nothing has ever linted the generator (`scripts/generate.ts`) or the hand-written index.\n\nThis is the SAME shape as T-114 and worth doing right after it, while the reasoning is fresh: there, the gate existed and read three directories; here it does not exist at all, which at least is honest — nobody has ever seen a green lint for this package.\n\nReuse T-114's `verify-lint-gate.mjs` idea rather than re-implementing: if a second workspace needs the same self-test, extract it (the script currently hardcodes apps/mobile). One shared prover, parameterised by workspace, beats two copies that drift."
     }
   ]
 }
