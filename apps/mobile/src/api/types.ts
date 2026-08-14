@@ -98,3 +98,19 @@ export class EmailNotVerifiedError extends Error {
     this.name = 'EmailNotVerifiedError';
   }
 }
+
+/**
+ * Thrown for a 422 `age_restricted` (T-113) — the signup age gate refusing.
+ *
+ * Carries the minimum age as a NUMBER rather than a message, because the API
+ * never localizes: nothing in it calls `App::setLocale()`, so its copy is
+ * English while this app defaults to Spanish. The server owns the rule, the app
+ * owns the wording — which also avoids mirroring the number into this bundle,
+ * where the two copies would drift the first time it changed.
+ */
+export class AgeRestrictedError extends Error {
+  constructor(public readonly minimumAge: number) {
+    super('Age restricted.');
+    this.name = 'AgeRestrictedError';
+  }
+}

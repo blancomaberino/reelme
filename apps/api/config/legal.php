@@ -41,4 +41,31 @@ return [
     // the terms commit to acting on reports within 24 hours, and Apple checks
     // that a report has somewhere to go.
     'contact_email' => env('LEGAL_CONTACT_EMAIL'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Minimum age (T-113)
+    |--------------------------------------------------------------------------
+    | ONE number with two consumers: the age the terms and the privacy policy
+    | STATE, and the age the signup gate ENFORCES. They were allowed to disagree
+    | once already — the documents said "at least 13 years old" while nothing in
+    | the app checked anything — and a promise the code does not keep is the
+    | failure this binding exists to make impossible. `LegalDocumentTest` asserts
+    | the rendered prose carries this value; `RegisterAgeGateTest` asserts the
+    | boundary it rejects at.
+    |
+    | Unlike the identity above this HAS a default, because it is not personal
+    | data and an unset minimum age must never mean "no minimum".
+    |
+    | Raising it is a product and legal decision, not a config tweak: the terms
+    | already defer to a higher local minimum where the law sets one (GDPR Art. 8
+    | allows member states to set 13–16), so this is the global floor.
+    */
+    // `max()` against the floor, not a bare cast. A malformed value casts to 0,
+    // and 0 does not mean "no opinion" here — it means AgeCheck admits every
+    // date of birth ever written, silently, from a typo in an env file. The
+    // comment above already said an unset value must never mean "no minimum";
+    // this makes that true of a WRONG value too, which is the case that
+    // actually reaches production.
+    'minimum_age' => max(13, (int) env('LEGAL_MINIMUM_AGE', 13)),
 ];

@@ -32,6 +32,7 @@ use Laravel\Scout\Searchable;
  * @property string|null $name
  * @property string|null $bio
  * @property Carbon|null $birthdate
+ * @property Carbon|null $age_verified_at
  * @property list<string>|null $favorite_topics
  * @property list<string>|null $favorite_foods
  * @property string|null $avatar_path
@@ -338,6 +339,11 @@ class User extends Authenticatable implements FilamentUser, HasLocalePreference,
             'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at' => 'datetime',
             'birthdate' => 'date',
+            // When the signup age check passed (T-113). NOT the date behind it —
+            // that is asked for, checked and discarded. Deliberately not in the
+            // Fillable list above, unlike `birthdate`: nothing a client sends
+            // may set it.
+            'age_verified_at' => 'datetime',
             'favorite_topics' => 'array',
             'favorite_foods' => 'array',
             'is_influencer' => 'boolean',

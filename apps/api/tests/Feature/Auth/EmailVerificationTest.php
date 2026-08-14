@@ -16,6 +16,7 @@ function registerUnverified(string $email = 'nuevo@example.com'): string
         'email' => $email,
         'password' => 'secret123!',
         'device_name' => 'cli',
+        'date_of_birth' => '1990-01-01',
     ])->assertCreated();
 
     return $email;
@@ -26,7 +27,7 @@ it('emails a confirmation code on register and issues a first-session token', fu
 
     $res = $this->postJson('/api/v1/auth/register', [
         'name' => 'Nuevo', 'username' => 'nuevo', 'email' => 'nuevo@example.com',
-        'password' => 'secret123!', 'device_name' => 'cli',
+        'password' => 'secret123!', 'device_name' => 'cli', 'date_of_birth' => '1990-01-01',
     ])->assertCreated();
 
     // Usable this first session, but not yet verified.

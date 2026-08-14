@@ -115,6 +115,11 @@
         <td>Ejecución del contrato</td>
       </tr>
       <tr>
+        <td>Verificar que tenés la edad mínima para tener una cuenta</td>
+        <td>Fecha de nacimiento — se verifica al registrarte y <strong>no se guarda</strong>; solo queda el registro de que la verificación se hizo</td>
+        <td>Obligación legal</td>
+      </tr>
+      <tr>
         <td>Mostrar tu perfil público y tus aportes</td>
         <td>Perfil, contenido que creás</td>
         <td>Ejecución del contrato</td>
@@ -291,11 +296,21 @@
 
   <h2 id="menores">Menores de edad</h2>
   <p>
-    Reelmap no está dirigida a menores de 13 años y no recogemos datos de forma consciente de personas de
-    esa edad. Si detectamos una cuenta de alguien menor de 13, la eliminamos. Si sos madre, padre o tutor y
+    Reelmap no está dirigida a menores de {{ $minimumAge }} años y no recogemos datos de forma consciente de
+    personas de esa edad. Si detectamos una cuenta de alguien menor de {{ $minimumAge }}, la eliminamos. Si sos madre, padre o tutor y
     creés que un menor a tu cargo creó una cuenta, escribinos a
     <a href="mailto:{{ $contact }}">{{ $contact }}</a> y la damos de baja.
   </p>
+  <div class="note">
+    <p>
+      Al crear una cuenta te pedimos tu fecha de nacimiento para verificar que
+      cumplís con esa edad mínima. <strong>Esa fecha no se guarda.</strong> Se
+      usa en el momento para hacer la verificación y se descarta: lo único que
+      queda registrado es que la verificación se hizo, y cuándo. Es distinta de
+      la fecha de nacimiento opcional que podés cargar en tu perfil, que sí se
+      guarda porque vos elegís ponerla y podés borrarla cuando quieras.
+    </p>
+  </div>
 
   <h2 id="seguridad">Seguridad</h2>
   <p>

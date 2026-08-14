@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { useRegister } from '@/api/hooks/useAuth';
+import { AgeRestrictedError } from '@/api/types';
 import { AuthScreenLayout, useAuthFormStyles } from '@/components/auth-screen-layout';
 import { Button } from '@/components/button';
 import { TextField } from '@/components/text-field';
@@ -20,6 +21,7 @@ export default function RegisterScreen() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const register = useRegister();
   // The document is opened in the language the app is set to, not the browser's.
   const locale = useSettingsStore((s) => s.locale);
@@ -29,11 +31,34 @@ export default function RegisterScreen() {
 
   const { fieldErrors, generalError } = formErrors(register.error);
 
+  /*
+   * The age refusal, in the user's language (T-113).
+   *
+   * The API never localizes — nothing in it calls `App::setLocale()`, so its
+   * copy is English while this app defaults to Spanish. It sends the minimum as
+   * a NUMBER instead, and the sentence is built here. That also means the rule
+   * lives in exactly one place: raising it on the server changes what this says,
+   * with nothing to keep in step.
+   */
+  const ageError =
+    register.error instanceof AgeRestrictedError
+      ? t('auth.register.tooYoung', { age: register.error.minimumAge })
+      : undefined;
+
   function submit() {
     register.mutate(
-      { name: name.trim(), username: username.trim(), email: email.trim(), password },
+      {
+        name: name.trim(),
+        username: username.trim(),
+        email: email.trim(),
+        password,
+        date_of_birth: dateOfBirth.trim(),
+      },
       {
         onSuccess: () => router.replace(pendingShare ? '/(main)/share' : '/(main)/map'),
+        // The date survives a failed attempt on purpose: it is the one field
+        // here that is tedious to retype, and clearing it alongside the password
+        // would punish someone whose username was merely taken.
         onError: () => setPassword(''),
       },
     );
@@ -66,6 +91,22 @@ export default function RegisterScreen() {
         textContentType="newPassword"
         error={fieldErrors.password}
       />
+      {/* The age gate (T-113). A neutral age screen: the API checks this and
+          throws it away — nothing is stored but the fact that a check passed.
+          Same plain TextField the profile screen uses for a birthdate, rather
+          than a picker component: it keeps the two date entries consistent and
+          adds no native dependency, so this stays a JS-only change. */}
+      <TextField
+        label={t('auth.field.dateOfBirth')}
+        value={dateOfBirth}
+        onChangeText={setDateOfBirth}
+        placeholder={t('auth.field.dateOfBirthPlaceholder')}
+        keyboardType="numbers-and-punctuation"
+        autoCapitalize="none"
+        error={ageError ?? fieldErrors.date_of_birth}
+        testID="register-date-of-birth"
+      />
+      <Text style={styles.consent}>{t('auth.register.dateOfBirthHint')}</Text>
       {generalError ? <Text style={styles.general}>{t(generalError)}</Text> : null}
       <Button title={t('auth.register.submit')} onPress={submit} loading={register.isPending} />
       {/* Apple 1.2 expects a UGC app to have its users agree to the terms, and

@@ -2,17 +2,6 @@
 
 use App\Models\User;
 
-function registerPayload(array $overrides = []): array
-{
-    return array_merge([
-        'name' => 'Maya Diner',
-        'username' => 'maya',
-        'email' => 'maya@example.com',
-        'password' => 'secret123!',
-        'device_name' => 'cli',
-    ], $overrides);
-}
-
 it('registers a user and issues a working token', function () {
     $response = $this->postJson('/api/v1/auth/register', registerPayload());
 

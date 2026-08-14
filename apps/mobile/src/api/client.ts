@@ -9,10 +9,10 @@ import { useUiStore } from '@/stores/ui';
 
 import { resetClientCache } from './query-client';
 import { clearToken, getToken } from './token';
-import { EmailNotVerifiedError, NetworkError, ValidationError, type FieldErrors } from './types';
+import { AgeRestrictedError, EmailNotVerifiedError, NetworkError, ValidationError, type FieldErrors } from './types';
 
 type ApiErrorEnvelope = {
-  error?: { code?: string; message?: string; details?: Record<string, string[] | string> };
+  error?: { code?: string; message?: string; details?: Record<string, string[] | string | number> };
 };
 
 const baseURL = `${process.env.EXPO_PUBLIC_API_URL ?? ''}/api/v1`;
@@ -75,6 +75,23 @@ api.interceptors.response.use(
       // here would race them (login vs welcome). Only redirect a live session.
       if (!bootstrapping) {
         router.replace('/(auth)/login');
+      }
+    }
+
+    // The signup age gate (T-113). Checked BEFORE the generic 422 branch below:
+    // `age_restricted` is a 422 whose details are `{minimum_age, field}`, not
+    // per-field message arrays, so the generic mapping would turn it into
+    // nonsense field errors like `minimum_age: "13"` and the screen would show
+    // the user a stray number instead of a reason.
+    if (status === 422 && error.response?.data?.error?.code === 'age_restricted') {
+      const minimum = Number(error.response?.data?.error?.details?.minimum_age);
+      // Only a sane positive integer becomes the typed error. A missing or
+      // corrupt value used to fall back to 0, which the screen renders as
+      // "You need to be at least 0 to use Reelmap." — a nonsense sentence
+      // shown to a real person at signup. Anything else drops through to the
+      // generic 422 path, which says something true instead.
+      if (Number.isInteger(minimum) && minimum > 0) {
+        return Promise.reject(new AgeRestrictedError(minimum));
       }
     }
 

@@ -12,7 +12,14 @@ import { queryKeys } from '../keys';
 import { clearToken, setToken } from '../token';
 import { type AuthResponse, type LoginResponse, isTwoFactorChallenge, TwoFactorRequiredError } from '../types';
 
-export type RegisterInput = { name: string; username: string; email: string; password: string };
+export type RegisterInput = {
+  name: string;
+  username: string;
+  email: string;
+  password: string;
+  /** Checked by the API and discarded — never stored (T-113). */
+  date_of_birth: string;
+};
 export type LoginInput = { email: string; password: string };
 
 // The API issues one token per device and revokes a same-named token, so a

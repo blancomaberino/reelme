@@ -366,6 +366,11 @@ export const es: Record<MessageKey, string> = {
   'auth.register.login': 'Iniciar sesión',
   // Ver el comentario en en.ts: la frase va partida porque los dos nombres de
   // documento son enlaces tocables dentro de la oración.
+  'auth.field.dateOfBirth': 'Fecha de nacimiento',
+  'auth.field.dateOfBirthPlaceholder': 'AAAA-MM-DD',
+  // Ver el comentario en en.ts.
+  'auth.register.dateOfBirthHint': 'Solo la usamos para verificar tu edad. No se guarda.',
+  'auth.register.tooYoung': 'Tenés que tener al menos {{age}} años para usar Reelmap.',
   'auth.register.legalPrefix': 'Al crear una cuenta aceptás nuestros ',
   'auth.register.legalTerms': 'Términos y condiciones',
   'auth.register.legalJoin': ' y la ',

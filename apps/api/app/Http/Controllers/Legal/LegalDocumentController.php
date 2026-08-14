@@ -139,7 +139,15 @@ final class LegalDocumentController extends Controller
             .'LEGAL_CONTROLLER_DOMICILE and LEGAL_CONTACT_EMAIL.',
         );
 
-        return ['controller' => $controller, 'domicile' => $domicile, 'contact' => $contact];
+        return [
+            'controller' => $controller,
+            'domicile' => $domicile,
+            'contact' => $contact,
+            // The age the documents STATE, from the same value the signup gate
+            // ENFORCES (T-113). Not part of the identity guard above: it has a
+            // safe default and withholding it protects nobody.
+            'minimumAge' => (int) config('legal.minimum_age'),
+        ];
     }
 
     /**

@@ -116,6 +116,11 @@
         <td>Performance of a contract</td>
       </tr>
       <tr>
+        <td>Checking you are old enough to have an account</td>
+        <td>Date of birth — checked at signup and <strong>not stored</strong>; only the fact that a check passed is kept</td>
+        <td>Legal obligation</td>
+      </tr>
+      <tr>
         <td>Showing your public profile and your contributions</td>
         <td>Profile, content you create</td>
         <td>Performance of a contract</td>
@@ -284,11 +289,22 @@
 
   <h2 id="children">Children</h2>
   <p>
-    Reelmap is not directed at children under 13 and we do not knowingly collect data from anyone that age.
-    If we find an account belonging to someone under 13, we delete it. If you are a parent or guardian and
+    Reelmap is not directed at children under {{ $minimumAge }} and we do not knowingly collect data from
+    anyone that age. If we find an account belonging to someone under {{ $minimumAge }}, we delete it. If you
+    are a parent or guardian and
     believe a child in your care has created an account, write to
     <a href="mailto:{{ $contact }}">{{ $contact }}</a> and we will remove it.
   </p>
+  <div class="note">
+    <p>
+      When you create an account we ask for your date of birth to check you meet
+      that minimum age. <strong>That date is not stored.</strong> It is used in
+      the moment to make the check and then discarded — all that is recorded is
+      that a check was made, and when. It is separate from the optional date of
+      birth you can add to your profile, which is kept because you chose to put
+      it there and can clear it whenever you like.
+    </p>
+  </div>
 
   <h2 id="security">Security</h2>
   <p>
