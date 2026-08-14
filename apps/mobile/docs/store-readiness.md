@@ -65,9 +65,23 @@ analytics, and no data shared with data brokers.
 > the codebase, and `country_code`, `favorite_topics` and `favorite_foods` were
 > missing from the table entirely. Answering a store questionnaire with a purpose
 > the app does not implement is a false statement in a store listing, so the row
-> now describes what the schema actually does. **The minimum age (13) is stated in
-> the terms, not enforced by a gate** — if you want it enforced, that is a
-> separate task.
+> now describes what the schema actually does.
+
+> **Updated 2026-08-14 (T-113).** The note above used to end "the minimum age is
+> stated in the terms, not enforced by a gate". **It is enforced now**: signup
+> asks for a date of birth and refuses anyone below `config('legal.minimum_age')`.
+>
+> **This does not change any answer in the table.** The date is a *neutral age
+> screen* — checked and discarded, never written to any column, asserted by a
+> test that walks every field of the row. Apple's definition of "collect" is
+> transmitting data off the device and retaining it beyond servicing the
+> request, and nothing is retained but a timestamp saying a check happened. So
+> date of birth stays what the row says it is: optional profile personalization
+> the user fills in themselves.
+>
+> The privacy policy says this out loud in **Children** — that we ask, that we
+> check, and that we do not keep it. A questionnaire and a policy that disagree
+> about the same field is the exact failure this box was written to record.
 
 **Crash data carries no PII by construction, not by policy.** `send_default_pii`,
 `breadcrumbs.sql_bindings` and `tracing.sql_bindings` are hard-coded `false` in
