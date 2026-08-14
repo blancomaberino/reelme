@@ -1,5 +1,11 @@
 # Backup & restore
 
+> 📋 **Going to production?** Start from
+> [`docs/deployment-to-prod.md`](../../../../docs/deployment-to-prod.md) — the single ordered checklist
+> across the stores, the servers and the data. This document is the detail
+> behind one of its phases.
+
+
 What to back up, how to restore it, and what a restore does **not** bring back
 (T-055).
 

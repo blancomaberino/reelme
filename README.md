@@ -22,6 +22,14 @@ Share an influencer's restaurant video (Instagram, X, TikTok, YouTube) straight 
 - **Mobile** — a custom **EAS dev client is required**; Expo Go will not work (share intent + native maps need config plugins). See [`apps/mobile/README.md`](apps/mobile/README.md).
 - **Contracts** — `npm run generate` in `packages/contracts` regenerates TS types from the schemas.
 
+## Deploying to production
+
+Not yet deployed. [`docs/deployment-to-prod.md`](docs/deployment-to-prod.md) is
+the single ordered checklist of everything still outstanding — the servers, the
+stores, the legal identity and the restore drill — and which parts block which.
+Every item on it needs a human with an account or a decision; the code side is
+done.
+
 ## Contracts are the source of truth
 
 The JSON Schemas in `packages/contracts/schemas` define every shared data shape. The API contract-tests its JSON resources against them and the mobile app generates its types from them — change a shape in one place, regenerate, and both sides stay in sync.

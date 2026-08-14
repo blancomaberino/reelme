@@ -1,5 +1,11 @@
 # App Store & Play Store readiness
 
+> 📋 **Going to production?** Start from
+> [`docs/deployment-to-prod.md`](../../../docs/deployment-to-prod.md) — the single ordered checklist
+> across the stores, the servers and the data. This document is the detail
+> behind one of its phases.
+
+
 The pre-submission checklist for T-054 (IR-6, risk R-02), split honestly into
 **what the code already satisfies** and **what needs a human with credentials**.
 
