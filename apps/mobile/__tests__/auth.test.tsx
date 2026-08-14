@@ -24,8 +24,9 @@ let qc: QueryClient;
 // worker can't exit gracefully); shared client is cleared in afterEach.
 function wrapper() {
   // Named, because the returned component is anonymous otherwise and
-  // `react/display-name` flags it. (Only visible via `npx eslint` — see the
-  // note in the PR: `expo lint`, which CI runs, currently reports nothing.)
+  // `react/display-name` flags it. This file is at the workspace root, which
+  // the lint gate did not reach until T-114 — the rule was reporting the error
+  // to nobody.
   const TestWrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );

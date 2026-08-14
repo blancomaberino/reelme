@@ -43,7 +43,25 @@ const TOKEN_RULE = {
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/*'],
+    // Generated output, all of it git-ignored (see .gitignore). The lint script
+    // lints the whole workspace — `eslint .` — so anything not named here gets
+    // linted, which is the right default: the previous command named three
+    // directories and silently skipped everything else. The cost of that
+    // default is this list, and the cost of getting this list wrong is noise
+    // about files nobody can fix in the repo, not a silent pass.
+    //
+    // `ios/` is Expo prebuild output (`expo prebuild --clean` rewrites it),
+    // `android/` the same when it exists; `.expo/` and `expo-env.d.ts` are
+    // expo-router's generated types.
+    ignores: [
+      'dist/*',
+      'build/**',
+      'coverage/**',
+      'ios/**',
+      'android/**',
+      '.expo/**',
+      'expo-env.d.ts',
+    ],
   },
   {
     // Applied to EVERYTHING by default, so a NEW file is covered without anyone
