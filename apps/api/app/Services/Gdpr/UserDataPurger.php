@@ -509,6 +509,11 @@ class UserDataPurger
             'bio' => null,
             'avatar_path' => null,
             'birthdate' => null,
+            // The signup age check (T-113). Not identifying on its own, but it
+            // is a record ABOUT a person who asked to be erased, kept on a row
+            // that no longer names anybody and serves nothing once the account
+            // is gone — the same reasoning that nulls `birthdate` one line up.
+            'age_verified_at' => null,
             'favorite_topics' => null,
             'favorite_foods' => null,
             // Self-declared and publicly displayed — the same class of personal

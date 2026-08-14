@@ -50,6 +50,9 @@ function gdprPurgeFixture(): array
         'name' => 'Ana Real',
         'bio' => 'I like noodles',
         'country_code' => 'UY',
+        // Set explicitly so the scrub assertion cannot pass on a column that
+        // was already null — the factory does not populate it (T-113).
+        'age_verified_at' => now(),
         'is_influencer' => true,
         'stripe_connect_account_id' => 'acct_123',
     ]);
@@ -121,6 +124,7 @@ it('scrubs the surviving user row until it identifies nobody', function () {
         ->and($row->bio)->toBeNull()
         // Self-declared and publicly displayed, so erasure has to reach it too.
         ->and($row->country_code)->toBeNull()
+        ->and($row->age_verified_at)->toBeNull()
         ->and($row->email)->not->toBe($originalEmail)
         ->and($row->email)->toEndWith('@reelmap.invalid')
         ->and($row->username)->toStartWith('deleted_')
