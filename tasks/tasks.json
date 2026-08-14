@@ -3057,6 +3057,51 @@
       ],
       "agent": "executor",
       "notes": "Requested 2026-08-13 during T-054 review. The terms say \"at least 13 years old\" and NOTHING enforced it — the claim was true of the document and false of the app.\n\nOWNER DECISIONS taken up front: (a) a NEUTRAL AGE SCREEN — the date of birth is validated and DISCARDED, with only an `age_verified_at` timestamp stored, so the gate does not become a reason to collect a new identifier from every user and §3 of store-readiness.md stays true as written; (b) minimum age 13 EVERYWHERE, matching the terms, which already carry a clause deferring to a higher local minimum where the law sets one.\n\nTRAP: RegisterController does `User::create($request->safe()->except('device_name'))`. The date is currently dropped only because it is absent from the model's Fillable attribute — that is an ACCIDENT, not a guarantee, and it silently reverses the day someone adds the column for another reason. Exclude it explicitly and assert the non-persistence.\n\nBRANCHING DEVIATION (ADR): branched from feat/T-054-legal-documents rather than main, and must merge after PR #194. The enforced age has to be the same value the published terms state, and that config file (config/legal.php) exists only on that branch. Branching from main would mean two divergent copies of it."
+    },
+    {
+      "id": "T-114",
+      "title": "The mobile lint gate cannot fail — `expo lint` reports nothing",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/package.json",
+        "apps/mobile/eslint.config.js",
+        ".github/workflows/ci.yml"
+      ],
+      "spec_refs": [],
+      "acceptance": [
+        "`npm run lint -w apps/mobile` FAILS on a deliberately introduced error — proven both ways, not assumed",
+        "The existing backlog it was hiding is either fixed or explicitly baselined, with the baseline listed rather than silent",
+        "CI runs a command that actually lints; the gate is verified by breaking it on purpose once"
+      ],
+      "agent": "executor",
+      "notes": "Found 2026-08-14 during the T-113 pre-PR pass.\n\nEVIDENCE. `npm run lint -w apps/mobile` runs `expo lint`, which exits 0 with NO OUTPUT AT ALL. `npx eslint app/(auth)/register.tsx src/api/client.ts ...` on the same files exits 1 and reports `react/display-name` in __tests__/auth.test.tsx — an error that is ALSO on main, so it has been there a while. Setup looks intact: eslint ^9.0.0, eslint-config-expo ~57.0.1, and an eslint.config.js that `npx eslint` reads fine. It is `expo lint` specifically that is silent.\n\nWHY IT MATTERS BEYOND ONE ERROR: ci.yml:236 runs `npm run lint -w apps/mobile`, so every mobile PR in this repo has passed a lint gate that lints nothing. This is checklist dimension 14 exactly — a gate that cannot fail — and the backlog behind it is unknown until the gate works.\n\nTRAP: the fix is not done when `npm run lint` prints errors. It is done when it EXITS NON-ZERO on one, because CI reads the exit code and nothing else. Break it on purpose and watch CI go red.\n\nScope note: expect a batch of pre-existing errors the moment it works. Fixing them may be the larger half of the task; decide fix-vs-baseline per rule rather than silencing the lot."
+    },
+    {
+      "id": "T-115",
+      "title": "Portability and erasure disagree about the same columns",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-050"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Services/Gdpr/UserDataExporter.php",
+        "apps/api/tests/Feature/Gdpr/DataExportTest.php"
+      ],
+      "spec_refs": [
+        "07-risks-decisions.md#adr-009"
+      ],
+      "acceptance": [
+        "`preferred_analysis_model` appears in the profile export",
+        "A test ENUMERATES the purger's scrub list and asserts each column is either exported or on an explicit, commented exclusion list — so the next column added to one side cannot silently skip the other",
+        "The exclusion list states its reason per entry (credential / derived / metadata), because 'not exported' and 'deliberately not exported' look identical in a diff"
+      ],
+      "agent": "executor",
+      "notes": "Found 2026-08-14 by the T-113 grounding pass flagging UserDataExporter::profile() as a hand-written field list.\n\nTHE ASYMMETRY: if a column is personal enough that ERASURE has to reach it, it is personal enough that PORTABILITY has to return it. Right now the purger scrubs 12 columns the export omits. Most are correctly omitted and the reasons differ:\n  - credentials, which an export must NOT contain (password, remember_token, two_factor_secret, two_factor_recovery_codes) — the exporter already makes this argument for platform_accounts tokens;\n  - derived or covered elsewhere (followers_count, following_count — the follows section has the graph; two_factor_confirmed_at / two_factor_last_used_ts — two_factor_enabled is exported as a derived bool);\n  - row metadata (updated_at, purged_at); is_admin is arguable.\n\nTHE REAL GAP IS ONE FIELD: `preferred_analysis_model`. It is a preference the user sets themselves in Settings → Analysis model, the purger nulls it as personal (T-110 added country_code on the same reasoning), and a GDPR Art. 20 export leaves it out.\n\nDo NOT fix it as a one-line addition. The value is the enforced version: a test that reads the scrub list and fails when a column belongs to neither the export nor a documented exclusion — otherwise the next person to add a personal column repeats this exactly, and nothing notices."
     }
   ]
 }
