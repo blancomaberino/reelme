@@ -203,9 +203,10 @@ notice.
   collect them together. `SocialController` is a 501 stub; nothing ships broken
   if this never happens. Note that **Apple requires Sign in with Apple** if you
   ever offer another third-party sign-in, so Google-only is not an option.
-- **T-113 — Age gate.** Implemented, awaiting merge. No deployment
-  implications: it adds no configuration and no infrastructure. `LEGAL_MINIMUM_AGE`
-  has a safe default of 13 and only needs setting if you want a different floor.
+- **T-113 — Age gate.** Merged (`ca6fe73`). It adds one optional variable,
+  `LEGAL_MINIMUM_AGE`, which defaults to 13 and is floored there — a malformed
+  or zero value cannot disable the gate. Set it only to raise the floor. No
+  infrastructure implications.
 
 ---
 
