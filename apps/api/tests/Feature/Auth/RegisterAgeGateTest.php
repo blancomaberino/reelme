@@ -45,6 +45,36 @@ it('never stores the date of birth it just checked', function () {
     }
 });
 
+it('never creates an account without recording the age check', function () {
+    // The atomicity claim. It used to be `create()` then a second `save()`, so
+    // a failure between them left an account that exists and was never
+    // age-verified — and the obvious retry then collides on the username.
+    // One insert means the two facts cannot come apart.
+    $this->postJson('/api/v1/auth/register', registerPayload())->assertCreated();
+
+    expect(User::whereNull('age_verified_at')->count())->toBe(0);
+});
+
+it('does not let a broken minimum-age config disable the gate', function () {
+    /*
+     * `(int) 'nonsense'` is 0, and a minimum age of 0 admits every date of
+     * birth ever written — the gate off, silently, from a typo in an env file.
+     * The config floors it, so the worst a bad value can do is fall back to the
+     * documented global minimum.
+     */
+    foreach (['0', '-5', 'nonsense', ''] as $bad) {
+        config()->set('legal.minimum_age', max(13, (int) $bad));
+
+        expect((int) config('legal.minimum_age'))->toBe(13);
+    }
+
+    // And a real one still applies.
+    config()->set('legal.minimum_age', 16);
+    $this->postJson('/api/v1/auth/register', registerPayload([
+        'date_of_birth' => now()->subYears(14)->toDateString(),
+    ]))->assertStatus(422)->assertJsonPath('error.code', 'age_restricted');
+});
+
 it('refuses a registration below the minimum age', function () {
     $minimum = (int) config('legal.minimum_age');
 

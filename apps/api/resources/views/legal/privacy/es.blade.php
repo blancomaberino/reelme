@@ -115,6 +115,11 @@
         <td>Ejecución del contrato</td>
       </tr>
       <tr>
+        <td>Verificar que tenés la edad mínima para tener una cuenta</td>
+        <td>Fecha de nacimiento — se verifica al registrarte y <strong>no se guarda</strong>; solo queda el registro de que la verificación se hizo</td>
+        <td>Obligación legal</td>
+      </tr>
+      <tr>
         <td>Mostrar tu perfil público y tus aportes</td>
         <td>Perfil, contenido que creás</td>
         <td>Ejecución del contrato</td>

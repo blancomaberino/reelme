@@ -116,6 +116,11 @@
         <td>Performance of a contract</td>
       </tr>
       <tr>
+        <td>Checking you are old enough to have an account</td>
+        <td>Date of birth — checked at signup and <strong>not stored</strong>; only the fact that a check passed is kept</td>
+        <td>Legal obligation</td>
+      </tr>
+      <tr>
         <td>Showing your public profile and your contributions</td>
         <td>Profile, content you create</td>
         <td>Performance of a contract</td>

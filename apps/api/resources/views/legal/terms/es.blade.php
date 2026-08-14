@@ -39,9 +39,11 @@
 
   <h2 id="quien">Quién puede usar Reelmap</h2>
   <p>
-    Tenés que tener al menos <strong>{{ $minimumAge }} años</strong> para crear una cuenta. Si en tu país la edad mínima para
-    consentir el tratamiento de datos personales es mayor, esa es la que se aplica. Al registrarte declarás
-    que cumplís con ese requisito.
+    Tenés que tener al menos <strong>{{ $minimumAge }} años</strong> para crear una cuenta, y lo verificamos
+    cuando te registrás. Si en tu país la edad mínima es mayor —para usar un servicio como este, o para
+    consentir el tratamiento de tus datos personales— tenés que cumplir con esa edad mayor.
+    <strong>Aplicamos un único mínimo global y no verificamos en qué país estás</strong>, así que cumplir con
+    un requisito local más alto queda de tu lado. Al registrarte declarás que lo cumplís.
   </p>
 
   <h2 id="cuenta">Tu cuenta</h2>

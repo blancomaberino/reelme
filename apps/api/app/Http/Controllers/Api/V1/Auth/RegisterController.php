@@ -31,10 +31,18 @@ class RegisterController extends Controller
          * would still pass. Naming it here makes the intent survive that change;
          * `RegisterAgeGateTest` asserts the column stays null.
          */
-        $user = User::create($request->safe()->except('device_name', 'date_of_birth'));
+        $user = new User($request->safe()->except('device_name', 'date_of_birth'));
 
-        // The OUTCOME of the check, never the date behind it.
-        $user->forceFill(['age_verified_at' => now()])->save();
+        // The OUTCOME of the check, never the date behind it — assigned before
+        // the row is written, so this is ONE insert.
+        //
+        // It was `create()` followed by a second `save()`, which is two writes
+        // with a window between them: a failure in the second leaves an account
+        // that exists and has never been age-verified, and the retry path is a
+        // registration that now collides on the username. A transaction would
+        // close the window; not having a window is better.
+        $user->age_verified_at = now();
+        $user->save();
 
         // Reload so DB-side defaults (role flags, is_public) are reflected in the
         // response rather than appearing as null on the freshly built model.

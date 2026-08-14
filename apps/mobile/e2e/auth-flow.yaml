@@ -47,9 +47,38 @@ tags:
 - tapOn:
     below: "Password"
 - inputText: "Sup3r-secret-${RUN}"
+# Required since T-113 — the API refuses a registration without it, so without
+# this the flow fails at the "Map" assertion below with no hint as to why.
+#
+# Submitted UNDER-AGE first. This is the only place the gate is exercised
+# against a real API: the unit tests mock the 422, so they prove the screen
+# handles the envelope, not that the server ever sends it. A fixed 2020 date
+# stays under any plausible minimum for years without needing arithmetic
+# Maestro cannot do.
+- tapOn:
+    below: "Date of birth"
+- inputText: "2020-01-01"
 - hideKeyboard
 # The register screen's header is "Create your account", so "Create account"
 # uniquely matches the submit button.
+- tapOn: "Create account"
+
+# The refusal, in the CLIENT's words — the API sends only a number. Asserted
+# without the number itself, which is config-driven on the server and would make
+# this flow a mirror of a value it cannot see.
+- assertVisible: "You need to be at least.*"
+
+# The screen clears the password on any failed submit, so it has to be retyped
+# before the second attempt — otherwise this retries with an empty one and fails
+# on a completely different error.
+- tapOn:
+    below: "Password"
+- inputText: "Sup3r-secret-${RUN}"
+- tapOn:
+    below: "Date of birth"
+- eraseText
+- inputText: "1990-01-01"
+- hideKeyboard
 - tapOn: "Create account"
 
 # iOS pops a "Save Password?" system dialog after a secure-field submit; it

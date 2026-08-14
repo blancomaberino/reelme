@@ -28,7 +28,11 @@ function ageRestricted(minimumAge = 13) {
   return {
     error: {
       code: 'age_restricted',
-      message: `You need to be at least ${minimumAge} to use Reelmap.`,
+      // DELIBERATELY not the copy the app shows. This used to be the same
+      // English sentence the assertions look for, so a screen that simply
+      // rendered `error.message` would have passed every one of them — the
+      // test would have proved nothing about localization at all.
+      message: 'raw server text that must never reach the screen',
       details: { minimum_age: minimumAge, field: 'date_of_birth' },
     },
   };
@@ -132,4 +136,25 @@ it('keeps the typed date after a failure so it need not be retyped', async () =>
 
   await waitFor(() => expect(screen.getByText('Taken.')).toBeTruthy());
   expect(screen.getByTestId('register-date-of-birth').props.value).toBe('1990-04-04');
+});
+
+it('never tells anyone they must be at least 0', async () => {
+  // A missing or corrupt `minimum_age` used to become `AgeRestrictedError(0)`,
+  // which the screen renders as a sentence with a 0 in it. Anything that is not
+  // a positive integer now falls through to the generic 422 path, which says
+  // something true instead of something absurd.
+  mock.onPost('/auth/register').reply(422, {
+    error: {
+      code: 'age_restricted',
+      message: 'raw server text that must never reach the screen',
+      details: { field: 'date_of_birth' },
+    },
+  });
+
+  render(<RegisterScreen />, { wrapper: Providers });
+  await fillAndSubmit();
+
+  await waitFor(() => expect(mock.history.post).toHaveLength(1));
+  expect(screen.queryByText(/at least 0/)).toBeNull();
+  expect(screen.queryByText('raw server text that must never reach the screen')).toBeNull();
 });

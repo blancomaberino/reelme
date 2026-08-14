@@ -66,7 +66,7 @@ analytics, and no data shared with data brokers.
 > missing from the table entirely. Answering a store questionnaire with a purpose
 > the app does not implement is a false statement in a store listing, so the row
 > now describes what the schema actually does.
-
+>
 > **Updated 2026-08-14 (T-113).** The note above used to end "the minimum age is
 > stated in the terms, not enforced by a gate". **It is enforced now**: signup
 > asks for a date of birth and refuses anyone below `config('legal.minimum_age')`.
