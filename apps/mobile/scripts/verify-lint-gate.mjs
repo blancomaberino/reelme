@@ -43,8 +43,25 @@ function cleanup() {
   for (const probe of PROBES) rmSync(probe, { force: true });
 }
 
-// A probe left behind by an interrupted run would make the tree dirty and the
-// next run pass for the wrong reason.
+// A probe left behind by an interrupted run makes the tree dirty and breaks
+// lint and tsc for whoever hits it next, so Ctrl-C during the ~10s lint run must
+// not leak one. These handlers do that, but NOT by running: `spawnSync` blocks
+// the event loop, so a handler cannot fire until the lint child exits — by which
+// point `finally` has already cleaned up. What they buy is the deferral itself.
+// Merely REGISTERING a handler stops Node taking the signal's default action, so
+// the process survives to reach `finally` instead of being killed mid-spawn.
+//
+// Verified both ways: interrupt the run at 1s and it finishes normally with no
+// probe left; delete these five lines and the same interrupt exits 130 with both
+// probes on disk. (An interrupted run therefore still runs to completion. That
+// is the trade — a slow Ctrl-C over a dirty checkout.)
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => {
+    cleanup();
+    process.exit(130);
+  });
+}
+
 cleanup();
 
 let result;
@@ -56,7 +73,6 @@ try {
   result = spawnSync('npm', ['run', 'lint', '-w', 'apps/mobile'], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
-    shell: process.platform === 'win32',
   });
 } finally {
   cleanup();
@@ -64,6 +80,13 @@ try {
 
 const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
 const failures = [];
+
+// spawn failed outright (no npm on PATH) — `status` is null, not a number, and
+// reporting that as "the gate does not bite" would send someone hunting eslint.
+if (result.error) {
+  console.error(`✗ Could not run the lint command: ${result.error.message}`);
+  process.exit(1);
+}
 
 if (result.status === 0) {
   failures.push('the lint command exited 0 with two deliberate violations in the tree');
