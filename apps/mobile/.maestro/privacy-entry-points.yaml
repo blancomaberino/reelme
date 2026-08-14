@@ -39,21 +39,25 @@ appId: pet.one.reelmap
 
 # Waited on by id, then tapped by POINT.
 #
-# `tapOn: id: profile-settings` and `tapOn: "Ajustes"` BOTH land on "Invitar
-# amigos" — the row above — reproducibly on this screen. `maestro hierarchy`
-# reports the row's real bounds as [24,632][416,681] in a 956pt-tall screen, so
-# the element is found correctly and the TAP is what misses. 69% is the centre
-# of those bounds (Maestro only accepts integer percentages).
+# 2026-08-13: this used to tap a hardcoded `point: "50%,69%"`, with a comment
+# explaining that `tapOn: "Ajustes"` "lands on Invitar amigos". Both the
+# workaround and the diagnosis were wrong, and the flow had silently started
+# FAILING — 69% was measured before the profile screen gained a row, so it had
+# drifted onto "Invitar amigos" itself and never reached a privacy assertion.
 #
-# The wait is still by id, so this fails loudly if the row ever disappears
-# rather than silently tapping empty space, and every assertion the flow
-# actually exists to make is id-based.
+# The real cause: the profile screen loads its counters asynchronously and the
+# rows below shift when they arrive, so a tap fired into that window lands on
+# whatever was there a moment earlier. It was never the selector — it was
+# tapping a moving screen. Waiting for the layout to settle makes the semantic
+# selector work (measured 1/3 without the wait, 4/4 with it) and removes the
+# magic number that rots every time a row is added.
 - extendedWaitUntil:
     visible:
       id: "profile-settings"
     timeout: 20000
-- tapOn:
-    point: "50%,69%"
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn: "Ajustes"
 - extendedWaitUntil:
     visible: "Seguridad"
     timeout: 20000

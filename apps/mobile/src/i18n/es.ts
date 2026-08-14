@@ -364,6 +364,13 @@ export const es: Record<MessageKey, string> = {
   'auth.register.submit': 'Crear cuenta',
   'auth.register.haveAccount': '¿Ya tenés cuenta? ',
   'auth.register.login': 'Iniciar sesión',
+  // Ver el comentario en en.ts: la frase va partida porque los dos nombres de
+  // documento son enlaces tocables dentro de la oración.
+  'auth.register.legalPrefix': 'Al crear una cuenta aceptás nuestros ',
+  'auth.register.legalTerms': 'Términos y condiciones',
+  'auth.register.legalJoin': ' y la ',
+  'auth.register.legalPrivacy': 'Política de privacidad',
+  'auth.register.legalSuffix': '.',
 
   'verify.title': 'Confirmá tu correo',
   'verify.subtitle': 'Ingresá el código de 6 dígitos que enviamos a {{email}}.',
@@ -765,6 +772,13 @@ export const es: Record<MessageKey, string> = {
 
   // Privacidad y datos (T-039, 05 pantalla #16).
   'settings.privacy': 'Privacidad y datos',
+
+  // Legal (T-054). Visible también sin sesión: la política tiene que poder
+  // leerse antes de tener cuenta.
+  'settings.legal': 'Legal',
+  'settings.legal.privacy': 'Política de privacidad',
+  'settings.legal.terms': 'Términos y condiciones',
+  'settings.legal.opensInBrowser': 'Se abre en el navegador',
   // Bloqueo (T-054, Apple 1.2). Distinto de reportar a propósito: un reporte es
   // un pedido a moderación, un bloqueo tiene efecto ya — si la diferencia no
   // queda clara, la gente reporta y se queda esperando.

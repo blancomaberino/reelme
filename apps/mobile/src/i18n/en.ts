@@ -371,6 +371,14 @@ export const en = {
   'auth.register.submit': 'Create account',
   'auth.register.haveAccount': 'Already have an account? ',
   'auth.register.login': 'Log in',
+  // Consent line under the register button (T-054). Split into fragments
+  // because the two document names are tappable links inside the sentence —
+  // one interpolated string cannot carry a pressable span.
+  'auth.register.legalPrefix': 'By creating an account you agree to our ',
+  'auth.register.legalTerms': 'Terms of Service',
+  'auth.register.legalJoin': ' and ',
+  'auth.register.legalPrivacy': 'Privacy Policy',
+  'auth.register.legalSuffix': '.',
 
   'verify.title': 'Confirm your email',
   'verify.subtitle': 'Enter the 6-digit code we sent to {{email}}.',
@@ -775,6 +783,13 @@ export const en = {
   // Privacy & data (T-039, 05 screen #16). The copy IS the feature here: two
   // rights, each stated in terms of what actually happens to the user's stuff.
   'settings.privacy': 'Privacy & data',
+
+  // Legal (T-054). Shown to signed-out users too — the policy has to be
+  // readable before you have an account.
+  'settings.legal': 'Legal',
+  'settings.legal.privacy': 'Privacy policy',
+  'settings.legal.terms': 'Terms of service',
+  'settings.legal.opensInBrowser': 'Opens in your browser',
   // Reporting content (T-049). Apple 1.2 and Google's UGC policy both require a
   // visible report path; the copy stays plain because someone using it is
   // usually upset and always in a hurry.

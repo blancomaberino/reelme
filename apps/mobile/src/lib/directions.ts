@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+import { apiWebUrl } from './web-urls';
+
 /**
  * Build a maps-app deep link routed to a place (T-033 action row).
  * iOS → Apple Maps; everything else → the `geo:` intent (Android) which the
@@ -36,8 +38,7 @@ export function listShareUrl(publicSlug: string): string {
  * Derived from the configured API origin; null when unset (dev without a host).
  */
 export function listWebUrl(publicSlug: string, base = process.env.EXPO_PUBLIC_API_URL): string | null {
-  if (!base) return null;
-  return `${base.replace(/\/+$/, '')}/l/${publicSlug}`;
+  return apiWebUrl(`/l/${publicSlug}`, base);
 }
 
 /**

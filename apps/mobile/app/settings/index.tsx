@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAnalysisModels, useSetAnalysisModel } from '@/api/hooks/useAnalysisModels';
 import { useTwoFactorStatus } from '@/api/hooks/useTwoFactor';
 import { useT } from '@/i18n';
+import { type LegalDocument, legalUrl } from '@/lib/legal';
+import { openWebUrl } from '@/lib/linking';
 import { useSessionStore } from '@/stores/session';
 import { CURRENCIES, type Currency, type Locale, useSettingsStore } from '@/stores/settings';
 import { type Palette, useColors } from '@/theme/colors';
@@ -16,6 +18,15 @@ import { ScreenHeader } from '@/components/screen-header';
 const LOCALES: { value: Locale; labelKey: 'settings.language.es' | 'settings.language.en' }[] = [
   { value: 'es', labelKey: 'settings.language.es' },
   { value: 'en', labelKey: 'settings.language.en' },
+];
+
+const LEGAL_ROWS: {
+  doc: LegalDocument;
+  labelKey: 'settings.legal.privacy' | 'settings.legal.terms';
+  testID: string;
+}[] = [
+  { doc: 'privacy', labelKey: 'settings.legal.privacy', testID: 'settings-legal-privacy' },
+  { doc: 'terms', labelKey: 'settings.legal.terms', testID: 'settings-legal-terms' },
 ];
 
 export default function SettingsScreen() {
@@ -177,6 +188,35 @@ export default function SettingsScreen() {
           </View>
         </View>
       ) : null}
+
+      {/* Legal (T-054, Apple 5.1.1). Deliberately OUTSIDE the `authed` gate,
+          unlike the rows above: the privacy policy has to be readable by
+          someone deciding whether to sign up at all, and an App Review reviewer
+          opens it before creating an account. Gating it behind login is the
+          single most common way this requirement gets missed.
+
+          These leave the app for the browser — the documents are published by
+          the API so the store listing and the in-app link are the same URL and
+          cannot drift apart. */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('settings.legal')}</Text>
+        <View style={styles.group}>
+          {LEGAL_ROWS.map(({ doc, labelKey, testID }) => (
+            <Pressable
+              key={doc}
+              accessibilityRole="link"
+              accessibilityLabel={t(labelKey)}
+              accessibilityHint={t('settings.legal.opensInBrowser')}
+              onPress={() => openWebUrl(legalUrl(doc, locale))}
+              style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+              testID={testID}
+            >
+              <Text style={styles.optionLabel}>{t(labelKey)}</Text>
+              <Ionicons name="open-outline" size={18} color={c.muted} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
       </ScrollView>
     </SafeAreaView>
   );

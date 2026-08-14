@@ -1,0 +1,146 @@
+# Legal documents — reachable from inside the app (E2E, iOS simulator).
+#
+# Apple requires the privacy policy to be reachable from within the app, and
+# jest cannot prove the two things that actually matter here:
+#
+#  1. That the rows can be REACHED. They are the last section of Settings,
+#     below the fold, and `render(<SettingsScreen/>)` sees the whole tree at
+#     once — a section that only exists off-screen passes every unit test.
+#  2. That the tap OPENS SOMETHING. The unit tests assert `Linking.openURL` was
+#     called with the right string; whether iOS then renders a page at that URL
+#     is a different claim, and a wrong origin fails only here.
+#
+# The app runs in Spanish (the default locale), so the labels below are the es
+# strings, not the en ones the unit tests assert on.
+#
+# Preconditions: API stack + Metro up (`./scripts/dev.sh start`). Unlike the
+# privacy flow, nothing here asserts on an authed-only label, so it should run
+# against a signed-out app too — though it has only actually been run signed in.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/legal-links.yaml
+#
+# Navigation is by tapping real controls, never a deep link — one of those sets
+# the app's launch URL and strands the next Cmd+R on this screen.
+appId: pet.one.reelmap
+---
+# `stopApp` FIRST, so the run does not inherit whatever screen the last one left
+# behind. `launchApp` alone RESUMES a running app: a previous run of this very
+# flow ends on Settings, and resuming there made the navigation below tap its
+# way somewhere else and fail on a screen that was already correct. A flow whose
+# result depends on the previous run is not a test.
+- stopApp
+- launchApp
+
+# --- Reachability: profile tab -> Ajustes -----------------------------------
+- extendedWaitUntil:
+    visible: ".*Perfil.*"
+    timeout: 60000
+- tapOn: ".*Perfil, tab.*"
+
+# `waitForAnimationToEnd` BEFORE the tap, and it is not optional.
+#
+# The profile screen loads its follower/following/share counters asynchronously,
+# and the rows below shift down when they arrive. Tapping into that window makes
+# the tap land on whatever occupied the position a moment earlier — "Invitar
+# amigos", the row above — which is why this navigation has a long history of
+# being blamed on the SELECTOR and worked around with hardcoded percentages.
+# It was never the selector: it was tapping a moving screen. Measured 1/3 without
+# this wait, 4/4 with it.
+- extendedWaitUntil:
+    visible:
+      id: "profile-settings"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn: "Ajustes"
+# "Idioma", not "Seguridad": the language section renders whether or not there
+# is a session, so this flow passes signed in AND signed out. The security
+# section is authed-only, and anchoring on it would tie this flow to a logged-in
+# dev app for no reason — these rows are deliberately not behind that gate.
+#
+# (The signed-OUT case is asserted in jest, in app/settings/__tests__/legal
+# .test.tsx. This flow has only ever been run against a signed-in app.)
+- extendedWaitUntil:
+    visible: "Idioma"
+    timeout: 20000
+
+# --- The Legal section, at the very bottom ----------------------------------
+# Scrolling is part of the reachability claim, not scaffolding: this is what a
+# reviewer looking for the privacy policy actually does.
+- scrollUntilVisible:
+    element:
+      id: "settings-legal-privacy"
+    direction: DOWN
+    timeout: 20000
+- assertVisible:
+    id: "settings-legal-terms"
+- assertVisible: "Política de privacidad"
+- assertVisible: "Términos y condiciones"
+- takeScreenshot: build/maestro/legal-rows
+
+# --- Each tap opens the right published document ----------------------------
+# Maestro reads the browser's accessibility tree, so these assert the PAGE, not
+# just that something opened. That distinction is the whole point: a screenshot
+# of Safari showing an error page looks like success in a log, and both of these
+# URLs are built by string concatenation off EXPO_PUBLIC_API_URL — a wrong
+# origin, a doubled slash or a bad locale segment fails only here.
+#
+# The strings are ones that appear in the DOCUMENT and nowhere in the app, so
+# neither can pass against the Settings screen we just left.
+- tapOn:
+    id: "settings-legal-privacy"
+- extendedWaitUntil:
+    visible: "Quién es responsable de tus datos"
+    timeout: 20000
+- takeScreenshot: build/maestro/legal-privacy-page
+
+# Back to Settings for the second link. A full relaunch rather than Safari's
+# "◀ Reelmap" breadcrumb: the breadcrumb is at an unlabelled fixed position that
+# would rot exactly like the tap point above, and re-walking the path costs a
+# few seconds and proves it twice.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".*Perfil.*"
+    timeout: 60000
+- tapOn: ".*Perfil, tab.*"
+- extendedWaitUntil:
+    visible:
+      id: "profile-settings"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn: "Ajustes"
+- scrollUntilVisible:
+    element:
+      id: "settings-legal-terms"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "settings-legal-terms"
+# Section 1's heading, not the document title: "Términos y condiciones" is also
+# the label of the row we just tapped, so asserting the title would pass against
+# the Settings screen if the tap opened nothing at all.
+#
+# It is section ONE deliberately. Safari exposes only a window of the page to the
+# accessibility tree — a dump on this page lists the first TOC entry and the
+# first section's body, and nothing from further down — so an assertion on the
+# zero-tolerance clause in section 6 fails even though it is on screen
+# (confirmed twice, and by screenshot). The presence of that clause is asserted
+# where content belongs: LegalDocumentTest, in both languages.
+- extendedWaitUntil:
+    visible: "Aceptación de estos términos"
+    timeout: 20000
+- takeScreenshot: build/maestro/legal-terms-page
+
+# --- Leave the app where we found it ----------------------------------------
+# CLAUDE.md asks for the restore to be VERIFIED, not asserted. Stop, launch with
+# no URL (what Cmd+R replays), and confirm we land on the map — not back in
+# Settings, and not in the browser.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 60000
+- assertNotVisible: "Política de privacidad"
+- assertNotVisible: "Aceptación de estos términos"
