@@ -125,7 +125,7 @@ Two things about these documents are load-bearing and tested rather than trusted
 a private individual, so their name and domicile are personal data in their own
 right and are not committed here. `config/legal.php` reads three variables:
 
-```
+```text
 LEGAL_CONTROLLER_NAME       e.g. a person's full legal name, or a company name
 LEGAL_CONTROLLER_DOMICILE   e.g. "Montevideo, Uruguay"
 LEGAL_CONTACT_EMAIL         the published moderation / privacy address

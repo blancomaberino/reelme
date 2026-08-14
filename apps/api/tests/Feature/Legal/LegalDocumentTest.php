@@ -188,9 +188,12 @@ it('publishes nothing at all when the legal identity is not configured', functio
 
         expect($response->getStatusCode())->toBe(503);
         // Not merely "not a 200": assert the withheld values are absent from
-        // whatever the error path does render.
+        // whatever the error path does render. ALL THREE — the contact address
+        // was missing here, which is the same partial-coverage mistake the
+        // comment above warns about, made one assertion further down.
         $response->assertDontSee(LEGAL_CONTROLLER, false);
         $response->assertDontSee(LEGAL_DOMICILE, false);
+        $response->assertDontSee(LEGAL_CONTACT, false);
     }
 })->with(['controller', 'domicile', 'contact_email']);
 
@@ -218,15 +221,19 @@ it('keeps the identity out of the view sources entirely', function (string $view
         ->and($source)->not->toMatch('/[\w.+-]+@[\w-]+\.[\w.]+/');
 })->with(['privacy/es', 'privacy/en', 'terms/es', 'terms/en']);
 
-it('treats a blank or whitespace-only identity as unconfigured', function () {
+it('treats a blank or whitespace-only identity as unconfigured', function (string $field) {
     // `LEGAL_CONTROLLER_NAME=` in an env file yields "", not null, and a stray
     // space yields " ". Both are somebody having NOT filled this in, and a
     // truthiness check that accepted " " would publish a policy whose
     // controller is a space.
-    config()->set('legal.controller', '   ');
+    //
+    // Parameterised over all three for the same reason the 503 test is: a
+    // trim-check applied to only the field the test happened to name is exactly
+    // the bug this asserts against, and it looked fine while covering one.
+    config()->set("legal.{$field}", '   ');
 
     $this->get('/privacy/es')->assertStatus(503);
-});
+})->with(['controller', 'domicile', 'contact_email']);
 
 it('states the same media retention window the pipeline actually enforces', function () {
     $hours = (int) config('media.retention.original_hours');
