@@ -269,12 +269,8 @@ jest.mock('react-native-maps', () => {
 jest.mock('@shopify/flash-list', () => {
   const React = require('react');
   const { View, Pressable } = require('react-native');
-  // The `any`s below are deliberate — this mock stands in for a generic list
-  // whose real props are typed by the caller. They carried
-  // `eslint-disable-next-line @typescript-eslint/no-explicit-any` comments that
-  // suppressed nothing: eslint-config-expo does not enable that rule, so the
-  // directives were dead, and dead directives read as "a rule is watching this"
-  // when none is.
+  // Untyped by design: this mock stands in for a generic list whose props the
+  // caller types.
   const resolve = (node: any) => (typeof node === 'function' ? node() : node);
   const FlashList = (props: any) => {
     const { data = [], renderItem, keyExtractor, ListHeaderComponent, ListFooterComponent, ListEmptyComponent, onEndReached } = props;

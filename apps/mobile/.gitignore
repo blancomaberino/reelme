@@ -21,6 +21,11 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
+# Probe files planted by scripts/verify-lint-gate.mjs. It removes them itself;
+# this is so a SIGKILLed run cannot get one committed by a `git add -A`. ESLint
+# does not read .gitignore, so they are still linted — which the gate needs.
+lint-gate-probe.ts
+
 # debug
 npm-debug.*
 yarn-debug.*

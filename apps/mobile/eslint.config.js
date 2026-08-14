@@ -43,25 +43,35 @@ const TOKEN_RULE = {
 module.exports = defineConfig([
   expoConfig,
   {
-    // Generated output, all of it git-ignored (see .gitignore). The lint script
-    // lints the whole workspace — `eslint .` — so anything not named here gets
-    // linted, which is the right default: the previous command named three
-    // directories and silently skipped everything else. The cost of that
-    // default is this list, and the cost of getting this list wrong is noise
-    // about files nobody can fix in the repo, not a silent pass.
+    // Generated output. `ios/` is Expo prebuild output (`expo prebuild --clean`
+    // rewrites it), `android/` the same when it exists; `.expo/` and
+    // `expo-env.d.ts` are expo-router's generated types; the rest are build
+    // artefacts.
     //
-    // `ios/` is Expo prebuild output (`expo prebuild --clean` rewrites it),
-    // `android/` the same when it exists; `.expo/` and `expo-env.d.ts` are
-    // expo-router's generated types.
+    // Every entry is also in .gitignore, and it is deliberately NOT derived from
+    // it. The two lists fail in opposite directions: a missing entry here lints
+    // generated output, which is noise you can see; a .gitignore broadened for a
+    // git reason (it has happened) would silently SHRINK what gets linted, which
+    // is the T-114 bug one layer down. They also mean different things — a
+    // git-ignored `src/generated/` would still need linting.
     ignores: [
-      'dist/*',
+      'dist/**',
       'build/**',
       'coverage/**',
+      'web-build/**',
       'ios/**',
       'android/**',
       '.expo/**',
       'expo-env.d.ts',
     ],
+  },
+  {
+    // Stated, not inherited. `--max-warnings=0` in the lint script is what makes
+    // a dead `eslint-disable` fail the build — but only because ESLint 9 happens
+    // to default this to 'warn'. That is two upstream facts holding up a rule
+    // this repo relies on (T-114 found three dead directives in jest.setup.ts,
+    // each reading as "a rule is watching this" when none was).
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
   },
   {
     // Applied to EVERYTHING by default, so a NEW file is covered without anyone

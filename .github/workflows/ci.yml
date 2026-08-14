@@ -235,13 +235,10 @@ jobs:
       - name: Lint
         run: npm run lint -w apps/mobile
 
-      # A green Lint step above means "no violations were reported", which is
-      # also what a linter that never opened the files reports. For most of this
-      # project's life it was the second thing: the script ran `expo lint`, which
-      # lints src/, app/ and components/ and nothing else, so every root-level
-      # file passed a gate that never read it (T-114). This step plants a
-      # violation in src/ and one at the workspace root and fails unless the
-      # Lint step above reports both.
+      # Proves the Lint step above can actually fail — until T-114 it silently
+      # skipped every root-level file. Rationale and probe design:
+      # apps/mobile/scripts/verify-lint-gate.mjs. Costs a second lint pass,
+      # ~2s of it, since the first pass leaves a warm cache in the same job.
       - name: Lint gate self-test
         run: npm run lint:gate -w apps/mobile
 
