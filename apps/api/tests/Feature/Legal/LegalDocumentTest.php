@@ -235,6 +235,26 @@ it('treats a blank or whitespace-only identity as unconfigured', function (strin
     $this->get('/privacy/es')->assertStatus(503);
 })->with(['controller', 'domicile', 'contact_email']);
 
+it('discloses the signup age check, and that the date is not kept', function () {
+    /*
+     * GDPR transparency is about PROCESSING, not storage. Asking someone for
+     * their date of birth and discarding it is still something they are
+     * entitled to be told about — and the fact that it is discarded is the
+     * single most reassuring thing the policy can say about it, so it must
+     * survive an edit rather than sit in a paragraph nobody re-reads.
+     *
+     * This test exists because the policy went out WITHOUT any of it: T-113
+     * added the gate and left both documents describing an app that had none.
+     */
+    $this->get('/privacy/es')->assertOk()
+        ->assertSee('fecha de nacimiento para verificar', false)
+        ->assertSee('Esa fecha no se guarda.', false);
+
+    $this->get('/privacy/en')->assertOk()
+        ->assertSee('date of birth to check', false)
+        ->assertSee('That date is not stored.', false);
+});
+
 it('states the same media retention window the pipeline actually enforces', function () {
     $hours = (int) config('media.retention.original_hours');
     $ceiling = (int) config('media.retention.in_flight_ceiling_hours');
