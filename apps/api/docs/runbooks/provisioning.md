@@ -1,5 +1,11 @@
 # Provisioning staging & production
 
+> 📋 **Going to production?** Start from
+> [`docs/deployment-to-prod.md`](../../../../docs/deployment-to-prod.md) — the single ordered checklist
+> across the stores, the servers and the data. This document is the detail
+> behind one of its phases.
+
+
 What the Reelmap API needs to run, and the order to build it in (T-055,
 01 §environments-deployment).
 
@@ -69,7 +75,7 @@ environment.
 Both are required. The app is not a request/response service — most of what it
 does happens in `routes/console.php` and Horizon.
 
-```
+```crontab
 * * * * * cd /home/forge/reelmap/apps/api && php artisan schedule:run >> /dev/null 2>&1
 ```
 
