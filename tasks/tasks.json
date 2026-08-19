@@ -3062,7 +3062,7 @@
       "id": "T-114",
       "title": "The mobile lint gate cannot fail — `expo lint` reports nothing",
       "phase": "M5",
-      "status": "in_progress",
+      "status": "done",
       "depends_on": [],
       "estimate": "S",
       "paths": [
