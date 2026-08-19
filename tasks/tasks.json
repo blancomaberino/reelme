@@ -1,5 +1,5 @@
 {
-  "$schema_note": "Task graph for Reelmap. An agent picks the lowest incomplete phase, then any task whose depends_on are all status=done. Each task has a companion file tasks/<id>-*.md with full context. Update status here (single source of truth): pending | in_progress | done | blocked. PRIORITY OVERRIDE (owner request 2026-07-21): the ARCH phase (architecture hardening, T-085+) is the current highest-priority phase and is worked BEFORE any remaining M1/M3/M4/M5 backlog. Within ARCH, honor depends_on then P0>P1 ordering noted per task. See ROADMAP.md#arch. AUDIT WAVE 2 (2026-07-29): T-100..T-109 filed from the architecture/UX audit and appended to ARCH. Order within the wave: T-100, T-101, T-102, T-103 first (user-visible defects + the contract drift gap), then T-104..T-109 (foundation cleanup). T-106 must land before the M4 monetization tasks touch Place. AUDIT WAVE 3 (2026-08-19): T-117..T-136 filed from the code + security review at commit d0095c7 (30 findings, consolidated) and appended to M5 — nothing is live yet, so these are pre-launch fixes, not an incident. Order within the wave: T-117 first (venue takeover — any registered account becomes the verified operator of a real restaurant and the real owner is locked out), then T-127 (a capped offer redeems without limit — real money) and T-128 (opening hours have never rendered for any user); then T-129 and T-130, the mock and CI gaps that are the reason this whole class shipped green; then T-118, T-119, T-120; then the rest in id order. T-117 must land before any further work touches place claims. The wave's root-cause finding, which every mobile task in it repeats: A FIX IS APPLIED TO ONE INSTANCE OF A DUPLICATED SURFACE AND NOT ITS TWIN — so T-131, T-132 and T-133 are EXTRACTIONS, and a PR that patches each copy again has not done the task.",
+  "$schema_note": "Task graph for Reelmap. An agent picks the lowest incomplete phase, then any task whose depends_on are all status=done. Each task has a companion file tasks/<id>-*.md with full context. Update status here (single source of truth): pending | in_progress | done | blocked. PRIORITY OVERRIDE (owner request 2026-07-21): the ARCH phase (architecture hardening, T-085+) is the current highest-priority phase and is worked BEFORE any remaining M1/M3/M4/M5 backlog. Within ARCH, honor depends_on then P0>P1 ordering noted per task. See ROADMAP.md#arch. AUDIT WAVE 2 (2026-07-29): T-100..T-109 filed from the architecture/UX audit and appended to ARCH. Order within the wave: T-100, T-101, T-102, T-103 first (user-visible defects + the contract drift gap), then T-104..T-109 (foundation cleanup). T-106 must land before the M4 monetization tasks touch Place. AUDIT WAVE 3 (2026-08-19): T-117..T-136 filed from the code + security review at commit d0095c7 (30 findings, consolidated) and appended to M5 — nothing is live yet, so these are pre-launch fixes, not an incident. Order within the wave: T-117 first (venue takeover — any registered account becomes the verified operator of a real restaurant and the real owner is locked out), then T-127 (a capped offer redeems without limit — real money) and T-128 (opening hours have never rendered for any user); then T-129 and T-130, the mock and CI gaps that are the reason this whole class shipped green; then T-118, T-119, T-120; then the rest in id order. T-117 must land before any further work touches place claims. The wave's root-cause finding, which every mobile task in it repeats: A FIX IS APPLIED TO ONE INSTANCE OF A DUPLICATED SURFACE AND NOT ITS TWIN — so T-131, T-132 and T-133 are EXTRACTIONS, and a PR that patches each copy again has not done the task. AUDIT WAVE 4 (2026-08-19, same commit d0095c7): T-137..T-148 filed from a React Native / Expo review of apps/mobile only, run AFTER wave 3 and told not to re-report the eight mobile findings already filed (15 findings, consolidated). GLOBAL ORDER ACROSS BOTH WAVES: T-117, then T-137, then T-127, T-128, T-129, T-130, then T-138 and T-142, then the rest. T-137 sits second because it needs NO setup at all to exploit — any installed app or web page opens reelmap://share?sharedUrl=… and a signed-in user silently publishes attacker-chosen content — where T-117 needs an account, a share, a correction and a domain the attacker controls. T-117 still leads on consequence (permanent venue takeover with the money surface attached), but it also carries a REPRODUCE-FIRST gate: if its reproduction stalls, T-137 must NOT wait behind it. T-137 carries the same reproduce-first gate, for the same reason — it moves a trust boundary. This wave's own root causes, both worth naming in review: THE CORE SCREENS GOT THE CARE AND THE SECONDARY ONES INHERITED NONE OF IT (T-139, T-140, T-141) and APP-SHELL CONCERNS THAT BELONG TO NOBODY WENT UNOWNED (T-142, T-143, T-144). T-144 is a sibling of T-133, not a duplicate: T-133 owns the sheet chrome, T-144 owns the keyboard-avoidance idiom — neither depends on the other and the file sets do not overlap.",
   "project": "reelmap",
   "version": 1,
   "estimate_scale": {
@@ -3633,7 +3633,7 @@
         "SheetShell's documented zero-bottom-inset workaround exists in exactly one place — SheetShell"
       ],
       "agent": "executor",
-      "notes": "Full spec in tasks/T-133-bottom-sheet-chrome-four-copies.md. CR-15 from the 2026-08-19 code review (MINOR by severity, and the cleanest illustration of the wave's root cause).\n\nsheet-shell.tsx:37 exists EXPLICITLY to prevent this. Its own comment: 'Two copies of a modal is how the second one ends up 2pt off and a scheme behind' — and it documents that SafeAreaView reports a zero bottom inset inside a Modal. Only three components use it. save-to-list.tsx:50, menu-sheet.tsx, add-to-list-search.tsx and quick-share.tsx each re-implement the chrome using the <SafeAreaView edges={['bottom']}> pattern SheetShell documents as BROKEN, and none labels its backdrop Pressable.\n\nThe visible consequence: map pin -> 'Guardar' -> 'Nueva lista' mounts an autoFocus TextInput and its Create button at the bottom of a bottom-pinned modal with no KeyboardAvoidingView, so the keyboard covers both. report-sheet.tsx and suggest-edit-sheet.tsx have the KeyboardAvoidingView; these do not. A component wrote down the bug it prevents and was then bypassed four times.\n\nThis is a UI task: invoke /frontend-design, and expect SheetShell to need a variant or two (scrollable content, a keyboard-avoiding form) rather than the four callers bending to a shape that does not fit them. If SheetShell cannot absorb a case, EXTEND it — a fifth hand-rolled sheet with a comment explaining why is still a fifth hand-rolled sheet.\n\nVerification has to happen on a device. A keyboard overlap is invisible to jest by construction. Use Maestro to navigate (never `simctl openurl` — see CLAUDE.md), screenshot the open sheet with the keyboard up, and restore the simulator afterwards.\n\nFILE OVERLAP: quick-share.tsx is also touched by T-131 (the missing quota guard). No dependency; whichever lands second rebases."
+      "notes": "Full spec in tasks/T-133-bottom-sheet-chrome-four-copies.md. CR-15 from the 2026-08-19 code review (MINOR by severity, and the cleanest illustration of the wave's root cause).\n\nsheet-shell.tsx:37 exists EXPLICITLY to prevent this. Its own comment: 'Two copies of a modal is how the second one ends up 2pt off and a scheme behind' — and it documents that SafeAreaView reports a zero bottom inset inside a Modal. Only three components use it. save-to-list.tsx:50, menu-sheet.tsx, add-to-list-search.tsx and quick-share.tsx each re-implement the chrome using the <SafeAreaView edges={['bottom']}> pattern SheetShell documents as BROKEN, and none labels its backdrop Pressable.\n\nThe visible consequence: map pin -> 'Guardar' -> 'Nueva lista' mounts an autoFocus TextInput and its Create button at the bottom of a bottom-pinned modal with no KeyboardAvoidingView, so the keyboard covers both. report-sheet.tsx and suggest-edit-sheet.tsx have the KeyboardAvoidingView; these do not. A component wrote down the bug it prevents and was then bypassed four times.\n\nThis is a UI task: invoke /frontend-design, and expect SheetShell to need a variant or two (scrollable content, a keyboard-avoiding form) rather than the four callers bending to a shape that does not fit them. If SheetShell cannot absorb a case, EXTEND it — a fifth hand-rolled sheet with a comment explaining why is still a fifth hand-rolled sheet.\n\nVerification has to happen on a device. A keyboard overlap is invisible to jest by construction. Use Maestro to navigate (never `simctl openurl` — see CLAUDE.md), screenshot the open sheet with the keyboard up, and restore the simulator afterwards.\n\nFILE OVERLAP: quick-share.tsx is also touched by T-131 (the missing quota guard). No dependency; whichever lands second rebases.\n\nCROSS-REFERENCE ADDED 2026-08-19 (wave 4, MOB-6). T-144 owns the keyboard-avoidance idiom app-wide, and the mobile review found that ALL FIVE existing KeyboardAvoidingView sites pass `behavior={Platform.OS === 'ios' ? 'padding' : undefined}` — the pre-edge-to-edge idiom that relied on Android window resize, which RN 0.86 / SDK 57 no longer does by default. So when this task gives SheetShell its keyboard behaviour for the save-to-list case, it must NOT copy that idiom: Android needs an explicit `behavior=\"padding\"` with a keyboardVerticalOffset. If T-144 lands first, consume its primitive; if this task lands first, T-144 retro-fits SheetShell. The two tasks share no files and neither depends on the other — this note is here so the sixth copy of a broken idiom does not get written by the task whose whole point is removing copies."
     },
     {
       "id": "T-134",
@@ -3720,6 +3720,369 @@
       ],
       "agent": "executor",
       "notes": "Full spec in tasks/T-136-hidden-places-in-owner-lists.md. CR-10 from the 2026-08-19 code review (IMPORTANT).\n\nPlaceListController.php:164 loadWithPlaces — used by show, addPlace and removePlace — has no publiclyVisible(). Its sibling at :179, loadWithVisiblePlaces, DOES, and its docblock explains why. PlaceModerator never removes the row from place_list_items, so a moderated place stays in the user's saved list.\n\nThe cascade is what makes it worth a task rather than a line: GET /me/lists/{id} then returns `status: \"hidden\"`, but place-summary.json:16 declares the enum as [\"pending\",\"active\"] and the generated TS narrows to that union — so the app happily renders the row, and tapping it hits /place/[slug], which 404s at PlaceController.php:160. A permanently dead row in the user's own list, with an impossible status the contract says cannot exist.\n\nTwo halves, and only fixing the first is the trap: apply publiclyVisible() in loadWithPlaces, AND assert that no response can emit a status outside the enum. The second is what stops the next status value (or the next un-scoped loader) doing this again silently — the contract already declared the truth and nothing was checking.\n\nWatch the removePlace path. A user whose list contains a place that was hidden after they saved it must still be able to REMOVE it; a visibility filter that hides the row from the delete lookup would strand it forever. Test that case explicitly."
+    },
+    {
+      "id": "T-137",
+      "title": "Any app can make Reelmap publish a share, with no user tap",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-025"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/(main)/share.tsx",
+        "apps/mobile/app/+native-intent.tsx",
+        "apps/mobile/app/_layout.tsx",
+        "apps/mobile/src/stores/ui.ts",
+        "apps/mobile/app/(main)/__tests__/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#share-sheet-ingestion-flow-the-core-ux",
+        "05-mobile-app.md#native-plumbing--expo-share-intent"
+      ],
+      "acceptance": [
+        "REPRODUCE FIRST: `reelmap://share?sharedUrl=…` was opened against a running app on a signed-in account BEFORE any fix was written, and what actually happened recorded in the task file — including the case where it does not auto-submit. The chain was traced through source and independently confirmed against source, but never EXECUTED; and the deep-link tooling needed to run it is itself hook-denied, so the method is written into the task file and must be followed exactly",
+        "A payload arriving as a ROUTE PARAM prefills the form and requires an explicit tap; only the `useUiStore` staged payload (the genuine share sheet) auto-submits — asserted for both paths",
+        "The scheme is validated on `u` (the `sharedUrl` param), not only on `txt`; a `javascript:` value never reaches the API — asserted",
+        "Sharing the SAME post twice works: `handled.current` is cleared by reset(), or the dedupe is keyed on the staged object's identity — asserted by staging the same payload twice with a reset between",
+        "The `replay` state and the 'already added' note, currently unreachable, are reachable — the test drives them",
+        "The Maestro/CI fallback the route-param path exists for still works, now behind the tap"
+      ],
+      "agent": "executor-high",
+      "notes": "REPRODUCE BEFORE IMPLEMENTING (owner request 2026-08-19, same gate as T-117 and for the same reason: this moves a trust boundary). The chain was traced through source by the mobile reviewer and independently confirmed against source by the orchestrator — but it has NOT been executed against a running app. Reproducing it is also the only way to prove the fix: with no red starting point, 'no request was made' cannot be told apart from 'the deep link never reached the screen'. THE REPRODUCTION HAS A HARD CONSTRAINT — the tooling it needs is denied by a PreToolUse hook, and the sanctioned exception plus the mandatory restore are written out in the task file. Follow that section exactly; it is not optional and it is not paraphrasable.\n\nFull spec in tasks/T-137-deep-link-auto-submit.md. MOB-1 (BLOCKING) + MOB-8 (IMPORTANT) from the 2026-08-19 mobile review.\n\nMOB-1. The share-ingest mount effect at share.tsx:150-168 reads `sharedUrl`/`sharedText` from useLocalSearchParams and ends in `doSubmit(finalUrl, finalCap, 'share_sheet')` — a real POST /shares with no tap. Those params are attacker-reachable: _layout.tsx:113-116 deliberately lets `reelmap://` scheme opens fall through to expo-router, and +native-intent.tsx:19 returns any non-share-extension path unchanged (`return path;`). So any other installed app, or a web page, opens `reelmap://share?sharedUrl=https://attacker.example/x`; a signed-in user watches Reelmap come to the foreground and has silently published attacker-chosen content into their own ingest pipeline, spending one of their capped daily shares. Second defect in the same effect: only `txt` is regex-checked (`/^https?:\\/\\//i`). A value arriving as `u` is assigned to `finalUrl` with NO scheme check and forwarded to the API verbatim — `javascript:` included. The comment at :144-149 justifies the param path as a Maestro/CI fallback; it does not address third-party invocation.\n\nMOB-8 IS THE SAME TWENTY LINES, which is why it is not a separate task. The effect dedupes on `handled.current === payload` and NOTHING ever resets that ref — not the effect, not reset() ('share another'). The screen is a Tabs.Screen with `href: null` so it stays mounted, and ShareIntentRedirect only router.replace's to it. Share an Instagram post, tap 'share another', go back to Instagram and share THE SAME post: the app foregrounds onto an empty form, the URL is never prefilled, no request is made — though the API supports the replay and the screen has a `replay` state and an 'already added' note this makes unreachable. The reviewer's own suggested fix, 'key the dedupe on the staged object's identity rather than the payload string', is MECHANICALLY THE SAME REFACTOR as MOB-1's 'auto-submit only from the staged payload'. Two PRs would conflict in one effect and the second would re-derive the first's reasoning.\n\nSAME DEFECT SHAPE AS T-138 (MOB-11), and the reviewer named the two together as its top pair: A VALIDATED PATH AND AN UNVALIDATED PATH EXIST FOR THE SAME INPUT, AND A CODE COMMENT ASSERTS THEY ARE THE SAME PATH. Here the comment calls the param path a CI fallback; there the header comment claims the in-app notification centre is 'the identical path the push tap handler uses'. Fix both by making them one path, not by copying the guard.\n\nFILE OVERLAP: share.tsx is also touched by T-131 (the quota guard at :93). Different region of the file, no dependency — whichever lands second rebases."
+    },
+    {
+      "id": "T-138",
+      "title": "The in-app notification centre skips the URL guard the push handler uses",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-040",
+        "T-027"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/notifications.tsx",
+        "apps/mobile/src/notifications/routing.ts",
+        "apps/mobile/src/notifications/__tests__/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#notification-types--deep-links",
+        "03-api-design.md#notifications--devices"
+      ],
+      "acceptance": [
+        "A server-supplied `url` of `//attacker.example` or one without a leading `/` does NOT navigate from the in-app notification centre — asserted with the same fixtures the push-tap path is tested with",
+        "There is ONE guarded navigation helper; the notification centre and the push-tap handler both call it, so the header comment's claim that they are the identical path becomes true",
+        "The `as never` cast is GONE, and the type is the one the guard returns — the cast is what silenced the error that would have caught this",
+        "A legitimate notification still navigates, for every url shape the API actually emits"
+      ],
+      "agent": "executor-high",
+      "notes": "Full spec in tasks/T-138-notification-centre-url-guard.md. MOB-11 from the 2026-08-19 mobile review.\n\nnotifications.tsx:121 is `if (item.url) router.push(item.url as never)`. The push-tap path routes the IDENTICAL server-supplied `data.url` through urlFromData() (routing.ts:24-28), whose own comment calls it 'defense in depth on router.push' — leading `/` required, protocol-relative `//host` rejected. The in-app centre reads the same field off GET /notifications and skips the guard entirely.\n\nTwo details make this more than a missing call. The header comment at notifications.tsx:26 CLAIMS it is 'the identical path the push tap handler uses' — it isn't, and the comment is why nobody looked. And the `as never` cast is precisely what silenced the type error that would otherwise have caught it: a cast that exists to make a call compile is a cast that has removed the only check on that call.\n\nSAME DEFECT SHAPE AS T-137 (MOB-1), and the reviewer named the two as its top pair to fix: A VALIDATED PATH AND AN UNVALIDATED PATH EXIST FOR THE SAME INPUT, AND A CODE COMMENT ASSERTS THEY ARE THE SAME PATH.\n\nSO DO NOT JUST ADD THE CALL. `const url = urlFromData({ url: item.url }); if (url) pushUrl(url);` fixes today's bug and leaves two navigation paths that a future change can separate again. Make it one helper both callers use, and delete the cast rather than re-typing around it — that is what makes the header comment true instead of aspirational."
+    },
+    {
+      "id": "T-139",
+      "title": "List detail renders every item twice, unvirtualized, off an endpoint with no cursor",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-062",
+        "T-063",
+        "T-105"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/lists/[id].tsx",
+        "apps/mobile/app/list/[slug].tsx",
+        "apps/mobile/src/components/map/place-marker.tsx",
+        "apps/api/app/Http/Resources/PlaceListDetailResource.php",
+        "apps/api/app/Http/Controllers/Api/V1/PlaceListController.php",
+        "packages/contracts/schemas/place-list-detail.json"
+      ],
+      "spec_refs": [
+        "03-api-design.md#conventions",
+        "05-mobile-app.md#performance-rules-re-render-storms"
+      ],
+      "acceptance": [
+        "The list-detail endpoint takes a limit and a cursor — the generic KeysetPaginator from T-105, not a second hand-rolled one — and the contract schema and generated types carry it",
+        "The rows are virtualized (FlashList); a list of 200 saved places mounts a screenful, not 200 rows — asserted on the number of rendered rows, not on a snapshot",
+        "The map renders only the items in the fitted region, so 200 markers do not rasterise 200 remote images before first paint",
+        "An add/remove mutation no longer redraws the whole collection — asserted on what re-renders, not on the request count",
+        "Measured on a device with a 200-item list: time to first paint recorded before and after, in the PR"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-139-list-detail-unbounded-double-render.md. MOB-2 (BLOCKING) from the 2026-08-19 mobile review.\n\nList detail is unbounded — PlaceListDetailResource::toArray maps every item and there is no `limit` or cursor anywhere in the path — and lists/[id].tsx:145-172 renders the collection TWICE inside a plain ScrollView: once as `<PlaceMarker ... detailed>`, which mounts an <Image> and holds `tracksViewChanges` on until the remote photo loads (place-marker.tsx:58-77), and once as a row. The public twin, list/[slug].tsx:67,96,113, does the same.\n\nA user who saved 200 places into one list taps it and gets 200 native marker views rasterising 200 remote images plus 200 off-screen rows, all before first paint: seconds of frozen white on a mid-range Android, a memory spike on iOS. Every add/remove mutation returns the same full payload and redraws it.\n\nTHIS IS NOT A MOBILE-ONLY FIX and the paths say so. The endpoint has no limit and no cursor, so virtualizing the client still ships the whole collection over the wire; T-105 already built the generic KeysetPaginator for exactly this, and re-hand-rolling one here would be the wave's own root cause in miniature.\n\nROOT CAUSE SHARED WITH T-140 AND T-141: the core screens got the care and the secondary ones inherited none of it. (main)/places.tsx is a properly virtualized, cursor-paginated FlashList — the pattern exists, in this repo, written by the same team. Read it before designing anything.\n\nThe marker discipline in place-marker.tsx is genuinely good (its memo comparator is built from Record<keyof MarkerPlace, true> so the type cannot drift past it). Do not rewrite it — the bug is how many of them get mounted, not what each one does."
+    },
+    {
+      "id": "T-140",
+      "title": "Three more screens .map() unbounded server collections into a ScrollView",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-039",
+        "T-042",
+        "T-037"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/users/[username]/index.tsx",
+        "apps/mobile/app/restaurant/offers.tsx",
+        "apps/mobile/src/components/profile/follow-list.tsx",
+        "apps/mobile/src/api/hooks/useProfile.ts",
+        "apps/mobile/src/api/hooks/useOffers.ts"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#performance-rules-re-render-storms",
+        "05-mobile-app.md#screen-inventory"
+      ],
+      "acceptance": [
+        "All three screens render through FlashList with the existing header as ListHeaderComponent — asserted on the number of mounted rows for a 100-item fixture, not on a snapshot",
+        "Opening a public profile does not fire 50 concurrent image requests for rows nobody has scrolled to",
+        "'Followers' on a 100-follower account no longer mounts 100 pressables synchronously; the push animation is measured on a device and the result recorded in the PR",
+        "The fixed 50/100 fetch caps are either paginated or explicitly documented as caps with the truncation visible to the user — a silently truncated list is its own bug"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-140-secondary-screens-unvirtualized.md. MOB-10 from the 2026-08-19 mobile review.\n\nThree screens map unbounded server collections into a ScrollView: users/[username]/index.tsx:170 (useUserPlaces fetches 50 — useProfile.ts:56), restaurant/offers.tsx:110-122 (useMyOffers fetches 100 — useOffers.ts:55), and profile/follow-list.tsx:37 (useFollowers/useFollowing 100 — useProfile.ts:10). Each MyPlaceCard mounts a remote Thumbnail; each OfferCard mounts a quota meter and 3-4 buttons.\n\nSo tapping any user in search fires 50 concurrent image requests for roughly 46 rows nobody has scrolled to, and opening 'Followers' on an active account mounts 100 pressables synchronously, so the push animation drops frames.\n\nSame root shape as T-139, and the reviewer put it plainly: app/(main)/places.tsx gets this EXACTLY RIGHT — FlashList plus cursor pagination. The secondary screens did not inherit it. This task is filed separately from T-139 because T-139 needs an API cursor, a contract change and a map-region cap, while these three need none of that: the fix is entirely client-side and independently shippable. Splitting keeps a backend-and-contracts PR out of a three-screen mobile PR.\n\nThe fetch caps deserve a decision rather than a copy. 50 places and 100 followers are silent truncations today: a user with 120 followers sees 100 and is told nothing. Paginate, or show the cap — do not leave it looking like the whole list."
+    },
+    {
+      "id": "T-141",
+      "title": "The review composer's star rating is unannounceable to VoiceOver",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-059",
+        "T-101"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/src/components/place/review-composer.tsx",
+        "apps/mobile/src/i18n/",
+        "apps/mobile/src/components/place/__tests__/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#screen-inventory",
+        "00-product-spec.md#non-functional-requirements"
+      ],
+      "acceptance": [
+        "Each star announces what it is and whether it is currently selected — `accessibilityState={{ selected: n <= rating }}` plus a unit-bearing label, asserted per star",
+        "The label comes from t() in both dictionaries, with a plural rule — not a bare number",
+        "A screen-reader user can determine the CURRENT rating before publishing, and the Publish gate (disabled={rating < 1}) announces why it is disabled",
+        "Verified with VoiceOver on a device, and what it reads recorded in the PR — an accessibility fix asserted only in jest has not been heard"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-141-review-stars-accessibility.md. MOB-13 from the 2026-08-19 mobile review.\n\nreview-composer.tsx:75-79 — the five star pressables carry `accessibilityLabel={`${n}`}` and nothing else: no accessibilityState, no unit. This control alone gates the Publish button (`disabled={rating < 1}` at :102).\n\nOn place detail VoiceOver reads '1, botón … 5, botón' with no indication these are stars, and after tapping, nothing distinguishes filled from outlined. The current rating is unannounceable, so a screen-reader user cannot confirm what they are about to publish — on the one control that decides whether they can publish at all.\n\nANOTHER ONE-COPY-MISSED-THE-FIX CASE, which is why it belongs to this wave rather than to general a11y work: every other selection surface in the app does this correctly — chip-select.tsx:38, price-select.tsx:31, filter-sheet.tsx:87. T-101 established the pattern; this control shipped without it. Read one of those three before writing anything.\n\nFiled apart from T-139/T-140 despite sharing their root cause: those are virtualization work on list screens, this is an accessibility fix on a form control. Bundling an a11y label into a FlashList PR is how the a11y half gets skimmed."
+    },
+    {
+      "id": "T-142",
+      "title": "No auth guard on the (main) route group — a guest gets a convincing signed-in profile",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-010"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/(main)/_layout.tsx",
+        "apps/mobile/app/(main)/profile.tsx",
+        "apps/mobile/src/api/client.ts",
+        "apps/mobile/app/(main)/__tests__/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#auth-flow-sanctum-bearer-token",
+        "05-mobile-app.md#expo-router-navigation-tree"
+      ],
+      "acceptance": [
+        "A guest opening any (main) route — including by deep link — lands on the auth flow, not on a signed-in-looking screen; asserted per route, not only for `/`",
+        "The bootstrap window is handled explicitly: while `status === 'loading'` the screen shows a loading state, never a broken authed one — client.ts:74-79 deliberately skips the redirect there, so the layout must cover it",
+        "profile.tsx renders no authed-only row for a guest — 'Mis compartidos', 'Editar perfil', 'Mis listas', 'Invitar amigos', 'Ajustes' and Log out are all gated, asserted by name",
+        "The guard is in ONE place; app/index.tsx's existing session check is reconciled with it rather than left as a second rule"
+      ],
+      "agent": "executor-high",
+      "notes": "Full spec in tasks/T-142-main-group-auth-guard.md. MOB-4 from the 2026-08-19 mobile review.\n\nOnly app/index.tsx checks the session, and it guards the `/` entry alone. The (main) group has no redirect at all — verified: `app/(main)/_layout.tsx` contains no Redirect and no status check. In profile.tsx, `authed` gates ONLY the notification bell (:55); 'Mis compartidos', 'Editar perfil', 'Mis listas', 'Invitar amigos', 'Ajustes' and Log out all render unconditionally off `user?…`.\n\nSo a guest deep-linked to `reelmap://profile` — and per T-137, ANY installed app can send that — gets a convincing signed-in profile with a blank name, and every row then 401s. It is worse during bootstrap: client.ts:74-79 intentionally skips the redirect while `status === 'loading'`, so the screen just sits there broken.\n\nSECOND DEEP-LINK REACHABILITY FINDING OF THIS WAVE, after T-137. Both are a route that assumes it was arrived at legitimately. Worth reading T-137 first even though neither depends on the other.\n\nThe one-line fix is `if (status === 'guest') return <Redirect href=\"/(auth)/welcome\" />` in the (main) layout. The task is bigger than the line: the loading window has to be decided (a guard that redirects during bootstrap logs out every cold start; one that renders through it is the bug), and profile.tsx's row-level gating has to be reconciled with it so the two do not disagree later. Do not leave app/index.tsx as a second, separate rule — that is this wave's root cause, one layer up.\n\nCLAUDE.md reachability applies: the test must ARRIVE at the route as a guest, not render the screen directly."
+    },
+    {
+      "id": "T-143",
+      "title": "App shell: no StatusBar anywhere, no bottom safe-area on pushed screens, no +not-found",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-004",
+        "T-047"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/_layout.tsx",
+        "apps/mobile/app/+not-found.tsx",
+        "apps/mobile/app/offers/[id]/redeem.tsx",
+        "apps/mobile/app/restaurant/verify.tsx",
+        "apps/mobile/app.config.ts"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#app-architecture",
+        "05-mobile-app.md#screen-inventory"
+      ],
+      "acceptance": [
+        "The status bar is legible on both platforms in light AND dark mode, on the near-black canvas — verified by screenshot on a device in both modes, not by reading the config",
+        "The redemption screen's 'Close' / 'Get another' button and the till screen's manual-code input and 'Check' button clear the home indicator and the Android gesture bar — screenshotted on a device with gesture navigation on",
+        "An unmatched deep link lands on a real +not-found screen with a way back into the app, not expo-router's default",
+        "The three fixes are asserted where they can be (edges, route existence) and screenshotted where they cannot"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-143-app-shell-statusbar-safearea-notfound.md. MOB-5 + MOB-9 + the reviewer's note that there is no +not-found route. Three app-shell concerns that belong to nobody in particular, all S, all in one PR's worth of files, all visible in the first ten seconds on a device.\n\nMOB-5 — NO StatusBar IS SET ANYWHERE. `grep -rn StatusBar app src app.config.ts` returns nothing (verified). app.config.ts sets no androidStatusBar and no ios.statusBarStyle, `userInterfaceStyle` is 'automatic', and every screen uses `headerShown: false` so react-navigation never sets it either. The dark canvas is near-black, so a user on a dark-mode phone opens the app and the clock, battery and signal icons are dark-on-dark — invisible on every screen, both platforms. expo-status-bar IS already a dependency (package.json:46); this is one `<StatusBar style=\"auto\" />` in app/_layout.tsx that nobody ever added.\n\nMOB-9 — NO BOTTOM SAFE-AREA ON PUSHED FULL-SCREEN ROUTES. offers/[id]/redeem.tsx:103,230 and restaurant/verify.tsx:239,356 are pushed routes with no tab bar, using `<SafeAreaView edges={['top']}>` and `scroll: { flexGrow: 1, padding: space.md }`. No screen in the app reads insets.bottom except sheet-shell.tsx:112 and connection-banner.tsx:64. On the diner's redemption screen the 'Close' / 'Get another' button — THE ONLY WAY OUT — sits under the home indicator; on the till screen the manual-code input and 'Check' button, the fallback for when the QR will not scan, do the same. Both are the moment a paying customer is standing at a counter, which is why a two-character fix is filed rather than absorbed.\n\nNO +not-found ROUTE. app/ has +native-intent.tsx and nothing else prefixed (verified). An unmatched deep link shows expo-router's default 'Unmatched Route'. It belongs here rather than with T-137 because it is chrome, not a boundary — but the connection is worth knowing: T-137 establishes that anyone can send this app a URL, so 'what an unmatched one looks like' stops being hypothetical.\n\nMOB-4 (the missing auth guard) came from the same root cause and is NOT in this task — it is an auth boundary, and mixing it into a chrome PR is how it gets skimmed. It is T-142."
+    },
+    {
+      "id": "T-144",
+      "title": "The two biggest forms have no keyboard avoidance, and the five that do use the wrong Android idiom",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-104"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/shares/[id]/review.tsx",
+        "apps/mobile/app/profile/edit.tsx",
+        "apps/mobile/src/components/auth-screen-layout.tsx",
+        "apps/mobile/app/restaurant/offer.tsx",
+        "apps/mobile/app/settings/privacy.tsx",
+        "apps/mobile/src/components/place/report-sheet.tsx",
+        "apps/mobile/src/components/place/suggest-edit-sheet.tsx"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#screen-inventory",
+        "05-mobile-app.md#stack-fixed--do-not-substitute"
+      ],
+      "acceptance": [
+        "The share-correction form (shares/[id]/review.tsx) keeps the address and dish fields AND the Publish button reachable with the keyboard up, on BOTH platforms — screenshotted on a device, not asserted in jest",
+        "profile/edit.tsx likewise",
+        "There is ONE keyboard-avoidance primitive; all seven sites use it, and Android gets an explicit `behavior=\"padding\"` with a keyboardVerticalOffset rather than `undefined`",
+        "The Android account-deletion sheet ('type DELETE to confirm', settings/privacy.tsx) is reachable with the keyboard up — it is the regression this idiom already caused",
+        "A check proves no site passes `Platform.OS === 'ios' ? 'padding' : undefined` any more"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-144-keyboard-avoidance-idiom.md. MOB-6 from the 2026-08-19 mobile review.\n\nTwo halves. The two LARGEST forms in the app — shares/[id]/review.tsx:211 (the share-correction flow, i.e. the product's core correction path) and profile/edit.tsx:71 — are bare ScrollViews with no KeyboardAvoidingView and no automaticallyAdjustKeyboardInsets: tap the address or dish fields low in the form and the keyboard covers both the field and the Publish button, with no way to scroll it up. Separately, all FIVE sites that DO use KeyboardAvoidingView pass `behavior={Platform.OS === 'ios' ? 'padding' : undefined}` — the pre-edge-to-edge idiom that relied on Android window resize, which RN 0.86 / SDK 57 no longer does by default. So on Android the same failure now happens in the 'type DELETE to confirm' account-deletion sheet.\n\nSIBLING OF T-133, NOT A DUPLICATE — this is the explicit decision, recorded because a silent duplicate was the alternative. T-133 owns the SHEET CHROME (SheetShell adoption across save-to-list, menu-sheet, add-to-list-search, quick-share). T-144 owns the KEYBOARD-AVOIDANCE IDIOM app-wide. The file sets do not overlap at all, and neither task blocks the other, so a depends_on between them would be false and would stall whichever was picked second. A cross-reference was added to T-133's notes instead, so that task does not hand-roll a sixth copy of the broken idiom while removing copies of something else. If T-144 lands first, T-133 consumes its primitive; if T-133 lands first, T-144 retro-fits SheetShell.\n\nDo not fix this by wrapping seven components in seven KeyboardAvoidingViews with the corrected props. Five copies already drifted together — that is the finding. One primitive, seven consumers.\n\nVERIFY ON A DEVICE. A keyboard overlap is invisible to jest by construction, and the Android half is specifically about a platform behaviour that changed under the app. Navigate with Maestro per CLAUDE.md, screenshot each form with the keyboard up on both platforms, and restore the simulator afterwards."
+    },
+    {
+      "id": "T-145",
+      "title": "Validation errors reach Spanish-speaking users in English",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-105",
+        "T-010"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/lang/es/",
+        "apps/api/app/Http/Middleware/",
+        "apps/api/bootstrap/app.php",
+        "apps/api/tests/Feature/",
+        "apps/mobile/src/lib/form-errors.ts"
+      ],
+      "spec_refs": [
+        "03-api-design.md#conventions",
+        "05-mobile-app.md#auth-flow-sanctum-bearer-token"
+      ],
+      "acceptance": [
+        "A request with `Accept-Language: es` gets Spanish validation messages — asserted on the response body for the signup path specifically, since that is where a first-time user meets it",
+        "apps/api/lang/es/validation.php exists and covers every rule the API actually uses; a test enumerates the rules in use and fails on one with no Spanish message, so the next rule added cannot silently fall back to English",
+        "The locale comes from the Accept-Language the client ALREADY sends; an absent or unknown header falls back deterministically and that fallback is asserted",
+        "Attribute names are translated too — 'The email has already been taken' and 'El campo email ya está en uso' must not become 'El campo email field is taken'",
+        "The mobile side is unchanged except where it must be: formErrors() rendering server prose verbatim is correct once the server is correct"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-145-server-locale-validation-messages.md. MOB-3 from the 2026-08-19 mobile review — and DESPITE coming from a mobile review it is mostly an apps/api task, which is exactly why it went unnoticed.\n\nformErrors() (src/lib/form-errors.ts:15-16) returns `error.fields` verbatim and 17 sites render them raw into `<TextField error={…}>` — including the ENTIRE signup path: register.tsx:74,75,83,92, login.tsx:67,76, verify-email.tsx:60. The client already sends Accept-Language (client.ts:34). The API never calls App::setLocale() and there is no apps/api/lang/es/validation.php, so Laravel serves vendor English.\n\nA Uruguayan signing up with an already-registered email sees a Spanish label, a Spanish button, and then 'The email has already been taken.' AgeRestrictedException.php:13 states the problem outright in a comment; it was written down and never acted on.\n\nTHIS IS A CROSS-STACK SEAM, and worth naming as one: the client does its half correctly and the server ignores it. A mobile-only review sees a correct client. An API-only review sees an API nobody told to speak Spanish. Neither sees the bug. That is the same structural blind spot as CR-2 (T-128), where the API wrote one shape and the app read another and each side's tests agreed with itself.\n\nThe enumerating test is the part that lasts. A hand-written es/validation.php is complete on the day it lands and silently incomplete a month later; a test that reads the rules actually in use and fails on a missing message is what keeps it true. Same reasoning as T-115's export/purge enumeration.\n\nDo NOT translate on the client. Mapping server error strings to client copy would put the message in two places and guarantee they drift — and the API already owns AgeRestrictedException's prose."
+    },
+    {
+      "id": "T-146",
+      "title": "Two OS permission dialogs that appear when the user tapped nothing",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-027",
+        "T-100"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/src/notifications/push.ts",
+        "apps/mobile/src/notifications/use-push-notifications.ts",
+        "apps/mobile/app/offers/index.tsx",
+        "apps/mobile/src/lib/network.ts",
+        "apps/mobile/src/i18n/"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md#registration",
+        "05-mobile-app.md#state--data-layer"
+      ],
+      "acceptance": [
+        "Declining the push soft-prompt is PERSISTED, and the prompt does not reappear on the next cold start — asserted across a simulated relaunch, not within one session",
+        "The soft-prompt copy comes from t() in both dictionaries; the two hardcoded Spanish strings — the only ones in the app that bypass t() — are gone, asserted by the same check that catches i18n drift",
+        "The offers screen does not re-request a location fix on app resume: `refetchOnWindowFocus: false` on that query, asserted by firing a focus event and observing no refetch",
+        "The comment at offers/index.tsx:57-62, which asserts a fix is not re-requested, is true of the code or corrected",
+        "There is still a way for a user who declined to turn either back on — a persisted decline must not become a dead end"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-146-unprompted-os-permission-dialogs.md. MOB-7 + MOB-14 from the 2026-08-19 mobile review. One task: two different subsystems, one behaviour — an OS permission dialog appearing because something re-fired on resume or cold start, in both cases under a comment or an intent that says otherwise.\n\nMOB-7 — THE PUSH SOFT-PROMPT RE-ASKS FOREVER, IN HARDCODED SPANISH. The push effect (use-push-notifications.ts:96-100) is keyed on [status] and calls registerForPush() on every loading -> authed transition, i.e. every cold start. registerForPush (push.ts:70-79) shows defaultConfirm()'s Alert whenever permission is not granted and canAskAgain is true — and declining the SOFT prompt persists nothing and leaves the OS permission untouched, so canAskAgain stays true forever. A user who taps 'Ahora no' is shown the same modal on every single cold start, indefinitely. That Alert's copy is also two hardcoded Spanish strings — per the reviewer, the ONLY ones in the app that bypass t() — so an English-locale user is shown it in Spanish.\n\nMOB-14 — THE OFFERS SCREEN RE-REQUESTS A LOCATION FIX ON RESUME. The device-fix query (offers/index.tsx:63-68) inherits refetchOnWindowFocus: true (nothing overrides it in query-client.ts) and focusManager is wired to AppState (network.ts:55-60), so locateUser re-runs on app resume past its 5-minute staleTime — re-calling requestForegroundPermissionsAsync() and a fresh 5s watchPositionAsync. On Android, where canAskAgain stays true after a denial, the OS location dialog appears on app resume with the user having tapped nothing. The comment at :57-62 asserts the opposite: 'a fix is not re-requested every time this screen is revisited.'\n\nBoth are one-line-ish fixes with a shared discipline — a permission prompt is a user-initiated event, and anything that can re-fire it on a lifecycle transition needs a persisted answer. Filing them together makes that the reviewable claim rather than two unrelated small diffs.\n\nThe persisted decline must not be a dead end. Store it where the locale lives, and make sure Settings can still turn notifications on — otherwise this fix trades a nagging modal for an unreachable feature."
+    },
+    {
+      "id": "T-147",
+      "title": "formatMoney has no grouping separator and renders UYU as `$`",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-046",
+        "T-048"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/src/api/wallet.ts",
+        "apps/mobile/src/lib/use-format.ts",
+        "apps/mobile/app/(main)/wallet.tsx",
+        "apps/mobile/app/influencer/dashboard.tsx",
+        "apps/mobile/src/lib/__tests__/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#payouts",
+        "05-mobile-app.md#state--data-layer"
+      ],
+      "acceptance": [
+        "A balance of 123456789 minor units renders with a grouping separator and the locale's decimal mark in BOTH dictionaries — asserted for es and en, since `1.234.567,89` and `1,234,567.89` are the whole point",
+        "UYU is visually distinguishable from USD; every currency config/monetization.php can emit has a defined rendering, asserted per currency rather than by a ternary",
+        "The formatter lives alongside use-format.ts and honours its documented Hermes-partial-Intl constraint — it must not assume full Intl is present",
+        "Push copy and every call site (wallet.tsx:129,138,192,273; influencer/dashboard.tsx:173,206,238) go through the one formatter"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-147-money-formatting.md. MOB-12 from the 2026-08-19 mobile review.\n\nwallet.ts:81-85 is `${symbol}${(amount / 100).toFixed(2)}`, with `symbol` a three-way ternary on EUR/GBP/else-`$`. No grouping separator, `.` as the decimal mark regardless of locale, and UYU falls into the same `$` branch as USD.\n\nSo an influencer's balance renders as `$1234567.89` — a Spanish reader parses `.89` as a thousands group, i.e. reads the number wrong by two orders of magnitude on a money screen — and a UYU balance is visually identical to a USD one. apps/api/config/monetization.php:33 defaults to EUR and is env-driven, so the currency really does vary; this is not hypothetical.\n\nThe right home already exists and already documents the hard part: src/lib/use-format.ts is the locale-aware display layer, bound to the settings store, and its header records why it hand-rolls month names — 'Hermes ships only a partial Intl and toLocaleDateString options are not reliable'. Money has the same constraint. Read that comment before reaching for Intl.NumberFormat, and if it turns out to be usable for currency on the current Hermes, say so there rather than leaving two contradictory assumptions in one file.\n\nA per-currency table beats a wider ternary. A ternary with four branches is the same bug one currency later, and the API can emit whatever monetization.php is set to."
+    },
+    {
+      "id": "T-148",
+      "title": "The design-token migration stalled, under a rule that reads as if it were closed",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-104",
+        "T-114"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/eslint.tokens-legacy.js",
+        "apps/mobile/eslint.config.js",
+        "apps/mobile/src/components/sheet-shell.tsx",
+        "apps/mobile/src/components/map/pin-glyph.tsx",
+        "apps/mobile/app/(main)/map.tsx"
+      ],
+      "spec_refs": [
+        "01-architecture.md#monorepo-structure"
+      ],
+      "acceptance": [
+        "The exemption list is SHORTER than the 55 files it was born with, and the rule's header states a real policy — either a schedule that is being kept, or the aspiration is deleted so it stops reading as a live invariant",
+        "TOKENIZED_PROPS covers the spacing and size properties it currently misses (margin*, width, height, lineHeight, borderWidth) — proven by the post-token drift it should have caught: sheet-shell.tsx:140,142 carry marginBottom: 10 and 4",
+        "The config's claim that 'nothing hard-codes a hex' is true, or removed — pin-glyph.tsx:136,152 (#2B2320, #8A5E12) and cluster-marker.tsx:56 currently contradict it",
+        "The 11 dead style entries in app/(main)/map.tsx:640-673 (locateHint*, zoom*) are deleted, since map-controls.tsx owns them now",
+        "Widening the rule FAILS on a deliberately introduced violation — proven both ways, the T-114 discipline"
+      ],
+      "agent": "executor",
+      "notes": "Full spec in tasks/T-148-token-migration-stalled.md. MOB-15 from the 2026-08-19 mobile review. No user-visible failure today — this is the drift field regrowing under a rule that reads as if it were closed.\n\nTHE EXEMPTION LIST HAS NEVER SHRUNK. eslint.tokens-legacy.js still holds all 55 files it was born with (verified: 55 entries), and `git log --follow` shows exactly ONE commit — T-104 (62755dd) — across 39 subsequent commits, several of which edited exempt files ((main)/map.tsx in T-047) without migrating them. The rule's own header says 'this list may only ever get shorter.'\n\nTWO HOLES MAKE IT WEAKER THAN IT READS. TOKENIZED_PROPS covers 4 of roughly 10 spacing properties — no margin*, width, height, lineHeight, borderWidth — so a POST-token file has already drifted: sheet-shell.tsx:140,142 carry marginBottom: 10 and 4. And the config states 'nothing hard-codes a hex', which pin-glyph.tsx:136,152 (#2B2320, #8A5E12) and cluster-marker.tsx:56 contradict.\n\nSAME SHAPE AS T-114, ONE LAYER DOWN, and that is the reason to do it while T-114/T-116 are fresh: there, a lint gate ran and reported nothing; here, a lint rule runs and reports less than its own comment claims. In both cases the artefact that was supposed to hold the line reads as if it is holding it. The honest outcomes are 'burn the list down on a schedule and widen the props' OR 'delete the aspiration from the header' — but NOT leaving a comment that describes a policy nobody is running.\n\nRELATED RESIDUE, cheap and worth taking here: app/(main)/map.tsx:640-673 still carries 11 dead style entries (locateHint*, zoom*) duplicating what map-controls.tsx now owns, so the next edit to that hint's styling lands on the dead copy. That is this wave's root cause in its smallest form."
     }
   ]
 }

@@ -65,3 +65,24 @@ sheet with a comment explaining why is still a fifth hand-rolled sheet.
   asked you to change. That is expected — but screenshot each one, because "2pt
   off" is exactly what SheetShell's comment warns about and it will not show up in
   a test.
+
+## Cross-reference added 2026-08-19 (wave 4, MOB-6) — read before adding a KeyboardAvoidingView
+
+**T-144 owns the keyboard-avoidance idiom app-wide.** The mobile review found
+that **all five** existing `KeyboardAvoidingView` sites pass
+
+```tsx
+behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+```
+
+— the pre-edge-to-edge idiom that relied on Android window resize, which
+**RN 0.86 / SDK 57 no longer does by default**.
+
+So when this task gives SheetShell its keyboard behaviour for the save-to-list
+case, **do not copy that idiom**: Android needs an explicit `behavior="padding"`
+with a `keyboardVerticalOffset`. If T-144 lands first, consume its primitive; if
+this task lands first, T-144 retro-fits SheetShell.
+
+The two tasks share no files and neither depends on the other. This note exists
+so that the sixth copy of a broken idiom does not get written by the task whose
+whole point is removing copies.
