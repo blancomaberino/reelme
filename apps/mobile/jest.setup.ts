@@ -213,9 +213,12 @@ jest.mock('react-native-gesture-handler', () => {
     // Feed-card swipe-to-hide: render just the row content (the revealed action
     // is exercised on-device); the ⋯/eye-off button inside `children` remains
     // testable. React.forwardRef so the component's swipeRef stays valid.
-    Swipeable: React.forwardRef(({ children }: { children?: React.ReactNode }, _ref: unknown) =>
-      React.createElement(React.Fragment, null, children),
-    ),
+    Swipeable: React.forwardRef(function Swipeable(
+      { children }: { children?: React.ReactNode },
+      _ref: unknown,
+    ) {
+      return React.createElement(React.Fragment, null, children);
+    }),
     RectButton: ({ children, ...props }: { children?: React.ReactNode }) =>
       React.createElement(Pressable, props, children),
   };
@@ -239,12 +242,13 @@ jest.mock('react-native-maps', () => {
   const MapView = Object.assign(
     // Honours a caller's testID (falling back to 'MapView') — two screens now
     // render a map, and a hardcoded id makes the second one unaddressable.
-    React.forwardRef(
-      ({ children, ...props }: { children?: React.ReactNode; testID?: string }, ref: unknown) => {
-        React.useImperativeHandle(ref, () => ({ animateToRegion }));
-        return React.createElement(View, { ...props, testID: props.testID ?? 'MapView' }, children);
-      },
-    ),
+    React.forwardRef(function MapView(
+      { children, ...props }: { children?: React.ReactNode; testID?: string },
+      ref: unknown,
+    ) {
+      React.useImperativeHandle(ref, () => ({ animateToRegion }));
+      return React.createElement(View, { ...props, testID: props.testID ?? 'MapView' }, children);
+    }),
     { displayName: 'MapView' },
   );
   return {
@@ -265,9 +269,9 @@ jest.mock('react-native-maps', () => {
 jest.mock('@shopify/flash-list', () => {
   const React = require('react');
   const { View, Pressable } = require('react-native');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // Untyped by design: this mock stands in for a generic list whose props the
+  // caller types.
   const resolve = (node: any) => (typeof node === 'function' ? node() : node);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const FlashList = (props: any) => {
     const { data = [], renderItem, keyExtractor, ListHeaderComponent, ListFooterComponent, ListEmptyComponent, onEndReached } = props;
     return React.createElement(
@@ -276,8 +280,7 @@ jest.mock('@shopify/flash-list', () => {
       resolve(ListHeaderComponent),
       data.length === 0
         ? resolve(ListEmptyComponent)
-        : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          data.map((item: any, index: number) =>
+        : data.map((item: any, index: number) =>
             React.createElement(
               React.Fragment,
               { key: keyExtractor ? keyExtractor(item, index) : index },
@@ -300,9 +303,12 @@ jest.mock('@shopify/flash-list', () => {
 jest.mock('@gorhom/bottom-sheet', () => {
   const React = require('react');
   const { View } = require('react-native');
-  const BottomSheet = React.forwardRef(({ children }: { children?: React.ReactNode }, _ref: unknown) =>
-    React.createElement(View, { testID: 'BottomSheet' }, children),
-  );
+  const BottomSheet = React.forwardRef(function BottomSheet(
+    { children }: { children?: React.ReactNode },
+    _ref: unknown,
+  ) {
+    return React.createElement(View, { testID: 'BottomSheet' }, children);
+  });
   return {
     __esModule: true,
     default: BottomSheet,

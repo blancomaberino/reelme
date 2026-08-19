@@ -235,6 +235,13 @@ jobs:
       - name: Lint
         run: npm run lint -w apps/mobile
 
+      # Proves the Lint step above can actually fail — until T-114 it silently
+      # skipped every root-level file. Rationale and probe design:
+      # apps/mobile/scripts/verify-lint-gate.mjs. Costs a second lint pass,
+      # ~2s of it, since the first pass leaves a warm cache in the same job.
+      - name: Lint gate self-test
+        run: npm run lint:gate -w apps/mobile
+
       - name: Typecheck
         run: npm run typecheck -w apps/mobile
 

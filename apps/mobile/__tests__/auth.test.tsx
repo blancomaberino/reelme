@@ -23,9 +23,7 @@ let qc: QueryClient;
 // gcTime: 0 so no cache-GC timer lingers past the test (otherwise the jest
 // worker can't exit gracefully); shared client is cleared in afterEach.
 function wrapper() {
-  // Named, because the returned component is anonymous otherwise and
-  // `react/display-name` flags it. (Only visible via `npx eslint` — see the
-  // note in the PR: `expo lint`, which CI runs, currently reports nothing.)
+  // Named: `react/display-name` flags the returned component otherwise.
   const TestWrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );

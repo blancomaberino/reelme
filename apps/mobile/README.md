@@ -21,7 +21,8 @@ npm install -w @reelmap/mobile --legacy-peer-deps
 
 cd apps/mobile
 npm run typecheck   # tsc --noEmit (strict)
-npm run lint        # eslint-config-expo
+npm run lint        # eslint-config-expo over the WHOLE workspace, warnings included
+npm run lint:gate   # proves that gate can fail — CI runs it after lint (T-114)
 npm run test        # jest-expo + @testing-library/react-native
 
 # Run a dev client on the iOS simulator (builds locally via Xcode — no EAS needed):
