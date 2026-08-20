@@ -88,7 +88,12 @@ core add-a-place gesture:
   after login.
 - **Deep-link/CI entry** — the ingest screen also reads `sharedUrl`/`sharedText`
   route params, so Maestro/CI can drive it via `reelmap://…` without the OS
-  share sheet.
+  share sheet. Those params **only prefill the form; they never submit** (T-137):
+  `reelmap://share?sharedUrl=…` is openable by any other installed app, and it
+  used to publish a share and spend a daily allowance with no user tap. Only a
+  payload staged by the iOS share extension auto-submits — on Android the same
+  store is fed by an `ACTION_SEND` intent any app can send explicitly, so
+  Android prefills and waits for the button too.
 
 Duplicates are handled server-side as an **idempotent replay** (not a 409):
 re-sharing a post returns the existing share, surfaced as a friendly "already

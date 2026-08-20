@@ -1,0 +1,120 @@
+# A deep-linked share payload PREFILLS and waits for a tap (E2E, iOS). T-137.
+#
+# WHY THIS FLOW EXISTS. `reelmap://share?sharedUrl=…` is openable by any other
+# installed app, or by a web page. Before T-137 the share screen's mount effect
+# read those params and called `doSubmit` straight from the effect, so the link
+# alone published a share and spent one of the account's capped daily shares
+# with nobody touching the phone. Reproduced against this simulator on
+# 2026-08-20 (share id 62, quota 100 → 99, zero taps) before the fix.
+#
+# The unit tests pin the same two facts, but only from inside the component:
+# they render the screen with `mockRouter.params` already set. What they cannot
+# show is that a URL arriving from OUTSIDE the app still lands on those params —
+# `+native-intent.tsx` returns the path unchanged and `_layout.tsx` lets the
+# `reelmap://` scheme fall through to the router, and neither is exercised by
+# `render(<ShareScreen/>)`. That whole chain is what this flow walks.
+#
+# PART 1 — the deep link prefills the form and NOTHING is sent.
+# PART 2 — the tap still submits, so the Maestro/CI fallback this param path
+#          exists for is intact; it just goes through the button now.
+# PART 3 — a non-http(s) scheme is dropped rather than forwarded (`ftp://` was
+#          accepted end to end before the fix; the API's `url` rule is
+#          filter_var, not an http(s) allowlist).
+# PART 4 — a repeated param (an array, not a string) does not crash the screen.
+#
+# PRECONDITIONS
+#   - API stack + Metro up via `./scripts/dev.sh start` (a bare `npx expo start`
+#     drops EXPO_PUBLIC_API_URL and every request looks like an offline device).
+#   - Logged in, with daily share quota left — part 2 creates a real share.
+#
+# The app runs in Spanish, so the labels below are the es strings.
+#
+# `openLink` IS the subject here, not a shortcut past a tap: the finding is that
+# an external URL reaches this screen. The `stopApp` + plain `launchApp` at the
+# end is what clears the launch URL so the next Cmd+R lands on home — verify it
+# with a screenshot, don't assume it.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/share-deeplink-requires-tap.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+
+# === PART 1 — the deep link prefills, and submits nothing ===================
+# A unique id per run: a fixed one would come back as an idempotent replay and
+# part 2 would assert on "ya lo habías agregado" instead of a fresh submission.
+- evalScript: ${output.reel = 'T137' + Date.now()}
+- openLink: "reelmap://share?sharedUrl=https://www.instagram.com/reel/${output.reel}/"
+- extendedWaitUntil:
+    visible: "Compartir"
+    timeout: 30000
+
+# The payload is in the field…
+- assertVisible: ".*${output.reel}.*"
+# …and the FORM is still the form. If the effect had auto-submitted, the screen
+# would have moved on to the progress view and both of these would be gone.
+- assertVisible:
+    id: "share-url"
+- assertVisible:
+    id: "share-submit"
+- takeScreenshot: build/maestro/share-deeplink-1-prefilled-not-sent
+
+# === PART 2 — the tap still works ==========================================
+- tapOn:
+    id: "share-submit"
+# Same seam the share-to-map flow asserts: the form gave way to the pipeline
+# view. Not waiting for a terminal state — a made-up reel id cannot be fetched.
+- extendedWaitUntil:
+    notVisible:
+      id: "share-url"
+    timeout: 45000
+- takeScreenshot: build/maestro/share-deeplink-2-submitted-on-tap
+
+# === PART 3 — a foreign scheme is dropped, not forwarded ====================
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- openLink: "reelmap://share?sharedUrl=ftp://example.com/${output.reel}"
+- extendedWaitUntil:
+    visible: "Compartir"
+    timeout: 30000
+# The field is empty, so there is nothing a tap could send either: the button
+# answers with the "paste a link first" validation instead of a request.
+- assertNotVisible: ".*ftp://example.com.*"
+- tapOn:
+    id: "share-submit"
+- assertVisible: ".*Pegá un enlace.*"
+- takeScreenshot: build/maestro/share-deeplink-3-foreign-scheme-dropped
+
+# === PART 4 — a REPEATED param does not take the screen down ===============
+# `?sharedUrl=a&sharedUrl=b` is free for anyone to compose, and expo-router
+# hands a repeated key over as an ARRAY. `.trim()` on an array is a TypeError
+# that kills the screen; the params are read through `firstParam` for exactly
+# this reason. Asserting the form is still there IS the assertion.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- openLink: "reelmap://share?sharedUrl=https://www.instagram.com/reel/${output.reel}A/&sharedUrl=https://www.instagram.com/reel/${output.reel}B/"
+- extendedWaitUntil:
+    visible: "Compartir"
+    timeout: 30000
+- assertVisible:
+    id: "share-url"
+- assertVisible:
+    id: "share-submit"
+- assertVisible: ".*${output.reel}A.*"
+- takeScreenshot: build/maestro/share-deeplink-4-repeated-param-survives
+
+# === Restore — a URL-less launch is what clears the launch URL ==============
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- takeScreenshot: build/maestro/share-deeplink-5-restored-home

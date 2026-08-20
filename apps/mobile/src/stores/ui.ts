@@ -3,7 +3,7 @@ import { create } from 'zustand';
 // Transient UI flags. `pendingShare` carries a link/text shared into Reelmap
 // (T-025) across the auth gate: it's staged BEFORE any login redirect so an
 // unauthenticated share survives sign-in and resumes on the ingest screen.
-type PendingShare = { url: string; text: string };
+export type PendingShare = { url: string; text: string };
 
 type UiState = {
   rateLimited: boolean;

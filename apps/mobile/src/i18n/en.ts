@@ -309,6 +309,7 @@ export const en = {
   'share.captionPlaceholder': 'Best tacos in Lisbon — Time Out Market',
   'share.submit': 'Pin it',
   'share.needInput': 'Paste a link or a caption first.',
+  'share.needHttpUrl': 'That link needs to start with http:// or https://.',
   'share.submitError': 'Couldn’t submit. Please try again.',
   'share.platformDetected': '{{platform}} link detected',
   'share.duplicate.note': 'You already added this one.',
