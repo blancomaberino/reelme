@@ -17,11 +17,20 @@ use App\Services\Places\Enrichment\BusinessEnrichmentSource;
  */
 class GoogleBusinessSource implements BusinessEnrichmentSource
 {
+    /**
+     * The source id, and — because this is the ONLY enrichment source backed by a
+     * provider API rather than a scrape — the single value the claim layer trusts
+     * to earn a `google` contact-field provenance stamp (T-117 / SEC-1). Referenced
+     * by BusinessEnricher so the trust anchor is one constant, not two literals in
+     * two files that can silently drift apart.
+     */
+    public const SOURCE_ID = 'google';
+
     public function __construct(private readonly Geocoder $geocoder) {}
 
     public function id(): string
     {
-        return 'google';
+        return self::SOURCE_ID;
     }
 
     /**

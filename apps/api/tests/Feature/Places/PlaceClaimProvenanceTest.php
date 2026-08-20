@@ -11,7 +11,9 @@ use App\Models\PlaceClaim;
 use App\Models\Share;
 use App\Models\User;
 use App\Services\Geo\FakeGeocoder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
@@ -301,6 +303,27 @@ describe('the verified contact is re-checked at completion, not only at start', 
             ->assertJsonPath('error.details.reason', 'contact_changed');
     });
 
+    it('refuses to complete a website claim on a place merged after the claim started', function () {
+        // The status twin of the contact TOCTOU: a claim begun on an Active pin
+        // must not COMPLETE on one an admin merged/hid mid-flight (T-117).
+        $place = Place::factory()->active()->providerWebsite('https://real-owner.example')->create();
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'website'])->assertCreated();
+        $token = PlaceClaim::sole()->evidence_json['token'];
+
+        // Admin merges the pin while the claim is pending.
+        $place->forceFill(['status' => PlaceStatus::Merged])->save();
+        Http::fake(['*' => Http::response($token)]);
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/places/{$place->id}/claim/verify", ['method' => 'website'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.details.reason', 'place_not_claimable');
+
+        expect($user->fresh()->is_restaurant_owner)->toBeFalse();
+    });
+
     it('refuses a legacy pending claim that pinned no contact value', function () {
         // A claim from before this change carries no pinned value; it cannot be
         // revalidated, so it is refused rather than trusted.
@@ -318,5 +341,45 @@ describe('the verified contact is re-checked at completion, not only at start', 
             ->postJson("/api/v1/places/{$place->id}/claim/verify", ['method' => 'website'])
             ->assertStatus(422)
             ->assertJsonPath('error.details.reason', 'contact_changed');
+    });
+});
+
+describe('provenance travels with the value it describes', function () {
+    it('resets a trusted source to untrusted when a raw write changes the value (T-117)', function () {
+        // The enforced invariant: a future write that bypasses PlaceEditor and
+        // changes `website` without setting `website_source` must not leave the
+        // stale `google` stamp on the new (claimant) value — it fails closed.
+        $place = Place::factory()->active()->providerWebsite('https://real.example')->create();
+        expect($place->websiteIsProviderVerified())->toBeTrue();
+
+        $place->update(['website' => 'https://attacker.example']); // bypasses PlaceEditor
+
+        $place->refresh();
+        expect($place->website)->toBe('https://attacker.example')
+            ->and($place->website_source)->toBeNull()
+            ->and($place->websiteIsProviderVerified())->toBeFalse();
+    });
+
+    it('keeps the source when value and source are written together (T-117)', function () {
+        // The guard must NOT fire for the curated writers, which co-write both.
+        $place = Place::factory()->active()->create(['website' => null, 'website_source' => null]);
+
+        $place->forceFill([
+            'website' => 'https://real.example',
+            'website_source' => ContactFieldSource::Google,
+        ])->save();
+
+        expect($place->fresh()->websiteIsProviderVerified())->toBeTrue();
+    });
+
+    it('rejects an out-of-domain provenance value at the database layer (T-117)', function () {
+        // The CHECK constraint fails closed at write, so a bad value can never
+        // reach the enum cast and 500 the claim gate.
+        $place = Place::factory()->create();
+
+        expect(fn () => DB::table('places')
+            ->where('id', $place->id)
+            ->update(['website_source' => 'gmaps']))
+            ->toThrow(QueryException::class);
     });
 });

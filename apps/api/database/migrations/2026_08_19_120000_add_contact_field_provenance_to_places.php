@@ -37,10 +37,22 @@ return new class extends Migration
         // otherwise. A null field keeps a null source.
         DB::table('places')->whereNotNull('website')->update(['website_source' => 'extraction']);
         DB::table('places')->whereNotNull('phone')->update(['phone_source' => 'extraction']);
+
+        // Enforce the provenance domain at the DB layer, fail-closed at write —
+        // matching this schema's varchar+CHECK convention for enum-like columns
+        // (cf. place_tag.source, places.status). Without it an out-of-domain value
+        // is accepted on write and then throws ValueError when the enum cast reads
+        // it inside the claim gate — a 500 where a rejection belongs. Values must
+        // stay in step with App\Enums\ContactFieldSource.
+        DB::statement("ALTER TABLE places ADD CONSTRAINT places_website_source_check CHECK (website_source IN ('google', 'extraction', 'manual'))");
+        DB::statement("ALTER TABLE places ADD CONSTRAINT places_phone_source_check CHECK (phone_source IN ('google', 'extraction', 'manual'))");
     }
 
     public function down(): void
     {
+        DB::statement('ALTER TABLE places DROP CONSTRAINT IF EXISTS places_website_source_check');
+        DB::statement('ALTER TABLE places DROP CONSTRAINT IF EXISTS places_phone_source_check');
+
         Schema::table('places', function (Blueprint $table): void {
             $table->dropColumn(['website_source', 'phone_source']);
         });

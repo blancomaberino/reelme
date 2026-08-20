@@ -5,6 +5,7 @@ namespace App\Services\Places\Enrichment;
 use App\Enums\ContactFieldSource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
+use App\Services\Places\Enrichment\Sources\GoogleBusinessSource;
 use App\Services\Places\PlaceEditor;
 use Throwable;
 
@@ -108,7 +109,7 @@ class BusinessEnricher
         $contactSources = [];
         foreach (['website', 'phone'] as $contactField) {
             if (array_key_exists($contactField, $merged)) {
-                $contactSources[$contactField] = ($wonBy[$contactField] ?? null) === 'google'
+                $contactSources[$contactField] = ($wonBy[$contactField] ?? null) === GoogleBusinessSource::SOURCE_ID
                     ? ContactFieldSource::Google
                     : ContactFieldSource::Extraction;
             }

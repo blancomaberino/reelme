@@ -150,6 +150,12 @@ class PlaceClaimService
         $claim = $this->pendingClaim($place, $user, PlaceClaimMethod::Phone);
         $evidence = $claim->evidence_json ?? [];
 
+        // Re-assert the status gate the SAME way the contact value is re-asserted
+        // below: a claim started on an Active pin must not COMPLETE on one an admin
+        // has since merged/hidden/removed (T-117 — the start->verify window is two
+        // requests wide for status too, not only for the contact value).
+        $this->assertActiveForClaim($place);
+
         if ($this->expired($evidence)) {
             throw ClaimException::reason('code_expired', 'That code expired. Request a new one.');
         }
@@ -183,6 +189,10 @@ class PlaceClaimService
     {
         $claim = $this->pendingClaim($place, $user, PlaceClaimMethod::Website);
         $evidence = $claim->evidence_json ?? [];
+
+        // Re-assert the status gate at completion (see verifyPhone) — a place
+        // merged/hidden between start and verify must not be claimable (T-117).
+        $this->assertActiveForClaim($place);
 
         if ($this->expired($evidence)) {
             throw ClaimException::reason('token_expired', 'That verification token expired. Request a new one.');
@@ -334,19 +344,28 @@ class PlaceClaimService
         }
     }
 
-    private function assertClaimable(Place $place, User $user): void
+    /**
+     * A claim (start OR completion) is valid only against a reviewed, live pin.
+     * A pending pin nobody has looked at yet — and any hidden/merged/removed one —
+     * must not be claimable at all; claiming a pin the instant it published was
+     * half the SEC-1 exploit's speed (T-117). Enforced at BOTH ends of the flow,
+     * so an admin merging/hiding a pin between start and verify cannot be raced.
+     */
+    private function assertActiveForClaim(Place $place): void
     {
-        // Only a reviewed, live pin is claimable. A pending pin nobody has looked
-        // at yet (and any hidden/merged/removed one) must not be claimable at all
-        // — half the SEC-1 exploit's speed was claiming a pin the instant it
-        // published (T-117). Checked before the verified-claim lookup so it never
-        // becomes an oracle for who, if anyone, already holds the place.
         if ($place->status !== PlaceStatus::Active) {
             throw ClaimException::reason(
                 'place_not_claimable',
                 'This place is not available to claim yet.',
             );
         }
+    }
+
+    private function assertClaimable(Place $place, User $user): void
+    {
+        // Only a reviewed, live pin is claimable. Checked before the verified-claim
+        // lookup so it never becomes an oracle for who, if anyone, holds the place.
+        $this->assertActiveForClaim($place);
 
         $verified = PlaceClaim::query()
             ->where('place_id', $place->id)

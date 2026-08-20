@@ -67,6 +67,25 @@ class Place extends Model
     /** @use HasFactory<PlaceFactory> */
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        // Provenance must travel WITH the value it describes (T-117 / SEC-1). The
+        // three curated writers (PlaceFactory, PlaceEditor, PlaceMerger) always
+        // co-write `website`/`phone` and their `*_source`; this guard makes that an
+        // enforced invariant rather than a convention — any OTHER write that changes
+        // a contact field without also setting its source resets that source to null
+        // (untrusted). Fail-closed: a stale `google` stamp can never outlive the
+        // value it vouched for, so a future path that bypasses PlaceEditor cannot
+        // reopen the takeover this feature closes.
+        static::saving(function (Place $place): void {
+            foreach (['website' => 'website_source', 'phone' => 'phone_source'] as $field => $source) {
+                if ($place->isDirty($field) && ! $place->isDirty($source)) {
+                    $place->{$source} = null;
+                }
+            }
+        });
+    }
+
     /**
      * A place_source's `discounts` snapshot as jsonb, guarded to an empty array
      * unless it is actually a JSON array — a malformed/legacy snapshot must not
