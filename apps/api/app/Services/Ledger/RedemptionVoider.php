@@ -4,6 +4,7 @@ namespace App\Services\Ledger;
 
 use App\Enums\RedemptionStatus;
 use App\Models\Redemption;
+use App\Services\Redemptions\OfferQuotaCounter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -29,10 +30,14 @@ use RuntimeException;
  */
 class RedemptionVoider
 {
-    public function __construct(private readonly LedgerService $ledger) {}
+    public function __construct(
+        private readonly LedgerService $ledger,
+        private readonly OfferQuotaCounter $quota,
+    ) {}
 
     /**
-     * @throws RuntimeException when the redemption is not in a voidable state
+     * @throws RuntimeException when the redemption is not in a voidable state,
+     *                          or lost the flip to a concurrent void
      */
     public function void(Redemption $redemption, string $reason): ?LedgerTransaction
     {
@@ -60,7 +65,41 @@ class RedemptionVoider
             // `fee_amount` is deliberately LEFT AS IT WAS. It records what was
             // charged, and the reversal records that it was given back; blanking
             // it would erase the fact a fee ever applied.
-            $redemption->forceFill(['status' => RedemptionStatus::Void])->save();
+            $voided = Redemption::query()
+                ->whereKey($redemption->id)
+                ->where('status', RedemptionStatus::Redeemed)
+                ->update([
+                    'status' => RedemptionStatus::Void,
+                    'updated_at' => now(),
+                ]);
+
+            // The guard, not the check at the top of the method: that one reads
+            // a model loaded outside this transaction, so a retried request, a
+            // stale instance, or a second admin voids the same row twice and
+            // both get past it. The ledger survives that — `reverse()` is
+            // idempotent by key — but `release()` below is not, and a slot given
+            // back twice takes the offer past `quota_total`. Zero rows means
+            // someone else already did the work; the whole transaction unwinds,
+            // reversal included, and the winner's stands.
+            if ($voided !== 1) {
+                throw new RuntimeException(
+                    "Redemption #{$redemption->id} was voided concurrently; this void released nothing."
+                );
+            }
+
+            // Brought in step with the row WITHOUT re-reading it: the UPDATE
+            // above is the only thing that changed, it changed one column, and
+            // a `refresh()` would fetch the whole row — and its relations —
+            // over the lock this transaction is holding, to learn what we just
+            // wrote. `syncOriginal()` so the caller's model reads `void` and is
+            // still clean, not dirty with a pending write.
+            $redemption->forceFill(['status' => RedemptionStatus::Void])->syncOriginal();
+
+            // A void stops holding a slot, so the offer gets it back (T-127).
+            // The fee is reversed rather than kept, and a quota that kept
+            // shrinking on every disputed scan would retire an offer the
+            // restaurant is still paying to run.
+            $this->quota->release($redemption->offer_id);
 
             Log::info('redemption.voided', [
                 'redemption_id' => $redemption->id,

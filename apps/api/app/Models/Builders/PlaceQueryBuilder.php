@@ -123,9 +123,7 @@ class PlaceQueryBuilder extends Builder
             // "this venue has an offer running", not "you personally may redeem
             // it". {@see Offer::isRedeemable()} is still the only gate on
             // issuing.
-            ->where(fn (Builder $q) => $q
-                ->whereNull('quota_total')
-                ->orWhereColumn('redemptions_count', '<', 'quota_total'));
+            ->notSoldOut();
     }
 
     public function withPaymentCard(string $card): self

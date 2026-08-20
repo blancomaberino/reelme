@@ -2,6 +2,7 @@
 
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
@@ -33,6 +34,25 @@ Schedule::command('reelmap:redemptions:expire')->hourly()->onOneServer()->withou
 // imbalance, so this should never find anything — which is the point. A silent
 // arithmetic failure in the ledger is the one bug that does not announce itself.
 Schedule::command('reelmap:ledger:verify')->dailyAt('03:30')->onOneServer()->withoutOverlapping();
+
+// T-127 / 06 §2.2: audit the offer quota counter cache against the redemption
+// rows. Report-only — a repair (`--fix`) is a human decision, because drift
+// means a writer is wrong and silently correcting it every night would hide the
+// bug rather than surface it. Runs after the ledger check: same nightly window,
+// same reason, and the two are read together when either fails.
+Schedule::command('reelmap:offers:reconcile-quotas')
+    ->dailyAt('03:45')
+    ->onOneServer()
+    ->withoutOverlapping()
+    // The command exits non-zero when it finds something, and `schedule:run`
+    // throws that code away. Without this the whole point of the exit code — a
+    // run that visibly failed rather than a log line nobody greps for — reaches
+    // nobody at all. The findings themselves are already structured log records
+    // (`offer.quota_counter_drift`, `offer.quota_slots_held_by_lapsed_codes`);
+    // this is the one line that says the nightly audit came back unhappy.
+    ->onFailure(fn () => Log::error('offer.quota_reconcile_failed', [
+        'command' => 'reelmap:offers:reconcile-quotas',
+    ]));
 
 // T-050: the fail-safe behind account deletion. The delayed PurgeUserData job
 // is the fast path, not the guarantee — a flushed Redis or a failed job is an

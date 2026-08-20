@@ -15,6 +15,7 @@ use App\Services\Influencers\InfluencerClaimService;
 use App\Services\Ledger\LedgerLine;
 use App\Services\Ledger\LedgerService;
 use App\Services\Ledger\RedemptionVoider;
+use App\Services\Redemptions\OfferQuotaCounter;
 use App\Services\Redemptions\RedemptionVerifier;
 use Illuminate\Support\Facades\DB;
 
@@ -38,10 +39,11 @@ function venueAndOperator(): array
 
 function codeFor(Place $place, ?Influencer $influencer = null, array $offerAttributes = []): Redemption
 {
-    $offer = Offer::factory()->active()->create(['place_id' => $place->id] + $offerAttributes);
-
-    return Redemption::factory()->withCode('ABCD1234EF')->create([
-        'offer_id' => $offer->id,
+    // `holdingSlot()`, because the void tests below are about `release()`: a row
+    // seeded without the slot it holds sends them down the drift branch instead
+    // of the ordinary one (see RedemptionFactory's docblock).
+    return Redemption::factory()->withCode('ABCD1234EF')->holdingSlot()->create([
+        'offer_id' => activeOfferAt($place, $offerAttributes)->id,
         'attributed_influencer_id' => $influencer?->id,
     ]);
 }
@@ -285,6 +287,61 @@ describe('voiding a disputed redemption (06 §4.4)', function () {
 
         expect(fn () => app(RedemptionVoider::class)->void($redemption, 'mistake'))
             ->toThrow(RuntimeException::class);
+    });
+
+    /*
+     * Two admins on the same dispute, or one admin whose request was retried.
+     *
+     * The check at the top of `void()` reads a model loaded OUTSIDE the
+     * transaction, so a stale instance sails straight past it — which is why the
+     * real guard is the UPDATE's own `where status = redeemed`. The ledger
+     * survived a double void on its own (`reverse()` is idempotent by key), and
+     * that is exactly what made this hard to see: the books came out right while
+     * the COUNTER was handed the same slot back twice, leaving the offer able to
+     * serve one more free dessert than it ever sold.
+     *
+     * Two slots held, one of them disputed, so the arithmetic distinguishes the
+     * two outcomes: 1 is correct, 0 is the bug. With a single slot both land on
+     * 0 — the second release would be refused by the counter's own floor and log
+     * drift instead — and the test would pass either way.
+     */
+    it('refuses a second void of the same redemption, and gives the slot back once', function () {
+        [$place, $operator] = venueAndOperator();
+        $offer = Offer::factory()->active()->create(['place_id' => $place->id, 'quota_total' => 2]);
+        $counter = app(OfferQuotaCounter::class);
+
+        $disputed = Redemption::factory()->withCode('ABCD1234EF')->create(['offer_id' => $offer->id]);
+        expect($counter->claim($offer->id))->toBeTrue();
+        Redemption::factory()->withCode('ZZZZ9999ZZ')->create(['offer_id' => $offer->id]);
+        expect($counter->claim($offer->id))->toBeTrue();
+
+        $verifier = app(RedemptionVerifier::class);
+        $verifier->verify($operator, 'ABCD1234EF', $place);
+        $verifier->verify($operator, 'ZZZZ9999ZZ', $place);
+
+        expect($offer->refresh()->redemptions_count)->toBe(2)
+            ->and(LedgerEntry::query()->count())->toBe(6);
+
+        // Read before the void that wins: the instance the losing request is
+        // still holding, which believes the row is `redeemed`.
+        $stale = Redemption::query()->findOrFail($disputed->id);
+
+        app(RedemptionVoider::class)->void(Redemption::query()->findOrFail($disputed->id), 'wrong scan');
+
+        expect($offer->refresh()->redemptions_count)->toBe(1)
+            ->and(LedgerEntry::query()->count())->toBe(9);
+
+        expect($stale->status)->toBe(RedemptionStatus::Redeemed)
+            ->and(fn () => app(RedemptionVoider::class)->void($stale, 'wrong scan'))
+            ->toThrow(RuntimeException::class, "Redemption #{$disputed->id} was voided concurrently");
+
+        // The losing transaction unwound whole: no second slot returned, no
+        // second reversal posted, and one voided row rather than a row voided
+        // twice. The winner's work stands untouched.
+        expect($offer->refresh()->redemptions_count)->toBe(1)
+            ->and(LedgerEntry::query()->count())->toBe(9)
+            ->and(Redemption::query()->where('status', RedemptionStatus::Void)->count())->toBe(1)
+            ->and($disputed->refresh()->status)->toBe(RedemptionStatus::Void);
     });
 
     /*
