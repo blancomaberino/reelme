@@ -28,7 +28,8 @@ import { type MessageKey, useT } from '@/i18n';
 import { platformIcon } from '@/lib/format';
 import { failureBodyKey } from '@/lib/failure-copy';
 import { formatResetAt } from '@/lib/format-reset';
-import { useUiStore } from '@/stores/ui';
+import { isHttpUrl } from '@/lib/linking';
+import { type PendingShare, useUiStore } from '@/stores/ui';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 /** Brand-cased labels for the platform badge; the glyph reuses `platformIcon`. */
@@ -38,6 +39,22 @@ const PLATFORM_LABEL: Record<SharePlatform, string> = {
   x: 'X',
   youtube: 'YouTube',
 };
+
+/**
+ * Split an incoming share payload into the URL and caption fields.
+ *
+ * The scheme check is the security-relevant part (T-137): a value that is not
+ * http(s) is DROPPED rather than forwarded, whichever field it arrived in. The
+ * API's `url` rule is `filter_var`, which happily accepts `ftp://` and
+ * `file://` — so "the server validates it" is not a guard the client can lean
+ * on, and `javascript:` being refused there is a coincidence, not a boundary.
+ */
+function splitPayload(rawUrl: string | undefined, rawText: string | undefined): { url: string; caption: string } {
+  const u = (rawUrl ?? '').trim();
+  const txt = (rawText ?? '').trim();
+  const url = isHttpUrl(u) ? u : isHttpUrl(txt) ? txt : '';
+  return { url, caption: url ? '' : txt };
+}
 
 const STAGE_KEY: Partial<Record<ShareStatus, MessageKey>> = {
   pending: 'share.stage.pending',
@@ -141,32 +158,54 @@ export default function ShareScreen() {
     setError(null);
   }, []);
 
-  // A link/text shared in from another app (Instagram, Safari…) via the share
-  // sheet: prefill and auto-submit once. The payload is staged in `useUiStore`
-  // by the root ShareIntentRedirect so it survives the sign-in redirect; deep
-  // links (Maestro/CI) still pass it as route params, read as a fallback. A
-  // non-URL payload goes to the caption; `handled` guards re-firing on
-  // re-render / re-focus, and the staged share is cleared once consumed.
+  // An incoming payload arrives by one of two routes, and they are NOT the same
+  // path (T-137):
+  //
+  //   1. `useUiStore.pendingShare`, staged by the root ShareIntentRedirect from
+  //      the native share-extension module. That IS the user's share-sheet tap —
+  //      it cannot be forged by another app — so it auto-submits, and survives
+  //      the sign-in redirect.
+  //   2. `sharedUrl`/`sharedText` route params, which reach us from ANY
+  //      `reelmap://share?sharedUrl=…` deep link. Another installed app, or a
+  //      web page, can open that. Reproduced 2026-08-20: it published a share
+  //      and spent a daily allowance with nobody touching the phone. So a param
+  //      payload PREFILLS the form and waits for the button — which is what the
+  //      Maestro/CI flows this path exists for were always doing anyway.
+  //
+  // Scheme validation is applied once, to whichever source the value came from:
+  // the route param was forwarded verbatim, and `ftp://…` was accepted end to
+  // end (the API's `url` rule is filter_var, not an http(s) allowlist).
   const { sharedUrl, sharedText } = useLocalSearchParams<{ sharedUrl?: string; sharedText?: string }>();
   const staged = useUiStore((s) => s.pendingShare);
-  const handled = useRef('');
+
+  // Keyed on the staged OBJECT, not on its text: staging the same post again is
+  // a new object, so "share another" then re-sharing the same reel submits (and
+  // reaches the idempotent-replay note) instead of silently doing nothing.
+  const handledStaged = useRef<PendingShare | null>(null);
   useEffect(() => {
-    // Store (share-sheet) and route params (deep-link/CI) are never both set at
-    // once, so this single fallback picks the right one; `handled` dedupes the
-    // extra run that clearing the store triggers.
-    const u = (staged?.url ?? sharedUrl ?? '').trim();
-    const txt = (staged?.text ?? sharedText ?? '').trim();
-    if (staged) useUiStore.getState().setPendingShare(null);
-    const payload = u || txt;
-    if (!payload || handled.current === payload) return;
-    handled.current = payload;
-    const looksUrl = /^https?:\/\//i.test(txt);
-    const finalUrl = u || (looksUrl ? txt : '');
-    const finalCap = finalUrl ? '' : txt;
-    setUrl(finalUrl);
-    setCaption(finalCap);
-    doSubmit(finalUrl, finalCap, 'share_sheet');
-  }, [staged, sharedUrl, sharedText, doSubmit]);
+    if (!staged || handledStaged.current === staged) return;
+    handledStaged.current = staged;
+    // Consumed exactly once; clearing re-runs this effect with `staged` null.
+    useUiStore.getState().setPendingShare(null);
+    const { url: u, caption: cap } = splitPayload(staged.url, staged.text);
+    setUrl(u);
+    setCaption(cap);
+    doSubmit(u, cap, 'share_sheet');
+  }, [staged, doSubmit]);
+
+  // Prefill only. Keyed on the param values and deliberately WITHOUT `doSubmit`
+  // in the deps — that callback is rebuilt on most renders, and re-running this
+  // would overwrite whatever the person had typed since.
+  const paramPayload = `${sharedUrl ?? ''}\u0000${sharedText ?? ''}`;
+  const prefilled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sharedUrl && !sharedText) return;
+    if (prefilled.current === paramPayload) return;
+    prefilled.current = paramPayload;
+    const { url: u, caption: cap } = splitPayload(sharedUrl, sharedText);
+    setUrl(u);
+    setCaption(cap);
+  }, [sharedUrl, sharedText, paramPayload]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

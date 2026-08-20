@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 
@@ -140,11 +140,12 @@ it('does not offer "Publish anyway" for a review that needs a location (can_publ
   expect(screen.queryByText('Couldn’t place it')).toBeNull();
 });
 
-it('auto-submits a link shared in from the iOS share sheet', async () => {
-  // The root ShareIntentRedirect routes here with sharedUrl set; the screen
-  // should POST it without any tap and drive to the published result.
+it('PREFILLS a deep-link payload and waits for a tap — it never auto-submits (T-137)', async () => {
+  // `reelmap://share?sharedUrl=…` is reachable by any other installed app or web
+  // page, so the route-param path must not be able to spend a share on its own.
+  // Reproduced against the running app on 2026-08-20: it did.
   mockRouter.params = { sharedUrl: 'https://instagram.com/reel/abc' };
-  let sent: Record<string, unknown> = {};
+  let sent: Record<string, unknown> | null = null;
   mock.onPost('/shares').reply((cfg) => {
     sent = JSON.parse(cfg.data);
     return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
@@ -155,8 +156,106 @@ it('auto-submits a link shared in from the iOS share sheet', async () => {
 
   render(<ShareScreen />, { wrapper: Providers });
 
+  // Prefilled — the CI/Maestro fallback this path exists for still works…
+  expect(await screen.findByDisplayValue('https://instagram.com/reel/abc')).toBeOnTheScreen();
+  // …but nothing was sent, and the form is still the form.
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Pin it' })).toBeOnTheScreen());
+  expect(sent).toBeNull();
+
+  // Only the tap submits it.
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
   expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
-  expect(sent).toMatchObject({ url: 'https://instagram.com/reel/abc', shared_via: 'share_sheet' });
+  expect(sent).toMatchObject({ url: 'https://instagram.com/reel/abc' });
+});
+
+it('drops a non-http(s) deep-link URL instead of forwarding it (T-137)', async () => {
+  // The scheme was checked on `sharedText` and not on `sharedUrl`, so an
+  // attacker-chosen value went to the API verbatim: `ftp://example.com/…` was
+  // accepted end to end on 2026-08-20 (the API's `url` rule is filter_var, not
+  // an http(s) allowlist — it refuses `javascript:` by luck, not by design).
+  mockRouter.params = { sharedUrl: 'javascript:alert(1)' };
+  let sent: Record<string, unknown> | null = null;
+  mock.onPost('/shares').reply((cfg) => {
+    sent = JSON.parse(cfg.data);
+    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  // Not prefilled, so there is nothing for a tap to send either.
+  expect(await screen.findByRole('button', { name: 'Pin it' })).toBeOnTheScreen();
+  expect(screen.queryByDisplayValue('javascript:alert(1)')).toBeNull();
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+  expect(await screen.findByText('Paste a link or a caption first.')).toBeOnTheScreen();
+  expect(sent).toBeNull();
+});
+
+it('drops a non-http(s) URL staged by the share extension too (T-137)', async () => {
+  // One check, applied to whichever source the value came from — the staged
+  // path auto-submits, so it is the one that must not carry a foreign scheme.
+  useUiStore.setState({ pendingShare: { url: 'ftp://example.com/x', text: '' } });
+  let sent: Record<string, unknown> | null = null;
+  mock.onPost('/shares').reply((cfg) => {
+    sent = JSON.parse(cfg.data);
+    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Paste a link or a caption first.')).toBeOnTheScreen();
+  expect(sent).toBeNull();
+});
+
+it('does not overwrite what you typed after a deep-link prefill (T-137)', async () => {
+  // The prefill effect must not re-run on every rebuilt callback: the params
+  // stay in the route for as long as the screen is mounted.
+  mockRouter.params = { sharedUrl: 'https://instagram.com/reel/abc' };
+  mock.onPost('/shares').reply(201, { data: shareDetail({ id: '1', status: 'pending' }) });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByDisplayValue('https://instagram.com/reel/abc')).toBeOnTheScreen();
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/mine');
+  // A re-render (any state change: typing in the caption field) must leave it.
+  fireEvent.changeText(screen.getByLabelText('…or a caption'), 'my note');
+  await waitFor(() => expect(screen.getByDisplayValue('https://ig.com/reel/mine')).toBeOnTheScreen());
+});
+
+it('lets you share the SAME post again after "share another" (T-137 / MOB-8)', async () => {
+  // The dedupe was keyed on the payload string and nothing ever reset it, so
+  // re-sharing an already-shared post foregrounded onto an empty form and made
+  // no request — leaving the "already added" note unreachable. Keyed on the
+  // staged object, a second staging is a second submit.
+  const posted: Record<string, unknown>[] = [];
+  mock.onPost('/shares').reply((cfg) => {
+    posted.push(JSON.parse(cfg.data));
+    return posted.length === 1
+      ? [201, { data: shareDetail({ id: '1', status: 'pending' }) }]
+      : [202, { data: { id: '1', status: 'published' }, meta: { idempotent_replay: true } }];
+  });
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+  });
+
+  useUiStore.setState({ pendingShare: { url: 'https://instagram.com/reel/abc', text: '' } });
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
+  expect(posted).toHaveLength(1);
+
+  // "Share another" → back to the form.
+  fireEvent.press(screen.getByText('Share another'));
+  expect(await screen.findByRole('button', { name: 'Pin it' })).toBeOnTheScreen();
+
+  // The same post, shared in again: a NEW staged object, so it submits again…
+  act(() => {
+    useUiStore.setState({ pendingShare: { url: 'https://instagram.com/reel/abc', text: '' } });
+  });
+
+  // …and the replay note — previously unreachable — is what the user sees.
+  expect(await screen.findByText('You already added this one.')).toBeOnTheScreen();
+  expect(posted).toHaveLength(2);
+  expect(posted[1]).toMatchObject({ url: 'https://instagram.com/reel/abc', shared_via: 'share_sheet' });
 });
 
 it('resumes a share staged in the UI store (unauthenticated share surviving login)', async () => {
