@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
 use App\Models\AnalysisRun;
 use App\Models\HiddenPlace;
@@ -112,6 +113,21 @@ it('backfills the winner’s null fields from the loser', function () {
     $winner->refresh();
     expect($winner->google_place_id)->toBe('ChIJloser')
         ->and($winner->phone)->toBe('+441234567890');
+});
+
+it('carries contact-field provenance across a backfill so a claim gate stays coherent (T-117)', function () {
+    // A merge that donates the loser's Google-sourced website must donate its
+    // provenance too — otherwise the survivor lists a verified website stamped
+    // "unknown", and a legitimate owner is wrongly refused the website claim.
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['website' => null, 'website_source' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->providerWebsite('https://verified.example')->create();
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    $winner->refresh();
+    expect($winner->website)->toBe('https://verified.example')
+        ->and($winner->website_source)->toBe(ContactFieldSource::Google)
+        ->and($winner->websiteIsProviderVerified())->toBeTrue();
 });
 
 it('promotes a survivor source when the winner had no primary', function () {

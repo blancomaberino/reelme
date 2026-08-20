@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContactFieldSource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
 use App\Models\User;
@@ -117,4 +118,39 @@ it('diffs array fields by content, not identity', function () {
     $changed = editor()->apply($place, ['opening_hours_json' => ['Mo 10:00–18:00']], PlaceEdit::ORIGIN_MANUAL);
     expect($changed)->not->toBeNull()
         ->and($place->refresh()->isFieldLocked('opening_hours_json'))->toBeTrue();
+});
+
+it('stamps contact-field provenance from the write origin (T-117)', function () {
+    // Enrichment carries Google-sourced business data, so it is the one origin
+    // that yields a provider-verified contact field a claim can trust.
+    $place = Place::factory()->create(['website' => null, 'phone' => null]);
+
+    editor()->apply(
+        $place,
+        ['website' => 'https://google-sourced.example', 'phone' => '+59829152731'],
+        PlaceEdit::ORIGIN_ENRICHMENT,
+    );
+
+    $place->refresh();
+    expect($place->website_source)->toBe(ContactFieldSource::Google)
+        ->and($place->phone_source)->toBe(ContactFieldSource::Google)
+        ->and($place->websiteIsProviderVerified())->toBeTrue()
+        ->and($place->phoneIsProviderVerified())->toBeTrue();
+});
+
+it('stamps a manual contact edit as untrusted for claims (T-117)', function () {
+    // An admin typing a website is not proof the claimant controls it, so a
+    // manual write is never a provider-verified source.
+    $place = Place::factory()->create(['website' => null]);
+
+    editor()->apply(
+        $place,
+        ['website' => 'https://typed-by-admin.example'],
+        PlaceEdit::ORIGIN_MANUAL,
+        User::factory()->admin()->create()->id,
+    );
+
+    $place->refresh();
+    expect($place->website_source)->toBe(ContactFieldSource::Manual)
+        ->and($place->websiteIsProviderVerified())->toBeFalse();
 });

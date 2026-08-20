@@ -2,6 +2,7 @@
 
 namespace App\Services\Places;
 
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
 use App\Models\Place;
 use App\Services\Geo\GeocodeResult;
@@ -37,7 +38,13 @@ class PlaceFactory
             'cuisine_primary' => $this->truncate($cuisines[0] ?? null, 64),
             'price_range' => $this->priceRange($place['price_range'] ?? null),
             'phone' => $this->truncate($place['phone'] ?? null, 32),
+            // The extraction is the sharer's to rewrite (PATCH /shares), so any
+            // contact field it supplies is stamped untrusted — a `website`/`phone`
+            // claim later refuses it. Only the Google enrich path stamps `google`
+            // (T-117 / SEC-1). Null when the field is empty.
+            'phone_source' => $this->extractionSource($place['phone'] ?? null),
             'website' => $this->truncate($place['website'] ?? null, 2048),
+            'website_source' => $this->extractionSource($place['website'] ?? null),
             'google_rating' => $geo->rating,
             'google_rating_count' => $geo->ratingCount,
             // NULL (not '[]') when no snippets came back — the ToS refresh
@@ -80,7 +87,9 @@ class PlaceFactory
             'cuisine_primary' => $this->truncate($cuisines[0] ?? null, 64),
             'price_range' => $this->priceRange($place['price_range'] ?? null),
             'phone' => $this->truncate($place['phone'] ?? null, 32),
+            'phone_source' => $this->extractionSource($place['phone'] ?? null),
             'website' => $this->truncate($place['website'] ?? null, 2048),
+            'website_source' => $this->extractionSource($place['website'] ?? null),
             'status' => PlaceStatus::Pending,
         ]);
         $model->setPoint((float) $location->lat, (float) $location->lng);
@@ -115,6 +124,17 @@ class PlaceFactory
         $int = (int) $value;
 
         return ($int >= 1 && $int <= 4) ? $int : null;
+    }
+
+    /**
+     * Provenance for a contact field taken from the extraction: `extraction`
+     * when a usable value is present, null when it is empty. An extraction-sourced
+     * value is never a valid basis for an automatic place claim (T-117 / SEC-1) —
+     * the sharer controls it.
+     */
+    private function extractionSource(mixed $value): ?ContactFieldSource
+    {
+        return $this->truncate($value, 2048) === null ? null : ContactFieldSource::Extraction;
     }
 
     private function truncate(mixed $value, int $max): ?string

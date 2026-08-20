@@ -3,7 +3,9 @@
 namespace App\Services\Places;
 
 use App\Enums\ClaimStatus;
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceClaimMethod;
+use App\Enums\PlaceStatus;
 use App\Exceptions\ClaimException;
 use App\Models\Place;
 use App\Models\PlaceClaim;
@@ -19,11 +21,19 @@ use Illuminate\Support\Str;
 /**
  * Restaurant-owner verification (T-041, 06 §2.1).
  *
- * The organising rule: **every method proves control of something the PLACE
- * record already lists**, never something the claimant typed. The OTP goes to
- * `places.phone`; the token is looked for on the host of `places.website`. A
- * claimant who could nominate the phone number or the domain could verify any
- * venue on the map, which is the whole attack.
+ * The organising rule: **every automatic method proves control of something the
+ * PLACE record already lists AND that a provider — not the claimant — put there.**
+ * The OTP goes to `places.phone`; the token is looked for on the host of
+ * `places.website`. A claimant who could nominate the phone number or the domain
+ * could verify any venue on the map, which is the whole attack.
+ *
+ * The listed value is only such a proof when its provenance is a provider
+ * ({@see ContactFieldSource::providerVerified()}). `places.website`
+ * and `places.phone` are ALSO writable from the LLM extraction, which the sharer
+ * rewrites through PATCH /shares (T-117 / SEC-1) — so the automatic methods gate
+ * on {@see Place::websiteIsProviderVerified()} / {@see Place::phoneIsProviderVerified()},
+ * never on the bare presence of a value. A place whose contact fields are all
+ * claimant-sourced has no automatic method and is routed to `document`.
  */
 class PlaceClaimService
 {
@@ -63,10 +73,15 @@ class PlaceClaimService
      */
     private function startPhone(Place $place, User $user): PlaceClaim
     {
-        if (blank($place->phone)) {
+        // Provenance, not presence: a phone the sharer typed through the
+        // extraction is not a number they can be called back on to prove
+        // ownership (T-117 / SEC-1). Only a provider-sourced number qualifies;
+        // anything else — absent or claimant-nominated — routes to a document
+        // claim, which the message points at.
+        if (! $place->phoneIsProviderVerified()) {
             throw ClaimException::reason(
                 'no_phone_on_file',
-                'We have no phone number for this place. Try verifying with your website, or upload a document.',
+                'We have no verified phone number for this place. Try verifying with your website, or upload a document.',
             );
         }
 
@@ -92,10 +107,15 @@ class PlaceClaimService
     /** Issue a token for the claimant to publish on their own domain. */
     private function startWebsite(Place $place, User $user): PlaceClaim
     {
-        if (blank($place->website)) {
+        // Provenance, not presence: the website a claim verifies against must be
+        // one a provider put on the record, never one the sharer nominated
+        // through the extraction/correction path — that is the SEC-1 takeover
+        // (T-117). A claimant-sourced or absent website has no website method and
+        // routes to a document claim.
+        if (! $place->websiteIsProviderVerified()) {
             throw ClaimException::reason(
                 'no_website_on_file',
-                'We have no website for this place. Try verifying by phone, or upload a document.',
+                'We have no verified website for this place. Try verifying by phone, or upload a document.',
             );
         }
 
@@ -277,6 +297,18 @@ class PlaceClaimService
 
     private function assertClaimable(Place $place, User $user): void
     {
+        // Only a reviewed, live pin is claimable. A pending pin nobody has looked
+        // at yet (and any hidden/merged/removed one) must not be claimable at all
+        // — half the SEC-1 exploit's speed was claiming a pin the instant it
+        // published (T-117). Checked before the verified-claim lookup so it never
+        // becomes an oracle for who, if anyone, already holds the place.
+        if ($place->status !== PlaceStatus::Active) {
+            throw ClaimException::reason(
+                'place_not_claimable',
+                'This place is not available to claim yet.',
+            );
+        }
+
         $verified = PlaceClaim::query()
             ->where('place_id', $place->id)
             ->where('status', ClaimStatus::Verified)

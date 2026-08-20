@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
 use App\Models\Place;
 use Illuminate\Contracts\Database\Query\Expression;
@@ -46,6 +47,30 @@ class PlaceFactory extends Factory
     public function withGooglePlaceId(string $id): static
     {
         return $this->state(fn () => ['google_place_id' => $id]);
+    }
+
+    /** A website a provider (Google) put on the record — backs a `website` claim. */
+    public function providerWebsite(string $url = 'https://verified.example'): static
+    {
+        return $this->state(fn () => ['website' => $url, 'website_source' => ContactFieldSource::Google]);
+    }
+
+    /** A website the sharer nominated via the extraction — never backs a claim (SEC-1). */
+    public function extractionWebsite(string $url = 'https://attacker.example'): static
+    {
+        return $this->state(fn () => ['website' => $url, 'website_source' => ContactFieldSource::Extraction]);
+    }
+
+    /** A phone a provider (Google) put on the record — backs a `phone` claim. */
+    public function providerPhone(string $phone = '+59891238891'): static
+    {
+        return $this->state(fn () => ['phone' => $phone, 'phone_source' => ContactFieldSource::Google]);
+    }
+
+    /** A phone the sharer nominated via the extraction — never backs a claim (SEC-1). */
+    public function extractionPhone(string $phone = '+10000000000'): static
+    {
+        return $this->state(fn () => ['phone' => $phone, 'phone_source' => ContactFieldSource::Extraction]);
     }
 
     private static function point(float $lat, float $lng): Expression

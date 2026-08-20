@@ -2,6 +2,7 @@
 
 namespace App\Services\Places;
 
+use App\Enums\ContactFieldSource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
 use Illuminate\Support\Facades\DB;
@@ -65,6 +66,22 @@ class PlaceEditor
             }
 
             $locked->fill($patch);
+
+            // Record provenance for the contact fields a claim verifies against
+            // (T-117 / SEC-1). Only the Google enrichment path yields a
+            // provider-verified value; a manual/system write is a human's word,
+            // not a proof, so it stamps `manual` and cannot back an automatic
+            // claim. Stamped only when the field actually changed, so an
+            // unrelated patch never rewrites a field's history.
+            $contactSource = $origin === PlaceEdit::ORIGIN_ENRICHMENT
+                ? ContactFieldSource::Google
+                : ContactFieldSource::Manual;
+            if (array_key_exists('website', $changes)) {
+                $locked->website_source = $contactSource;
+            }
+            if (array_key_exists('phone', $changes)) {
+                $locked->phone_source = $contactSource;
+            }
 
             // A human edit takes ownership of every field it changed.
             if ($origin === PlaceEdit::ORIGIN_MANUAL) {

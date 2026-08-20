@@ -354,11 +354,21 @@ class PlaceMerger
             'opening_hours_json',
         ];
 
+        // Contact-field provenance travels WITH the value it describes (T-117):
+        // backfilling a website/phone without its `*_source` would leave a
+        // Google-sourced value stamped unknown — which reads as untrusted and
+        // wrongly denies a legitimate owner the website/phone claim. One source of
+        // truth for "who owns this field", never two that drift.
+        $sourceOf = ['website' => 'website_source', 'phone' => 'phone_source'];
+
         $backfilled = [];
         foreach ($fields as $field) {
             if ($winner->{$field} === null && ($donor[$field] ?? null) !== null) {
                 $winner->{$field} = $donor[$field];
                 $backfilled[$field] = $winner->getAttribute($field);
+                if (isset($sourceOf[$field])) {
+                    $winner->{$sourceOf[$field]} = $donor[$sourceOf[$field]] ?? null;
+                }
             }
         }
 

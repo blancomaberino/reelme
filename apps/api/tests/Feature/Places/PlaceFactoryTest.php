@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
 use App\Services\Geo\GeocodeResult;
 use App\Services\Places\PlaceFactory;
@@ -68,6 +69,30 @@ it('clamps untrusted extraction fields to their column limits', function () {
     expect(mb_strlen($place->cuisine_primary))->toBe(64)
         ->and(mb_strlen($place->phone))->toBe(32)
         ->and($place->price_range)->toBeNull();
+});
+
+it('stamps extraction-sourced contact fields as untrusted for claims (T-117)', function () {
+    // The extraction is the sharer's to rewrite, so a website/phone it supplies
+    // is recorded as extraction-sourced and can never back an automatic claim.
+    $place = factory()->create(geo(), [
+        'name' => 'X',
+        'phone' => '+10000000000',
+        'website' => 'https://attacker.example',
+    ]);
+
+    expect($place->website)->toBe('https://attacker.example')
+        ->and($place->website_source)->toBe(ContactFieldSource::Extraction)
+        ->and($place->phone_source)->toBe(ContactFieldSource::Extraction)
+        ->and($place->websiteIsProviderVerified())->toBeFalse()
+        ->and($place->phoneIsProviderVerified())->toBeFalse();
+});
+
+it('leaves the contact source null when the extraction supplies no value (T-117)', function () {
+    $place = factory()->create(geo(), ['name' => 'X']);
+
+    expect($place->website)->toBeNull()
+        ->and($place->website_source)->toBeNull()
+        ->and($place->phone_source)->toBeNull();
 });
 
 it('falls back to the XX country sentinel when neither geocode nor address has one', function () {

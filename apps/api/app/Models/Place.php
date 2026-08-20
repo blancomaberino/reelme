@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ClaimStatus;
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
 use App\Models\Builders\PlaceQueryBuilder;
 use App\Services\Reviews\ReviewSourceRegistry;
@@ -37,6 +38,10 @@ use Illuminate\Support\Carbon;
  * @property string|null $city
  * @property string $country_code
  * @property string|null $google_place_id
+ * @property string|null $phone
+ * @property ContactFieldSource|null $phone_source
+ * @property string|null $website
+ * @property ContactFieldSource|null $website_source
  * @property PlaceStatus $status
  * @property int|null $merged_into_place_id
  * @property string|null $image_url
@@ -92,7 +97,7 @@ class Place extends Model
     protected $fillable = [
         'name', 'slug', 'address_line1', 'address_line2', 'city', 'region',
         'postal_code', 'country_code', 'google_place_id', 'cuisine_primary',
-        'price_range', 'phone', 'website', 'image_url', 'thumbnail_url',
+        'price_range', 'phone', 'phone_source', 'website', 'website_source', 'image_url', 'thumbnail_url',
         'gallery_json', 'opening_hours_json', 'locked_fields', 'enriched_at', 'status',
         'merged_into_place_id', 'shares_count', 'avg_extraction_confidence',
         'normalized_name', 'google_rating', 'google_rating_count', 'google_reviews_json',
@@ -106,6 +111,8 @@ class Place extends Model
     {
         return [
             'status' => PlaceStatus::class,
+            'website_source' => ContactFieldSource::class,
+            'phone_source' => ContactFieldSource::class,
             'needs_admin_review' => 'boolean',
             'opening_hours_json' => 'array',
             'gallery_json' => 'array',
@@ -119,6 +126,24 @@ class Place extends Model
             'google_reviews_json' => 'array',
             'google_reviews_synced_at' => 'datetime',
         ];
+    }
+
+    /**
+     * True when the place lists a website that came from a provider the claimant
+     * cannot control (Google), and is therefore a valid basis for an automatic
+     * `website` place claim. A blank website, or one sourced from the extraction /
+     * a share correction / a manual edit, is not — SEC-1 (T-117). Claim methods
+     * gate on this, never on the raw presence of a value.
+     */
+    public function websiteIsProviderVerified(): bool
+    {
+        return filled($this->website) && $this->website_source?->providerVerified() === true;
+    }
+
+    /** The phone twin of {@see websiteIsProviderVerified()} — SEC-1 (T-117). */
+    public function phoneIsProviderVerified(): bool
+    {
+        return filled($this->phone) && $this->phone_source?->providerVerified() === true;
     }
 
     /**
