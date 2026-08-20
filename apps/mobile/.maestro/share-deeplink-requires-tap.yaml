@@ -20,6 +20,7 @@
 # PART 3 — a non-http(s) scheme is dropped rather than forwarded (`ftp://` was
 #          accepted end to end before the fix; the API's `url` rule is
 #          filter_var, not an http(s) allowlist).
+# PART 4 — a repeated param (an array, not a string) does not crash the screen.
 #
 # PRECONDITIONS
 #   - API stack + Metro up via `./scripts/dev.sh start` (a bare `npx expo start`
@@ -89,10 +90,31 @@ appId: pet.one.reelmap
 - assertVisible: ".*Pegá un enlace.*"
 - takeScreenshot: build/maestro/share-deeplink-3-foreign-scheme-dropped
 
+# === PART 4 — a REPEATED param does not take the screen down ===============
+# `?sharedUrl=a&sharedUrl=b` is free for anyone to compose, and expo-router
+# hands a repeated key over as an ARRAY. `.trim()` on an array is a TypeError
+# that kills the screen; the params are read through `firstParam` for exactly
+# this reason. Asserting the form is still there IS the assertion.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+- openLink: "reelmap://share?sharedUrl=https://www.instagram.com/reel/${output.reel}A/&sharedUrl=https://www.instagram.com/reel/${output.reel}B/"
+- extendedWaitUntil:
+    visible: "Compartir"
+    timeout: 30000
+- assertVisible:
+    id: "share-url"
+- assertVisible:
+    id: "share-submit"
+- assertVisible: ".*${output.reel}A.*"
+- takeScreenshot: build/maestro/share-deeplink-4-repeated-param-survives
+
 # === Restore — a URL-less launch is what clears the launch URL ==============
 - stopApp
 - launchApp
 - extendedWaitUntil:
     visible: "Filtros"
     timeout: 90000
-- takeScreenshot: build/maestro/share-deeplink-4-restored-home
+- takeScreenshot: build/maestro/share-deeplink-5-restored-home

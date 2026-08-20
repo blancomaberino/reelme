@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Platform } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
@@ -35,6 +36,19 @@ function shareDetail(over: Partial<ShareDetail>): ShareDetail {
     pending_places: [],
     ...over,
   };
+}
+
+/**
+ * Capture the body of `POST /shares`. `.body` stays null until a request is
+ * actually made — which is the assertion half the T-137 tests turn on.
+ */
+function capturePostShares(): { body: Record<string, unknown> | null } {
+  const captured: { body: Record<string, unknown> | null } = { body: null };
+  mock.onPost('/shares').reply((cfg) => {
+    captured.body = JSON.parse(cfg.data);
+    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
+  });
+  return captured;
 }
 
 function Providers({ children }: { children: ReactNode }) {
@@ -145,11 +159,7 @@ it('PREFILLS a deep-link payload and waits for a tap — it never auto-submits (
   // page, so the route-param path must not be able to spend a share on its own.
   // Reproduced against the running app on 2026-08-20: it did.
   mockRouter.params = { sharedUrl: 'https://instagram.com/reel/abc' };
-  let sent: Record<string, unknown> | null = null;
-  mock.onPost('/shares').reply((cfg) => {
-    sent = JSON.parse(cfg.data);
-    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
-  });
+  const post = capturePostShares();
   mock.onGet('/shares/1').reply(200, {
     data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
   });
@@ -160,12 +170,157 @@ it('PREFILLS a deep-link payload and waits for a tap — it never auto-submits (
   expect(await screen.findByDisplayValue('https://instagram.com/reel/abc')).toBeOnTheScreen();
   // …but nothing was sent, and the form is still the form.
   await waitFor(() => expect(screen.getByRole('button', { name: 'Pin it' })).toBeOnTheScreen());
-  expect(sent).toBeNull();
+  expect(post.body).toBeNull();
 
   // Only the tap submits it.
   fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
   expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
-  expect(sent).toMatchObject({ url: 'https://instagram.com/reel/abc' });
+  // A deep-link prefill followed by a real tap is a paste, not a share-sheet
+  // ingest — pinned so a refactor cannot quietly restore the old attribution.
+  expect(post.body).toMatchObject({ url: 'https://instagram.com/reel/abc', shared_via: 'paste_url' });
+});
+
+it('does NOT auto-submit a staged payload on Android, where the intent is forgeable (T-137)', async () => {
+  // `app.config.ts` registers `androidIntentFilters: ['text/*']` on the exported
+  // MainActivity, so any installed app can startActivity an EXPLICIT ACTION_SEND
+  // with setPackage(us) — no chooser, no tap — and land in the same store the
+  // iOS share extension writes. iOS's payload comes from the app group, which no
+  // other app can write; Android's does not, so Android prefills and waits.
+  const os = Object.getOwnPropertyDescriptor(Platform, 'OS');
+  Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+  try {
+    useUiStore.setState({ pendingShare: { url: 'https://instagram.com/reel/abc', text: '' } });
+  const post = capturePostShares();
+
+    render(<ShareScreen />, { wrapper: Providers });
+
+    // Prefilled and waiting for the button — not sent.
+    expect(await screen.findByDisplayValue('https://instagram.com/reel/abc')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Pin it' })).toBeOnTheScreen();
+    expect(post.body).toBeNull();
+    // Still consumed exactly once, so it cannot re-fire on the next render.
+    expect(useUiStore.getState().pendingShare).toBeNull();
+
+    // The tap still works — Android loses the auto-submit, not the feature.
+    fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+    await waitFor(() => expect(post.body).toMatchObject({ url: 'https://instagram.com/reel/abc' }));
+  } finally {
+    if (os) Object.defineProperty(Platform, 'OS', os);
+  }
+});
+
+it('an untrusted staged payload cannot swap out a link you typed either (T-137)', async () => {
+  // The Android counterpart of the deep-link bait-and-switch: an explicit
+  // ACTION_SEND foregrounds the app on the composer with someone else's URL in
+  // the field, and a habitual tap submits it. On iOS the staged payload IS the
+  // tap the person just made, so there it still wins — asserted below.
+  const os = Object.getOwnPropertyDescriptor(Platform, 'OS');
+  Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+  try {
+    const post = capturePostShares();
+    render(<ShareScreen />, { wrapper: Providers });
+    fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/mine');
+
+    act(() => {
+      useUiStore.setState({ pendingShare: { url: 'https://attacker.example/x', text: '' } });
+    });
+
+    await waitFor(() => expect(screen.getByDisplayValue('https://ig.com/reel/mine')).toBeOnTheScreen());
+    expect(screen.queryByDisplayValue('https://attacker.example/x')).toBeNull();
+    expect(post.body).toBeNull();
+  } finally {
+    if (os) Object.defineProperty(Platform, 'OS', os);
+  }
+});
+
+it('a share-sheet payload DOES replace what you typed on iOS (T-137)', async () => {
+  // The other half: on iOS the payload comes from the app group and means the
+  // person just chose "share to Reelmap" — refusing it there would be wrong.
+  const post = capturePostShares();
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/mine');
+
+  act(() => {
+    useUiStore.setState({ pendingShare: { url: 'https://instagram.com/reel/fromsheet', text: '' } });
+  });
+
+  expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
+  expect(post.body).toMatchObject({ url: 'https://instagram.com/reel/fromsheet', shared_via: 'share_sheet' });
+});
+
+it('does not auto-submit a payload arriving as sharedText either (T-137)', async () => {
+  // `sharedText` is a param NOTHING in the app ever sets — only an external
+  // `reelmap://share?sharedText=…` produces one, so it gets the same treatment
+  // as `sharedUrl`. Without this, a future edit could re-add the auto-submit on
+  // this half of the pair and every other test would stay green.
+  mockRouter.params = { sharedText: 'https://instagram.com/reel/fromparam' };
+  const post = capturePostShares();
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByDisplayValue('https://instagram.com/reel/fromparam')).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: 'Pin it' })).toBeOnTheScreen();
+  expect(post.body).toBeNull();
+});
+
+it('refuses a non-http(s) URL TYPED into the composer, before any request (T-137)', async () => {
+  // The scheme gate lives in doSubmit, not only in the prefill helper: the URL
+  // field is free text, and the API accepted `ftp://` (verified 202) until this
+  // change added its own allowlist.
+  const post = capturePostShares();
+
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'ftp://example.com/x');
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+
+  expect(await screen.findByText('That link needs to start with http:// or https://.')).toBeOnTheScreen();
+  expect(post.body).toBeNull();
+
+  // …and the same field with a real link goes through, so the guard is proven
+  // both ways rather than just proven to refuse.
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/x');
+  fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
+  await waitFor(() => expect(post.body).toMatchObject({ url: 'https://ig.com/reel/x' }));
+});
+
+it('a dropped deep-link payload does not WIPE the form it lands on (T-137)', async () => {
+  // Isolates the `if (!u && !cap) return` guard specifically. Typing first would
+  // NOT isolate it — the `edited` guard fires earlier and the test would stay
+  // green with the guard removed. So: prefill from a valid param, type nothing,
+  // then let a second, dropped payload arrive.
+  mockRouter.params = { sharedUrl: 'https://instagram.com/reel/first' };
+  const post = capturePostShares();
+
+  render(<ShareScreen />, { wrapper: Providers });
+  expect(await screen.findByDisplayValue('https://instagram.com/reel/first')).toBeOnTheScreen();
+
+  mockRouter.params = { sharedUrl: 'ftp://example.com/x' };
+  screen.rerender(<ShareScreen />);
+
+  // The foreign scheme is dropped — and dropping it leaves the field alone
+  // rather than clearing it.
+  await waitFor(() => expect(screen.getByDisplayValue('https://instagram.com/reel/first')).toBeOnTheScreen());
+  expect(post.body).toBeNull();
+});
+
+it('a deep link cannot swap out a link you typed yourself (T-137)', async () => {
+  // Bait-and-switch: the app foregrounds on the composer with someone else's
+  // URL in the field and a habitual tap submits it. A prefill fills an
+  // untouched form only.
+  render(<ShareScreen />, { wrapper: Providers });
+  fireEvent.changeText(screen.getByLabelText('Link'), 'https://ig.com/reel/mine');
+
+  // A plain assignment — no React update happens here; the rerender below is
+  // what re-renders (and RTL already wraps that in act).
+  mockRouter.params = { sharedUrl: 'https://attacker.example/x' };
+  screen.rerender(<ShareScreen />);
+
+  await waitFor(() => expect(screen.getByDisplayValue('https://ig.com/reel/mine')).toBeOnTheScreen());
+  expect(screen.queryByDisplayValue('https://attacker.example/x')).toBeNull();
 });
 
 it('drops a non-http(s) deep-link URL instead of forwarding it (T-137)', async () => {
@@ -174,11 +329,7 @@ it('drops a non-http(s) deep-link URL instead of forwarding it (T-137)', async (
   // accepted end to end on 2026-08-20 (the API's `url` rule is filter_var, not
   // an http(s) allowlist — it refuses `javascript:` by luck, not by design).
   mockRouter.params = { sharedUrl: 'javascript:alert(1)' };
-  let sent: Record<string, unknown> | null = null;
-  mock.onPost('/shares').reply((cfg) => {
-    sent = JSON.parse(cfg.data);
-    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
-  });
+  const post = capturePostShares();
 
   render(<ShareScreen />, { wrapper: Providers });
 
@@ -187,23 +338,65 @@ it('drops a non-http(s) deep-link URL instead of forwarding it (T-137)', async (
   expect(screen.queryByDisplayValue('javascript:alert(1)')).toBeNull();
   fireEvent.press(screen.getByRole('button', { name: 'Pin it' }));
   expect(await screen.findByText('Paste a link or a caption first.')).toBeOnTheScreen();
-  expect(sent).toBeNull();
+  expect(post.body).toBeNull();
 });
 
 it('drops a non-http(s) URL staged by the share extension too (T-137)', async () => {
   // One check, applied to whichever source the value came from — the staged
   // path auto-submits, so it is the one that must not carry a foreign scheme.
   useUiStore.setState({ pendingShare: { url: 'ftp://example.com/x', text: '' } });
-  let sent: Record<string, unknown> | null = null;
-  mock.onPost('/shares').reply((cfg) => {
-    sent = JSON.parse(cfg.data);
-    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
-  });
+  const post = capturePostShares();
 
   render(<ShareScreen />, { wrapper: Providers });
 
   expect(await screen.findByText('Paste a link or a caption first.')).toBeOnTheScreen();
-  expect(sent).toBeNull();
+  expect(post.body).toBeNull();
+});
+
+it('survives a REPEATED deep-link param instead of crashing on it (T-137)', async () => {
+  // `?sharedUrl=a&sharedUrl=b` — free for anyone to compose — makes
+  // useLocalSearchParams hand back an ARRAY, and `.trim()` on an array is a
+  // TypeError that takes the screen down. Verified against the code before this
+  // guard: "(rawUrl ?? '').trim is not a function".
+  mockRouter.params = { sharedUrl: ['https://a.example/1', 'https://b.example/2'] } as never;
+  const post = capturePostShares();
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  // The screen is alive, the first value prefilled, and still nothing sent.
+  expect(await screen.findByDisplayValue('https://a.example/1')).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: 'Pin it' })).toBeOnTheScreen();
+  expect(post.body).toBeNull();
+});
+
+it('takes a URL out of shared TEXT, and non-URL text as the caption (T-137)', async () => {
+  // The share extension often hands over text only ("look at this <link>"),
+  // which is the arm that decides url-vs-caption.
+  useUiStore.setState({ pendingShare: { url: '', text: 'https://www.instagram.com/reel/fromtext/' } });
+  const post = capturePostShares();
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
+  expect(post.body).toMatchObject({ url: 'https://www.instagram.com/reel/fromtext/', shared_via: 'share_sheet' });
+  expect(post.body).not.toHaveProperty('caption');
+});
+
+it('sends non-URL shared text as the caption, not as a URL (T-137)', async () => {
+  useUiStore.setState({ pendingShare: { url: '', text: 'Bar Tabaré, Montevideo' } });
+  const post = capturePostShares();
+  mock.onGet('/shares/1').reply(200, {
+    data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
+  });
+
+  render(<ShareScreen />, { wrapper: Providers });
+
+  expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
+  expect(post.body).toMatchObject({ caption: 'Bar Tabaré, Montevideo', shared_via: 'share_sheet' });
+  expect(post.body).not.toHaveProperty('url');
 });
 
 it('does not overwrite what you typed after a deep-link prefill (T-137)', async () => {
@@ -262,11 +455,7 @@ it('resumes a share staged in the UI store (unauthenticated share surviving logi
   // The root ShareIntentRedirect stages the payload before the sign-in redirect
   // so it isn't lost to the auth gate; post-login the ingest screen consumes it.
   useUiStore.setState({ pendingShare: { url: 'https://tiktok.com/@a/video/1', text: '' } });
-  let sent: Record<string, unknown> = {};
-  mock.onPost('/shares').reply((cfg) => {
-    sent = JSON.parse(cfg.data);
-    return [201, { data: shareDetail({ id: '1', status: 'pending' }) }];
-  });
+  const post = capturePostShares();
   mock.onGet('/shares/1').reply(200, {
     data: shareDetail({ id: '1', status: 'published', place: { id: '9', name: 'Clara Café', lat: -34.9, lng: -56.1 } }),
   });
@@ -274,7 +463,7 @@ it('resumes a share staged in the UI store (unauthenticated share surviving logi
   render(<ShareScreen />, { wrapper: Providers });
 
   expect(await screen.findByText('Pinned!')).toBeOnTheScreen();
-  expect(sent).toMatchObject({ url: 'https://tiktok.com/@a/video/1', shared_via: 'share_sheet' });
+  expect(post.body).toMatchObject({ url: 'https://tiktok.com/@a/video/1', shared_via: 'share_sheet' });
   // The staged share is consumed exactly once (not left to re-fire on resume).
   expect(useUiStore.getState().pendingShare).toBeNull();
 });

@@ -235,6 +235,48 @@ it('retries a review/fetch_unavailable share back into fetching', function () {
     expect($share->fresh()->status)->toBe(ShareStatus::Fetching);
 });
 
+it('refuses a non-http(s) URL scheme with 422 and creates nothing (T-137)', function (string $url) {
+    // Laravel's bare `url` rule is filter_var/Str::isUrl, which accepts around
+    // 400 schemes: before `url:http,https` both of these returned 202 and
+    // created a share row (verified against the running dev API). The mobile
+    // client also filters, but its composer field is free text and a shipped
+    // build cannot be revised — so the allowlist has to hold here.
+    Bus::fake();
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->postJson('/api/v1/shares', ['url' => $url])
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed')
+        // The app wraps validation errors in its own envelope, so the standard
+        // `errors` key is absent — assert on the field that actually failed,
+        // not just on the status, or a 422 for any other reason would pass.
+        ->assertJsonPath('error.details.url.0', 'The url field must be a valid URL.');
+
+    Bus::assertNotDispatched(IngestShare::class);
+    expect(Share::count())->toBe(0);
+})->with([
+    'ftp' => ['ftp://example.com/x'],
+    'file' => ['file://localhost/etc/passwd'],
+    'data' => ['data://text/html;base64,PHNjcmlwdD4='],
+    'view-source' => ['view-source://evil.example'],
+    'javascript' => ['javascript:alert(1)'],
+]);
+
+it('still accepts the http(s) schemes the product actually uses (T-137 counterpart)', function (string $url) {
+    // The other half of the check above: the allowlist must not have narrowed
+    // what a real share can carry. Proves the rule BOTH ways.
+    Bus::fake();
+    Sanctum::actingAs(User::factory()->create());
+
+    $this->postJson('/api/v1/shares', ['url' => $url])->assertStatus(202);
+
+    Bus::assertDispatched(IngestShare::class);
+})->with([
+    'https' => ['https://www.instagram.com/reel/ABC123/'],
+    'http' => ['http://www.instagram.com/reel/ABC124/'],
+    'uppercase scheme' => ['HTTPS://www.instagram.com/reel/ABC125/'],
+]);
+
 it('rejects an over-long URL extracted from shared_text with 422', function () {
     Sanctum::actingAs(User::factory()->create());
     $longUrl = 'https://example.com/'.str_repeat('a', 2100); // > 2048, only reachable via shared_text

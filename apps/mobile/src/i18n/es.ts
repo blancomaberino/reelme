@@ -302,6 +302,7 @@ export const es: Record<MessageKey, string> = {
   'share.captionPlaceholder': 'Los mejores tacos de Lisboa — Time Out Market',
   'share.submit': 'Marcar',
   'share.needInput': 'Pegá un enlace o una descripción primero.',
+  'share.needHttpUrl': 'Ese enlace tiene que empezar con http:// o https://.',
   'share.submitError': 'No se pudo enviar. Reintentá.',
   'share.platformDetected': 'Enlace de {{platform}} detectado',
   'share.duplicate.note': 'Ya lo habías agregado.',

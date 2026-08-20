@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { isAxiosError } from 'axios';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCreateShare } from '@/api/hooks/useCreateShare';
@@ -41,19 +41,48 @@ const PLATFORM_LABEL: Record<SharePlatform, string> = {
 };
 
 /**
- * Split an incoming share payload into the URL and caption fields.
- *
- * The scheme check is the security-relevant part (T-137): a value that is not
- * http(s) is DROPPED rather than forwarded, whichever field it arrived in. The
- * API's `url` rule is `filter_var`, which happily accepts `ftp://` and
- * `file://` — so "the server validates it" is not a guard the client can lean
- * on, and `javascript:` being refused there is a coincidence, not a boundary.
+ * A route param as Expo Router actually hands it over: a REPEATED key
+ * (`?sharedUrl=a&sharedUrl=b`) arrives as an array, not a string — and this
+ * screen's params come from a URL any other app can compose.
  */
-function splitPayload(rawUrl: string | undefined, rawText: string | undefined): { url: string; caption: string } {
-  const u = (rawUrl ?? '').trim();
-  const txt = (rawText ?? '').trim();
+type ParamValue = string | string[] | undefined;
+
+/** First value of a repeated param; `''` when absent. */
+function firstParam(v: ParamValue): string {
+  return (Array.isArray(v) ? v[0] : v) ?? '';
+}
+
+/**
+ * Split an incoming share payload into the URL and caption fields, dropping a
+ * value that is not http(s) rather than forwarding it (T-137). Belt to the
+ * choke point's braces — see the scheme guard in `doSubmit`.
+ */
+function splitPayload(rawUrl: string, rawText: string): { url: string; caption: string } {
+  const u = rawUrl.trim();
+  const txt = rawText.trim();
   const url = isHttpUrl(u) ? u : isHttpUrl(txt) ? txt : '';
   return { url, caption: url ? '' : txt };
+}
+
+/**
+ * Whether a payload staged by the native share module may submit on its own.
+ *
+ * A function, not a module constant: a constant is evaluated at import time,
+ * which freezes the platform before a test can vary it — and an invariant no
+ * test can exercise is a comment.
+ *
+ * iOS: yes. The share extension writes the payload into the app group, which no
+ * other app can write, so its arrival IS the user's share-sheet tap.
+ *
+ * Android: no. `app.config.ts` registers `androidIntentFilters: ['text/*']` on
+ * the exported MainActivity, so any installed app can `startActivity` an
+ * EXPLICIT `ACTION_SEND` with `setPackage(us)` — no chooser, no tap — and reach
+ * this same store. That is the shape T-137 closed for deep links, so it gets
+ * the same answer: prefill and wait for the button. (Traced through
+ * expo-share-intent's source; not yet reproduced on an Android device.)
+ */
+function stagedPayloadIsTrusted(): boolean {
+  return Platform.OS === 'ios';
 }
 
 const STAGE_KEY: Partial<Record<ShareStatus, MessageKey>> = {
@@ -91,24 +120,58 @@ export default function ShareScreen() {
 
   const platform = useMemo(() => (url.trim() ? platformFromUrl(url) : null), [url]);
 
+  // Set the moment the person types. A prefill may fill an untouched form; it
+  // may not swap out a link they wrote themselves and are about to submit.
+  const edited = useRef(false);
+
+  // The one way back to the form. Four places used to clear their own subset of
+  // this state and had already drifted apart.
+  const clearResult = useCallback(() => {
+    setShareId(null);
+    setReplay(false);
+    setError(null);
+  }, []);
+
   const doSubmit = useCallback(
-    (rawUrl: string, rawCaption: string, via: 'paste_url' | 'share_sheet' = 'paste_url') => {
+    (rawUrl: string, rawCaption: string, via: 'paste_url' | 'share_sheet', tapless: boolean) => {
+      // A submit nobody tapped is honoured only where the payload cannot be
+      // forged (T-137) — `via` stays pure attribution, this is the authorization.
+      // Elsewhere the prefill has already happened and the request waits for the
+      // button. Two flags rather than one because a future TRUSTED producer will
+      // want `share_sheet` attribution without being dropped here.
+      //
+      // Neither parameter has a default, deliberately: a fail-open `tapless =
+      // false` would let the next call site submit without a tap by forgetting
+      // an argument. Making it explicit costs one word per call.
+      if (tapless && !stagedPayloadIsTrusted()) return;
       const u = rawUrl.trim();
       const cap = rawCaption.trim();
       if (!u && !cap) {
         setError(t('share.needInput'));
         return;
       }
-      // Guarded HERE, not only on the button. The share-sheet path calls this
-      // straight from the mount effect — the product's PRIMARY entry point — so
-      // a disabled button protects the route nobody uses and leaves the
-      // important one to meet the limit as a generic "couldn't submit".
+      // THE choke point for the scheme (T-137). `splitPayload` guards the two
+      // prefill paths, but this is the only place a request is made — the free
+      // text field reaches it too, and so would any call site added later. The
+      // API is no backstop: its `url` rule is filter_var, which accepts `ftp://`
+      // and `file://` (both verified 202).
+      if (u && !isHttpUrl(u)) {
+        setError(t('share.needHttpUrl'));
+        return;
+      }
+      // Guarded HERE, not only on the button. The SHARE-SHEET path calls this
+      // straight from its effect — the product's PRIMARY entry point — so a
+      // disabled button protects the route nobody uses and leaves the important
+      // one to meet the limit as a generic "couldn't submit".
       //
-      // `outOfShares`/`quotaResetLabel` in the dependency list is safe: the
-      // mount effect dedupes on `handled`, so a rebuilt callback re-runs it and
-      // it returns early.
+      // `outOfShares`/`quotaResetLabel` in the dependency list is safe: a
+      // rebuilt callback re-runs the staged effect, which returns early because
+      // the store was already cleared (`!staged`).
       if (outOfShares) {
-        setError(t('share.quotaReached', { time: quotaResetLabel }));
+        // No message: the banner below already says exactly this, and the only
+        // caller that reaches here is the staged effect (the button is
+        // disabled), so setting it would render the same sentence twice.
+        clearResult();
         return;
       }
       setError(null);
@@ -145,67 +208,100 @@ export default function ShareScreen() {
         },
       );
     },
-    [create, t, outOfShares, quotaResetLabel],
+    [create, t, outOfShares, quotaResetLabel, clearResult],
   );
 
-  const submit = useCallback(() => doSubmit(url, caption), [doSubmit, url, caption]);
+  const submit = useCallback(() => doSubmit(url, caption, 'paste_url', false), [doSubmit, url, caption]);
+
+  const onEditUrl = useCallback((v: string) => {
+    edited.current = true;
+    setUrl(v);
+  }, []);
+
+  const onEditCaption = useCallback((v: string) => {
+    edited.current = true;
+    setCaption(v);
+  }, []);
 
   const reset = useCallback(() => {
-    setShareId(null);
-    setReplay(false);
+    clearResult();
     setUrl('');
     setCaption('');
-    setError(null);
-  }, []);
+    edited.current = false;
+  }, [clearResult]);
 
   // An incoming payload arrives by one of two routes, and they are NOT the same
   // path (T-137):
   //
   //   1. `useUiStore.pendingShare`, staged by the root ShareIntentRedirect from
-  //      the native share-extension module. That IS the user's share-sheet tap —
-  //      it cannot be forged by another app — so it auto-submits, and survives
-  //      the sign-in redirect.
+  //      the native share module. Auto-submits, but only where that payload
+  //      cannot be forged — see `stagedPayloadIsTrusted`. Survives the sign-in
+  //      redirect, which is why it is staged rather than passed.
   //   2. `sharedUrl`/`sharedText` route params, which reach us from ANY
-  //      `reelmap://share?sharedUrl=…` deep link. Another installed app, or a
-  //      web page, can open that. Reproduced 2026-08-20: it published a share
-  //      and spent a daily allowance with nobody touching the phone. So a param
-  //      payload PREFILLS the form and waits for the button — which is what the
+  //      `reelmap://share?sharedUrl=…` deep link — another installed app, or a
+  //      web page, can open one. Reproduced 2026-08-20: it published a share and
+  //      spent a daily allowance with nobody touching the phone. So a param
+  //      payload PREFILLS the form and waits for the button, which is what the
   //      Maestro/CI flows this path exists for were always doing anyway.
   //
-  // Scheme validation is applied once, to whichever source the value came from:
-  // the route param was forwarded verbatim, and `ftp://…` was accepted end to
-  // end (the API's `url` rule is filter_var, not an http(s) allowlist).
-  const { sharedUrl, sharedText } = useLocalSearchParams<{ sharedUrl?: string; sharedText?: string }>();
+  // Params are read through `firstParam` because a repeated key arrives as an
+  // array (see `ParamValue`), and `.trim()` on an array takes the screen down.
+  const { sharedUrl, sharedText } = useLocalSearchParams<{ sharedUrl?: ParamValue; sharedText?: ParamValue }>();
   const staged = useUiStore((s) => s.pendingShare);
 
   // Keyed on the staged OBJECT, not on its text: staging the same post again is
   // a new object, so "share another" then re-sharing the same reel submits (and
   // reaches the idempotent-replay note) instead of silently doing nothing.
+  //
+  // A ref is genuinely needed here, unlike on the param effect below: `doSubmit`
+  // is rebuilt on most renders, so this effect re-runs constantly.
   const handledStaged = useRef<PendingShare | null>(null);
   useEffect(() => {
     if (!staged || handledStaged.current === staged) return;
     handledStaged.current = staged;
     // Consumed exactly once; clearing re-runs this effect with `staged` null.
     useUiStore.getState().setPendingShare(null);
+    // On a platform where this payload can be forged, it gets the same courtesy
+    // as a deep link: it may fill an untouched form, but it may not swap out a
+    // link the person typed and is about to submit. On iOS it always wins —
+    // there the payload IS a share-sheet tap the person just performed.
+    if (!stagedPayloadIsTrusted() && edited.current) return;
     const { url: u, caption: cap } = splitPayload(staged.url, staged.text);
+    // A previous share's result may still be on screen — this screen never
+    // unmounts — and it renders INSTEAD of the form, which would make the
+    // prefill, or a refusal, invisible.
+    clearResult();
     setUrl(u);
     setCaption(cap);
-    doSubmit(u, cap, 'share_sheet');
-  }, [staged, doSubmit]);
+    edited.current = false;
+    doSubmit(u, cap, 'share_sheet', true);
+  }, [staged, doSubmit, clearResult]);
 
-  // Prefill only. Keyed on the param values and deliberately WITHOUT `doSubmit`
-  // in the deps — that callback is rebuilt on most renders, and re-running this
-  // would overwrite whatever the person had typed since.
-  const paramPayload = `${sharedUrl ?? ''}\u0000${sharedText ?? ''}`;
-  const prefilled = useRef<string | null>(null);
+  // Prefill only — no `doSubmit` anywhere in this effect, which is the whole
+  // point of T-137. The deps are the two flattened strings the body reads, so
+  // this runs only when the params actually change; no dedupe ref is needed
+  // (and a repeated key would otherwise churn a fresh array identity every
+  // render).
+  //
+  // KNOWN LIMITATION, not papered over: re-opening the SAME link after "share
+  // another" prefills nothing, because the params did not change and React
+  // cannot re-run the effect. Fixing it means consuming the params
+  // (`router.setParams`) — a routing change this task does not need, since only
+  // external links and the CI flows use this path. The share-sheet path, which
+  // people actually use, handles a repeat correctly.
+  const rawParamUrl = firstParam(sharedUrl);
+  const rawParamText = firstParam(sharedText);
   useEffect(() => {
-    if (!sharedUrl && !sharedText) return;
-    if (prefilled.current === paramPayload) return;
-    prefilled.current = paramPayload;
-    const { url: u, caption: cap } = splitPayload(sharedUrl, sharedText);
+    const { url: u, caption: cap } = splitPayload(rawParamUrl, rawParamText);
+    // Nothing usable — no params, or the scheme was dropped. Return WITHOUT
+    // touching the fields: an externally-composed URL must not be able to wipe
+    // what the person has typed any more than it can submit it.
+    if (!u && !cap) return;
+    if (edited.current) return;
+    clearResult();
     setUrl(u);
     setCaption(cap);
-  }, [sharedUrl, sharedText, paramPayload]);
+  }, [rawParamUrl, rawParamText, clearResult]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -225,7 +321,7 @@ export default function ShareScreen() {
               testID="share-url"
               label={t('share.urlLabel')}
               value={url}
-              onChangeText={setUrl}
+              onChangeText={onEditUrl}
               placeholder={t('share.urlPlaceholder')}
               keyboardType="url"
               autoCorrect={false}
@@ -246,7 +342,7 @@ export default function ShareScreen() {
             <TextField
               label={t('share.captionLabel')}
               value={caption}
-              onChangeText={setCaption}
+              onChangeText={onEditCaption}
               placeholder={t('share.captionPlaceholder')}
               autoCapitalize="sentences"
             />

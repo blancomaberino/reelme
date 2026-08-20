@@ -110,11 +110,20 @@ function ShareIntentRedirect() {
     // shared post — expo-share-intent captures every scheme open. Ignore it so
     // expo-router routes it normally instead of bouncing the user to the composer
     // (T-098). Check the raw intent fields (extractUrl only pulls http(s) links).
+    // Trimmed, because everything downstream trims: an anchored test on the raw
+    // value is defeated by a single leading space, and the payload would then
+    // fall through into the caption instead of being dropped.
     const scheme = /^reelmap:\/\//i;
-    if (scheme.test(shareIntent.webUrl ?? '') || scheme.test(text)) {
+    if (scheme.test((shareIntent.webUrl ?? '').trim()) || scheme.test(text.trim())) {
       resetShareIntent();
       return;
     }
+    // THIS LINE IS A TRUST BOUNDARY (T-137). Everything staged here is treated
+    // by the share screen as a deliberate share-sheet action — on iOS it can
+    // only come from the extension, which writes into the app group. Anything
+    // that widens what reaches this call (a relaxed scheme filter, a new
+    // producer, an Android intent) must be weighed against the auto-submit at
+    // `app/(main)/share.tsx`'s staged effect, which is the consequence.
     useUiStore.getState().setPendingShare({ url, text });
     resetShareIntent();
     // Authed → straight to ingest; guest → sign-in, which reads the staged
