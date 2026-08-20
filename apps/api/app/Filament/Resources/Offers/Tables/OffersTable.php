@@ -47,7 +47,12 @@ class OffersTable
                         OfferStatus::Paused => 'warning',
                         OfferStatus::Expired, OfferStatus::Archived => 'danger',
                     }),
-                TextColumn::make('redemptions_count')->label('Redeemed')->sortable(),
+                // Slots HELD against the quota — live `issued` codes as well as
+                // honoured ones (T-127) — which is why it no longer says
+                // "Redeemed". Only `redeemed` is billable (06 §2.3), so a
+                // moderator checking this number against a venue's invoice would
+                // find a discrepancy by construction and go looking for a bug.
+                TextColumn::make('redemptions_count')->label('Quota used')->sortable(),
                 TextColumn::make('quota_total')->label('Quota')->placeholder('∞')->toggleable(),
                 TextColumn::make('starts_at')->dateTime()->sortable()->toggleable(),
                 TextColumn::make('ends_at')->dateTime()->placeholder('open-ended')->sortable(),

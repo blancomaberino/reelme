@@ -17,6 +17,7 @@ use App\Services\Redemptions\RedemptionGuards;
 use App\Services\Redemptions\RedemptionIssuer;
 use App\Services\Redemptions\RedemptionQr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Issuing a code (T-043, 06 §3).
@@ -35,11 +36,6 @@ use Illuminate\Support\Facades\DB;
 function issuer(): RedemptionIssuer
 {
     return app(RedemptionIssuer::class);
-}
-
-function activeOfferAt(Place $place, array $attributes = []): Offer
-{
-    return Offer::factory()->active()->create(['place_id' => $place->id] + $attributes);
 }
 
 describe('the happy path', function () {
@@ -317,14 +313,38 @@ describe('the anti-fraud table (06 §3)', function () {
 
         issuer()->issue($offer, User::factory()->create());
         issuer()->issue($offer, User::factory()->create());
-        // The counter cache T-043 does not yet maintain is what `isRedeemable()`
-        // reads, so make it true the way the redemption pipeline will.
-        $offer->forceFill(['redemptions_count' => 2])->save();
+        // Nothing to fake: the counter `isRedeemable()` reads is now taken by
+        // the issue path itself (T-127, {@see OfferQuotaCounter}). This file
+        // used to hand-set it here, which is exactly why the missing
+        // maintenance stayed green — the enforcement is proven end to end in
+        // OfferQuotaCounterTest.
+        expect($offer->fresh()->redemptions_count)->toBe(2);
+
+        Log::spy();
 
         expectIssueRefused(
-            fn () => issuer()->issue($offer->fresh(), User::factory()->create()),
+            // The STALE `$offer`, deliberately — never refreshed, so the model
+            // handed in still reads `redemptions_count: 0`. Passing
+            // `$offer->fresh()` made this pass against exactly the
+            // implementation the method's docblock forbids: one that counts the
+            // quota off the CALLER's model rather than off the `lockForUpdate`
+            // re-read.
+            fn () => issuer()->issue($offer, User::factory()->create()),
             'offer_not_redeemable',
         );
+
+        // WHERE the refusal came from, not just that there was one — and this
+        // is the whole assertion, because both answers are the same 422.
+        //
+        // `OfferQuotaCounter::claim()` carries the lifetime cap in its own
+        // UPDATE as a last-ditch guard for a caller that reaches it without the
+        // lock, so an issuer reading the stale model still ends up refusing —
+        // one step later, on the way out of a claim that should have been
+        // impossible. That path logs, and this one must not have taken it: a
+        // refusal reaching the counter means the quota was NOT read under the
+        // lock, which for `quota_per_day` (no such backstop) is a venue serving
+        // past a cap it set.
+        Log::shouldNotHaveReceived('warning', ['offer.quota_claim_refused_under_lock', Mockery::any()]);
     });
 
     it('takes a row lock on the offer before counting its quotas', function () {

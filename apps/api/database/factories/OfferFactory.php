@@ -4,8 +4,10 @@ namespace Database\Factories;
 
 use App\Enums\OfferDiscountType;
 use App\Enums\OfferStatus;
+use App\Enums\RedemptionStatus;
 use App\Models\Offer;
 use App\Models\Place;
+use App\Models\Redemption;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -78,13 +80,47 @@ class OfferFactory extends Factory
         ]);
     }
 
-    /** Live and in-window, but the lifetime cap is used up. */
+    /**
+     * Live and in-window, but the lifetime cap is used up.
+     *
+     * The literal counter in the state is for the `->make()` path, which has no
+     * rows to derive one from and still has to answer the model-level rules
+     * ({@see Offer::hasTotalQuotaLeft()}). A CREATED one gets the redemption
+     * rows that number stands for and then takes its counter FROM them: a
+     * counter is a claim on slots that were actually taken, so a fixture that
+     * stated both independently would be drift by construction — the exact
+     * shape T-127 exists to make impossible — and would leave
+     * `reelmap:offers:reconcile-quotas` reporting every offer built this way the
+     * first time the two literals disagreed.
+     *
+     * `redeemed()` rather than issued: those rows are settled history, so a
+     * fixture built here cannot collide with the partial unique index the moment
+     * a test issues a real code for one of the same diners.
+     */
     public function quotaExhausted(int $quota = 10): static
     {
-        return $this->active()->state(fn () => [
-            'quota_total' => $quota,
-            'redemptions_count' => $quota,
-        ]);
+        return $this->active()
+            ->state(fn () => [
+                'quota_total' => $quota,
+                'redemptions_count' => $quota,
+            ])
+            ->afterCreating(function (Offer $offer) use ($quota): void {
+                // One staff account honours them all — the same till, which is
+                // also what keeps this to $quota + 1 users rather than double.
+                Redemption::factory()
+                    ->count($quota)
+                    ->redeemed(User::factory()->create())
+                    ->create(['offer_id' => $offer->id]);
+
+                // Counted back out of the table under the same predicate the
+                // reconciler uses, rather than trusting the literal above.
+                $offer->forceFill([
+                    'redemptions_count' => Redemption::query()
+                        ->where('offer_id', $offer->id)
+                        ->whereIn('status', RedemptionStatus::holdingQuota())
+                        ->count(),
+                ])->saveQuietly();
+            });
     }
 
     public function paused(): static

@@ -23,8 +23,10 @@ use Illuminate\Http\Resources\Json\JsonResource;
  *   `quota_total - redemptions_count` cannot express.
  *
  * `redemptions_count` is exposed because it is the operator's headline number
- * and, on a live offer, the diner's scarcity signal — it is a count of
- * redemptions, not of anyone's identity.
+ * and, on a live offer, the diner's scarcity signal. It counts the slots the
+ * offer currently HOLDS — codes still `issued` as well as ones honoured
+ * (T-127) — so it is always ≥ the billable count, which is `redeemed` alone
+ * (06 §2.3). Never a count of anyone's identity.
  *
  * @mixin Offer
  */

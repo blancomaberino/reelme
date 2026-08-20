@@ -10,6 +10,7 @@ use App\Models\Redemption;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Hands a diner a single-use code for an offer (T-043, 06 §3).
@@ -36,6 +37,7 @@ class RedemptionIssuer
     public function __construct(
         private readonly RedemptionGuards $guards,
         private readonly RedemptionAttribution $attribution,
+        private readonly OfferQuotaCounter $quota,
     ) {}
 
     /**
@@ -100,6 +102,29 @@ class RedemptionIssuer
                     }
 
                     $this->guards->assertMayIssue($locked, $place, $diner);
+
+                    // Belt and braces, not a second copy of the lock's job. The
+                    // lock stops two issues interleaving their read and their
+                    // write; the claim additionally carries `quota_total` in its
+                    // own UPDATE's WHERE clause, so the lifetime cap still holds
+                    // for a future caller that reaches the counter without the
+                    // lock. It sits inside the transaction so a code collision or
+                    // the anti-fraud unique index carries the slot back out.
+                    if (! $this->quota->claim($offer->id)) {
+                        // Under the lock this is impossible, so it is the single
+                        // signal that the lock's guarantee has been lost — and
+                        // the exception below is byte-identical to the 422 an
+                        // ordinary sold-out offer returns. Without this line the
+                        // broken invariant is indistinguishable, in every log and
+                        // every metric, from a popular promotion.
+                        Log::warning('offer.quota_claim_refused_under_lock', [
+                            'offer_id' => $locked->id,
+                            'redemptions_count' => $locked->redemptions_count,
+                            'quota_total' => $locked->quota_total,
+                        ]);
+
+                        throw RedemptionInvalid::offerNotRedeemable();
+                    }
 
                     $redemption = new Redemption;
                     $redemption->forceFill([

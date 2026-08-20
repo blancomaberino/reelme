@@ -100,6 +100,10 @@ class RedemptionVerifier
             // is recorded as unknown and allowed through (see the geofence).
             $geo = $this->geofence->check($place, $staffLat, $staffLng);
 
+            // `issued → redeemed` is the one status transition that moves NO
+            // quota: both states hold a slot ({@see RedemptionStatus::holdingQuota()}),
+            // so {@see OfferQuotaCounter} is deliberately not called here — the
+            // slot was taken at issue and is only given back by expire or void.
             $flipped = Redemption::query()
                 ->whereKey($redemption->id)
                 ->where('status', RedemptionStatus::Issued)

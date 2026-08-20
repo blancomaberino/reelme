@@ -74,8 +74,8 @@ class Offer extends Model
      *   offer at a venue the caller does not operate.
      * - `influencer_share_bps` — the platform's revenue split (06 §4.1). An
      *   operator setting their own share is the whole payout model inverted.
-     * - `redemptions_count` — a counter cache the redemption pipeline (T-043)
-     *   maintains. A body that could set it could reset a quota.
+     * - `redemptions_count` — a counter cache the redemption quota counter
+     *   maintains (T-127). A body that could set it could reset a quota.
      *
      * The controller additionally passes an explicit `only()` allowlist, so
      * both the model and the write site have to agree before a column moves.
@@ -126,6 +126,24 @@ class Offer extends Model
             ->where(fn (Builder $q) => $q
                 ->whereNull('ends_at')
                 ->orWhere('ends_at', '>=', now()));
+    }
+
+    /**
+     * Not sold out: no lifetime cap, or the held-slot counter is still under it.
+     *
+     * {@see hasTotalQuotaLeft()} is the PHP twin — same question asked of a row
+     * already in memory. Both live here because the answer is a property of the
+     * offer, and the two callers that need the SQL form (the browse badge, and
+     * the counter's own claim, which carries it as the UPDATE's precondition)
+     * must not be able to disagree about what "sold out" means.
+     *
+     * @param  Builder<Offer>  $query
+     */
+    protected function scopeNotSoldOut(Builder $query): void
+    {
+        $query->where(fn (Builder $q) => $q
+            ->whereNull('quota_total')
+            ->orWhereColumn('redemptions_count', '<', 'quota_total'));
     }
 
     /**
@@ -188,10 +206,11 @@ class Offer extends Model
     }
 
     /**
-     * Lifetime cap. Compares against `redemptions_count`, which T-043 keeps as
-     * the count of NON-VOID redemptions: a voided or expired redemption returns
-     * its slot to the quota, otherwise a run of abandoned codes would silently
-     * retire an offer the restaurant is still paying to run.
+     * Lifetime cap. Compares against `redemptions_count`, which the redemption
+     * quota counter keeps (T-127) as the count of redemptions that HOLD a slot:
+     * a voided or expired one returns its slot to the quota, otherwise a run of
+     * abandoned codes would silently retire an offer the restaurant is still
+     * paying to run.
      */
     public function hasTotalQuotaLeft(): bool
     {
