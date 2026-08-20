@@ -38,7 +38,22 @@ it('lets an authed user pick a rating and PUT a new review', async () => {
   let sent: Record<string, unknown> = {};
   mock.onPut('/places/9/reviews').reply((cfg) => {
     sent = JSON.parse(cfg.data);
-    return [200, { data: { id: '1', rating: 5, body: 'Great', author: null, is_own: true, created_at: null } }];
+    // The full ReviewResource shape, including the `updated_at` and
+    // `author.name` the hand-written mobile type used to drop (T-128).
+    return [
+      200,
+      {
+        data: {
+          id: '1',
+          rating: 5,
+          body: 'Great',
+          author: { id: '7', username: 'publicfan', name: 'Pia Fan', avatar_path: null },
+          is_own: true,
+          created_at: '2026-08-01T12:00:00Z',
+          updated_at: '2026-08-01T12:00:00Z',
+        },
+      },
+    ];
   });
 
   render(<ReviewComposer placeId="9" slug="clara-cafe" own={null} />, { wrapper: Providers });
@@ -53,7 +68,15 @@ it('lets an authed user pick a rating and PUT a new review', async () => {
 
 it('prefills an existing review and shows Update + Delete', () => {
   useSessionStore.setState({ status: 'authed' });
-  const own: AppReview = { id: '3', rating: 4, body: 'Solid', author: null, is_own: true, created_at: null };
+  const own: AppReview = {
+    id: '3',
+    rating: 4,
+    body: 'Solid',
+    author: null,
+    is_own: true,
+    created_at: '2026-08-01T12:00:00Z',
+    updated_at: '2026-08-02T09:30:00Z',
+  };
 
   render(<ReviewComposer placeId="9" slug="clara-cafe" own={own} />, { wrapper: Providers });
 

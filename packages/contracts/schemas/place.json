@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://contracts.reelmap.app/schemas/place.json",
   "title": "PlaceDetail",
-  "description": "GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (offer.json items, live ones only — T-042). `my_tags` appears only for the authed owner (T-064) — the caller's private per-user labels, never present for guests or other users.",
+  "description": "GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (offer.json items, live ones only — T-042); `reviews` only with ?include=reviews (review.json items, T-059). `my_tags` appears only for the authed owner (T-064) — the caller's private per-user labels, never present for guests or other users.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -37,7 +37,11 @@
       "description": "The street line on its own (T-083), beside the display string `address` built from it. The suggest-an-edit form corrects this field and cannot parse it back out of the joined address."
     },
     "google_place_id": { "type": ["string", "null"] },
-    "opening_hours": { "type": ["object", "array", "null"] },
+    "opening_hours": {
+      "type": ["array", "null"],
+      "description": "Human-readable opening-hour lines, one rule per entry, exactly as the client shows them (e.g. \"Monday: 9:00 AM – 11:00 PM\", or a schema.org rule like \"Mo-Fr 09:00-17:00\"). A FLAT LIST OF STRINGS — never Google's {periods, weekday_text} object: every writer (GooglePlacesGeocoder, WebsiteBusinessSource, the suggest-an-edit request, the Filament form) stores weekday text lines. The wording and language are the source's, so the client renders them verbatim rather than parsing them.",
+      "items": { "type": "string" }
+    },
     "phone": { "type": ["string", "null"] },
     "website": { "type": ["string", "null"] },
     "image_url": { "type": ["string", "null"], "description": "Curated business photo (T-084); the detail hero, else the client falls back to the reel poster." },
@@ -146,6 +150,11 @@
     "sources": {
       "type": "array",
       "items": { "$ref": "place-source.json" }
+    },
+    "reviews": {
+      "description": "Native in-app reviews (T-059), newest first, present only with ?include=reviews \u2014 the include-set the place detail screen sends. Hidden (moderated) reviews are already filtered out. CAPPED at the newest few (PlaceController::REVIEW_CAP): this embed is a PREVIEW, not the whole set, so a client must not read absence from it as absence altogether \u2014 GET /places/{place}/reviews is the paginated list.",
+      "type": "array",
+      "items": { "$ref": "review.json" }
     },
     "offers": {
       "description": "Live offers only (T-042) — the embed is filtered by the active() scope, so drafts, paused promos, and lapsed windows never appear here. The `place` block is omitted: the caller already holds it.",

@@ -1,102 +1,83 @@
 import type { OpeningHours } from '@/api/places';
 
 export type HoursSummary = {
-  /** True when a period covers `now`; null when hours are unknown. */
+  /**
+   * Whether the place is open at this moment — `null` meaning "unknown", which
+   * is the ONLY value this returns today, deliberately (see {@link summarizeHours}).
+   * `null` must never be rendered as "Closed".
+   *
+   * Kept as a field rather than deleted so the decision stays visible at the
+   * call site, and so the day the API serves structured hours there is an
+   * obvious seam to fill instead of a fresh guess bolted onto the screen.
+   */
   openNow: boolean | null;
-  /** Human line, e.g. "Open now · closes 23:00" or "Closed". Null when unknown. */
-  label: string | null;
-  /** Seven "Mon: 09:00 – 23:00" rows for the expandable list (empty when unknown). */
+  /** The source's own hour lines, verbatim and in order (empty when unknown). */
   weekly: string[];
 };
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-/** "0930" (Google period time) → "09:30". Tolerant of already-coloned input. */
-function fmtTime(time: string): string {
-  const digits = time.replace(/\D/g, '');
-  if (digits.length < 3) return time;
-  return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
-}
-
-/** Minutes-since-Sunday-00:00 for a (day, "HHMM") pair. */
-function toWeekMinutes(day: number, time: string): number {
-  const digits = time.replace(/\D/g, '').padStart(4, '0');
-  const h = Number(digits.slice(0, 2));
-  const m = Number(digits.slice(2, 4));
-  return day * 1440 + h * 60 + m;
-}
-
 /**
- * Summarize Google-style opening hours for the place detail screen (T-033).
+ * Prepare a place's opening hours for the detail screen (T-033, fixed in T-128).
  *
- * Uses the device timezone (acceptable for M2 — the place's true local zone
- * isn't captured yet). Tolerates absent/malformed periods and windows that
- * span midnight (close.day < open.day, or a 24h period with no close). Never
- * throws — a bad payload yields `{openNow: null}`.
+ * The input is a FLAT LIST OF HUMAN-READABLE STRINGS — what every API writer
+ * stores and what `packages/contracts/schemas/place.json` pins: Google
+ * `weekday_text` lines ("Monday: 9:00 AM – 11:00 PM"), schema.org rules
+ * ("Mo-Fr 09:00-17:00"), or whatever a curator typed. It is prose, in the
+ * SOURCE's wording and language — not a machine-readable structure.
+ *
+ * ## Why `openNow` is always `null`
+ *
+ * Deriving "Open now" from these lines would be a guess dressed as a fact, and
+ * the failure mode is a person standing at a locked door. Every step of the
+ * parse is ambiguous, and the dev database proves it rather than the docs:
+ *
+ *  - **Language is the source's, not the reader's.** Every place we hold has
+ *    ENGLISH day names ("Monday: Closed") while the app's default locale is
+ *    Spanish, because Google answered in `en`. Keying off day names, or
+ *    re-sorting the week, is wrong the moment a source answers in another
+ *    language — and there is no field saying which language it answered in.
+ *  - **Which line is today.** `weekday_text` is ordered by the source locale's
+ *    first day of week (Monday-first in most locales, Sunday-first in en-US),
+ *    so index 0 is not a fixed weekday either. Picking "today's line" by
+ *    position is the same wrong claim, made quietly.
+ *  - **The meridiem is often omitted on the opening time.** Real rows read
+ *    "12:00 – 4:00 PM" (i.e. 12:00 *PM*) and "8:30 AM – 8:00 PM". A plain
+ *    HH:MM read gets the first kind wrong by twelve hours, which is precisely
+ *    the error that reports a shut restaurant as open.
+ *  - **A line is not one window, and need not be a window at all.** "Monday:
+ *    Closed" is a real row; so is "Tuesday: 12:00 – 4:00 PM, 8:00 PM – 12:00 AM",
+ *    two windows, the second crossing midnight. The separator is an EN DASH
+ *    (U+2013), except where a source used a hyphen or the word "to".
+ *  - **The whitespace is not whitespace.** Dumped from the dev database rather
+ *    than assumed: Google separates the times with THIN SPACE (U+2009) around
+ *    the en dash and NARROW NO-BREAK SPACE (U+202F) before AM/PM, so
+ *    "Friday: 12:00 – 4:00 PM, 8:00 PM – 1:00 AM" holds six characters that
+ *    look like a space and are not one. Splitting on `' - '` or `' '` returns
+ *    the line unsplit, and it fails INVISIBLY — the source and the screen look
+ *    identical to the eye. (This cost the T-128 Maestro flow a run before it
+ *    was spotted, on a screen that was rendering perfectly.)
+ *  - **Timezone.** Even a flawless parse yields the PLACE's local time, which
+ *    the payload does not carry. Compared against the device clock it is wrong
+ *    for every place outside the viewer's own zone.
+ *
+ * A wrong "Open now" is worse than no badge, so this claims nothing: it returns
+ * `null` and hands the screen the lines to render verbatim, letting the reader
+ * judge in the source's own words. When the API serves structured periods WITH
+ * a timezone, compute it here — do not reintroduce text parsing.
+ *
+ * Total: never throws. Tolerates `null`/`undefined`, an empty array, and
+ * non-string or blank entries slipping through at runtime — the payload is
+ * validated at the edge, but a response cached before the shape was pinned is
+ * not (that stale object is exactly the T-128 bug).
  */
-export function summarizeHours(hours: OpeningHours | null | undefined, now: Date = new Date()): HoursSummary {
-  const periods = hours?.periods;
-  if (!Array.isArray(periods) || periods.length === 0) {
-    // Fall back to weekday_text if that's all Google gave us.
-    const weekly = Array.isArray(hours?.weekday_text) ? hours!.weekday_text! : [];
-    return { openNow: null, label: null, weekly };
-  }
+export function summarizeHours(hours: OpeningHours | null | undefined): HoursSummary {
+  if (!Array.isArray(hours)) return { openNow: null, weekly: [] };
 
-  const nowMinutes = now.getDay() * 1440 + now.getHours() * 60 + now.getMinutes();
-  const week = 7 * 1440;
+  const weekly = hours
+    .filter((line): line is string => typeof line === 'string')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 
-  let openNow = false;
-  let closesAt: string | null = null;
-
-  for (const period of periods) {
-    if (!period?.open || typeof period.open.day !== 'number' || typeof period.open.time !== 'string') {
-      continue;
-    }
-    const start = toWeekMinutes(period.open.day, period.open.time);
-    // No close ⇒ the Google 24/7 sentinel (a single day-0 00:00 period with no
-    // close): open the whole week, so any `now` matches. Close before open ⇒
-    // wraps past midnight.
-    let end = period.close ? toWeekMinutes(period.close.day, period.close.time) : start + week;
-    if (end <= start) end += week;
-
-    // Test `now` and `now + 1 week` so a Sun-night→Mon-morning window matches
-    // regardless of which side of the week boundary `now` sits.
-    for (const candidate of [nowMinutes, nowMinutes + week]) {
-      if (candidate >= start && candidate < end) {
-        openNow = true;
-        closesAt = period.close ? fmtTime(period.close.time) : null;
-      }
-    }
-  }
-
-  const weekly = buildWeekly(periods, hours);
-  const label = openNow
-    ? closesAt
-      ? `Open now · closes ${closesAt}`
-      : 'Open now'
-    : 'Closed';
-
-  return { openNow, label, weekly };
-}
-
-function buildWeekly(periods: NonNullable<OpeningHours['periods']>, hours: OpeningHours | null | undefined): string[] {
-  if (Array.isArray(hours?.weekday_text) && hours!.weekday_text!.length > 0) {
-    return hours!.weekday_text!;
-  }
-
-  const byDay = new Map<number, string[]>();
-  for (const period of periods) {
-    if (!period?.open || typeof period.open.day !== 'number') continue;
-    const open = fmtTime(period.open.time);
-    const close = period.close ? fmtTime(period.close.time) : '24h';
-    const line = period.close ? `${open} – ${close}` : 'Open 24 hours';
-    const list = byDay.get(period.open.day) ?? [];
-    list.push(line);
-    byDay.set(period.open.day, list);
-  }
-
-  return DAYS.map((name, day) => {
-    const windows = byDay.get(day);
-    return `${name}: ${windows && windows.length > 0 ? windows.join(', ') : 'Closed'}`;
-  });
+  // Duplicates are kept on purpose — dropping a repeated line would silently
+  // hide data the source did send. Callers must key rows by index, not by text.
+  return { openNow: null, weekly };
 }

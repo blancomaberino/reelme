@@ -44,6 +44,7 @@ use Illuminate\Support\Carbon;
  * @property ContactFieldSource|null $website_source
  * @property PlaceStatus $status
  * @property int|null $merged_into_place_id
+ * @property list<string>|null $opening_hours_json Human-readable opening-hour LINES, one rule per entry (T-128). A FLAT LIST OF STRINGS — the shape place.json pins and the mobile client renders verbatim; never Google's `{periods, weekday_text}` object. Typed here so PHPStan holds every writer to it, since the `array` cast alone says nothing about what is inside.
  * @property string|null $image_url
  * @property string|null $thumbnail_url
  * @property array<int, array<string, mixed>>|null $gallery_json

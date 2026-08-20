@@ -57,6 +57,16 @@ jobs:
           filters: |
             api:
               - 'apps/api/**'
+              # The API's contract tests validate live responses against these
+              # schemas, so a schema edit can turn the API job red without a
+              # single PHP file changing. Without this the gate simply does not
+              # run on the PR that broke it.
+              - 'packages/contracts/**'
+              # PlaceContractTest DERIVES the mobile include-set by reading this
+              # hook (T-128), so the one change it exists to catch — the app
+              # starting to send an include the endpoint rejects — lives in
+              # apps/mobile and would otherwise skip the whole API job.
+              - 'apps/mobile/src/api/hooks/usePlace.ts'
               - '.github/workflows/ci.yml'
             contracts:
               - 'packages/contracts/**'

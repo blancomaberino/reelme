@@ -4,13 +4,21 @@ import type {
   PlaceListDetail as ContractPlaceListDetail,
   PlaceListSummary as ContractPlaceListSummary,
   PlaceSummary as ContractPlaceSummary,
+  Review as ContractReview,
   ShareDetail as ContractShareDetail,
   UserProfile,
   UserSummary,
 } from '@reelmap/contracts';
 
 import type { PlaceListDetail, PlaceListItem, PlaceListSummary, PublicPlaceList } from '../lists';
-import type { FeedItem, InfluencerSummary, PlaceSummary, SharerSummary } from '../places';
+import type {
+  AppReview,
+  FeedItem,
+  InfluencerSummary,
+  PlaceDetail,
+  PlaceSummary,
+  SharerSummary,
+} from '../places';
 import type { PublicProfile } from '../profile';
 import type { PendingCandidate, PendingVenue, ShareDetail, ShareFailure, SharePlace } from '../shares';
 
@@ -52,6 +60,14 @@ const pendingCandidateMatchesContract: Exact<
   ContractShareDetail['pending_places'][number]['candidates'][number]
 > = true;
 const listItemMatchesContract: Exact<PlaceListItem, ContractPlaceListDetail['items'][number]> = true;
+// Native reviews (T-128). `AppReview` is now an alias of the contract, so the
+// load-bearing pin is the second one: place detail's nested `reviews[]` must be
+// the same Review the standalone endpoint returns, not a copy free to drift.
+const appReviewMatchesContract: Exact<AppReview, ContractReview> = true;
+const placeReviewMatchesContract: Exact<
+  NonNullable<PlaceDetail['reviews']>[number],
+  ContractReview
+> = true;
 
 // A realistic API row must satisfy the contract type verbatim — a renamed field
 // (e.g. `country_code` → `country`) turns this into a tsc error, not a runtime one.
@@ -127,6 +143,19 @@ const listFixture = {
   updated_at: '2026-07-31T09:00:00Z',
 } satisfies ContractPlaceListDetail;
 
+// Captured verbatim from ReviewResource rendered against a public author. This is
+// the drift that shipped: the hand-written `AppReview` had silently lost
+// `updated_at` and `author.name`, so nothing failed when the API sent them.
+const reviewFixture = {
+  id: '3',
+  rating: 5,
+  body: 'Great noodles, tiny queue.',
+  author: { id: '7', username: 'publicfan', name: 'Pia Fan', avatar_path: 'avatars/7.jpg' },
+  is_own: false,
+  created_at: '2026-08-01T12:00:00Z',
+  updated_at: '2026-08-02T09:30:00Z',
+} satisfies ContractReview;
+
 // The public read adds owner attribution on top of the same detail shape.
 const publicListFixture: PublicPlaceList = { ...listFixture, owner: null };
 
@@ -144,6 +173,8 @@ it('pins the mobile API types to @reelmap/contracts', () => {
   expect(pendingVenueMatchesContract).toBe(true);
   expect(pendingCandidateMatchesContract).toBe(true);
   expect(listItemMatchesContract).toBe(true);
+  expect(appReviewMatchesContract).toBe(true);
+  expect(placeReviewMatchesContract).toBe(true);
 });
 
 it('keeps realistic API payloads assignable to the contract types', () => {
@@ -152,4 +183,6 @@ it('keeps realistic API payloads assignable to the contract types', () => {
   expect(feedFixture.sharer).toBeNull();
   expect(listFixture.items[0].place.slug).toBe('lanzhou-beef-noodle');
   expect(publicListFixture.owner).toBeNull();
+  expect(reviewFixture.author.name).toBe('Pia Fan');
+  expect(reviewFixture.updated_at).not.toBe(reviewFixture.created_at);
 });

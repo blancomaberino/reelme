@@ -107,3 +107,53 @@ it('validates a payload carrying every value shape a change can take', function 
         ->and(collect($row['changes'])->pluck('field')->all())
         ->toBe(['name', 'price_range', 'phone', 'opening_hours_json']);
 });
+
+/**
+ * An OPERATOR's edit applies straight to the place (no moderation hop), so this
+ * request is the shortest path from untrusted input to a served payload.
+ *
+ * `opening_hours_json` is validated as an `array` whose every member is a
+ * string — which an ASSOCIATIVE array satisfies. It lands in `jsonb` as a JSON
+ * OBJECT, and place.json pins the field as `string[]`, so the venue's own
+ * detail response would stop matching the type the mobile client is generated
+ * from — from one well-formed request, with nothing in the API ever erroring.
+ * The `list` rule (T-128) is what closes it; this test is what notices if it
+ * ever comes off again.
+ */
+it('refuses opening hours submitted as an object, and keeps place detail contract-valid', function () {
+    $place = Place::factory()->create(['opening_hours_json' => ['Lu-Vi 12:00–15:00']]);
+    $owner = operatorOfPlace($place);
+
+    $this->actingAs($owner)
+        ->postJson("/api/v1/places/{$place->id}/suggestions", [
+            'opening_hours_json' => ['monday' => '9-5', 'tuesday' => 'closed'],
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed')
+        ->assertJsonPath('error.details.opening_hours_json.0', 'The opening hours json field must be a list.');
+
+    // The stored value is untouched, and still a flat list of strings.
+    expect($place->refresh()->opening_hours_json)->toBe(['Lu-Vi 12:00–15:00']);
+
+    $data = $this->getJson("/api/v1/places/{$place->slug}")->assertOk()->json('data');
+    expect(json_encode($data['opening_hours']))->toStartWith('[');
+    assertMatchesContract($data, 'place');
+});
+
+/** The list form of the same field still goes through, for the same operator. */
+it('accepts opening hours submitted as a list of lines from an operator', function () {
+    $place = Place::factory()->create(['opening_hours_json' => null]);
+    $owner = operatorOfPlace($place);
+
+    $this->actingAs($owner)
+        ->postJson("/api/v1/places/{$place->id}/suggestions", [
+            'opening_hours_json' => ['Lu-Vi 12:00–15:00', 'Sa 20:00–23:30'],
+        ])
+        ->assertCreated();
+
+    expect($place->refresh()->opening_hours_json)->toBe(['Lu-Vi 12:00–15:00', 'Sa 20:00–23:30']);
+
+    $data = $this->getJson("/api/v1/places/{$place->slug}")->assertOk()->json('data');
+    expect($data['opening_hours'])->toBe(['Lu-Vi 12:00–15:00', 'Sa 20:00–23:30']);
+    assertMatchesContract($data, 'place');
+});

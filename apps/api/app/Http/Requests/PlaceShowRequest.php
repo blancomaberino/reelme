@@ -14,6 +14,21 @@ class PlaceShowRequest extends FormRequest
 {
     private const ALLOWED_INCLUDES = ['sources', 'offers', 'reviews'];
 
+    /**
+     * Every include this endpoint accepts — the server's single source of truth
+     * for the embed set, and by construction a superset of anything a client can
+     * successfully ask for (an unknown member is a 422 below, never a silent
+     * drop). Public so the contract test can DERIVE the include-set it exercises
+     * instead of restating a literal that drifts out of date the day someone adds
+     * an embed (T-128).
+     *
+     * @return list<string>
+     */
+    public static function allowedIncludes(): array
+    {
+        return self::ALLOWED_INCLUDES;
+    }
+
     public function authorize(): bool
     {
         return true;

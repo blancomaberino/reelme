@@ -85,19 +85,21 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
     /**
      * Map a Google Place Details `result` (business field mask) to our DTO.
      * Prefers the international phone number; opening hours are stored as the
-     * human-readable `weekday_text` lines (the shape the place detail renders).
+     * human-readable `weekday_text` lines (the shape the place detail renders) —
+     * NEVER Google's `{periods, weekday_text}` object, which the contract's
+     * `string[]` forbids. {@see BusinessDetails::hourLines()} enforces that on the
+     * way in rather than trusting an unvalidated third-party payload (T-128).
      *
      * @param  array<string, mixed>  $result
      */
     private function mapBusinessDetails(array $result): BusinessDetails
     {
         $phone = $result['international_phone_number'] ?? $result['formatted_phone_number'] ?? null;
-        $weekdayText = $result['opening_hours']['weekday_text'] ?? null;
 
         return new BusinessDetails(
             phone: is_string($phone) && trim($phone) !== '' ? trim($phone) : null,
             website: is_string($result['website'] ?? null) && trim($result['website']) !== '' ? trim($result['website']) : null,
-            openingHours: is_array($weekdayText) && $weekdayText !== [] ? array_values($weekdayText) : null,
+            openingHours: BusinessDetails::hourLines($result['opening_hours']['weekday_text'] ?? null),
             rating: isset($result['rating']) ? (float) $result['rating'] : null,
             ratingCount: isset($result['user_ratings_total']) ? (int) $result['user_ratings_total'] : null,
             images: $this->photos($result['photos'] ?? null),

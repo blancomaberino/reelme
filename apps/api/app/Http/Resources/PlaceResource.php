@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use App\Models\Place;
 use App\Models\User;
 use App\Models\UserPlaceTag;
+use App\Services\Geo\BusinessDetails;
 use App\Services\Places\PlaceAggregations;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -99,7 +100,7 @@ class PlaceResource extends JsonResource
             // treated as true.
             'can_edit' => $this->viewerOwnsPlace($request),
             'google_place_id' => $this->google_place_id,
-            'opening_hours' => $this->opening_hours_json,
+            'opening_hours' => $this->openingHoursForResource(),
             'phone' => $this->phone,
             'website' => $this->website,
             // Curated business picture (T-084): the main image drives the detail
@@ -190,6 +191,31 @@ class PlaceResource extends JsonResource
         );
 
         return implode(', ', array_map(fn ($p) => trim((string) $p), $parts));
+    }
+
+    /**
+     * The stored hours normalized to the contract shape (T-128): a flat list of
+     * strings, or null.
+     *
+     * The same defence `galleryForResource()` below applies to its column, and
+     * for the same reason — the contract must hold for what is SERVED, whatever
+     * the column happens to hold. Validation on the way in is not enough on its
+     * own: `SuggestPlaceEditRequest` accepted a bare `array` until T-128, and
+     * `PlaceEditSuggestion::patch()` filters proposed changes by field NAME
+     * only, so a suggestion queued before that fix would apply an associative
+     * array on approval. Served raw, that lands as a JSON object, the client's
+     * `string[]` is a lie, and `summarizeHours` degrades to an empty list — the
+     * hours row silently disappears again with no error anywhere.
+     *
+     * `hourLines()` also salvages such a row rather than discarding it: the
+     * VALUES of `{"monday": "9-5"}` are the lines a curator meant, so they come
+     * back as `["9-5"]` instead of null.
+     *
+     * @return list<string>|null
+     */
+    private function openingHoursForResource(): ?array
+    {
+        return BusinessDetails::hourLines($this->opening_hours_json);
     }
 
     /**

@@ -217,35 +217,48 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
           </Row>
         ) : null}
 
-        {hours.label ? (
-          <Pressable
-            onPress={() => setHoursOpen((v) => !v)}
-            disabled={hours.weekly.length === 0}
-            accessibilityRole="button"
-            accessibilityLabel={hoursOpen ? t('place.hoursHide') : t('place.hoursShow')}
-            accessibilityState={{ expanded: hoursOpen }}
-          >
-            <Row icon="time-outline" c={c} styles={styles}>
-              <Text style={[styles.rowText, hours.openNow ? styles.open : styles.closed]}>{hours.label}</Text>
-              {hours.weekly.length > 0 ? (
+        {/* Opening hours (T-128). Gated on the LINES, not on a summary label —
+            the old gate was `hours.label`, which `summarizeHours` never
+            produced for the flat string list the API actually sends, so this
+            row had never once rendered for anyone.
+
+            The collapsed row is a neutral affordance rather than an
+            "Open now / Closed" badge on purpose: the lines are prose in the
+            source's language and the place's timezone, so any open/closed
+            claim derived from them is a guess, and the cost of guessing wrong
+            is a wasted trip. See `summarizeHours` for the full reasoning. */}
+        {hours.weekly.length > 0 ? (
+          <>
+            <Pressable
+              onPress={() => setHoursOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={hoursOpen ? t('place.hoursHide') : t('place.hoursShow')}
+              accessibilityState={{ expanded: hoursOpen }}
+              testID="place-hours"
+            >
+              <Row icon="time-outline" c={c} styles={styles}>
+                <Text style={styles.rowText}>{t('place.hours')}</Text>
                 <Ionicons
                   name={hoursOpen ? 'chevron-up' : 'chevron-down'}
                   size={16}
                   color={c.muted}
                   style={styles.chevron}
                 />
-              ) : null}
-            </Row>
-          </Pressable>
-        ) : null}
-        {hoursOpen ? (
-          <View style={styles.weekly}>
-            {hours.weekly.map((line) => (
-              <Text key={line} style={styles.weeklyLine}>
-                {line}
-              </Text>
-            ))}
-          </View>
+              </Row>
+            </Pressable>
+            {hoursOpen ? (
+              <View style={styles.weekly} testID="place-hours-weekly">
+                {/* Keyed by index: two days can legitimately carry the same
+                    text ("Monday: Closed", "Sunday: Closed"), and keying by
+                    the line would collide and drop one of them. */}
+                {hours.weekly.map((line, i) => (
+                  <Text key={`${i}-${line}`} style={styles.weeklyLine}>
+                    {line}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+          </>
         ) : null}
 
         {place.phone ? (
@@ -663,8 +676,6 @@ const makeStyles = (c: Palette) =>
     rowBody: { flex: 1, flexDirection: 'row', alignItems: 'center' },
     rowText: { flex: 1, fontSize: 15, color: c.text, lineHeight: 21 },
     chevron: { marginLeft: 8 },
-    open: { color: c.green, fontWeight: '600' },
-    closed: { color: c.danger, fontWeight: '600' },
     weekly: { paddingLeft: 30, gap: 4, paddingBottom: 4 },
     weeklyLine: { fontSize: 14, color: c.muted },
     link: { color: c.primary },
