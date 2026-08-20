@@ -12,6 +12,8 @@ use App\Models\Share;
 use App\Models\User;
 use App\Services\Geo\FakeGeocoder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 
 /**
@@ -138,6 +140,32 @@ describe('provenance, not presence, gates the automatic methods', function () {
             ->assertJsonPath('data.phone_last4', '8891');
     });
 
+    it('refuses a website claim when the website was set manually (not a provider)', function () {
+        // ContactFieldSource::Manual — an admin-typed / approved-suggestion website
+        // is a human's word, not proof the claimant controls the domain.
+        $place = Place::factory()->active()->create([
+            'website' => 'https://typed-by-admin.example',
+            'website_source' => ContactFieldSource::Manual,
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'website'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.details.reason', 'no_website_on_file');
+    });
+
+    it('refuses a phone claim when the phone was set manually (not a provider)', function () {
+        $place = Place::factory()->active()->create([
+            'phone' => '+59891238891',
+            'phone_source' => ContactFieldSource::Manual,
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'phone'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.details.reason', 'no_phone_on_file');
+    });
+
     it('treats a legacy row with no recorded source as untrusted', function () {
         // Backfill invariant: a pre-migration row (website present, source null)
         // must NOT be claimable — "unknown" is untrusted, or the migration hands
@@ -190,5 +218,105 @@ describe('only a reviewed, active pin is claimable', function () {
             ->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'website'])
             ->assertStatus(422)
             ->assertJsonPath('error.details.reason', 'place_not_claimable');
+    });
+});
+
+describe('the verified contact is re-checked at completion, not only at start', function () {
+    beforeEach(function () {
+        config(['places.claims.verify_host' => false]); // no DNS in CI
+    });
+
+    it('refuses a website claim whose website changed to a claimant value after start', function () {
+        // The start->verify TOCTOU: the claim starts against a provider website
+        // (token issued), then the website is moved to the attacker's domain
+        // through a non-provider write. Verification must NOT trust the new value.
+        $place = Place::factory()->active()->providerWebsite('https://real-owner.example')->create();
+        $user = User::factory()->create();
+
+        // Start: allowed, because the website is provider-verified right now.
+        $this->actingAs($user)
+            ->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'website'])
+            ->assertCreated();
+        $token = PlaceClaim::sole()->evidence_json['token'];
+
+        // The website is moved to the attacker's own domain (untrusted provenance).
+        $place->forceFill([
+            'website' => 'https://attacker.example',
+            'website_source' => ContactFieldSource::Extraction,
+        ])->save();
+
+        // The attacker hosts the token on their own domain…
+        Http::fake(['attacker.example/*' => Http::response($token)]);
+
+        // …and verification is refused: the pinned provider value no longer matches.
+        $this->actingAs($user)
+            ->postJson("/api/v1/places/{$place->id}/claim/verify", ['method' => 'website'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.details.reason', 'contact_changed');
+
+        expect($user->fresh()->is_restaurant_owner)->toBeFalse()
+            ->and(PlaceClaim::sole()->status->value)->toBe('pending');
+    });
+
+    it('refuses a website claim whose website merely lost its provider provenance after start', function () {
+        // Same value, provenance downgraded (e.g. a manual overwrite to the same
+        // string): the claim is no longer a provider-backed proof.
+        $place = Place::factory()->active()->providerWebsite('https://real-owner.example')->create();
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'website'])->assertCreated();
+        $token = PlaceClaim::sole()->evidence_json['token'];
+
+        $place->forceFill(['website_source' => ContactFieldSource::Manual])->save();
+        Http::fake(['*' => Http::response($token)]);
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/places/{$place->id}/claim/verify", ['method' => 'website'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.details.reason', 'contact_changed');
+    });
+
+    it('refuses a phone claim whose number changed after start', function () {
+        $place = Place::factory()->active()->providerPhone('+59891111111')->create();
+        $user = User::factory()->create();
+
+        $code = '123456';
+        PlaceClaim::factory()->phone()->create([
+            'place_id' => $place->id,
+            'user_id' => $user->id,
+            'evidence_json' => [
+                'otp' => Hash::make($code),
+                'attempts' => 0,
+                'expires_at' => now()->addMinutes(15)->toIso8601String(),
+                'phone' => '+59891111111',
+            ],
+        ]);
+
+        // Number moves to the attacker's line after the OTP was pinned.
+        $place->forceFill(['phone' => '+59899999999', 'phone_source' => ContactFieldSource::Extraction])->save();
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/places/{$place->id}/claim/verify", ['method' => 'phone', 'code' => $code])
+            ->assertStatus(422)
+            ->assertJsonPath('error.details.reason', 'contact_changed');
+    });
+
+    it('refuses a legacy pending claim that pinned no contact value', function () {
+        // A claim from before this change carries no pinned value; it cannot be
+        // revalidated, so it is refused rather than trusted.
+        $place = Place::factory()->active()->providerWebsite('https://real-owner.example')->create();
+        $user = User::factory()->create();
+
+        PlaceClaim::factory()->website()->create([
+            'place_id' => $place->id,
+            'user_id' => $user->id,
+            'evidence_json' => ['token' => 'reelmap-verify-legacy', 'expires_at' => now()->addHours(72)->toIso8601String()],
+        ]);
+        Http::fake(['*' => Http::response('reelmap-verify-legacy')]);
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/places/{$place->id}/claim/verify", ['method' => 'website'])
+            ->assertStatus(422)
+            ->assertJsonPath('error.details.reason', 'contact_changed');
     });
 });

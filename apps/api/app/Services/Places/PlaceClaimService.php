@@ -91,6 +91,10 @@ class PlaceClaimService
             'otp' => Hash::make($code),
             'attempts' => 0,
             'expires_at' => now()->addMinutes(self::OTP_TTL_MINUTES)->toIso8601String(),
+            // The exact provider-sourced number this claim is a proof of, pinned
+            // at start so verification can refuse a claim whose number has since
+            // changed or lost its provenance (T-117 / SEC-1 — start→verify TOCTOU).
+            'phone' => $place->phone,
             // Stored so the claim screen can say "…ending 8891" without the API
             // ever handing back the full number it is calling.
             'phone_last4' => mb_substr(preg_replace('/\D/', '', $place->phone) ?? '', -4),
@@ -120,6 +124,10 @@ class PlaceClaimService
         }
 
         return $this->upsertPending($place, $user, PlaceClaimMethod::Website, [
+            // The exact provider-sourced website this claim is a proof of, pinned
+            // at start so verification can refuse a claim whose website has since
+            // changed or lost its provenance (T-117 / SEC-1 — start→verify TOCTOU).
+            'website' => $place->website,
             'token' => 'reelmap-verify-'.Str::lower(Str::random(24)),
             'expires_at' => now()->addHours(self::TOKEN_TTL_HOURS)->toIso8601String(),
         ]);
@@ -145,6 +153,8 @@ class PlaceClaimService
         if ($this->expired($evidence)) {
             throw ClaimException::reason('code_expired', 'That code expired. Request a new one.');
         }
+
+        $this->assertVerifiedContactUnchanged($place, $evidence, 'phone', $place->phoneIsProviderVerified());
 
         if ((int) ($evidence['attempts'] ?? 0) >= self::OTP_MAX_ATTEMPTS) {
             throw ClaimException::reason('too_many_attempts', 'Too many wrong codes. Request a new one.');
@@ -177,6 +187,8 @@ class PlaceClaimService
         if ($this->expired($evidence)) {
             throw ClaimException::reason('token_expired', 'That verification token expired. Request a new one.');
         }
+
+        $this->assertVerifiedContactUnchanged($place, $evidence, 'website', $place->websiteIsProviderVerified());
 
         $token = (string) ($evidence['token'] ?? '');
         $url = $this->verificationUrl((string) $place->website);
@@ -293,6 +305,33 @@ class PlaceClaimService
     private function grantOwnerRole(int $userId): void
     {
         User::whereKey($userId)->update(['is_restaurant_owner' => true]);
+    }
+
+    /**
+     * Re-assert at completion the invariant that start established: the claim
+     * proves control of the SPECIFIC provider-sourced contact value the place
+     * listed when the claim began. A claim started against a Google-sourced
+     * website/phone is no longer a proof of ownership if that field has since
+     * changed — to a value the claimant could nominate — or lost its provider
+     * provenance. So verify re-checks BOTH the value and the provenance rather
+     * than trusting the start-time gate; the start→verify gap is two requests
+     * wide, and the extraction/correction path can move a field inside it
+     * (T-117 / SEC-1). A legacy pending claim with no pinned value cannot be
+     * revalidated, so it is refused — the claimant restarts, re-pinning today's
+     * value.
+     *
+     * @param  array<string, mixed>  $evidence
+     */
+    private function assertVerifiedContactUnchanged(Place $place, array $evidence, string $field, bool $providerVerified): void
+    {
+        $pinned = $evidence[$field] ?? null;
+
+        if (! $providerVerified || ! is_string($pinned) || $pinned !== $place->{$field}) {
+            throw ClaimException::reason(
+                'contact_changed',
+                'The verified contact details for this place changed. Start a new claim.',
+            );
+        }
     }
 
     private function assertClaimable(Place $place, User $user): void

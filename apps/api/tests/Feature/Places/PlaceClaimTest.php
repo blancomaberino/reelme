@@ -113,7 +113,7 @@ describe('phone verification', function () {
     /** Start a phone claim and return [place, user, code]. */
     function phoneClaim(): array
     {
-        $place = Place::factory()->create(['phone' => '+59891238891']);
+        $place = Place::factory()->active()->providerPhone('+59891238891')->create();
         $user = claimant();
         $code = '123456';
 
@@ -124,6 +124,7 @@ describe('phone verification', function () {
                 'otp' => Hash::make($code),
                 'attempts' => 0,
                 'expires_at' => now()->addMinutes(15)->toIso8601String(),
+                'phone' => '+59891238891',
                 'phone_last4' => '8891',
             ],
         ]);
@@ -175,7 +176,7 @@ describe('phone verification', function () {
     });
 
     it('refuses an expired code', function () {
-        $place = Place::factory()->create(['phone' => '+59891238891']);
+        $place = Place::factory()->active()->providerPhone('+59891238891')->create();
         $user = claimant();
         PlaceClaim::factory()->phone()->create([
             'place_id' => $place->id,
@@ -184,6 +185,7 @@ describe('phone verification', function () {
                 'otp' => Hash::make('123456'),
                 'attempts' => 0,
                 'expires_at' => now()->subMinute()->toIso8601String(),
+                'phone' => '+59891238891',
             ],
         ]);
 
@@ -215,14 +217,14 @@ describe('website verification', function () {
     /** @return array{0: Place, 1: User, 2: string} */
     function websiteClaim(string $website = 'https://bar-tinta.example'): array
     {
-        $place = Place::factory()->create(['website' => $website]);
+        $place = Place::factory()->active()->providerWebsite($website)->create();
         $user = claimant();
         $token = 'reelmap-verify-abc123';
 
         PlaceClaim::factory()->website()->create([
             'place_id' => $place->id,
             'user_id' => $user->id,
-            'evidence_json' => ['token' => $token, 'expires_at' => now()->addHours(72)->toIso8601String()],
+            'evidence_json' => ['website' => $website, 'token' => $token, 'expires_at' => now()->addHours(72)->toIso8601String()],
         ]);
 
         return [$place, $user, $token];
