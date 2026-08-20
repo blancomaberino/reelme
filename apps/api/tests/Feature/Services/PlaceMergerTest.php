@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
 use App\Models\AnalysisRun;
 use App\Models\HiddenPlace;
@@ -112,6 +113,68 @@ it('backfills the winner’s null fields from the loser', function () {
     $winner->refresh();
     expect($winner->google_place_id)->toBe('ChIJloser')
         ->and($winner->phone)->toBe('+441234567890');
+});
+
+it('carries contact-field provenance across a backfill so a claim gate stays coherent (T-117)', function () {
+    // A merge that donates the loser's Google-sourced website must donate its
+    // provenance too — otherwise the survivor lists a verified website stamped
+    // "unknown", and a legitimate owner is wrongly refused the website claim.
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['website' => null, 'website_source' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->providerWebsite('https://verified.example')->create();
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    $winner->refresh();
+    expect($winner->website)->toBe('https://verified.example')
+        ->and($winner->website_source)->toBe(ContactFieldSource::Google)
+        ->and($winner->websiteIsProviderVerified())->toBeTrue();
+});
+
+it('unmerge reverses a contact-field backfill including its provenance (T-117)', function () {
+    // Exactness: after undo, the survivor is back to no website AND no dangling
+    // source — not website=null with website_source still 'google'.
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['website' => null, 'website_source' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->providerWebsite('https://verified.example')->create();
+
+    (new PlaceMerger)->merge($winner, $loser);
+    (new PlaceMerger)->unmerge(PlaceMerge::sole());
+
+    $winner->refresh();
+    expect($winner->website)->toBeNull()
+        ->and($winner->website_source)->toBeNull();
+});
+
+it('carries phone provenance across a backfill and clears it on unmerge (T-117)', function () {
+    // The phone twin of the website provenance-travel test: a Google-sourced
+    // phone donated by a merge stays claimable, and unmerge reverses both.
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['phone' => null, 'phone_source' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->providerPhone('+59891238891')->create();
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    $winner->refresh();
+    expect($winner->phone)->toBe('+59891238891')
+        ->and($winner->phone_source)->toBe(ContactFieldSource::Google)
+        ->and($winner->phoneIsProviderVerified())->toBeTrue();
+
+    (new PlaceMerger)->unmerge(PlaceMerge::sole());
+    $winner->refresh();
+    expect($winner->phone)->toBeNull()
+        ->and($winner->phone_source)->toBeNull();
+});
+
+it('carries an untrusted (extraction) phone source across a backfill unchanged (T-117)', function () {
+    // The edge path: a donated phone that was extraction-sourced must stay
+    // untrusted on the survivor — a merge never launders provenance to google.
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['phone' => null, 'phone_source' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->extractionPhone('+10000000000')->create();
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    $winner->refresh();
+    expect($winner->phone)->toBe('+10000000000')
+        ->and($winner->phone_source)->toBe(ContactFieldSource::Extraction)
+        ->and($winner->phoneIsProviderVerified())->toBeFalse();
 });
 
 it('promotes a survivor source when the winner had no primary', function () {

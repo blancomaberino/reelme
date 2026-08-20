@@ -26,7 +26,7 @@ function claimant(): User
 
 describe('starting a claim', function () {
     it('sends the code to the number on the place, not one the claimant supplies', function () {
-        $place = Place::factory()->create(['phone' => '+59891238891']);
+        $place = Place::factory()->active()->providerPhone('+59891238891')->create();
         $user = claimant();
 
         $res = $this->actingAs($user)
@@ -50,7 +50,7 @@ describe('starting a claim', function () {
     });
 
     it('refuses the phone method when the place has no number on file', function () {
-        $place = Place::factory()->create(['phone' => null]);
+        $place = Place::factory()->active()->create(['phone' => null]);
 
         $this->actingAs(claimant())
             ->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'phone'])
@@ -59,7 +59,7 @@ describe('starting a claim', function () {
     });
 
     it('issues a website token and says exactly where to publish it', function () {
-        $place = Place::factory()->create(['website' => 'https://bar-tinta.example/menu']);
+        $place = Place::factory()->active()->providerWebsite('https://bar-tinta.example/menu')->create();
 
         $res = $this->actingAs(claimant())
             ->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'website'])
@@ -73,7 +73,7 @@ describe('starting a claim', function () {
     });
 
     it('queues a document claim for a human instead of verifying anything', function () {
-        $place = Place::factory()->create();
+        $place = Place::factory()->active()->create();
 
         $res = $this->actingAs(claimant())
             ->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'document'])
@@ -84,7 +84,7 @@ describe('starting a claim', function () {
     });
 
     it('replaces an in-flight claim rather than leaving two live codes', function () {
-        $place = Place::factory()->create(['phone' => '+59891238891']);
+        $place = Place::factory()->active()->providerPhone('+59891238891')->create();
         $user = claimant();
 
         $this->actingAs($user)->postJson("/api/v1/places/{$place->id}/claim", ['method' => 'phone']);
@@ -113,7 +113,7 @@ describe('phone verification', function () {
     /** Start a phone claim and return [place, user, code]. */
     function phoneClaim(): array
     {
-        $place = Place::factory()->create(['phone' => '+59891238891']);
+        $place = Place::factory()->active()->providerPhone('+59891238891')->create();
         $user = claimant();
         $code = '123456';
 
@@ -124,6 +124,7 @@ describe('phone verification', function () {
                 'otp' => Hash::make($code),
                 'attempts' => 0,
                 'expires_at' => now()->addMinutes(15)->toIso8601String(),
+                'phone' => '+59891238891',
                 'phone_last4' => '8891',
             ],
         ]);
@@ -175,7 +176,7 @@ describe('phone verification', function () {
     });
 
     it('refuses an expired code', function () {
-        $place = Place::factory()->create(['phone' => '+59891238891']);
+        $place = Place::factory()->active()->providerPhone('+59891238891')->create();
         $user = claimant();
         PlaceClaim::factory()->phone()->create([
             'place_id' => $place->id,
@@ -184,6 +185,7 @@ describe('phone verification', function () {
                 'otp' => Hash::make('123456'),
                 'attempts' => 0,
                 'expires_at' => now()->subMinute()->toIso8601String(),
+                'phone' => '+59891238891',
             ],
         ]);
 
@@ -215,14 +217,14 @@ describe('website verification', function () {
     /** @return array{0: Place, 1: User, 2: string} */
     function websiteClaim(string $website = 'https://bar-tinta.example'): array
     {
-        $place = Place::factory()->create(['website' => $website]);
+        $place = Place::factory()->active()->providerWebsite($website)->create();
         $user = claimant();
         $token = 'reelmap-verify-abc123';
 
         PlaceClaim::factory()->website()->create([
             'place_id' => $place->id,
             'user_id' => $user->id,
-            'evidence_json' => ['token' => $token, 'expires_at' => now()->addHours(72)->toIso8601String()],
+            'evidence_json' => ['website' => $website, 'token' => $token, 'expires_at' => now()->addHours(72)->toIso8601String()],
         ]);
 
         return [$place, $user, $token];
@@ -320,7 +322,7 @@ describe('one verified owner per place', function () {
     });
 
     it('turns away a second claimant on an already-claimed place', function () {
-        $place = Place::factory()->create(['phone' => '+59891238891']);
+        $place = Place::factory()->active()->create(['phone' => '+59891238891']);
         PlaceClaim::factory()->verified()->create(['place_id' => $place->id]);
 
         $this->actingAs(claimant())
@@ -331,7 +333,7 @@ describe('one verified owner per place', function () {
     });
 
     it('is idempotent for the operator who already holds it', function () {
-        $place = Place::factory()->create(['phone' => '+59891238891']);
+        $place = Place::factory()->active()->create(['phone' => '+59891238891']);
         $owner = claimant();
         PlaceClaim::factory()->verified()->create(['place_id' => $place->id, 'user_id' => $owner->id]);
 

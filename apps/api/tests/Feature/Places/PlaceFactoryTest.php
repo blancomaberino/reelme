@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
 use App\Services\Geo\GeocodeResult;
 use App\Services\Places\PlaceFactory;
@@ -70,6 +71,30 @@ it('clamps untrusted extraction fields to their column limits', function () {
         ->and($place->price_range)->toBeNull();
 });
 
+it('stamps extraction-sourced contact fields as untrusted for claims (T-117)', function () {
+    // The extraction is the sharer's to rewrite, so a website/phone it supplies
+    // is recorded as extraction-sourced and can never back an automatic claim.
+    $place = factory()->create(geo(), [
+        'name' => 'X',
+        'phone' => '+10000000000',
+        'website' => 'https://attacker.example',
+    ]);
+
+    expect($place->website)->toBe('https://attacker.example')
+        ->and($place->website_source)->toBe(ContactFieldSource::Extraction)
+        ->and($place->phone_source)->toBe(ContactFieldSource::Extraction)
+        ->and($place->websiteIsProviderVerified())->toBeFalse()
+        ->and($place->phoneIsProviderVerified())->toBeFalse();
+});
+
+it('leaves the contact source null when the extraction supplies no value (T-117)', function () {
+    $place = factory()->create(geo(), ['name' => 'X']);
+
+    expect($place->website)->toBeNull()
+        ->and($place->website_source)->toBeNull()
+        ->and($place->phone_source)->toBeNull();
+});
+
 it('falls back to the XX country sentinel when neither geocode nor address has one', function () {
     $place = factory()->create(geo(['components' => []]), ['name' => 'NoCountry', 'address' => []]);
 
@@ -82,12 +107,19 @@ it('creates a profile pin with no google_place_id, preferring the profile addres
         lat: 41.15, lng: -8.61,
     );
 
-    $place = factory()->createFromProfile('La Burger', ['address' => ['country' => 'PT']], $location);
+    $place = factory()->createFromProfile(
+        'La Burger',
+        ['address' => ['country' => 'PT'], 'website' => 'https://attacker.example'],
+        $location,
+    );
 
     expect($place->google_place_id)->toBeNull()
         ->and($place->name)->toBe('La Burger')
         ->and($place->city)->toBe('Porto')
         ->and($place->country_code)->toBe('PT')
         ->and($place->status)->toBe(PlaceStatus::Pending)
+        // The profile path is extraction-sourced too — its website is not claimable.
+        ->and($place->website_source)->toBe(ContactFieldSource::Extraction)
+        ->and($place->websiteIsProviderVerified())->toBeFalse()
         ->and($place->coordinates())->toMatchArray(['lat' => 41.15, 'lng' => -8.61]);
 });

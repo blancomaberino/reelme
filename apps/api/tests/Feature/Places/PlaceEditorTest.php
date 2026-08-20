@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContactFieldSource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
 use App\Models\User;
@@ -117,4 +118,100 @@ it('diffs array fields by content, not identity', function () {
     $changed = editor()->apply($place, ['opening_hours_json' => ['Mo 10:00–18:00']], PlaceEdit::ORIGIN_MANUAL);
     expect($changed)->not->toBeNull()
         ->and($place->refresh()->isFieldLocked('opening_hours_json'))->toBeTrue();
+});
+
+it('stamps an enrichment contact field GOOGLE only when Google supplied it (T-117)', function () {
+    // The enricher passes the winning source per contact field; a Google-supplied
+    // value is the one provider-verified case a claim can trust.
+    $place = Place::factory()->create(['website' => null, 'phone' => null]);
+
+    editor()->apply(
+        $place,
+        ['website' => 'https://google-sourced.example', 'phone' => '+59829152731'],
+        PlaceEdit::ORIGIN_ENRICHMENT,
+        contactSources: [
+            'website' => ContactFieldSource::Google,
+            'phone' => ContactFieldSource::Google,
+        ],
+    );
+
+    $place->refresh();
+    expect($place->website_source)->toBe(ContactFieldSource::Google)
+        ->and($place->phone_source)->toBe(ContactFieldSource::Google)
+        ->and($place->websiteIsProviderVerified())->toBeTrue()
+        ->and($place->phoneIsProviderVerified())->toBeTrue();
+});
+
+it('does NOT trust an enrichment contact field the website scrape supplied (T-117 / SEC-1)', function () {
+    // A phone read from the JSON-LD at places.website is claimant-controllable for
+    // an unclaimed pin, so an enrichment write whose winning source is NOT Google
+    // must stamp the field untrusted — never provider-verified.
+    $place = Place::factory()->create(['phone' => null]);
+
+    editor()->apply(
+        $place,
+        ['phone' => '+10000000000'],
+        PlaceEdit::ORIGIN_ENRICHMENT,
+        contactSources: ['phone' => ContactFieldSource::Extraction], // won by the website scrape
+    );
+
+    $place->refresh();
+    expect($place->phone_source)->toBe(ContactFieldSource::Extraction)
+        ->and($place->phoneIsProviderVerified())->toBeFalse();
+});
+
+it('defaults an enrichment contact field to untrusted when no source is passed (T-117)', function () {
+    // Fail closed: an enrichment write that omits the source map must never grant
+    // a blanket google stamp (the original SEC-1 regression shape).
+    $place = Place::factory()->create(['phone' => null]);
+
+    editor()->apply($place, ['phone' => '+10000000000'], PlaceEdit::ORIGIN_ENRICHMENT);
+
+    expect($place->refresh()->phoneIsProviderVerified())->toBeFalse();
+});
+
+it('leaves a contact field source untouched when an unrelated field changes (T-117)', function () {
+    // The stamp is keyed on the field actually changing; an enrichment run that
+    // only touches `name` must not restamp an extraction-sourced website as google.
+    $place = Place::factory()->extractionWebsite('https://attacker.example')->create(['name' => 'Old']);
+
+    editor()->apply(
+        $place,
+        ['name' => 'New Name'],
+        PlaceEdit::ORIGIN_ENRICHMENT,
+        contactSources: ['website' => ContactFieldSource::Google], // present but website did not change
+    );
+
+    $place->refresh();
+    expect($place->name)->toBe('New Name')
+        ->and($place->website_source)->toBe(ContactFieldSource::Extraction) // unchanged
+        ->and($place->websiteIsProviderVerified())->toBeFalse();
+});
+
+it('stamps a system contact write as untrusted for claims (T-117)', function () {
+    // ORIGIN_SYSTEM is not a provider either — it must not earn a google stamp.
+    $place = Place::factory()->create(['phone' => null]);
+
+    editor()->apply($place, ['phone' => '+59829152731'], PlaceEdit::ORIGIN_SYSTEM);
+
+    $place->refresh();
+    expect($place->phone_source)->toBe(ContactFieldSource::Manual)
+        ->and($place->phoneIsProviderVerified())->toBeFalse();
+});
+
+it('stamps a manual contact edit as untrusted for claims (T-117)', function () {
+    // An admin typing a website is not proof the claimant controls it, so a
+    // manual write is never a provider-verified source.
+    $place = Place::factory()->create(['website' => null]);
+
+    editor()->apply(
+        $place,
+        ['website' => 'https://typed-by-admin.example'],
+        PlaceEdit::ORIGIN_MANUAL,
+        User::factory()->admin()->create()->id,
+    );
+
+    $place->refresh();
+    expect($place->website_source)->toBe(ContactFieldSource::Manual)
+        ->and($place->websiteIsProviderVerified())->toBeFalse();
 });

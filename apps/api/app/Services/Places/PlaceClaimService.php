@@ -3,7 +3,9 @@
 namespace App\Services\Places;
 
 use App\Enums\ClaimStatus;
+use App\Enums\ContactFieldSource;
 use App\Enums\PlaceClaimMethod;
+use App\Enums\PlaceStatus;
 use App\Exceptions\ClaimException;
 use App\Models\Place;
 use App\Models\PlaceClaim;
@@ -19,11 +21,19 @@ use Illuminate\Support\Str;
 /**
  * Restaurant-owner verification (T-041, 06 §2.1).
  *
- * The organising rule: **every method proves control of something the PLACE
- * record already lists**, never something the claimant typed. The OTP goes to
- * `places.phone`; the token is looked for on the host of `places.website`. A
- * claimant who could nominate the phone number or the domain could verify any
- * venue on the map, which is the whole attack.
+ * The organising rule: **every automatic method proves control of something the
+ * PLACE record already lists AND that a provider — not the claimant — put there.**
+ * The OTP goes to `places.phone`; the token is looked for on the host of
+ * `places.website`. A claimant who could nominate the phone number or the domain
+ * could verify any venue on the map, which is the whole attack.
+ *
+ * The listed value is only such a proof when its provenance is a provider
+ * ({@see ContactFieldSource::providerVerified()}). `places.website`
+ * and `places.phone` are ALSO writable from the LLM extraction, which the sharer
+ * rewrites through PATCH /shares (T-117 / SEC-1) — so the automatic methods gate
+ * on {@see Place::websiteIsProviderVerified()} / {@see Place::phoneIsProviderVerified()},
+ * never on the bare presence of a value. A place whose contact fields are all
+ * claimant-sourced has no automatic method and is routed to `document`.
  */
 class PlaceClaimService
 {
@@ -63,10 +73,15 @@ class PlaceClaimService
      */
     private function startPhone(Place $place, User $user): PlaceClaim
     {
-        if (blank($place->phone)) {
+        // Provenance, not presence: a phone the sharer typed through the
+        // extraction is not a number they can be called back on to prove
+        // ownership (T-117 / SEC-1). Only a provider-sourced number qualifies;
+        // anything else — absent or claimant-nominated — routes to a document
+        // claim, which the message points at.
+        if (! $place->phoneIsProviderVerified()) {
             throw ClaimException::reason(
                 'no_phone_on_file',
-                'We have no phone number for this place. Try verifying with your website, or upload a document.',
+                'We have no verified phone number for this place. Try verifying with your website, or upload a document.',
             );
         }
 
@@ -76,6 +91,10 @@ class PlaceClaimService
             'otp' => Hash::make($code),
             'attempts' => 0,
             'expires_at' => now()->addMinutes(self::OTP_TTL_MINUTES)->toIso8601String(),
+            // The exact provider-sourced number this claim is a proof of, pinned
+            // at start so verification can refuse a claim whose number has since
+            // changed or lost its provenance (T-117 / SEC-1 — start→verify TOCTOU).
+            'phone' => $place->phone,
             // Stored so the claim screen can say "…ending 8891" without the API
             // ever handing back the full number it is calling.
             'phone_last4' => mb_substr(preg_replace('/\D/', '', $place->phone) ?? '', -4),
@@ -92,14 +111,23 @@ class PlaceClaimService
     /** Issue a token for the claimant to publish on their own domain. */
     private function startWebsite(Place $place, User $user): PlaceClaim
     {
-        if (blank($place->website)) {
+        // Provenance, not presence: the website a claim verifies against must be
+        // one a provider put on the record, never one the sharer nominated
+        // through the extraction/correction path — that is the SEC-1 takeover
+        // (T-117). A claimant-sourced or absent website has no website method and
+        // routes to a document claim.
+        if (! $place->websiteIsProviderVerified()) {
             throw ClaimException::reason(
                 'no_website_on_file',
-                'We have no website for this place. Try verifying by phone, or upload a document.',
+                'We have no verified website for this place. Try verifying by phone, or upload a document.',
             );
         }
 
         return $this->upsertPending($place, $user, PlaceClaimMethod::Website, [
+            // The exact provider-sourced website this claim is a proof of, pinned
+            // at start so verification can refuse a claim whose website has since
+            // changed or lost its provenance (T-117 / SEC-1 — start→verify TOCTOU).
+            'website' => $place->website,
             'token' => 'reelmap-verify-'.Str::lower(Str::random(24)),
             'expires_at' => now()->addHours(self::TOKEN_TTL_HOURS)->toIso8601String(),
         ]);
@@ -122,9 +150,17 @@ class PlaceClaimService
         $claim = $this->pendingClaim($place, $user, PlaceClaimMethod::Phone);
         $evidence = $claim->evidence_json ?? [];
 
+        // Re-assert the status gate the SAME way the contact value is re-asserted
+        // below: a claim started on an Active pin must not COMPLETE on one an admin
+        // has since merged/hidden/removed (T-117 — the start->verify window is two
+        // requests wide for status too, not only for the contact value).
+        $this->assertActiveForClaim($place);
+
         if ($this->expired($evidence)) {
             throw ClaimException::reason('code_expired', 'That code expired. Request a new one.');
         }
+
+        $this->assertVerifiedContactUnchanged($place, $evidence, 'phone', $place->phoneIsProviderVerified());
 
         if ((int) ($evidence['attempts'] ?? 0) >= self::OTP_MAX_ATTEMPTS) {
             throw ClaimException::reason('too_many_attempts', 'Too many wrong codes. Request a new one.');
@@ -154,9 +190,15 @@ class PlaceClaimService
         $claim = $this->pendingClaim($place, $user, PlaceClaimMethod::Website);
         $evidence = $claim->evidence_json ?? [];
 
+        // Re-assert the status gate at completion (see verifyPhone) — a place
+        // merged/hidden between start and verify must not be claimable (T-117).
+        $this->assertActiveForClaim($place);
+
         if ($this->expired($evidence)) {
             throw ClaimException::reason('token_expired', 'That verification token expired. Request a new one.');
         }
+
+        $this->assertVerifiedContactUnchanged($place, $evidence, 'website', $place->websiteIsProviderVerified());
 
         $token = (string) ($evidence['token'] ?? '');
         $url = $this->verificationUrl((string) $place->website);
@@ -275,8 +317,56 @@ class PlaceClaimService
         User::whereKey($userId)->update(['is_restaurant_owner' => true]);
     }
 
+    /**
+     * Re-assert at completion the invariant that start established: the claim
+     * proves control of the SPECIFIC provider-sourced contact value the place
+     * listed when the claim began. A claim started against a Google-sourced
+     * website/phone is no longer a proof of ownership if that field has since
+     * changed — to a value the claimant could nominate — or lost its provider
+     * provenance. So verify re-checks BOTH the value and the provenance rather
+     * than trusting the start-time gate; the start→verify gap is two requests
+     * wide, and the extraction/correction path can move a field inside it
+     * (T-117 / SEC-1). A legacy pending claim with no pinned value cannot be
+     * revalidated, so it is refused — the claimant restarts, re-pinning today's
+     * value.
+     *
+     * @param  array<string, mixed>  $evidence
+     */
+    private function assertVerifiedContactUnchanged(Place $place, array $evidence, string $field, bool $providerVerified): void
+    {
+        $pinned = $evidence[$field] ?? null;
+
+        if (! $providerVerified || ! is_string($pinned) || $pinned !== $place->{$field}) {
+            throw ClaimException::reason(
+                'contact_changed',
+                'The verified contact details for this place changed. Start a new claim.',
+            );
+        }
+    }
+
+    /**
+     * A claim (start OR completion) is valid only against a reviewed, live pin.
+     * A pending pin nobody has looked at yet — and any hidden/merged/removed one —
+     * must not be claimable at all; claiming a pin the instant it published was
+     * half the SEC-1 exploit's speed (T-117). Enforced at BOTH ends of the flow,
+     * so an admin merging/hiding a pin between start and verify cannot be raced.
+     */
+    private function assertActiveForClaim(Place $place): void
+    {
+        if ($place->status !== PlaceStatus::Active) {
+            throw ClaimException::reason(
+                'place_not_claimable',
+                'This place is not available to claim yet.',
+            );
+        }
+    }
+
     private function assertClaimable(Place $place, User $user): void
     {
+        // Only a reviewed, live pin is claimable. Checked before the verified-claim
+        // lookup so it never becomes an oracle for who, if anyone, holds the place.
+        $this->assertActiveForClaim($place);
+
         $verified = PlaceClaim::query()
             ->where('place_id', $place->id)
             ->where('status', ClaimStatus::Verified)
