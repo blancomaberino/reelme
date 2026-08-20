@@ -105,6 +105,85 @@ Record the result in this section, whichever way it goes. A finding that does
 not reproduce is a valuable outcome and must be written down, not quietly
 dropped — the same is true if it reproduces **worse** than described.
 
+## REPRODUCTION RESULT (run 2026-08-19, local stack, worker up)
+
+**The finding reproduces — confirmed end to end through claim issuance.** Ran
+against a real venue ("Jacinto", Sarandí 349, Montevideo — not previously mapped).
+
+**Chain as executed:**
+1. Registered throwaway user; register response returns a working bearer token
+   (no email-verify gate on the API routes). ✓
+2. `POST /shares` with a `caption` (manual path, no Instagram fetch / no yt-dlp).
+   Local Ollama (`gemma4:latest`) extracted it → share parked at `review`
+   (confidence 0.6, extracted `website: null`). ✓
+3. `PATCH /shares/{id}` with
+   `{"extraction":{...,"places":[{"name":"Jacinto","phone":"+598 99 111 222","website":"https://attacker.example",...}]},"action":"publish"}`
+   — accepted; the JSON Schema does not constrain host/scheme. Share → `analyzing`. ✓
+4. Worker ran `resolve → publish`. Google geocoded "Jacinto" to the **real
+   venue's identity** and the pin published as **`active`**.
+
+**The created row (`places.id = 30`), read verbatim via tinker:**
+```
+name            = Jacinto
+status          = active          <-- NOT pending; see status-gate note below
+google_place_id = ChIJnaZ1dYF_n5UR5cqVJrdd01U   (the REAL Jacinto — rating 4.3, 2331 reviews)
+website         = https://attacker.example      <-- THE ATTACKER'S DOMAIN. This is the finding.
+phone           = +598 2915 2731                <-- Google's real number, NOT the +598 99 111 222 I typed
+google_rating   = 4.3   count = 2331
+enriched_at     = 2026-08-19 21:53:51
+locked_fields   = []
+```
+So: **the attacker's domain sits next to the real venue's Google identity.**
+The premise holds exactly as the review described — for `website`.
+
+5. `POST /places/30/claim {method: website}` → **accepted**, HTTP 201:
+   ```
+   status: pending, method: website, token: reelmap-verify-gl9wntvbnarpjyotv57szkpz,
+   verification_url: https://attacker.example/.well-known/reelmap-verify.txt
+   ```
+   The token is issued for a host the claimant nominated. Step 6 (host the file,
+   `POST /claim/verify`) needs only a file on `attacker.example`, which the
+   attacker owns by definition. Not executed here — the `PublicUrlGuard`
+   correctly blocks pointing the verifier at a private host, so there was no way
+   to fake ownership of a public domain locally. The claim being *accepted with a
+   token for the attacker's own host* is the confirmed exploitable state.
+
+### Two facts the review did NOT have — they change the fix, not the verdict
+
+**(a) `phone` is scrubbed by auto-enrich; `website` is not — because Google had
+no website for this venue.** `PublishShare` auto-enriches every new pin
+(`EnrichPlace`, `config('places.enrich.auto')` default true → `BusinessEnricher`
+→ Google `BUSINESS_FIELDS`). `BusinessDetails::toPlacePatch()` `array_filter`s
+out empty values, so enrichment overwrites a field **only when Google has one**.
+Google returned a phone for Jacinto (my typed `+598 99 111 222` → real
+`+598 2915 2731`, so the phone-claim OTP would go to a number the attacker does
+not control) but **no** website, so `attacker.example` survived untouched and
+became claimable. For a venue where Google also has no phone, the typed phone
+survives too and the phone vector is live as well.
+
+This is exactly why **provenance, not the current value, is the axis**: after
+enrich this row's phone has Google provenance (safe to claim by phone) while its
+website has extraction provenance (must be refused). A fix that stamps
+provenance at each write point — `extraction`/`share-correction` in
+PlaceFactory & the correction path, `business-enrichment` when the Google enrich
+patch writes phone/website — and gates the automatic claim methods on
+provenance ∈ {google, business-enrichment}, closes this precisely.
+
+**(b) The place is `active`, so the proposed status gate does NOT close SEC-1.**
+`action: publish` sets `user_confirmed = true`, and `PlacePublisher` promotes a
+`user_confirmed` pin straight to `active`. So `assertClaimable` refusing a
+non-`active` place would not have blocked this chain. The status gate is still
+worth adding as defense-in-depth (a `pending` pin nobody reviewed should not be
+claimable), but it must be described as such — the **website-provenance check is
+the fix that actually closes the launch blocker**.
+
+### Backfill confirmed necessary
+6 existing dev pins already carry websites; all were written by `origin=enrichment`
+(Google) — but the row records no provenance, so post-migration they are
+indistinguishable from an extraction-sourced one unless "unknown ⇒ untrusted" is
+the backfill default. Confirmed: `place_edits` for these rows are `origin=enrichment`,
+but nothing on `places` itself records that today.
+
 ## Implementation
 
 ### The reviewer's suggested fix is not available as written
@@ -158,21 +237,21 @@ the database.
 
 ## Acceptance criteria
 
-- [ ] **The exploit chain was reproduced locally before any code was
+- [x] **The exploit chain was reproduced locally before any code was
       written**, and its actual outcome is recorded in the "Reproduce it
       locally FIRST" section above — including the case where it does not
       reproduce as described
-- [ ] A place whose `website`/`phone` came from an extraction or a share
+- [x] A place whose `website`/`phone` came from an extraction or a share
       correction **cannot** be claimed by that method — proven end to end:
       publish an attacker-chosen website through `PATCH /shares/{id}`, then
       assert the claim is refused
-- [ ] Automatic methods accept only provider-sourced values; provenance is
+- [x] Automatic methods accept only provider-sourced values; provenance is
       recorded on the row, not inferred at claim time
-- [ ] `assertClaimable()` refuses a claim on a place that is not `active`
-- [ ] A place with no provider-sourced contact field is routed to `document`
+- [x] `assertClaimable()` refuses a claim on a place that is not `active`
+- [x] A place with no provider-sourced contact field is routed to `document`
       and told so — nobody is dead-ended, and that path is asserted
-- [ ] Existing rows are backfilled as untrusted
-- [ ] The docblock invariant is asserted by a test that FAILS if the extraction
+- [x] Existing rows are backfilled as untrusted
+- [x] The docblock invariant is asserted by a test that FAILS if the extraction
       value is trusted again
 
 ## Gotchas

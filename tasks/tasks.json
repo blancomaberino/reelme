@@ -1,5 +1,5 @@
 {
-  "$schema_note": "Task graph for Reelmap. An agent picks the lowest incomplete phase, then any task whose depends_on are all status=done. Each task has a companion file tasks/<id>-*.md with full context. Update status here (single source of truth): pending | in_progress | done | blocked. PRIORITY OVERRIDE (owner request 2026-07-21): the ARCH phase (architecture hardening, T-085+) is the current highest-priority phase and is worked BEFORE any remaining M1/M3/M4/M5 backlog. Within ARCH, honor depends_on then P0>P1 ordering noted per task. See ROADMAP.md#arch. AUDIT WAVE 2 (2026-07-29): T-100..T-109 filed from the architecture/UX audit and appended to ARCH. Order within the wave: T-100, T-101, T-102, T-103 first (user-visible defects + the contract drift gap), then T-104..T-109 (foundation cleanup). T-106 must land before the M4 monetization tasks touch Place. AUDIT WAVE 3 (2026-08-19): T-117..T-136 filed from the code + security review at commit d0095c7 (30 findings, consolidated) and appended to M5 — nothing is live yet, so these are pre-launch fixes, not an incident. Order within the wave: T-117 first (venue takeover — any registered account becomes the verified operator of a real restaurant and the real owner is locked out), then T-127 (a capped offer redeems without limit — real money) and T-128 (opening hours have never rendered for any user); then T-129 and T-130, the mock and CI gaps that are the reason this whole class shipped green; then T-118, T-119, T-120; then the rest in id order. T-117 must land before any further work touches place claims. The wave's root-cause finding, which every mobile task in it repeats: A FIX IS APPLIED TO ONE INSTANCE OF A DUPLICATED SURFACE AND NOT ITS TWIN — so T-131, T-132 and T-133 are EXTRACTIONS, and a PR that patches each copy again has not done the task. AUDIT WAVE 4 (2026-08-19, same commit d0095c7): T-137..T-148 filed from a React Native / Expo review of apps/mobile only, run AFTER wave 3 and told not to re-report the eight mobile findings already filed (15 findings, consolidated). GLOBAL ORDER ACROSS BOTH WAVES: T-117, then T-137, then T-127, T-128, T-129, T-130, then T-138 and T-142, then the rest. T-137 sits second because it needs NO setup at all to exploit — any installed app or web page opens reelmap://share?sharedUrl=… and a signed-in user silently publishes attacker-chosen content — where T-117 needs an account, a share, a correction and a domain the attacker controls. T-117 still leads on consequence (permanent venue takeover with the money surface attached), but it also carries a REPRODUCE-FIRST gate: if its reproduction stalls, T-137 must NOT wait behind it. T-137 carries the same reproduce-first gate, for the same reason — it moves a trust boundary. This wave's own root causes, both worth naming in review: THE CORE SCREENS GOT THE CARE AND THE SECONDARY ONES INHERITED NONE OF IT (T-139, T-140, T-141) and APP-SHELL CONCERNS THAT BELONG TO NOBODY WENT UNOWNED (T-142, T-143, T-144). T-144 is a sibling of T-133, not a duplicate: T-133 owns the sheet chrome, T-144 owns the keyboard-avoidance idiom — neither depends on the other and the file sets do not overlap. HOOK FALSE POSITIVE (2026-08-19): T-149 filed after the guards denied the commit message and the task file describing them; it is independent of both review waves and can be picked up at any time.",
+  "$schema_note": "Task graph for Reelmap. An agent picks the lowest incomplete phase, then any task whose depends_on are all status=done. Each task has a companion file tasks/<id>-*.md with full context. Update status here (single source of truth): pending | in_progress | done | blocked. PRIORITY OVERRIDE (owner request 2026-07-21): the ARCH phase (architecture hardening, T-085+) is the current highest-priority phase and is worked BEFORE any remaining M1/M3/M4/M5 backlog. Within ARCH, honor depends_on then P0>P1 ordering noted per task. See ROADMAP.md#arch. AUDIT WAVE 2 (2026-07-29): T-100..T-109 filed from the architecture/UX audit and appended to ARCH. Order within the wave: T-100, T-101, T-102, T-103 first (user-visible defects + the contract drift gap), then T-104..T-109 (foundation cleanup). T-106 must land before the M4 monetization tasks touch Place. AUDIT WAVE 3 (2026-08-19): T-117..T-136 filed from the code + security review at commit d0095c7 (30 findings, consolidated) and appended to M5 — nothing is live yet, so these are pre-launch fixes, not an incident. Order within the wave: T-117 first (venue takeover — any registered account becomes the verified operator of a real restaurant and the real owner is locked out), then T-127 (a capped offer redeems without limit — real money) and T-128 (opening hours have never rendered for any user); then T-129 and T-130, the mock and CI gaps that are the reason this whole class shipped green; then T-118, T-119, T-120; then the rest in id order. T-117 must land before any further work touches place claims. The wave's root-cause finding, which every mobile task in it repeats: A FIX IS APPLIED TO ONE INSTANCE OF A DUPLICATED SURFACE AND NOT ITS TWIN — so T-131, T-132 and T-133 are EXTRACTIONS, and a PR that patches each copy again has not done the task. AUDIT WAVE 4 (2026-08-19, same commit d0095c7): T-137..T-148 filed from a React Native / Expo review of apps/mobile only, run AFTER wave 3 and told not to re-report the eight mobile findings already filed (15 findings, consolidated). GLOBAL ORDER ACROSS BOTH WAVES: T-117, then T-137, then T-127, T-128, T-129, T-130, then T-138 and T-142, then the rest. T-137 sits second because it needs NO setup at all to exploit — any installed app or web page opens reelmap://share?sharedUrl=… and a signed-in user silently publishes attacker-chosen content — where T-117 needs an account, a share, a correction and a domain the attacker controls. T-117 still leads on consequence (permanent venue takeover with the money surface attached), but it also carries a REPRODUCE-FIRST gate: if its reproduction stalls, T-137 must NOT wait behind it. T-137 carries the same reproduce-first gate, for the same reason — it moves a trust boundary. This wave's own root causes, both worth naming in review: THE CORE SCREENS GOT THE CARE AND THE SECONDARY ONES INHERITED NONE OF IT (T-139, T-140, T-141) and APP-SHELL CONCERNS THAT BELONG TO NOBODY WENT UNOWNED (T-142, T-143, T-144). T-144 is a sibling of T-133, not a duplicate: T-133 owns the sheet chrome, T-144 owns the keyboard-avoidance idiom — neither depends on the other and the file sets do not overlap. HOOK FALSE POSITIVE (2026-08-19): T-149 filed after the guards denied the commit message and the task file describing them; it is independent of both review waves and can be picked up at any time. T-127 FOLLOW-UPS (2026-08-20): T-150..T-154 filed from the T-127 review fan-out. None blocks the wave order above — continue with T-128, T-129, T-130, then T-138 and T-142. Within the follow-ups: T-150 leads (a mis-scan currently has no remedy AND permanently burns a slot), then T-151 (needs an owner decision + an ADR before code), then T-152; T-153 is a watch item that should only be picked up with a measurement attached, and T-154 is independent of T-127 entirely.",
   "project": "reelmap",
   "version": 1,
   "estimate_scale": {
@@ -3130,7 +3130,7 @@
       "id": "T-117",
       "title": "Venue takeover: claim verification trusts a website the claimant typed",
       "phase": "M5",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-041"
       ],
@@ -3422,7 +3422,7 @@
       "id": "T-127",
       "title": "offers.redemptions_count is read everywhere and written nowhere — a capped offer redeems without limit",
       "phase": "M5",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-043",
         "T-044"
@@ -3448,7 +3448,7 @@
         "A reconciliation command recomputes the counter from rows, reports drift, and reports zero on a seeded database"
       ],
       "agent": "executor-high",
-      "notes": "Full spec in tasks/T-127-offer-quota-counter-never-maintained.md. CR-1 from the 2026-08-19 code review — BLOCKING, and the only finding in this wave that costs a third party real money.\n\nOffer::hasTotalQuotaLeft() compares `redemptions_count < quota_total`, and its docblock states 'T-043 keeps [it] as the count of NON-VOID redemptions'. No code does. A sweep of app/, database/migrations/ and app/Console/ finds only READS, the migration default 0, and the factory: no increment in RedemptionIssuer, no decrement in RedemptionVoider/ExpireRedemptions, no DB trigger, no observer. followers_count IS maintained in FollowController, so this is an omission, not a convention.\n\nWhat that means in the restaurant's terms: 'first 50 diners get a free dessert' with quota_total: 50, and the 51st, 500th and 5000th POST /api/v1/redemptions all succeed. GET /offers/{id} reports redemptions_count: 0 and remaining_quota: 50 forever, so the operator sees no warning, and the map keeps badging the venue as having an active offer.\n\nWHY IT IS GREEN, which is the more important half: every quota test uses OfferFactory::quotaExhausted() (database/factories/OfferFactory.php:86), which hand-sets `redemptions_count => $quota` on an UNSAVED ->make(). The RULE is tested. The MAINTENANCE is tested nowhere and does not exist. Any fix that leaves that factory as the only way the counter is ever non-zero has not fixed the task.\n\nGROUNDING FOR THE 'or just count rows' option: PlaceQueryBuilder.php:128 does `->orWhereColumn('redemptions_count', '<', 'quota_total')` in SQL, and OfferResource.php:54 exposes the number as 'the operator's headline'. Deleting the column would push a correlated subquery into the map's hot query path and change a contract field. Prefer maintaining the counter inside the lock that ALREADY exists (RedemptionIssuer.php:96 takes lockForUpdate on the offer precisely so quota reads and the insert cannot interleave) and adding the reconciliation command as the safety net — a counter cache with no reconciliation is how the next silent drift happens."
+      "notes": "Full spec in tasks/T-127-offer-quota-counter-never-maintained.md. CR-1 from the 2026-08-19 code review — BLOCKING, and the only finding in this wave that costs a third party real money.\n\nOffer::hasTotalQuotaLeft() compares `redemptions_count < quota_total`, and its docblock states 'T-043 keeps [it] as the count of NON-VOID redemptions'. No code does. A sweep of app/, database/migrations/ and app/Console/ finds only READS, the migration default 0, and the factory: no increment in RedemptionIssuer, no decrement in RedemptionVoider/ExpireRedemptions, no DB trigger, no observer. followers_count IS maintained in FollowController, so this is an omission, not a convention.\n\nWhat that means in the restaurant's terms: 'first 50 diners get a free dessert' with quota_total: 50, and the 51st, 500th and 5000th POST /api/v1/redemptions all succeed. GET /offers/{id} reports redemptions_count: 0 and remaining_quota: 50 forever, so the operator sees no warning, and the map keeps badging the venue as having an active offer.\n\nWHY IT IS GREEN, which is the more important half: every quota test uses OfferFactory::quotaExhausted() (database/factories/OfferFactory.php:86), which hand-sets `redemptions_count => $quota` on an UNSAVED ->make(). The RULE is tested. The MAINTENANCE is tested nowhere and does not exist. Any fix that leaves that factory as the only way the counter is ever non-zero has not fixed the task.\n\nGROUNDING FOR THE 'or just count rows' option: PlaceQueryBuilder.php:128 does `->orWhereColumn('redemptions_count', '<', 'quota_total')` in SQL, and OfferResource.php:54 exposes the number as 'the operator's headline'. Deleting the column would push a correlated subquery into the map's hot query path and change a contract field. Prefer maintaining the counter inside the lock that ALREADY exists (RedemptionIssuer.php:96 takes lockForUpdate on the offer precisely so quota reads and the insert cannot interleave) and adding the reconciliation command as the safety net — a counter cache with no reconciliation is how the next silent drift happens.\n2026-08-20: PR #200 opened (commit 686a448). Review fan-out (10 agents) found 3 defects in the paths the counter now runs through, all fixed: RedemptionVoider's unguarded flip double-released a slot; ExpireRedemptions' flip and release were not atomic; and the UPDATE...FROM backfill/repair lost concurrently-committed claims via EvalPlanQual (reproduced on PG16, as was a migrate-vs-issue deadlock). DEFERRED as follow-ups, not done here: (1) derive the counter delta from RedemptionStatus::holdsQuota() so a 4th transition cannot forget it - verify is silently zero-delta today; (2) move RedemptionVoider into App\\Services\\Redemptions behind a RedemptionVoided event - Ledger->Redemptions inverts RedemptionVerifier's arrow; (3) RedemptionVoider still has NO production caller (no route, no Filament action), so 06 4.4's dispute remedy is unreachable and a mis-scan now also burns a slot permanently; (4) quota_per_day is optional alongside quota_total, so ~quota_total throwaway accounts can hold a promotion at sold-out indefinitely by re-issuing as slots return; (5) ExpireRedemptions iterates by id chunk, issuing 2 statements per (chunk x distinct offer) - fine at realistic sizes, restructure if volume grows; (6) InvariantReport (ledger) has the same unbounded-log-payload shape QuotaDriftReport now caps."
     },
     {
       "id": "T-128",
@@ -3725,7 +3725,7 @@
       "id": "T-137",
       "title": "Any app can make Reelmap publish a share, with no user tap",
       "phase": "M5",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "T-025"
       ],
@@ -3750,7 +3750,7 @@
         "The Maestro/CI fallback the route-param path exists for still works, now behind the tap"
       ],
       "agent": "executor-high",
-      "notes": "REPRODUCE BEFORE IMPLEMENTING (owner request 2026-08-19, same gate as T-117 and for the same reason: this moves a trust boundary). The chain was traced through source by the mobile reviewer and independently confirmed against source by the orchestrator — but it has NOT been executed against a running app. Reproducing it is also the only way to prove the fix: with no red starting point, 'no request was made' cannot be told apart from 'the deep link never reached the screen'. THE REPRODUCTION HAS A HARD CONSTRAINT — the tooling it needs is denied by a PreToolUse hook, and the sanctioned exception plus the mandatory restore are written out in the task file. Follow that section exactly; it is not optional and it is not paraphrasable.\n\nFull spec in tasks/T-137-deep-link-auto-submit.md. MOB-1 (BLOCKING) + MOB-8 (IMPORTANT) from the 2026-08-19 mobile review.\n\nMOB-1. The share-ingest mount effect at share.tsx:150-168 reads `sharedUrl`/`sharedText` from useLocalSearchParams and ends in `doSubmit(finalUrl, finalCap, 'share_sheet')` — a real POST /shares with no tap. Those params are attacker-reachable: _layout.tsx:113-116 deliberately lets `reelmap://` scheme opens fall through to expo-router, and +native-intent.tsx:19 returns any non-share-extension path unchanged (`return path;`). So any other installed app, or a web page, opens `reelmap://share?sharedUrl=https://attacker.example/x`; a signed-in user watches Reelmap come to the foreground and has silently published attacker-chosen content into their own ingest pipeline, spending one of their capped daily shares. Second defect in the same effect: only `txt` is regex-checked (`/^https?:\\/\\//i`). A value arriving as `u` is assigned to `finalUrl` with NO scheme check and forwarded to the API verbatim — `javascript:` included. The comment at :144-149 justifies the param path as a Maestro/CI fallback; it does not address third-party invocation.\n\nMOB-8 IS THE SAME TWENTY LINES, which is why it is not a separate task. The effect dedupes on `handled.current === payload` and NOTHING ever resets that ref — not the effect, not reset() ('share another'). The screen is a Tabs.Screen with `href: null` so it stays mounted, and ShareIntentRedirect only router.replace's to it. Share an Instagram post, tap 'share another', go back to Instagram and share THE SAME post: the app foregrounds onto an empty form, the URL is never prefilled, no request is made — though the API supports the replay and the screen has a `replay` state and an 'already added' note this makes unreachable. The reviewer's own suggested fix, 'key the dedupe on the staged object's identity rather than the payload string', is MECHANICALLY THE SAME REFACTOR as MOB-1's 'auto-submit only from the staged payload'. Two PRs would conflict in one effect and the second would re-derive the first's reasoning.\n\nSAME DEFECT SHAPE AS T-138 (MOB-11), and the reviewer named the two together as its top pair: A VALIDATED PATH AND AN UNVALIDATED PATH EXIST FOR THE SAME INPUT, AND A CODE COMMENT ASSERTS THEY ARE THE SAME PATH. Here the comment calls the param path a CI fallback; there the header comment claims the in-app notification centre is 'the identical path the push tap handler uses'. Fix both by making them one path, not by copying the guard.\n\nFILE OVERLAP: share.tsx is also touched by T-131 (the quota guard at :93). Different region of the file, no dependency — whichever lands second rebases."
+      "notes": "REPRODUCE BEFORE IMPLEMENTING (owner request 2026-08-19, same gate as T-117 and for the same reason: this moves a trust boundary). The chain was traced through source by the mobile reviewer and independently confirmed against source by the orchestrator — but it has NOT been executed against a running app. Reproducing it is also the only way to prove the fix: with no red starting point, 'no request was made' cannot be told apart from 'the deep link never reached the screen'. THE REPRODUCTION HAS A HARD CONSTRAINT — the tooling it needs is denied by a PreToolUse hook, and the sanctioned exception plus the mandatory restore are written out in the task file. Follow that section exactly; it is not optional and it is not paraphrasable.\n\nFull spec in tasks/T-137-deep-link-auto-submit.md. MOB-1 (BLOCKING) + MOB-8 (IMPORTANT) from the 2026-08-19 mobile review.\n\nMOB-1. The share-ingest mount effect at share.tsx:150-168 reads `sharedUrl`/`sharedText` from useLocalSearchParams and ends in `doSubmit(finalUrl, finalCap, 'share_sheet')` — a real POST /shares with no tap. Those params are attacker-reachable: _layout.tsx:113-116 deliberately lets `reelmap://` scheme opens fall through to expo-router, and +native-intent.tsx:19 returns any non-share-extension path unchanged (`return path;`). So any other installed app, or a web page, opens `reelmap://share?sharedUrl=https://attacker.example/x`; a signed-in user watches Reelmap come to the foreground and has silently published attacker-chosen content into their own ingest pipeline, spending one of their capped daily shares. Second defect in the same effect: only `txt` is regex-checked (`/^https?:\\/\\//i`). A value arriving as `u` is assigned to `finalUrl` with NO scheme check and forwarded to the API verbatim — `javascript:` included. The comment at :144-149 justifies the param path as a Maestro/CI fallback; it does not address third-party invocation.\n\nMOB-8 IS THE SAME TWENTY LINES, which is why it is not a separate task. The effect dedupes on `handled.current === payload` and NOTHING ever resets that ref — not the effect, not reset() ('share another'). The screen is a Tabs.Screen with `href: null` so it stays mounted, and ShareIntentRedirect only router.replace's to it. Share an Instagram post, tap 'share another', go back to Instagram and share THE SAME post: the app foregrounds onto an empty form, the URL is never prefilled, no request is made — though the API supports the replay and the screen has a `replay` state and an 'already added' note this makes unreachable. The reviewer's own suggested fix, 'key the dedupe on the staged object's identity rather than the payload string', is MECHANICALLY THE SAME REFACTOR as MOB-1's 'auto-submit only from the staged payload'. Two PRs would conflict in one effect and the second would re-derive the first's reasoning.\n\nSAME DEFECT SHAPE AS T-138 (MOB-11), and the reviewer named the two together as its top pair: A VALIDATED PATH AND AN UNVALIDATED PATH EXIST FOR THE SAME INPUT, AND A CODE COMMENT ASSERTS THEY ARE THE SAME PATH. Here the comment calls the param path a CI fallback; there the header comment claims the in-app notification centre is 'the identical path the push tap handler uses'. Fix both by making them one path, not by copying the guard.\n\nFILE OVERLAP: share.tsx is also touched by T-131 (the quota guard at :93). Different region of the file, no dependency — whichever lands second rebases.\n2026-08-20: PR #199 opened 2026-08-20 (2 commits). Reproduced first, fixed, gates green, E2E on device. Android auto-submit gate is source-traced but NOT device-verified — confirm before launch."
     },
     {
       "id": "T-138",
@@ -4107,6 +4107,156 @@
       ],
       "agent": "executor",
       "notes": "Found 2026-08-19 while committing the T-137..T-148 wave: the guard denied a `git commit -F -` because the COMMIT MESSAGE described the command the wave's tasks are about. No simulator was involved. It then denied the write of the companion file for this very task, for the same reason.\n\n`guard-simulator-deeplink.sh` strips quoted spans before matching so that text merely NAMING the command still runs, and its comment lists `git commit -m \"...\"`, a grep, and \"a heredoc writing these very docs\" as the cases it covers. The heredoc case is not actually covered: a heredoc body is not a quoted span, so `sed -e \"s/'[^']*'/''/g\" -e 's/\"[^\"]*\"/\"\"/g'` blanks the `'EOF'` delimiter and leaves the body intact. The `-m` form survives because the message really is inside double quotes; `-F -` and `cat > file <<'EOF'` do not.\n\nBoth guards have the hole by different routes. The deeplink guard relies on quote-stripping, which the heredoc defeats. The DB guard does no stripping and narrowed the PATTERN instead (anchored on `artisan [flags] migrate:fresh|...`) — the more robust of the two, and why it stopped refusing its own commit messages — but a heredoc message containing the literal artisan invocation would still be denied there too. Nobody has hit the DB case yet; it is the same bug waiting.\n\nThis matters more than the inconvenience suggests: the correct response to a false positive is indistinguishable from the incorrect one. Both guards publish an environment escape hatch in their denial message, so an agent blocked while writing a commit message is handed an obvious way out that is exactly what CLAUDE.md forbids (\"Don't route around the hook\") — and that override also covers the real invocations the guard exists to stop. A guard that cries wolf on its own changelog erodes the guard.\n\nDo NOT widen either escape hatch and do not remove either guard: the behaviour they prevent is real and was reported three times. This is about the guards firing on text. Prefer narrowing over stripping — consider requiring the match to sit in command position (line start, or after `;` `&&` `||` `|` `$(`), which removes the need to reason about shell quoting at all.\n\nFull context in tasks/T-149-hook-heredoc-false-positive.md."
+    },
+    {
+      "id": "T-150",
+      "title": "The dispute remedy nothing can reach, pointing the wrong way",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-044",
+        "T-127"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/Ledger/RedemptionVoider.php",
+        "apps/api/app/Events/",
+        "apps/api/app/Listeners/",
+        "apps/api/app/Filament/Resources/",
+        "apps/api/tests/Feature/Monetization/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#dispute-window",
+        "01-architecture.md"
+      ],
+      "acceptance": [
+        "A void is reachable by an authorized human through a surface a TEST DRIVES — resolving the service in a test does not count",
+        "Authorization asserted both ways: an admin/operator may void; a diner and an operator of a different venue may not",
+        "Voiding reverses the fee AND returns the quota slot, asserted on the ledger and offers.redemptions_count together",
+        "The T-127 guarded UPDATE survives the move — the double-void-releases-once test still passes",
+        "App\\Services\\Ledger no longer references App\\Services\\Redemptions; the void path goes Redemptions -> event -> Ledger like its verify sibling"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-08-20 from the T-127 review fan-out (10 agents; PR #200, merged as c87a2ed). RedemptionVoider has NO production caller (verified on main c87a2ed: the only reference is a docblock). 06 4.4's dispute window has no surface. T-127 raised the cost: a mis-scan now also permanently burns a quota slot that --fix cannot return, because a redeemed row legitimately holds one. Same file carries a layer inversion: RedemptionVerifier dispatches an event Ledger consumes (Redemptions -> Ledger), while RedemptionVoider sits in Ledger and mutates Redemptions state. Fix both in one pass since either fix moves the file."
+    },
+    {
+      "id": "T-151",
+      "title": "A promotion can be held at sold-out by accounts that never walk in",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-042",
+        "T-043",
+        "T-127"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Http/Requests/Offers/OfferWriteRequest.php",
+        "apps/api/app/Services/Redemptions/RedemptionGuards.php",
+        "packages/contracts/schemas/offer.json",
+        "apps/api/tests/Feature/Monetization/"
+      ],
+      "spec_refs": [
+        "06-monetization.md#quota-table",
+        "06-monetization.md#anti-fraud-controls-v1",
+        "07-risks-decisions.md"
+      ],
+      "acceptance": [
+        "The decision is written up as an ADR in 07-risks-decisions.md BEFORE the implementation lands — this amends the 06 2.2 quota table",
+        "The abuse case is covered by a test that FAILS on today's code: N throwaway accounts holding an N-slot offer, asserting a real diner can still get in (or an operator is warned), not merely that a number changed",
+        "Any validation change is proven both ways: a legitimate offer still validates, the newly-refused shape returns 422 with a usable message",
+        "Any new contract field or rule is reflected in packages/contracts/schemas/offer.json and the generated TS",
+        "State what happens to offers already in the database if a field becomes required"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-08-20 from the T-127 review fan-out (10 agents; PR #200, merged as c87a2ed). A CAPABILITY T-127 CREATED — while the counter was dead the cap did not exist, so neither did this. T-127 reserves a slot at ISSUE for the 24h TTL; quota_per_day is nullable with no floor tied to quota_total (OfferWriteRequest.php:78-80, verified on main c87a2ed), and every other velocity guard is keyed on the ACCOUNT. So ~quota_total throwaway accounts, one issue each, hold the offer at remaining_quota 0 and re-issue daily as slots return. Undetectable: 100% issued / 0% redeemed looks like a popular offer. NEEDS A PRODUCT DECISION FIRST — the candidate fixes (require quota_per_day; reserve at verify; shorten the TTL; detect rather than prevent) each trade something real. Do not silently pick one."
+    },
+    {
+      "id": "T-152",
+      "title": "The counter's delta lives in three call sites, and its enum helper has no callers",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-127"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/Redemptions/OfferQuotaCounter.php",
+        "apps/api/app/Enums/RedemptionStatus.php",
+        "apps/api/app/Services/Redemptions/RedemptionIssuer.php",
+        "apps/api/app/Services/Redemptions/RedemptionVerifier.php",
+        "apps/api/app/Console/Commands/ExpireRedemptions.php",
+        "apps/api/tests/Feature/Monetization/"
+      ],
+      "spec_refs": [
+        "02-data-model.md",
+        "06-monetization.md#anti-fraud-controls-v1"
+      ],
+      "acceptance": [
+        "Narrowing RedemptionStatus::holdingQuota() makes the WRITERS follow it — proven by a test that changes the set and asserts the counter still agrees with the rows, which fails on today's code",
+        "Verify (issued -> redeemed) is expressed as a transition computing to zero, not as an absence of code",
+        "holdsQuota() either backs the new mechanism or is deleted; it does not remain uncalled",
+        "The claim still returns a decision the issuer can refuse on, still inside the existing lockForUpdate transaction",
+        "Every T-127 mutation still bites — re-run the mutation table rather than trusting a green suite"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-08-20 from the T-127 review fan-out (10 agents; PR #200, merged as c87a2ed). There are FOUR transitions, not three: issue (+1), verify (issued -> redeemed, ZERO), void (-1), expire (-N). Verify is correct only because holdingQuota() happens to contain both states, and nothing structurally records that. Narrow the enum when refunds land and every query follows automatically while claim() keeps adding +1 — writers and reconciler then disagree permanently, and the nightly job reports drift on every offer forever, indistinguishable from the regressed-writer alarm. Also: RedemptionStatus::holdsQuota() has NO callers anywhere (verified on main c87a2ed) — only the static list is used. T-127 shipped the cheap half (a comment naming the transition) and deliberately left the structural half here."
+    },
+    {
+      "id": "T-153",
+      "title": "The expiry sweep issues four round trips per (chunk x offer)",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-127"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Console/Commands/ExpireRedemptions.php",
+        "apps/api/app/Services/Redemptions/",
+        "apps/api/tests/Feature/Monetization/OfferQuotaCounterTest.php"
+      ],
+      "spec_refs": [
+        "06-monetization.md#redemption-lifecycle"
+      ],
+      "acceptance": [
+        "Only pick this up when there is a MEASUREMENT showing it matters — the observed sweep duration and lapsed-code volume go in the PR; a rewrite with no number attached is not this task",
+        "The flip and the release still commit together per offer; the test that fails the release inside the transaction and asserts the flip rolled back still passes",
+        "A code redeemed in the gap still releases NO slot",
+        "The multi-page test still spans more than one page with one offer recurring across pages, or is replaced by something proving the same property",
+        "Statement counts before and after are in the PR"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-08-20 from the T-127 review fan-out (10 agents; PR #200, merged as c87a2ed). WATCH ITEM, NOT A DEFECT. T-127 needed the flip and the release atomic per offer, so it kept chunkById(500) over the id range and grouped by offer_id: 2 statements per chunk became BEGIN + 2 UPDATEs + COMMIT per (chunk x distinct offer). Measured by the review's database pass at ~20,000 round trips for 5,000 lapsed codes over 500 offers, i.e. 0.2-4s once an hour; it needs ~500k expiries/hour to reach a 7-minute run. When it matters, drive the loop BY OFFER instead of by id range. UPDATE ... RETURNING offer_id does NOT work — it forces the decrements outside the flip's transaction, which is the atomicity T-127 bought."
+    },
+    {
+      "id": "T-154",
+      "title": "The ledger's alarm logs an unbounded payload and its exit code reaches nobody",
+      "phase": "M5",
+      "status": "pending",
+      "depends_on": [
+        "T-044"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/app/Services/Ledger/InvariantReport.php",
+        "apps/api/app/Console/Commands/VerifyLedgerInvariants.php",
+        "apps/api/routes/console.php",
+        "apps/api/tests/Feature/Monetization/LedgerTest.php"
+      ],
+      "spec_refs": [
+        "02-data-model.md",
+        "06-monetization.md#ledger"
+      ],
+      "acceptance": [
+        "A drifting ledger produces an alert something actually receives — the scheduled failure is wired, and a test asserts the wiring rather than the exit code alone",
+        "The critical log record is bounded: a count plus a sample with the omitted number stated, proven by seeding more violations than the cap",
+        "The stdout listing is capped too, with a '... N more.' line — the scheduler captures that output",
+        "VerifyLedgerInvariants' docblock no longer claims the exit code is surfaced unless it is",
+        "Exit codes unchanged: healthy -> success, any violation -> failure"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-08-20 from the T-127 review fan-out (10 agents; PR #200, merged as c87a2ed). Found in the class T-127's own report was modelled on; both halves were fixed for the quota reconciler and deliberately not reached into the ledger from that diff. (1) The docblock justifies FAILURE as 'so the scheduler surfaces it' — but schedule:run discards exit codes and there is no onFailure/emailOutputOnFailure/ScheduledTaskFailed listener anywhere. The one alert meaning THE BOOKS ARE WRONG fires into nothing. (2) VerifyLedgerInvariants.php:40 passes $report->unbalanced whole into Log::critical, unbounded — and the cause that fills it hits many transactions at once, so the alert becomes part of the outage. Do NOT downgrade critical: unlike the quota counter this is not repairable from rows."
     }
   ]
 }

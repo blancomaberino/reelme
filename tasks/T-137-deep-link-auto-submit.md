@@ -211,3 +211,185 @@ true if it reproduces **worse** than described.
 - `+native-intent.tsx`'s `return path;` is not itself wrong — it is the correct
   behaviour for a router hook. The trust decision belongs at the screen, where
   the auto-submit is.
+
+---
+
+## REPRODUCTION RESULT — 2026-08-20
+
+Run against `main` @ `8780f67` on branch `feat/T-137-deep-link-auto-submit`,
+**no fix written yet**. Simulator: iPhone 16 Pro Max / iOS 18.1, dev client
+`pet.one.reelmap`, Metro on `EXPO_PUBLIC_API_URL=http://localhost:8080`,
+backend + a fresh queue worker via `./scripts/dev.sh backend`.
+
+### Method deviation (owner-approved)
+
+The escape hatch this task prescribes could not be used as written.
+`REELMAP_ALLOW_DEEPLINK=1` is read by the hook from **its own** environment,
+which is the Claude Code process — a `export …;` prefix inside the Bash call
+never reaches it, because the hook runs before the shell exists. Verified: the
+call was denied with the env var exported inline.
+
+The owner chose **Maestro `openLink`** instead (the repo's own
+`.maestro/share-to-map.yaml:62` and `share-quota.yaml:45` already enter this
+screen that way). Same URLs as listed in Steps, nothing reworded to slip past
+the matcher, and the full restore ritual was performed and verified below.
+
+### Baseline
+
+- Account: `user1@example.com` (user id 2), signed in on the simulator.
+- `GET /me` → `meta.quotas.shares` = `{used: 0, limit: 100, remaining: 100}`.
+- `max(shares.id) = 52`, `max(source_posts.id) = 60`, 0 shares today.
+- Incidental: the app was sitting in a stale NetInfo "sin conexión" state and
+  made no API calls at all. A plain `terminate` + `launch` cleared it. Not
+  caused by this task; worth knowing, because in that state the reproduction
+  would have silently produced nothing.
+
+### Step 4 — does a third-party deep link publish a share with no tap? **YES**
+
+App **backgrounded** (Cmd+Shift+H), then
+`reelmap://share?sharedUrl=https://example.com/x`:
+
+- The app foregrounded straight onto the Share screen — and not on the form:
+  on the **result** state, "Necesita una revisión / No se pudo abrir",
+  i.e. the share had already been submitted and had already come back.
+- `shares` row **id 62**, `user_id 2`, `shared_via = share_sheet`,
+  `source_posts.url = https://example.com/x`, `status = review`.
+- Quota `remaining` **100 → 99**.
+- Zero taps. The finding reproduces exactly as described.
+
+**Cold start also fires.** `simctl terminate`, then
+`reelmap://share?sharedUrl=https://example.com/t137-coldstart` → share **id 67**
+created on launch. So the fix has to cover both the mounted-screen case and the
+cold-start case; they do not differ here.
+
+### Step 5 — the `javascript:` value: real gap, but the API is a backstop
+
+- `reelmap://share?sharedUrl=javascript:alert(1)` → **no** `shares` row.
+- Direct API probe with the same body the client would have sent:
+  `POST /api/v1/shares {"url":"javascript:alert(1)","shared_via":"share_sheet"}`
+  → **422** `validation_failed` — *"The url field must be a valid URL."*
+  So the client did forward it; Laravel's `url` rule refused it.
+
+**The client-side gap is real and was proven with a scheme the API accepts.**
+`reelmap://share?sharedUrl=ftp://example.com/t137-scheme` → share **id 66**,
+`source_posts.url = ftp://example.com/t137-scheme` — a non-http(s) scheme taken
+from an attacker-controlled route param, unchecked by the app, stored verbatim.
+
+API probes, for the record (`StoreShareRequest`'s `url` rule is `filter_var`,
+not an http(s) allowlist):
+
+| value | API |
+|---|---|
+| `javascript:alert(1)` | 422 |
+| `javascript://example.com/%0aalert(1)` | 422 |
+| `data:text/html,<script>alert(1)</script>` | 422 |
+| `ftp://example.com/x` | **202** |
+| `file://etc/passwd` | **202** |
+
+So: the task's "a `javascript:` value reaches the API verbatim" is **wrong in
+its specific example and right in its substance**. Write the acceptance test
+against the client (no non-http(s) value leaves the app), not against the API's
+incidental refusal of that one scheme.
+
+### Step 6 — the MOB-8 dedupe: observed at the screen, NOT isolated
+
+- Firing the same URL twice in a row produced no second `shares` row and no
+  visible change — but that is **not** proof of the client-side dedupe, because
+  the API answers a repeat of the same URL with an idempotent replay. From
+  outside, "the ref blocked it" and "the server replayed it" look identical.
+- What *is* isolated: a **different** payload always fires.
+  `https://example.com/fresh-t137` → share **id 65**, submitted with no tap,
+  while the screen was already showing share 62's result. The dedupe is keyed on
+  the payload string, so alternating payloads defeats it entirely.
+- MOB-8's "share the same post twice and nothing happens" therefore stands as
+  **reasoned, not observed** — the simulator cannot raise the OS share sheet,
+  which is the only path that produces a *staged* repeat. It must be pinned by
+  the unit test the acceptance criteria already ask for (stage, `reset()`,
+  stage the same payload again).
+
+### Not executed
+
+- **Unauthenticated.** Testing it means signing the owner's session out of the
+  simulator, which was not worth the disruption. Untested here; it is exactly
+  the seam T-142 owns (no auth guard on the `(main)` group).
+
+### Restore ritual — performed and verified
+
+`simctl terminate` + plain URL-less `simctl launch`, then **Cmd+R sent to the
+Simulator and screenshotted**: the app landed on the **map (home)**, not the
+Share screen — no launch URL left behind. Simulator location was never set
+(still Montevideo) and the map viewport was never flown.
+
+### Dev-DB artifacts cleaned
+
+`shares` 62–67, `source_posts` 61–66 and the throwaway probe token deleted;
+`max(shares.id)` back to 52, `max(source_posts.id)` back to 60, 0 shares today,
+quota back to `used: 0`. No `places` or `analysis_runs` rows were produced (all
+six shares stopped at `review`).
+
+---
+
+## What the fix ended up covering — 2026-08-20
+
+The reported finding (a route param auto-submitting) is closed, and the review
+that followed turned up **three more instances of the same shape** that the task
+did not name. All are in the diff:
+
+1. **Android's staged path is forgeable, so it no longer auto-submits.**
+   `app.config.ts` registers `androidIntentFilters: ['text/*']` on the exported
+   MainActivity, so any installed app can `startActivity` an EXPLICIT
+   `ACTION_SEND` with `setPackage(us)` — no chooser, no tap — and land in the
+   same `useUiStore.pendingShare` the iOS extension writes. iOS's payload comes
+   from the app group, which no other app can write; Android's does not. So the
+   auto-submit is gated to iOS and Android prefills and waits for the button.
+   **Traced through expo-share-intent's source by two independent reviewers;
+   NOT reproduced on an Android device** — there is no Android device on this
+   machine. Worth confirming on the physical device before launch; if it turns
+   out the intent cannot be sent explicitly, the gate is one line to relax.
+
+2. **A repeated param crashed the screen.**
+   `?sharedUrl=a&sharedUrl=b` makes `useLocalSearchParams` hand back an array,
+   and `.trim()` on an array is a TypeError that takes the screen down —
+   reproduced (`(rawUrl ?? '').trim is not a function`) and now read through
+   `firstParam`. Covered by a unit test and by PART 4 of the Maestro flow.
+
+3. **A dropped payload could still WIPE the composer.**
+   The first cut of the prefill called `setUrl('')`/`setCaption('')`
+   unconditionally, so `?sharedUrl=ftp://evil` could not submit but could still
+   erase an in-progress composition — and a *different* payload could swap out a
+   link the person had typed and was about to submit. The prefill now fills only
+   an untouched form and never clears one.
+
+**The scheme check moved to the request site, and the server got its own.**
+`splitPayload` guards the two prefill paths, but the composer field is free text
+and reached `create.mutate` unchecked, so the gate now lives in `doSubmit` — the
+one place a request is made. And the API's `url` rule is `filter_var`, which
+accepts ~400 schemes: `ftp://example.com/x` and `file://localhost/etc/passwd`
+both returned **202** against the running dev API. `StoreShareRequest` now uses
+`url:http,https`, with Pest cases proving it both ways (five schemes refused,
+three accepted) — a shipped mobile build cannot be revised, so the client's
+guard must not be the only one.
+
+### Known limitation, deliberately left
+
+Re-opening the **same** deep link after "share another" prefills nothing: the
+route params never change, so React cannot re-run the effect, and clearing the
+ref does not help. Fixing it means consuming the params (`router.setParams`),
+which this task does not need — only external links and the CI flows use that
+path. The share-sheet path, which people actually use, handles a repeat
+correctly; that is the MOB-8 half of this task.
+
+### Follow-ups worth their own tasks (NOT folded in)
+
+- **`splitPayload` and its twins should be one helper.** `src/api/shares.ts`'s
+  `extractUrl` (loose, pulls a link out of text) and
+  `src/components/map/quick-share.tsx`'s inline `/^https?:\/\//i` make the same
+  url-vs-caption decision three ways, and they already disagree: the same text
+  shared via the iOS sheet becomes a `url`, via a deep link a `caption`. T-131
+  already owns the quick-share duplication — reconcile there.
+- **The caption is discarded whenever a URL is present** (`caption: url ? '' : txt`,
+  preserved from the old code). The Instagram extension stages both, so the
+  post's caption never reaches extraction on the app's primary entry point.
+- **`expo-share-intent` force-unwraps `url.fragment`** in its iOS module, so
+  `reelmap://dataUrl=x` (no fragment) hard-crashes the app. Library bug, not
+  ours, but externally reachable.
