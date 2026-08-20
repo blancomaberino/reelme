@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContactFieldSource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
 use App\Services\Geo\BusinessDetailProvider;
@@ -237,4 +238,50 @@ it('keeps a lone-locked hero as gallery[0] through re-enrichment', function () {
     // The locked hero survives AND stays the carousel's first image.
     expect($place->image_url)->toBe('https://manual/hero.jpg')
         ->and($place->gallery_json[0]['url'])->toBe('https://manual/hero.jpg');
+});
+
+it('does not stamp a website-scraped phone as provider-verified (T-117 / SEC-1)', function () {
+    // The takeover via the phone method: an unclaimed pin whose website is the
+    // attacker's (extraction-sourced). Google has no phone for it, so the phone
+    // scraped from the attacker's own JSON-LD wins the merge. It must land
+    // untrusted — otherwise a phone claim's OTP goes to the attacker's number.
+    $place = Place::factory()->withGooglePlaceId('gp_atk')->extractionWebsite('https://attacker.example')->create([
+        'phone' => null,
+    ]);
+
+    // Google returns business details but NO phone (common: the billable phone
+    // mask is off, or Google simply has no number).
+    bindGeocoder((new FakeGeocoder)->seedBusinessDetails('gp_atk', new BusinessDetails(
+        openingHours: ['Mo-Fr 09:00–17:00'],
+    )));
+    Http::fake(['*' => Http::response(restaurantJsonLd())]); // JSON-LD carries a telephone
+
+    app(BusinessEnricher::class)->enrich($place);
+    $place->refresh();
+
+    // The scraped phone was written (enrichment still fills the field)…
+    expect($place->phone)->toBe('+351 99 999 9999')
+        // …but it is NOT provider-verified, so the phone claim method is refused.
+        ->and($place->phone_source)->toBe(ContactFieldSource::Extraction)
+        ->and($place->phoneIsProviderVerified())->toBeFalse()
+        // And the attacker's website is likewise never re-blessed by enrichment.
+        ->and($place->website_source)->toBe(ContactFieldSource::Extraction);
+});
+
+it('stamps a Google-sourced phone as provider-verified (T-117 positive control)', function () {
+    // The healthy case: Google's API supplies the phone, so a phone claim is a
+    // real proof of control and is allowed.
+    $place = Place::factory()->withGooglePlaceId('gp_ok')->create(['website' => null, 'phone' => null]);
+
+    bindGeocoder((new FakeGeocoder)->seedBusinessDetails('gp_ok', new BusinessDetails(
+        phone: '+351 21 000 0000',
+    )));
+    Http::fake(['*' => Http::response('<html></html>')]);
+
+    app(BusinessEnricher::class)->enrich($place);
+    $place->refresh();
+
+    expect($place->phone)->toBe('+351 21 000 0000')
+        ->and($place->phone_source)->toBe(ContactFieldSource::Google)
+        ->and($place->phoneIsProviderVerified())->toBeTrue();
 });

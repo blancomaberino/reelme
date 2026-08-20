@@ -130,6 +130,20 @@ it('carries contact-field provenance across a backfill so a claim gate stays coh
         ->and($winner->websiteIsProviderVerified())->toBeTrue();
 });
 
+it('unmerge reverses a contact-field backfill including its provenance (T-117)', function () {
+    // Exactness: after undo, the survivor is back to no website AND no dangling
+    // source — not website=null with website_source still 'google'.
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['website' => null, 'website_source' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->providerWebsite('https://verified.example')->create();
+
+    (new PlaceMerger)->merge($winner, $loser);
+    (new PlaceMerger)->unmerge(PlaceMerge::sole());
+
+    $winner->refresh();
+    expect($winner->website)->toBeNull()
+        ->and($winner->website_source)->toBeNull();
+});
+
 it('promotes a survivor source when the winner had no primary', function () {
     $winner = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Winner']);
     $loser = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Loser']);

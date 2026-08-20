@@ -27,6 +27,7 @@ class PlaceEditor
      *
      * @param  array<string, mixed>  $patch  field => new value; non-curated keys ignored
      * @param  string  $origin  one of the PlaceEdit::ORIGIN_* constants
+     * @param  array<string, ContactFieldSource>  $contactSources  winning provider per contact field (website/phone); only ContactFieldSource::Google is claim-trusted (T-117)
      */
     public function apply(
         Place $place,
@@ -34,6 +35,7 @@ class PlaceEditor
         string $origin,
         ?int $userId = null,
         ?string $note = null,
+        array $contactSources = [],
     ): ?PlaceEdit {
         // Only curated fields are writable. Filter to the writable set before we
         // take the lock so an all-noise patch never opens a transaction.
@@ -42,7 +44,7 @@ class PlaceEditor
             return null;
         }
 
-        return DB::transaction(function () use ($place, $patch, $origin, $userId, $note): ?PlaceEdit {
+        return DB::transaction(function () use ($place, $patch, $origin, $userId, $note, $contactSources): ?PlaceEdit {
             // Lock + refetch the authoritative row so the locked_fields check, the
             // diff, and the save all run against state that cannot change under us.
             // This closes the enrichment-clobbers-manual-edit race (T-085): a manual
@@ -68,19 +70,29 @@ class PlaceEditor
             $locked->fill($patch);
 
             // Record provenance for the contact fields a claim verifies against
-            // (T-117 / SEC-1). Only the Google enrichment path yields a
-            // provider-verified value; a manual/system write is a human's word,
-            // not a proof, so it stamps `manual` and cannot back an automatic
-            // claim. Stamped only when the field actually changed, so an
-            // unrelated patch never rewrites a field's history.
-            $contactSource = $origin === PlaceEdit::ORIGIN_ENRICHMENT
-                ? ContactFieldSource::Google
-                : ContactFieldSource::Manual;
+            // (T-117 / SEC-1). A field is provider-verified ONLY when a provider's
+            // API supplied it. Enrichment merges several sources — Google's Places
+            // API (trusted) AND a scrape of `places.website` (which for an
+            // unclaimed pin is a URL the sharer nominated, so NOT trusted). The
+            // enricher passes the winning source per contact field; anything not
+            // explicitly Google — a website scrape, a review, or a manual/system
+            // write — is untrusted and cannot back an automatic claim. Stamped
+            // only when the field changed, so an unrelated patch never rewrites a
+            // field's history.
+            $sourceFor = function (string $field) use ($origin, $contactSources): ContactFieldSource {
+                if ($origin === PlaceEdit::ORIGIN_ENRICHMENT) {
+                    return ($contactSources[$field] ?? null) === ContactFieldSource::Google
+                        ? ContactFieldSource::Google
+                        : ContactFieldSource::Extraction;
+                }
+
+                return ContactFieldSource::Manual;
+            };
             if (array_key_exists('website', $changes)) {
-                $locked->website_source = $contactSource;
+                $locked->website_source = $sourceFor('website');
             }
             if (array_key_exists('phone', $changes)) {
-                $locked->phone_source = $contactSource;
+                $locked->phone_source = $sourceFor('phone');
             }
 
             // A human edit takes ownership of every field it changed.

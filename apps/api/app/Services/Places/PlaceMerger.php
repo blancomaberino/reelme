@@ -368,6 +368,10 @@ class PlaceMerger
                 $backfilled[$field] = $winner->getAttribute($field);
                 if (isset($sourceOf[$field])) {
                     $winner->{$sourceOf[$field]} = $donor[$sourceOf[$field]] ?? null;
+                    // Record the source in the audit row too, so unmerge() nulls it
+                    // alongside its value — otherwise the survivor keeps a dangling
+                    // `*_source` after the website/phone it described is gone.
+                    $backfilled[$sourceOf[$field]] = $winner->getAttribute($sourceOf[$field]);
                 }
             }
         }

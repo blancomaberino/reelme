@@ -2,6 +2,7 @@
 
 namespace App\Services\Places\Enrichment;
 
+use App\Enums\ContactFieldSource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
 use App\Services\Places\PlaceEditor;
@@ -33,6 +34,8 @@ class BusinessEnricher
     {
         /** @var array<string, mixed> $merged */
         $merged = [];
+        /** @var array<string, string> $wonBy  field => id() of the source that first filled it */
+        $wonBy = [];
         /** @var list<array<string, mixed>> $galleryContributions */
         $galleryContributions = [];
         $statuses = [];
@@ -53,6 +56,7 @@ class BusinessEnricher
                 foreach ($patch as $field => $value) {
                     if (! array_key_exists($field, $merged) && $value !== null && $value !== '' && $value !== []) {
                         $merged[$field] = $value;
+                        $wonBy[$field] = $source->id();
                     }
                 }
                 $statuses[] = ['source' => $source->id(), 'status' => 'ok', 'fields' => array_keys($patch)];
@@ -96,9 +100,23 @@ class BusinessEnricher
         // and record that a run happened even if nothing changed. The whole write
         // is guarded so a persistence error (e.g. a bad scraped value) still
         // degrades gracefully — enrich() must never throw.
+        // A contact field is provider-verified only when Google's API supplied it
+        // (T-117 / SEC-1). `WebsiteBusinessSource` scrapes `places.website`, which
+        // for an unclaimed pin is a URL the sharer nominated — a phone read from
+        // its JSON-LD is claimant-controllable, so it must NOT earn a `google`
+        // stamp. Carry the winning source per contact field to the editor.
+        $contactSources = [];
+        foreach (['website', 'phone'] as $contactField) {
+            if (array_key_exists($contactField, $merged)) {
+                $contactSources[$contactField] = ($wonBy[$contactField] ?? null) === 'google'
+                    ? ContactFieldSource::Google
+                    : ContactFieldSource::Extraction;
+            }
+        }
+
         $edit = null;
         try {
-            $edit = $this->editor->apply($place, $merged, PlaceEdit::ORIGIN_ENRICHMENT, $userId);
+            $edit = $this->editor->apply($place, $merged, PlaceEdit::ORIGIN_ENRICHMENT, $userId, contactSources: $contactSources);
             $place->forceFill(['enriched_at' => now()])->save();
         } catch (Throwable $e) {
             report($e);

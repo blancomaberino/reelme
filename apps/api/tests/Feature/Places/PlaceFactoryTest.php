@@ -107,12 +107,19 @@ it('creates a profile pin with no google_place_id, preferring the profile addres
         lat: 41.15, lng: -8.61,
     );
 
-    $place = factory()->createFromProfile('La Burger', ['address' => ['country' => 'PT']], $location);
+    $place = factory()->createFromProfile(
+        'La Burger',
+        ['address' => ['country' => 'PT'], 'website' => 'https://attacker.example'],
+        $location,
+    );
 
     expect($place->google_place_id)->toBeNull()
         ->and($place->name)->toBe('La Burger')
         ->and($place->city)->toBe('Porto')
         ->and($place->country_code)->toBe('PT')
         ->and($place->status)->toBe(PlaceStatus::Pending)
+        // The profile path is extraction-sourced too — its website is not claimable.
+        ->and($place->website_source)->toBe(ContactFieldSource::Extraction)
+        ->and($place->websiteIsProviderVerified())->toBeFalse()
         ->and($place->coordinates())->toMatchArray(['lat' => 41.15, 'lng' => -8.61]);
 });
