@@ -1,106 +1,81 @@
-import { summarizeHours } from '../opening-hours';
+import {
+  CLARA_CAFE,
+  LA_DIECISIETE,
+  SCHEMA_ORG,
+  SCHEMA_ORG_SPEC,
+  SPANISH,
+} from '@/test/opening-hours-fixtures';
 
-// A fixed "now": Wednesday (day 3), 14:30 device-local.
-const wed1430 = new Date(2026, 6, 15, 14, 30); // 2026-07-15 is a Wednesday
+import { hourLines } from '../opening-hours';
 
-describe('summarizeHours', () => {
-  it('returns unknown for null / empty hours', () => {
-    expect(summarizeHours(null)).toEqual({ openNow: null, label: null, weekly: [] });
-    expect(summarizeHours({ periods: [] })).toEqual({ openNow: null, label: null, weekly: [] });
-    expect(summarizeHours(undefined)).toEqual({ openNow: null, label: null, weekly: [] });
+describe('hourLines', () => {
+  it('returns unknown-with-no-lines for null / undefined / empty', () => {
+    expect(hourLines(null)).toEqual([]);
+    expect(hourLines(undefined)).toEqual([]);
+    expect(hourLines([])).toEqual([]);
   });
 
-  it('reports open + closing time inside a period', () => {
-    const s = summarizeHours(
-      { periods: [{ open: { day: 3, time: '0900' }, close: { day: 3, time: '2300' } }] },
-      wed1430,
-    );
-    expect(s.openNow).toBe(true);
-    expect(s.label).toBe('Open now · closes 23:00');
+  it('renders schema.org rule lines verbatim too — both writer branches', () => {
+    expect(hourLines(SCHEMA_ORG)).toEqual(SCHEMA_ORG);
+    expect(hourLines(SCHEMA_ORG_SPEC)).toEqual(SCHEMA_ORG_SPEC);
   });
 
-  it('reports closed outside any period', () => {
-    const s = summarizeHours(
-      { periods: [{ open: { day: 3, time: '1800' }, close: { day: 3, time: '2300' } }] },
-      wed1430,
-    );
-    expect(s.openNow).toBe(false);
-    expect(s.label).toBe('Closed');
+  it('preserves the thin and narrow-no-break spaces Google actually sends', () => {
+    // The characters the docblock on `hourLines` argues make parsing a guess.
+    // Asserted on the OUTPUT, not the fixture, so a `.replace(/\s/g, ' ')` or a
+    // normalizing "cleanup" inside `hourLines` turns this red — the one
+    // mutation that would otherwise be invisible in every other test here,
+    // because ' ' and '\u2009' are indistinguishable on screen and in a diff.
+    const friday = hourLines(LA_DIECISIETE)[4];
+    expect(friday).toContain('\u2009'); // THIN SPACE, around the en dash
+    expect(friday).toContain('\u202f'); // NARROW NO-BREAK SPACE, before PM/AM
+    expect(friday).toBe(LA_DIECISIETE[4]);
   });
 
-  it('handles a window spanning midnight into the next day', () => {
-    // Tue 20:00 → Wed 02:00; "now" Wed 01:00 must read as open.
-    const wed0100 = new Date(2026, 6, 15, 1, 0);
-    const s = summarizeHours(
-      { periods: [{ open: { day: 2, time: '2000' }, close: { day: 3, time: '0200' } }] },
-      wed0100,
-    );
-    expect(s.openNow).toBe(true);
-    expect(s.label).toBe('Open now · closes 02:00');
+  it("keeps a Spanish source's own wording rather than translating or reordering it", () => {
+    expect(hourLines(SPANISH)).toEqual(SPANISH);
   });
 
-  it('handles the Sunday/Saturday week-boundary wrap', () => {
-    // Sat 22:00 → Sun 04:00; "now" Sun 02:00.
-    const sun0200 = new Date(2026, 6, 19, 2, 0); // 2026-07-19 is a Sunday
-    const s = summarizeHours(
-      { periods: [{ open: { day: 6, time: '2200' }, close: { day: 0, time: '0400' } }] },
-      sun0200,
-    );
-    expect(s.openNow).toBe(true);
+  it('preserves source order rather than sorting it', () => {
+    // LA_DIECISIETE is Monday-first, which is NOT alphabetical — so a `.sort()`
+    // anywhere in the pipeline fails here. This is also the regression test for
+    // the original bug: this exact shape used to yield an empty list, because
+    // the old code read `.periods` off what is a plain array.
+    const weekly = hourLines(LA_DIECISIETE);
+    expect(weekly).toEqual(LA_DIECISIETE);
+    expect(weekly).not.toEqual([...LA_DIECISIETE].sort());
+    expect(hourLines(CLARA_CAFE)).toEqual(CLARA_CAFE);
   });
 
-  it('treats the Google 24/7 sentinel (day-0 open, no close) as always open', () => {
-    // The canonical always-open shape: a single Sunday-00:00 period, no close.
-    // Must read open on a *weekday*, not just Sunday.
-    const s = summarizeHours({ periods: [{ open: { day: 0, time: '0000' } }] }, wed1430);
-    expect(s.openNow).toBe(true);
-    expect(s.label).toBe('Open now');
-
-    const sun = summarizeHours({ periods: [{ open: { day: 0, time: '0000' } }] }, new Date(2026, 6, 19, 8, 0));
-    expect(sun.openNow).toBe(true);
+  it('adds nothing of its own — no summary line, no open/closed verdict', () => {
+    // The output must be the source's lines and NOTHING else. Asserted as an
+    // exact set difference rather than `openNow === null`, because the old
+    // wrapper's always-null field could not fail a test: reintroduce a summary
+    // row or a computed "Open now"/"Closed" line and this turns red, which is
+    // the guarantee that actually matters to the screen.
+    for (const lines of [LA_DIECISIETE, CLARA_CAFE, SCHEMA_ORG, SPANISH, ['Open 24 hours']]) {
+      expect(hourLines(lines)).toEqual(lines);
+    }
   });
 
-  it('builds a seven-day weekly list', () => {
-    const s = summarizeHours(
-      { periods: [{ open: { day: 3, time: '0900' }, close: { day: 3, time: '2300' } }] },
-      wed1430,
-    );
-    expect(s.weekly).toHaveLength(7);
-    expect(s.weekly[3]).toBe('Wed: 09:00 – 23:00');
-    expect(s.weekly[0]).toBe('Sun: Closed');
+  it('keeps duplicate lines instead of collapsing them', () => {
+    // Two shut days read identically once the day name is stripped upstream;
+    // de-duplicating here would silently delete a day the source did send.
+    const lines = ['Closed', 'Closed', 'Tuesday: 8:30 AM – 8:00 PM'];
+    expect(hourLines(lines)).toEqual(lines);
   });
 
-  it('prefers weekday_text when present', () => {
-    const s = summarizeHours(
-      {
-        periods: [{ open: { day: 3, time: '0900' }, close: { day: 3, time: '2300' } }],
-        weekday_text: ['Sunday: Closed', 'Monday: 9 AM–11 PM'],
-      },
-      wed1430,
-    );
-    expect(s.weekly).toEqual(['Sunday: Closed', 'Monday: 9 AM–11 PM']);
+  it('trims surrounding whitespace and drops blank lines', () => {
+    expect(hourLines(['  Monday: Closed  ', '', '   '])).toEqual(['Monday: Closed']);
   });
 
-  /**
-   * The end of a window is EXCLUSIVE, which makes "open until 23:59" mean shut
-   * for that final minute. Worth pinning rather than leaving to be rediscovered:
-   * a test fixture built as seven 00:00–23:59 periods called itself
-   * clock-independent, and failed in CI exactly once, at 23:59 UTC.
-   */
-  it('treats a window as closed at its own closing minute', () => {
-    const tillMidnightIsh = {
-      periods: [{ open: { day: 3, time: '0000' }, close: { day: 3, time: '2359' } }],
-    };
+  it('never throws on junk that slips past the contract at runtime', () => {
+    // A response cached before the shape was pinned is exactly this case.
+    const junk = [null, 42, { periods: [] }, undefined, 'Tuesday: 8:30 AM – 8:00 PM'] as unknown as string[];
+    expect(() => hourLines(junk)).not.toThrow();
+    expect(hourLines(junk)).toEqual(['Tuesday: 8:30 AM – 8:00 PM']);
 
-    expect(summarizeHours(tillMidnightIsh, new Date(2026, 7, 12, 23, 58, 0)).openNow).toBe(true);
-    expect(summarizeHours(tillMidnightIsh, new Date(2026, 7, 12, 23, 59, 0)).openNow).toBe(false);
-    // Which is why an always-open fixture must use the sentinel, not 23:59.
-    expect(summarizeHours({ periods: [{ open: { day: 0, time: '0000' } }] },
-      new Date(2026, 7, 12, 23, 59, 0)).label).toBe('Open now');
-  });
-
-  it('never throws on malformed periods', () => {
-    // @ts-expect-error deliberately malformed
-    expect(() => summarizeHours({ periods: [{ open: null }, { foo: 'bar' }] }, wed1430)).not.toThrow();
+    const notAnArray = { periods: [], weekday_text: ['Monday: Closed'] } as unknown as string[];
+    expect(hourLines(notAnArray)).toEqual([]);
   });
 });

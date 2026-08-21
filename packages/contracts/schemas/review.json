@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://contracts.reelmap.app/schemas/review.json",
+  "title": "Review",
+  "description": "A native (in-app) review of a place (T-059) — the shape of ReviewResource. Served inside place detail under ?include=reviews, listed by GET /places/{place}/reviews, and returned on its own by POST/PUT /places/{place}/reviews. `author` is null when the reviewer is not a public profile: the identity is withheld, never anonymized into a stub.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "rating", "body", "author", "is_own", "created_at", "updated_at"],
+  "properties": {
+    "id": { "type": "string" },
+    "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "body": { "type": ["string", "null"] },
+    "author": {
+      "description": "The reviewer, or null when their profile is not public.",
+      "anyOf": [{ "type": "null" }, { "$ref": "user-summary.json" }]
+    },
+    "is_own": {
+      "type": "boolean",
+      "description": "Whether THIS viewer wrote the review — drives the edit affordance. False for guests."
+    },
+    "created_at": { "type": ["string", "null"] },
+    "updated_at": { "type": ["string", "null"] }
+  }
+}

@@ -16,17 +16,26 @@ export type SuggestionField = SuggestionChange['field'];
 /**
  * The subset the mobile form edits.
  *
- * Narrower than {@link SuggestionField} on purpose. `opening_hours_json` is
- * absent because the column carries two different shapes: enrichment writes
- * Google's `{periods, weekday_text}` object, which is what
- * `summarizeHours()` renders, while the curator form writes a list of rule
- * strings. A form that submitted lines would replace the first with the second
- * and the hours row would vanish from this very screen. The API still accepts
- * the field, so a curator can set it — the app just will not be what proposes
- * the shape it cannot read.
+ * Narrower than {@link SuggestionField} on purpose.
+ *
+ * `opening_hours_json` used to be excluded on the grounds that the column
+ * carried two rival shapes — Google's `{periods, weekday_text}` object from
+ * enrichment versus a list of rule strings from the curator form — so a
+ * submitted list would have blanked the hours row. That was never true: every
+ * writer stores a flat `string[]`, the contract now pins it as one (T-128), and
+ * `hourLines()` hands those lines to the screen verbatim. The shape objection is gone.
+ *
+ * It stays out for a smaller, real reason: this form is a
+ * `Record<field, string>` of single-line text fields, and hours are a
+ * list of up to fourteen lines the API caps individually (`max:14`,
+ * `max:120` per line). Editing that needs a multi-line editor, a lines↔array
+ * mapping, and client-side limits mirroring those rules, or a curator gets a
+ * 422 with no idea which line was too long — a feature with its own design
+ * pass, not a side effect of fixing the payload shape. Until then the API still
+ * accepts the field, so a moderator or operator can set it in Filament.
  *
  * `region`, `postal_code`, `cuisine_primary` and `price_range` are left out for
- * a plainer reason: the detail payload does not carry them, so the form could
+ * a different reason: the detail payload does not carry them, so the form could
  * not show what it was about to change.
  */
 export type SuggestEditInput = {

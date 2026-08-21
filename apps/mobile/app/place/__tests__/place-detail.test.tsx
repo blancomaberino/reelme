@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { Linking, Share } from 'react-native';
 
 import PlaceDetailScreen from '../[slug]';
+
+import { LA_DIECISIETE, SCHEMA_ORG, SPANISH } from '@/test/opening-hours-fixtures';
 import { api } from '@/api/client';
 import type { PlaceDetail } from '@/api/places';
 import { useSessionStore } from '@/stores/session';
@@ -156,23 +158,113 @@ it('opens directions in the maps app', async () => {
   expect(Linking.openURL).toHaveBeenCalledWith(expect.stringContaining('maps.apple.com'));
 });
 
-it('renders an open/closed hours summary when hours are present', async () => {
-  const withHours = {
-    ...PLACE,
-    // Google's 24/7 sentinel — a single day-0 open with NO close — which
-    // `summarizeHours` treats as open for the whole week.
-    //
-    // NOT seven 00:00–23:59 periods, which is what this was and which claimed in
-    // a comment to be clock-independent. The match is end-EXCLUSIVE
-    // (`candidate < end`), so a period closing at 23:59 is genuinely shut for
-    // the minute 23:59:00–23:59:59 — a 1-in-1440 flake that duly failed in CI
-    // at 23:59 UTC and passes every time anyone runs it by hand during the day.
-    opening_hours: { periods: [{ open: { day: 0, time: '0000' } }] },
-  };
-  mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours });
+/**
+ * Opening hours (T-128).
+ *
+ * These live at the SCREEN level on purpose. The unit tests for
+ * `summarizeHours` were green for months while this row rendered for nobody:
+ * they fed it the `{periods, weekday_text}` object nothing in the API has ever
+ * stored, so they agreed with a function that returned `label: null` for the
+ * real payload — and the screen gated the whole row on that label. Only a test
+ * that drives the screen with the shape the API actually sends can catch that.
+ *
+ * The hour fixtures live in src/test/opening-hours-fixtures.ts — shared with the
+ * `hourLines` unit test, because they are valuable precisely for their BYTES
+ * (Google's U+2009/U+202F) and two copies had already diverged on how they
+ * escaped them.
+ */
+/**
+ * The plain strings a subtree actually renders, in order. `Row` wraps its child
+ * in nodes whose `children` is `['', undefined]`, so those are dropped — but
+ * every real string is kept, including one this screen must never show
+ * ("Open now"), which is what makes an exact `toEqual` a usable guard rather
+ * than an unfalsifiable `queryByText(...).toBeNull()`.
+ */
+function visibleText(node: Parameters<typeof within>[0]): string[] {
+  return within(node)
+    .getAllByText(/.+/)
+    .map((n) => n.props.children)
+    .filter((c): c is string => typeof c === 'string' && c.trim() !== '');
+}
 
-  render(<PlaceDetailScreen />, { wrapper: Providers });
-  expect(await screen.findByText(/Open now/)).toBeOnTheScreen();
+describe('opening hours (T-128)', () => {
+  // Annotated, so tsc holds these fixtures to the contract the way the review
+  // fixtures below are held — an unannotated object literal would let a wrong
+  // `opening_hours` shape back in through the very test that guards it.
+  const withHours = (opening_hours: PlaceDetail['opening_hours']): PlaceDetail => ({
+    ...PLACE,
+    opening_hours,
+  });
+
+  it('shows the hours row and expands the source lines verbatim', async () => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(LA_DIECISIETE) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    // The row itself is on screen — this is the assertion that was missing.
+    const row = await screen.findByTestId('place-hours');
+    expect(screen.getByText('Opening hours')).toBeOnTheScreen();
+    // Collapsed: the lines are not shown yet, and the row says ONLY the neutral
+    // label. Asserted positively — `queryByText(/Open now/)).toBeNull()` reads
+    // like a guard against an open/closed claim and is unfalsifiable, because
+    // that string exists nowhere in the app. Pinning what the row DOES say is
+    // what actually fails if a summary badge is ever reintroduced.
+    expect(screen.queryByTestId('place-hours-weekly')).toBeNull();
+    expect(visibleText(row)).toEqual(['Opening hours']);
+    expect(row.props.accessibilityState).toMatchObject({ expanded: false });
+    expect(row.props.accessibilityLabel).toBe('Show weekly hours');
+
+    fireEvent.press(row);
+
+    // Expanded: every line, exactly as the source wrote it, IN ORDER. A
+    // per-line `getByText` loop passes on a re-sorted or re-worded list; this
+    // compares the rendered sequence to the payload, so a `.sort()`, a dropped
+    // row, or a whitespace "cleanup" of the U+2009/U+202F all turn it red.
+    const weekly = screen.getByTestId('place-hours-weekly');
+    expect(weekly).toBeOnTheScreen();
+    expect(visibleText(weekly)).toEqual(LA_DIECISIETE);
+    expect(screen.getByTestId('place-hours').props.accessibilityState).toMatchObject({ expanded: true });
+    expect(screen.getByTestId('place-hours').props.accessibilityLabel).toBe('Hide weekly hours');
+
+    // And it collapses again — the toggle is a loop, not a one-way door.
+    fireEvent.press(screen.getByTestId('place-hours'));
+    expect(screen.queryByTestId('place-hours-weekly')).toBeNull();
+  });
+
+  it('renders schema.org rule lines just as happily', async () => {
+    // `WebsiteBusinessSource` writes these; they are not Google's wording and
+    // carry no day-name-and-colon prefix at all.
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(SCHEMA_ORG) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    fireEvent.press(await screen.findByTestId('place-hours'));
+
+    expect(visibleText(screen.getByTestId('place-hours-weekly'))).toEqual(SCHEMA_ORG);
+  });
+
+  it("keeps a Spanish source's own words, and repeated days do not swallow each other", async () => {
+    // Two identical "Cerrado" lines: keyed by text they would collide and React
+    // would render one. Uruguay is the launch market, so this is the norm here.
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(SPANISH) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    fireEvent.press(await screen.findByTestId('place-hours'));
+
+    expect(visibleText(screen.getByTestId('place-hours-weekly'))).toEqual(SPANISH);
+    expect(screen.getAllByText('Cerrado')).toHaveLength(2);
+  });
+
+  it('shows no hours row at all when the place has none — never a bare "Closed"', async () => {
+    // PLACE.opening_hours is null. Absent hours must read as absent, not shut.
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: PLACE });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+    await screen.findByText('1921 Restaurant');
+
+    expect(screen.queryByTestId('place-hours')).toBeNull();
+    expect(screen.queryByText('Opening hours')).toBeNull();
+    expect(screen.queryByText(/Closed/)).toBeNull();
+  });
 });
 
 it('shows the not-found state on a 404', async () => {
@@ -260,9 +352,10 @@ it('renders app + Google reviews with names, stars and text', async () => {
         id: '9',
         rating: 5,
         body: 'Impecable, volvería.',
-        author: { username: 'foodie', avatar_path: null },
+        author: { id: '6', username: 'foodie', name: 'Foodie', avatar_path: null },
         is_own: false,
         created_at: '2026-07-01T00:00:00Z',
+        updated_at: '2026-07-01T00:00:00Z',
       },
     ],
     google_reviews: [
@@ -362,9 +455,10 @@ it('reports a review through the review endpoint, with review-specific reasons',
         id: '9',
         rating: 5,
         body: 'Impecable, volvería.',
-        author: { username: 'foodie', avatar_path: null },
+        author: { id: '6', username: 'foodie', name: 'Foodie', avatar_path: null },
         is_own: false,
         created_at: '2026-07-01T00:00:00Z',
+        updated_at: '2026-07-01T00:00:00Z',
       },
     ],
   };

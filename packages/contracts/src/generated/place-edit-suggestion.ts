@@ -3,6 +3,11 @@
  * Source of truth: packages/contracts/schemas/place-edit-suggestion.json
  */
 /**
+ * One side of a proposed change. `array` is bounded to a list of STRINGS rather than left open (T-128): the only array-valued member of the `field` enum is `opening_hours_json`, which place.json pins as a flat string[]. An unbounded "array" here generates `unknown[]`, which is the same union-that-pins-nothing that hid the opening-hours bug on the other endpoint.
+ */
+export type SuggestedValue = string | number | string[] | null;
+
+/**
  * A proposed correction to a place's business info (T-083): the response to POST /api/v1/places/{place}/suggestions, and one row of GET /api/v1/me/venues/suggestions. The submitter is deliberately absent — an operator judges the proposal, not the person who filed it.
  */
 export interface PlaceEditSuggestion {
@@ -47,8 +52,8 @@ export interface PlaceEditSuggestion {
     /**
      * The value the submitter was looking at, captured at submit time. A reviewer compares it against the place as it is now to spot a proposal that has been overtaken.
      */
-    from: string | number | unknown[] | null;
-    to: string | number | unknown[] | null;
+    from: SuggestedValue;
+    to: SuggestedValue;
   }[];
   /**
    * Free text the submitter wrote for everything the field form cannot express — "this place closed down", "the pin is on the wrong side of the street" (T-112). A row may carry a note, a set of field changes, or both; a note-only row has an empty `changes`, so any surface rendering these must survive that.

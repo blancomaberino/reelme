@@ -1,0 +1,123 @@
+# Opening hours on the place detail (E2E, iOS simulator) — T-128.
+#
+# WHY THIS FLOW EXISTS. The hours row had never rendered for a single user, and
+# every test in the suite agreed it was fine. `summarizeHours` read `.periods`
+# and `.weekday_text` off what the API actually sends — a FLAT LIST OF STRINGS —
+# so both were `undefined`, the summary label was always null, and the row's
+# gate (`hours.label ? … : null`) never opened. Google is billed for this data,
+# it is stored, it is served, and it was invisible.
+#
+# Jest now covers the screen (place-detail.test.tsx), but a jest test feeds the
+# component a payload the test itself wrote. This flow feeds it the DEV API's
+# own row, over the real network, through a screen a person navigated to — the
+# three seams a mocked render cannot speak for.
+#
+# PRECONDITIONS
+#   - API stack + Metro up via `./scripts/dev.sh start`.
+#   - The dev database holds `la-diecisiete-brasas-y-afines-ekaubv` with its
+#     Google `weekday_text` lines. The assertions below are deliberately loose
+#     about the CONTENT of those lines (see the note further down) — this flow
+#     proves the row is reachable and renders live API text; the exact bytes are
+#     pinned in Jest, where the fixture cannot be changed by a re-enrichment.
+#   - App runs in Spanish (default locale), so the chrome below is the es
+#     strings. The HOUR LINES are English, because they carry the SOURCE's
+#     language, not the reader's — the single clearest reason this screen must
+#     not translate or reorder them.
+#
+# TEARDOWN: none. Read-only walk; ends with stopApp + a URL-less launch so the
+# owner's next Cmd+R lands on the map.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/place-hours.yaml
+appId: pet.one.reelmap
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+
+# --- Reach the place the way a person does ----------------------------------
+# Via search rather than a map pin: map annotations are native views with no
+# testIDs (see report-content.yaml), so tapping one means guessing coordinates.
+# Search results carry the place name as their a11y label and push
+# /place/[slug] — a real, pressable route, not a deep link.
+- tapOn: ".*Buscar, tab.*"
+- tapOn: "Buscar lugares.*"
+- inputText: "Diecisiete"
+- extendedWaitUntil:
+    visible: "La Diecisiete Brasas y Afines"
+    timeout: 20000
+- tapOn: "La Diecisiete Brasas y Afines"
+
+# --- The row exists, and is reachable by scrolling --------------------------
+- scrollUntilVisible:
+    element:
+      id: "place-hours"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- assertVisible:
+    id: "place-hours"
+# The row's own text ("Horarios") is NOT assertable: the Pressable carries an
+# accessibilityRole + accessibilityLabel, so iOS collapses it into a single
+# accessibility element and its children vanish from the tree Maestro reads.
+# The label IS the row's accessible name, so that is what to assert — and it
+# doubles as a check that the collapsed/expanded label swap is wired.
+- assertVisible: "Ver horario semanal"
+
+# Collapsed, the lines are NOT on screen. This is the positive control for the
+# assertion below: without it, "the lines appeared" could just mean they were
+# always there.
+- assertNotVisible: "Monday: Closed"
+- takeScreenshot: build/maestro/t128-hours-1-collapsed
+
+# --- Pressing it reveals the source's own lines, verbatim -------------------
+- tapOn:
+    id: "place-hours"
+- extendedWaitUntil:
+    visible: "Monday: Closed"
+    timeout: 10000
+# Expanded, the row's accessible name flips — an expanded control that still
+# says "show" is a screen-reader lie, and nothing else on screen would catch it.
+- assertVisible: "Ocultar horario semanal"
+# A day with TWO windows, the second crossing midnight — the shape a naive
+# parser mangles, and the reason the screen renders text instead of parsing it.
+#
+# The `.` wildcards are NOT laziness. Google's weekday_text separates the times
+# with THIN SPACE (U+2009) around the en dash and NARROW NO-BREAK SPACE (U+202F)
+# before AM/PM — six characters in this one line that look like a space and are
+# not one. Typing the line as it APPEARS makes the assertion fail against a
+# screen that is rendering it perfectly (it did, once). Maestro compiles text
+# selectors as Java regexes, where `\s` is ASCII-only and matches neither
+# codepoint, so `.` is the honest way to write "whatever space this really is".
+# That the exact bytes are this surprising is itself the argument for rendering
+# these lines rather than parsing them.
+#
+# DAY-AGNOSTIC on purpose. Naming Friday would tie this flow to the dev
+# database's current Google answer: re-enrich the place, or let Google reword a
+# row, and the flow fails for a reason that has nothing to do with the screen —
+# which is how a suite stops being trusted. The exact seven lines ARE pinned,
+# byte-for-byte including the U+2009/U+202F, in the Jest test where the fixture
+# is ours to control (place-detail.test.tsx). Here we prove only that a
+# real two-window row reached the screen intact.
+- assertVisible: ".+: 12:00.–.4:00.PM, 8:00.PM.–.\\d+:00.AM"
+
+# NOT `assertNotVisible: "Open now"`. That was here and it was decoration: the
+# string exists nowhere in the app (only inside a source comment), so it can
+# never fail and it read as coverage of "this screen must not claim open/closed"
+# while providing none. The falsifiable version of that guarantee lives in
+# place-detail.test.tsx, which asserts the collapsed row renders EXACTLY the
+# neutral label — reintroduce a badge and it goes red.
+- takeScreenshot: build/maestro/t128-hours-2-expanded
+
+# --- It collapses again -----------------------------------------------------
+- tapOn:
+    id: "place-hours"
+- assertNotVisible: "Monday: Closed"
+- assertVisible: "Ver horario semanal"
+
+# --- Leave the app where we found it ----------------------------------------
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000

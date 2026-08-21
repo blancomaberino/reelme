@@ -99,6 +99,7 @@ export const en = {
   'place.sourceCount': '{{count}} sources',
   'place.sourceCount_one': '{{count}} source',
   'place.sourceCount_other': '{{count}} sources',
+  'place.hours': 'Opening hours',
   'place.hoursShow': 'Show weekly hours',
   'place.hoursHide': 'Hide weekly hours',
   'place.openInMap': 'Open in map',

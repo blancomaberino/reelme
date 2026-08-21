@@ -503,3 +503,124 @@ it('unmerge keeps a numeric-string backfill the admin changed to a ==-equal but 
 
     expect($winner->fresh()->postal_code)->toBe('1234');
 });
+
+/**
+ * `place_merges` has ZERO rows in dev, so this path has never actually run —
+ * these tests are the only evidence it works at all.
+ *
+ * The backfill used to copy the loser's RAW attributes (`getAttributes()`), so
+ * a cast column arrived already-encoded and was encoded a SECOND time on the way
+ * back through the cast. `opening_hours_json` landed in jsonb as a JSON *string*
+ * (`"[\"Mo 09:00-17:00\"]"`), which no reader can render.
+ */
+it('donates the loser’s opening hours as a jsonb ARRAY, not a double-encoded string', function () {
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['name' => 'Winner', 'opening_hours_json' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->create([
+        'name' => 'Loser',
+        'opening_hours_json' => ['Mo-Fr 09:00–17:00', 'Sa 10:00–14:00'],
+    ]);
+
+    (new PlaceMerger)->merge($winner, $loser);
+
+    // (a) Through the cast: the survivor holds the PHP list, not a string.
+    $hours = $winner->refresh()->opening_hours_json;
+    expect($hours)->toBe(['Mo-Fr 09:00–17:00', 'Sa 10:00–14:00'])
+        ->and($hours)->toBeArray()
+        ->and(array_is_list($hours))->toBeTrue();
+
+    // (b) THE assertion that catches the double-encode. Reading through the cast
+    // alone is not enough: `json_decode` of a double-encoded value hands back a
+    // PHP *string* in some shapes and a plausible array in others, so the column
+    // itself has to be interrogated. jsonb_typeof says 'string' when it is wrong.
+    $type = DB::selectOne(
+        'select jsonb_typeof(opening_hours_json) as t from places where id = ?',
+        [$winner->id],
+    )->t;
+    expect($type)->toBe('array');
+});
+
+it('unmerge round-trips donated opening hours exactly', function () {
+    // The undo compares `json_encode($winner->getAttribute($field)) === json_encode($value)`
+    // against the audit row. Both sides are now the PHP list, so they still
+    // match and the survivor's hours are nulled — the backfill is reversed as
+    // exactly as it was applied.
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create(['opening_hours_json' => null]);
+    $loser = Place::factory()->active()->atPoint(51.5, -0.13)->create([
+        'opening_hours_json' => ['Mo-Fr 09:00–17:00'],
+    ]);
+
+    $merger = new PlaceMerger;
+    $merger->merge($winner, $loser);
+
+    /** @var PlaceMerge $merge */
+    $merge = PlaceMerge::query()->where('source_place_id', $loser->id)->sole();
+    // The audit row records the CAST value, so an undo can recognise it.
+    expect($merge->target_backfilled_fields['opening_hours_json'])->toBe(['Mo-Fr 09:00–17:00']);
+
+    $merger->unmerge($merge);
+
+    expect($winner->refresh()->opening_hours_json)->toBeNull();
+    // The loser keeps its own hours throughout — the merge never took them away.
+    expect($loser->refresh()->opening_hours_json)->toBe(['Mo-Fr 09:00–17:00'])
+        ->and($loser->status)->toBe(PlaceStatus::Active);
+    expect(DB::selectOne(
+        'select jsonb_typeof(opening_hours_json) as t from places where id = ?',
+        [$loser->id],
+    )->t)->toBe('array');
+});
+
+it('unmerge keeps hours the admin edited on the survivor after the merge', function () {
+    // The undo must null only a donation that STILL STANDS. A post-merge
+    // correction is the admin's, not the merge's, and json_encode-comparing two
+    // lists is exactly what distinguishes them.
+    $winner = Place::factory()->atPoint(51.5, -0.13)->create(['opening_hours_json' => null]);
+    $loser = Place::factory()->atPoint(51.5, -0.13)->create(['opening_hours_json' => ['Mo-Fr 09:00–17:00']]);
+
+    $merger = new PlaceMerger;
+    $merger->merge($winner, $loser);
+
+    $winner->refresh()->update(['opening_hours_json' => ['Mo-Su 08:00–22:00']]);
+
+    /** @var PlaceMerge $merge */
+    $merge = PlaceMerge::query()->where('source_place_id', $loser->id)->sole();
+    $merger->unmerge($merge);
+
+    expect($winner->refresh()->opening_hours_json)->toBe(['Mo-Su 08:00–22:00']);
+});
+
+it('unmerge still reverses a PRE-FIX audit row whose donation was double-encoded', function () {
+    // BACK-COMPAT for `place_merges` rows written by the OLD backfill. Dev has
+    // zero of them, but the fix must not strand any that exist elsewhere.
+    //
+    // The old code stored a double-encoded value on the winner AND recorded that
+    // same PHP string in the audit row — corrupt, but CONSISTENT. unmerge()
+    // compares `json_encode(column) === json_encode(audit)`, and the fix touches
+    // neither side of that comparison, so such a row must still reverse exactly.
+    $winner = Place::factory()->active()->atPoint(51.5, -0.13)->create(['opening_hours_json' => null]);
+    $loser = Place::factory()->active()->atPoint(51.5, -0.13)->create(['opening_hours_json' => ['Mo-Fr 09:00–17:00']]);
+
+    $merger = new PlaceMerger;
+    $merger->merge($winner, $loser);
+
+    /** @var PlaceMerge $merge */
+    $merge = PlaceMerge::query()->where('source_place_id', $loser->id)->sole();
+
+    // Rewrite BOTH sides into the shape the old code produced: the winner's
+    // column as a jsonb *string*, and the audit row recording that same string.
+    $doubleEncoded = json_encode(['Mo-Fr 09:00–17:00']);
+    DB::table('places')->where('id', $winner->id)
+        ->update(['opening_hours_json' => json_encode($doubleEncoded)]);
+    $merge->target_backfilled_fields = ['opening_hours_json' => $doubleEncoded];
+    $merge->save();
+    expect(DB::selectOne(
+        'select jsonb_typeof(opening_hours_json) as t from places where id = ?',
+        [$winner->id],
+    )->t)->toBe('string'); // the corruption is really there
+
+    $merger->unmerge($merge->refresh());
+
+    // Still recognised as the merge's own donation, so still nulled — the undo
+    // does not leave a corrupt value stranded on the survivor.
+    expect($winner->refresh()->opening_hours_json)->toBeNull();
+    expect($loser->refresh()->opening_hours_json)->toBe(['Mo-Fr 09:00–17:00']);
+});

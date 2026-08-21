@@ -121,3 +121,80 @@ it('drops a Google photo whose redirect target carries a key or is not a redirec
 
     expect($details->images)->toBe([]);
 });
+
+/**
+ * THE TWO GEO CALL SITES (T-128 review). The fixture above is a clean list of
+ * strings, which the old `array_values($weekdayText)` produced identically — so
+ * it passes with the coercion reverted and proves nothing about it. These do
+ * not: each one hands the call site something the contract's `string[]` forbids.
+ */
+it('voids Google weekday_text entirely when one line is not a string — never a truncated week', function () {
+    // Google is a third party; `weekday_text` is not schema-checked on the wire.
+    // ALL-OR-NOTHING is the whole point: a filtered `['Monday: 9–17']` would be
+    // non-empty, so it would win BusinessEnricher's first-non-empty merge and
+    // overwrite a place's good hours with one day of the week.
+    Http::fake([
+        '*/details/json*' => Http::response(['status' => 'OK', 'result' => [
+            'opening_hours' => ['weekday_text' => ['Monday: 9–17', ['open' => '09:00'], 'Wednesday: 9–17']],
+        ]]),
+    ]);
+
+    $details = (new GooglePlacesGeocoder)->businessDetails('gp_partial');
+
+    expect($details->openingHours)->toBeNull();
+    expect($details->openingHours)->not->toBe(['Monday: 9–17', 'Wednesday: 9–17']);
+    // …and with nothing to say, the patch carries no hours at all, so the
+    // enricher leaves whatever the place already had alone.
+    expect($details->toPlacePatch())->not->toHaveKey('opening_hours_json');
+});
+
+it('drops Google’s `{periods, weekday_text}` object when it arrives whole', function () {
+    // The shape the contract forbids and the mobile client used to look for.
+    // Stored raw, this serves a JSON object where `string[]` is promised.
+    Http::fake([
+        '*/details/json*' => Http::response(['status' => 'OK', 'result' => [
+            'opening_hours' => ['periods' => [['open' => ['day' => 1, 'time' => '0900']]], 'weekday_text' => 'Monday: 9–17'],
+        ]]),
+    ]);
+
+    // `weekday_text` is a bare STRING here, not a list — a non-array voids it.
+    expect((new GooglePlacesGeocoder)->businessDetails('gp_object')->openingHours)->toBeNull();
+});
+
+/**
+ * `fromArray()` rehydrates a CACHED payload — the ONE path whose entire
+ * justification is a value written by an older, laxer writer, and the one
+ * nothing exercised. The cache lives 14 days, so a regression here is invisible
+ * until a stale entry misbehaves in production; this is the only evidence it
+ * normalizes at all.
+ */
+it('normalizes a legacy CACHED payload on rehydrate, not just a fresh fetch', function () {
+    // A list shape no current writer produces, but a 14-day-old cache entry can.
+    expect(BusinessDetails::fromArray(['opening_hours' => ['Monday: 9–17', 42]])->openingHours)
+        ->toBeNull();
+    expect(BusinessDetails::fromArray(['opening_hours' => ['monday' => ['9', '17']]])->openingHours)
+        ->toBeNull();
+    expect(BusinessDetails::fromArray(['opening_hours' => 'Monday: 9–17'])->openingHours)
+        ->toBeNull();
+    expect(BusinessDetails::fromArray(['opening_hours' => []])->openingHours)->toBeNull();
+    expect(BusinessDetails::fromArray([])->openingHours)->toBeNull();
+
+    // A good cached value still round-trips untouched (trimmed).
+    expect(BusinessDetails::fromArray(['opening_hours' => [' Monday: 9–17 ', 'Tuesday: Closed']])->openingHours)
+        ->toBe(['Monday: 9–17', 'Tuesday: Closed']);
+});
+
+it('rehydrates a cached payload through fromArray on the SECOND businessDetails call', function () {
+    // Proves the rehydrate path is the one the cache actually uses: the second
+    // call makes no request and still comes back normalized.
+    Http::fake([
+        '*/details/json*' => Http::response(['status' => 'OK', 'result' => [
+            'opening_hours' => ['weekday_text' => ['Monday: 9–17', 'Tuesday: Closed']],
+        ]]),
+    ]);
+
+    $geocoder = new GooglePlacesGeocoder;
+    expect($geocoder->businessDetails('gp_rehydrate')->openingHours)->toBe(['Monday: 9–17', 'Tuesday: Closed']);
+    expect($geocoder->businessDetails('gp_rehydrate')->openingHours)->toBe(['Monday: 9–17', 'Tuesday: Closed']);
+    Http::assertSentCount(1);
+});

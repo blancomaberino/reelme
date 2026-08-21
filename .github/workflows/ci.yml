@@ -57,6 +57,23 @@ jobs:
           filters: |
             api:
               - 'apps/api/**'
+              # The API's contract tests validate live responses against these
+              # schemas, so a schema edit can turn the API job red without a
+              # single PHP file changing. Without this the gate simply does not
+              # run on the PR that broke it. Scoped to the files PHP actually
+              # reads (ApiSchema / ExtractionSchema) rather than the whole
+              # package: generated-TS staleness is the `contracts` job's
+              # business and does not need postgis + redis + the 15-minute
+              # Pest suite booted to check it.
+              - 'packages/contracts/schemas/**'
+              - 'packages/contracts/extraction.schema.json'
+              # PlaceContractTest DERIVES the mobile include-set by reading a
+              # hook in here (T-128), so the one change it exists to catch — the
+              # app starting to send an include the endpoint rejects — lives in
+              # apps/mobile and would otherwise skip the whole API job. The
+              # DIRECTORY, not the file: pinned to `usePlace.ts` alone, renaming
+              # the hook stops triggering the job on the very PR that moved it.
+              - 'apps/mobile/src/api/hooks/**'
               - '.github/workflows/ci.yml'
             contracts:
               - 'packages/contracts/**'

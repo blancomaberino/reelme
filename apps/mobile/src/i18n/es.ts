@@ -96,6 +96,7 @@ export const es: Record<MessageKey, string> = {
   'place.sourceCount': '{{count}} fuentes',
   'place.sourceCount_one': '{{count}} fuente',
   'place.sourceCount_other': '{{count}} fuentes',
+  'place.hours': 'Horarios',
   'place.hoursShow': 'Ver horario semanal',
   'place.hoursHide': 'Ocultar horario semanal',
   'place.openInMap': 'Abrir en el mapa',

@@ -3,7 +3,7 @@
  * Source of truth: packages/contracts/schemas/place.json
  */
 /**
- * GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (offer.json items, live ones only — T-042). `my_tags` appears only for the authed owner (T-064) — the caller's private per-user labels, never present for guests or other users.
+ * GET /api/v1/places/{slug} data payload (T-030, 03 §2.6). `sources` appears only with ?include=sources (place-source.json items); `offers` only with ?include=offers (offer.json items, live ones only — T-042); `reviews` only with ?include=reviews (review.json items, T-059). `my_tags` appears only for the authed owner (T-064) — the caller's private per-user labels, never present for guests or other users.
  */
 export interface PlaceDetail {
   id: string;
@@ -30,7 +30,10 @@ export interface PlaceDetail {
    */
   address_line1: string | null;
   google_place_id: string | null;
-  opening_hours: {} | unknown[] | null;
+  /**
+   * Human-readable opening-hour lines, one rule per entry, exactly as the client shows them (e.g. "Monday: 9:00 AM – 11:00 PM", or a schema.org rule like "Mo-Fr 09:00-17:00"). A FLAT LIST OF STRINGS — never Google's {periods, weekday_text} object: every writer (GooglePlacesGeocoder, WebsiteBusinessSource, the suggest-an-edit request, the Filament form) stores weekday text lines. The wording and language are the source's, so the client renders them verbatim rather than parsing them.
+   */
+  opening_hours: string[] | null;
   phone: string | null;
   website: string | null;
   /**
@@ -79,13 +82,16 @@ export interface PlaceDetail {
     google: RatingBlock;
     app: RatingBlock;
   };
+  /**
+   * Cached Google review snippets, at most 5 (02 §3.8). Every row is written by GooglePlacesGeocoder::reviews(), which normalizes Google's payload to exactly these six keys and guards each one — so the shape is pinned rather than left open (T-128: an items block with no `required` and no `additionalProperties` is the same 'union that pins nothing' that hid the opening_hours bug).
+   */
   google_reviews: {
-    author?: string | null;
-    rating?: number | null;
-    text?: string | null;
-    relative_time?: string | null;
-    time?: number | null;
-    profile_photo_url?: string | null;
+    author: string | null;
+    rating: number | null;
+    text: string | null;
+    relative_time: string | null;
+    time: number | null;
+    profile_photo_url: string | null;
   }[];
   /**
    * Multi-source review aggregate (T-082): one normalized row per resolving provider (`native`, `google`, `trustpilot`, …), in display order. A provider with no resolvable id for the place is omitted (no empty rows). `rating` is a 0–5 average; `url` deep links to the full reviews on that source (null for the intrinsic native source); `synced_at` is when external content was last fetched. Coexists with the back-compat `rating.google`/`rating.app`/`google_reviews`.
@@ -128,6 +134,10 @@ export interface PlaceDetail {
     percent: number | null;
   }[];
   sources?: PlaceSource[];
+  /**
+   * Native in-app reviews (T-059), newest first, present only with ?include=reviews — the include-set the place detail screen sends. Hidden (moderated) reviews are already filtered out. CAPPED at the newest few (PlaceController::REVIEW_CAP): this embed is a PREVIEW, not the whole set, so a client must not read absence from it as absence altogether — GET /places/{place}/reviews is the paginated list.
+   */
+  reviews?: Review[];
   /**
    * Live offers only (T-042) — the embed is filtered by the active() scope, so drafts, paused promos, and lapsed windows never appear here. The `place` block is omitted: the caller already holds it.
    */
@@ -189,6 +199,24 @@ export interface UserSummary {
   username: string;
   name: string | null;
   avatar_path: string | null;
+}
+/**
+ * A native (in-app) review of a place (T-059) — the shape of ReviewResource. Served inside place detail under ?include=reviews, listed by GET /places/{place}/reviews, and returned on its own by POST/PUT /places/{place}/reviews. `author` is null when the reviewer is not a public profile: the identity is withheld, never anonymized into a stub.
+ */
+export interface Review {
+  id: string;
+  rating: number;
+  body: string | null;
+  /**
+   * The reviewer, or null when their profile is not public.
+   */
+  author: null | UserSummary;
+  /**
+   * Whether THIS viewer wrote the review — drives the edit affordance. False for guests.
+   */
+  is_own: boolean;
+  created_at: string | null;
+  updated_at: string | null;
 }
 /**
  * A restaurant offer (T-042, 03 §2.12) — GET /api/v1/offers, GET /api/v1/offers/{id}, and the ?include=offers embed on place detail. `discount_value` is one integer in three units, selected by `discount_type`: a percentage (5–50 via the API), MINOR currency units for fixed_amount (350 = €3.50), or an item count for free_item. Never a float — money in a float is a rounding bug waiting for the ledger to find it.

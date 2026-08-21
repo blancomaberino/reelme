@@ -9,11 +9,6 @@ use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
-function reviewPlace(): Place
-{
-    return Place::factory()->active()->atPoint(51.5, -0.13)->create();
-}
-
 it('creates a review via POST and 409s a duplicate', function () {
     $place = reviewPlace();
     Sanctum::actingAs(User::factory()->create(['is_public' => true]));

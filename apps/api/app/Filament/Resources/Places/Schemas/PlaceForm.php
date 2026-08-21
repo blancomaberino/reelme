@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Places\Schemas;
 
 use App\Filament\Resources\Places\Pages\EditPlace;
 use App\Services\Places\PlaceEditor;
+use App\Support\OpeningHours;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -72,6 +73,12 @@ class PlaceForm
      * Split a textarea value into a trimmed, non-empty list of rule lines, or
      * null when blank (so clearing the field stores NULL, not an empty array).
      *
+     * The split is this form's business; the SHAPE is not. It goes out through
+     * {@see OpeningHours::fromProvider()} like every other writer of
+     * `opening_hours_json`, so an admin edit cannot be the one path that drifts
+     * from the contract (T-128). Behaviour is unchanged — `preg_split` yields
+     * only strings, which is exactly what the strict normalizer keeps.
+     *
      * @return list<string>|null
      */
     private static function linesToArray(mixed $state): ?array
@@ -80,11 +87,6 @@ class PlaceForm
             return null;
         }
 
-        $lines = array_values(array_filter(array_map(
-            'trim',
-            preg_split('/\r\n|\r|\n/', $state) ?: [],
-        ), fn (string $line): bool => $line !== ''));
-
-        return $lines === [] ? null : $lines;
+        return OpeningHours::fromProvider(preg_split('/\r\n|\r|\n/', $state) ?: []);
     }
 }
