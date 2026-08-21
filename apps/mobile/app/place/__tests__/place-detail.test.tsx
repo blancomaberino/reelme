@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
 import { Linking, Share } from 'react-native';
 
 import PlaceDetailScreen from '../[slug]';
+
+import { LA_DIECISIETE, SCHEMA_ORG, SPANISH } from '@/test/opening-hours-fixtures';
 import { api } from '@/api/client';
 import type { PlaceDetail } from '@/api/places';
 import { useSessionStore } from '@/stores/session';
@@ -166,41 +168,61 @@ it('opens directions in the maps app', async () => {
  * real payload — and the screen gated the whole row on that label. Only a test
  * that drives the screen with the shape the API actually sends can catch that.
  *
- * The fixtures are copied verbatim from the dev database and from
- * `WebsiteBusinessSource`; nothing here is invented.
+ * The hour fixtures live in src/test/opening-hours-fixtures.ts — shared with the
+ * `hourLines` unit test, because they are valuable precisely for their BYTES
+ * (Google's U+2009/U+202F) and two copies had already diverged on how they
+ * escaped them.
  */
-describe('opening hours (T-128)', () => {
-  // La Diecisiete Brasas y Afines, verbatim: en dash, a "Closed" day, two
-  // windows in one row, and an opening time with no meridiem of its own.
-  const GOOGLE_LINES = [
-    'Monday: Closed',
-    'Tuesday: 12:00 – 4:00 PM, 8:00 PM – 12:00 AM',
-    'Wednesday: 12:00 – 4:00 PM, 8:00 PM – 12:00 AM',
-  ];
+/**
+ * The plain strings a subtree actually renders, in order. `Row` wraps its child
+ * in nodes whose `children` is `['', undefined]`, so those are dropped — but
+ * every real string is kept, including one this screen must never show
+ * ("Open now"), which is what makes an exact `toEqual` a usable guard rather
+ * than an unfalsifiable `queryByText(...).toBeNull()`.
+ */
+function visibleText(node: Parameters<typeof within>[0]): string[] {
+  return within(node)
+    .getAllByText(/.+/)
+    .map((n) => n.props.children)
+    .filter((c): c is string => typeof c === 'string' && c.trim() !== '');
+}
 
-  const withHours = (opening_hours: string[]) => ({ ...PLACE, opening_hours });
+describe('opening hours (T-128)', () => {
+  // Annotated, so tsc holds these fixtures to the contract the way the review
+  // fixtures below are held — an unannotated object literal would let a wrong
+  // `opening_hours` shape back in through the very test that guards it.
+  const withHours = (opening_hours: PlaceDetail['opening_hours']): PlaceDetail => ({
+    ...PLACE,
+    opening_hours,
+  });
 
   it('shows the hours row and expands the source lines verbatim', async () => {
-    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(GOOGLE_LINES) });
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(LA_DIECISIETE) });
 
     render(<PlaceDetailScreen />, { wrapper: Providers });
 
     // The row itself is on screen — this is the assertion that was missing.
     const row = await screen.findByTestId('place-hours');
     expect(screen.getByText('Opening hours')).toBeOnTheScreen();
-    // Collapsed: the lines are not shown yet, and nothing claims open/closed.
+    // Collapsed: the lines are not shown yet, and the row says ONLY the neutral
+    // label. Asserted positively — `queryByText(/Open now/)).toBeNull()` reads
+    // like a guard against an open/closed claim and is unfalsifiable, because
+    // that string exists nowhere in the app. Pinning what the row DOES say is
+    // what actually fails if a summary badge is ever reintroduced.
     expect(screen.queryByTestId('place-hours-weekly')).toBeNull();
-    expect(screen.queryByText(/Open now/)).toBeNull();
+    expect(visibleText(row)).toEqual(['Opening hours']);
     expect(row.props.accessibilityState).toMatchObject({ expanded: false });
     expect(row.props.accessibilityLabel).toBe('Show weekly hours');
 
     fireEvent.press(row);
 
-    // Expanded: every line, exactly as the source wrote it.
-    expect(screen.getByTestId('place-hours-weekly')).toBeOnTheScreen();
-    for (const line of GOOGLE_LINES) {
-      expect(screen.getByText(line)).toBeOnTheScreen();
-    }
+    // Expanded: every line, exactly as the source wrote it, IN ORDER. A
+    // per-line `getByText` loop passes on a re-sorted or re-worded list; this
+    // compares the rendered sequence to the payload, so a `.sort()`, a dropped
+    // row, or a whitespace "cleanup" of the U+2009/U+202F all turn it red.
+    const weekly = screen.getByTestId('place-hours-weekly');
+    expect(weekly).toBeOnTheScreen();
+    expect(visibleText(weekly)).toEqual(LA_DIECISIETE);
     expect(screen.getByTestId('place-hours').props.accessibilityState).toMatchObject({ expanded: true });
     expect(screen.getByTestId('place-hours').props.accessibilityLabel).toBe('Hide weekly hours');
 
@@ -212,26 +234,23 @@ describe('opening hours (T-128)', () => {
   it('renders schema.org rule lines just as happily', async () => {
     // `WebsiteBusinessSource` writes these; they are not Google's wording and
     // carry no day-name-and-colon prefix at all.
-    const rules = ['Mo-Fr 09:00-17:00', 'Sa,Su 10:00-14:00'];
-    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(rules) });
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(SCHEMA_ORG) });
 
     render(<PlaceDetailScreen />, { wrapper: Providers });
     fireEvent.press(await screen.findByTestId('place-hours'));
 
-    expect(screen.getByText('Mo-Fr 09:00-17:00')).toBeOnTheScreen();
-    expect(screen.getByText('Sa,Su 10:00-14:00')).toBeOnTheScreen();
+    expect(visibleText(screen.getByTestId('place-hours-weekly'))).toEqual(SCHEMA_ORG);
   });
 
   it("keeps a Spanish source's own words, and repeated days do not swallow each other", async () => {
     // Two identical "Cerrado" lines: keyed by text they would collide and React
     // would render one. Uruguay is the launch market, so this is the norm here.
-    const spanish = ['lunes: Cerrado', 'martes: 12:00 – 16:00, 20:00 – 00:00', 'Cerrado', 'Cerrado'];
-    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(spanish) });
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withHours(SPANISH) });
 
     render(<PlaceDetailScreen />, { wrapper: Providers });
     fireEvent.press(await screen.findByTestId('place-hours'));
 
-    expect(screen.getByText('martes: 12:00 – 16:00, 20:00 – 00:00')).toBeOnTheScreen();
+    expect(visibleText(screen.getByTestId('place-hours-weekly'))).toEqual(SPANISH);
     expect(screen.getAllByText('Cerrado')).toHaveLength(2);
   });
 

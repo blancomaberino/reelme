@@ -33,3 +33,32 @@ it('still accepts a well-formed near', function () {
     $this->getJson('/api/v1/offers?near=38.7223,-9.1393&radius_m=2000')->assertOk();
     $this->getJson('/api/v1/places?near=38.7223,-9.1393')->assertOk();
 });
+
+/**
+ * Same construct, same 500, on the place DETAIL (found reviewing T-128).
+ * `PlaceShowRequest::includes()` did `(string) $this->query('include', '')`, and
+ * `withValidator()`'s `after` closure runs even when the `string` rule has
+ * ALREADY failed — so the cast still ran on an array, warned, and became an
+ * ErrorException. The docblock promised a 422 for a bad include the whole time.
+ */
+it('answers 422, not 500, for an array-valued include on the place detail', function () {
+    $place = Place::factory()->active()->create();
+
+    $this->getJson("/api/v1/places/{$place->slug}?include[]=sources&include[]=offers")
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.include.0', 'The include field must be a string.');
+});
+
+/** The scalar forms still work — the guard narrows the type, it does not break it. */
+it('still accepts a well-formed include, and still 422s an unknown member', function () {
+    $place = Place::factory()->active()->create();
+
+    $this->getJson("/api/v1/places/{$place->slug}?include=sources")->assertOk();
+    $this->getJson("/api/v1/places/{$place->slug}")->assertOk();
+
+    // The unknown-member branch is what `includes()` feeds, so prove the guard
+    // did not silently turn every include into "none requested".
+    $this->getJson("/api/v1/places/{$place->slug}?include=sources,nope")
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.include.0', 'Unknown include: nope.');
+});

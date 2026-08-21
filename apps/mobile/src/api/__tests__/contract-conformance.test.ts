@@ -1,6 +1,7 @@
 import type {
   FeedItem as ContractFeedItem,
   InfluencerSummary as ContractInfluencerSummary,
+  PlaceDetail as ContractPlaceDetail,
   PlaceListDetail as ContractPlaceListDetail,
   PlaceListSummary as ContractPlaceListSummary,
   PlaceSummary as ContractPlaceSummary,
@@ -60,14 +61,56 @@ const pendingCandidateMatchesContract: Exact<
   ContractShareDetail['pending_places'][number]['candidates'][number]
 > = true;
 const listItemMatchesContract: Exact<PlaceListItem, ContractPlaceListDetail['items'][number]> = true;
-// Native reviews (T-128). `AppReview` is now an alias of the contract, so the
-// load-bearing pin is the second one: place detail's nested `reviews[]` must be
-// the same Review the standalone endpoint returns, not a copy free to drift.
+// Native reviews (T-128).
+//
+// Be honest about what this first line is: `AppReview` IS `ContractReview`
+// today, so it reduces to `Exact<T, T>` and cannot currently fail. It is a
+// tripwire, not a gate — it exists so that re-introducing a hand-written
+// `AppReview` (which is how `updated_at` and `author.name` went missing in the
+// first place) fails at the type level instead of quietly compiling.
 const appReviewMatchesContract: Exact<AppReview, ContractReview> = true;
 const placeReviewMatchesContract: Exact<
   NonNullable<PlaceDetail['reviews']>[number],
   ContractReview
 > = true;
+
+// PlaceDetail's OWN fields, one-directionally (T-128).
+//
+// `PlaceDetail` is a HAND-RESTATED mirror of place.json for ~30 fields, and
+// nothing compared the two — which is the mechanism that let `opening_hours`
+// sit wrong for months while every test was green. It cannot simply BE the
+// contract type (it deliberately widens include-gated and older-cached fields
+// like `can_edit`, `gallery` and `review_sources` to optional), so
+// assignability, not `Exact<>`, is the enforceable relation.
+//
+// Scope, stated precisely rather than flatteringly: this guards the fields that
+// are still restated. It does NOT guard `opening_hours` or `reviews` — those
+// are DERIVED from the contract now (see api/places.ts), so both sides move
+// together and this assert is trivially satisfied for them. Verified by
+// mutation, both ways: reverting `opening_hours` to its old `["object",
+// "array","null"]` union leaves tsc green (derivation, not this, is what holds
+// it), while making a restated field nullable — `country_code` — fails with
+// `TS2322: Type 'true' is not assignable to type 'never'`. Two mechanisms,
+// different fields; neither one covers the whole object.
+//
+// It has already earned its place: adding it surfaced place.json's
+// `google_reviews` items having no `required` and no `additionalProperties` —
+// the same "admits anything" shape as the old `opening_hours` union, fixed here.
+//
+// The three `$ref` embeds are excluded because they are not this schema's to
+// pin — `sources` is place-source.json, `offers` is offer.json, `my_tags` is
+// inline. Each deserves its own pin against its own schema, and `sources`
+// would currently FAIL one: place-source.json types `source_post` and its
+// `url` as nullable, exactly as PlaceSourceResource emits them
+// (`$post === null ? null : [...]`), while the mobile `PlaceSourceItem`
+// declares both non-null — a real drift, and a latent crash on a place_source
+// whose post was deleted. Filed, not fixed: it belongs to place-source.json.
+type PlaceDetailOwnFields = Omit<PlaceDetail, 'sources' | 'offers' | 'my_tags'>;
+type ContractOwnFields = Omit<ContractPlaceDetail, 'sources' | 'offers' | 'my_tags'>;
+// `never` when the contract stops being assignable, so `= true` is the compile
+// error — same mechanism as the Exact<> pins above, one direction instead of two.
+type ContractSatisfiesPlaceDetail = ContractOwnFields extends PlaceDetailOwnFields ? true : never;
+const placeDetailAcceptsContract: ContractSatisfiesPlaceDetail = true;
 
 // A realistic API row must satisfy the contract type verbatim — a renamed field
 // (e.g. `country_code` → `country`) turns this into a tsc error, not a runtime one.
@@ -175,6 +218,7 @@ it('pins the mobile API types to @reelmap/contracts', () => {
   expect(listItemMatchesContract).toBe(true);
   expect(appReviewMatchesContract).toBe(true);
   expect(placeReviewMatchesContract).toBe(true);
+  expect(placeDetailAcceptsContract).toBe(true);
 });
 
 it('keeps realistic API payloads assignable to the contract types', () => {
@@ -183,6 +227,10 @@ it('keeps realistic API payloads assignable to the contract types', () => {
   expect(feedFixture.sharer).toBeNull();
   expect(listFixture.items[0].place.slug).toBe('lanzhou-beef-noodle');
   expect(publicListFixture.owner).toBeNull();
+  // `author.name` and `updated_at` are the two fields the hand-written AppReview
+  // had silently dropped, so a fixture that carries them is the regression
+  // marker. (The load-bearing check is the `satisfies ContractReview` on the
+  // fixture itself — comparing two literals declared in this same file would
+  // assert nothing.)
   expect(reviewFixture.author.name).toBe('Pia Fan');
-  expect(reviewFixture.updated_at).not.toBe(reviewFixture.created_at);
 });

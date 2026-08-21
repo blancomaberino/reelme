@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\CsvList;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -57,15 +58,14 @@ class PlaceShowRequest extends FormRequest
     /**
      * The requested include members (deduped, empty when absent).
      *
+     * Absent/blank/non-string means "embed nothing" — including `?include[]=x`,
+     * which {@see CsvList::parse()} narrows rather than casting; the `string`
+     * rule above then reports the real problem as the 422 this docblock promises.
+     *
      * @return list<string>
      */
     public function includes(): array
     {
-        $raw = (string) $this->query('include', '');
-        if (trim($raw) === '') {
-            return [];
-        }
-
-        return array_values(array_unique(array_filter(array_map('trim', explode(',', $raw)))));
+        return CsvList::parse($this->query('include', '')) ?? [];
     }
 }

@@ -1,22 +1,8 @@
 import type { OpeningHours } from '@/api/places';
 
-export type HoursSummary = {
-  /**
-   * Whether the place is open at this moment — `null` meaning "unknown", which
-   * is the ONLY value this returns today, deliberately (see {@link summarizeHours}).
-   * `null` must never be rendered as "Closed".
-   *
-   * Kept as a field rather than deleted so the decision stays visible at the
-   * call site, and so the day the API serves structured hours there is an
-   * obvious seam to fill instead of a fresh guess bolted onto the screen.
-   */
-  openNow: boolean | null;
-  /** The source's own hour lines, verbatim and in order (empty when unknown). */
-  weekly: string[];
-};
 
 /**
- * Prepare a place's opening hours for the detail screen (T-033, fixed in T-128).
+ * The lines to show for a place's opening hours (T-033, fixed in T-128).
  *
  * The input is a FLAT LIST OF HUMAN-READABLE STRINGS — what every API writer
  * stores and what `packages/contracts/schemas/place.json` pins: Google
@@ -24,7 +10,7 @@ export type HoursSummary = {
  * ("Mo-Fr 09:00-17:00"), or whatever a curator typed. It is prose, in the
  * SOURCE's wording and language — not a machine-readable structure.
  *
- * ## Why `openNow` is always `null`
+ * ## Why this returns only lines, and claims nothing about open-or-closed
  *
  * Deriving "Open now" from these lines would be a guess dressed as a fact, and
  * the failure mode is a person standing at a locked door. Every step of the
@@ -60,7 +46,7 @@ export type HoursSummary = {
  *    for every place outside the viewer's own zone.
  *
  * A wrong "Open now" is worse than no badge, so this claims nothing: it returns
- * `null` and hands the screen the lines to render verbatim, letting the reader
+ * only the lines, for the screen to render verbatim, letting the reader
  * judge in the source's own words. When the API serves structured periods WITH
  * a timezone, compute it here — do not reintroduce text parsing.
  *
@@ -69,15 +55,13 @@ export type HoursSummary = {
  * validated at the edge, but a response cached before the shape was pinned is
  * not (that stale object is exactly the T-128 bug).
  */
-export function summarizeHours(hours: OpeningHours | null | undefined): HoursSummary {
-  if (!Array.isArray(hours)) return { openNow: null, weekly: [] };
-
-  const weekly = hours
-    .filter((line): line is string => typeof line === 'string')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+export function hourLines(hours: OpeningHours | null | undefined): string[] {
+  if (!Array.isArray(hours)) return [];
 
   // Duplicates are kept on purpose — dropping a repeated line would silently
   // hide data the source did send. Callers must key rows by index, not by text.
-  return { openNow: null, weekly };
+  return hours
+    .filter((line): line is string => typeof line === 'string')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 }

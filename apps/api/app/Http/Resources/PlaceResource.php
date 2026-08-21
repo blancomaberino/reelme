@@ -5,8 +5,8 @@ namespace App\Http\Resources;
 use App\Models\Place;
 use App\Models\User;
 use App\Models\UserPlaceTag;
-use App\Services\Geo\BusinessDetails;
 use App\Services\Places\PlaceAggregations;
+use App\Support\OpeningHours;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -131,7 +131,7 @@ class PlaceResource extends JsonResource
                     'count' => (int) $this->reviews_count,
                 ],
             ],
-            'google_reviews' => $this->google_reviews_json ?? [],
+            'google_reviews' => $this->googleReviewsForResource(),
             // Pluggable multi-source aggregate (T-082): per-source rating rows
             // (Google, native, Trustpilot, …), each with a deep link + snippets.
             // The `rating.google` / `rating.app` / `google_reviews` above stay for
@@ -195,27 +195,68 @@ class PlaceResource extends JsonResource
 
     /**
      * The stored hours normalized to the contract shape (T-128): a flat list of
-     * strings, or null.
+     * strings, or null. `salvage()`, not `fromProvider()` — see
+     * {@see OpeningHours} for the strict-vs-lenient rule.
      *
-     * The same defence `galleryForResource()` below applies to its column, and
-     * for the same reason — the contract must hold for what is SERVED, whatever
-     * the column happens to hold. Validation on the way in is not enough on its
-     * own: `SuggestPlaceEditRequest` accepted a bare `array` until T-128, and
-     * `PlaceEditSuggestion::patch()` filters proposed changes by field NAME
-     * only, so a suggestion queued before that fix would apply an associative
-     * array on approval. Served raw, that lands as a JSON object, the client's
-     * `string[]` is a lie, and `summarizeHours` degrades to an empty list — the
-     * hours row silently disappears again with no error anywhere.
+     * Same read-boundary argument as the two normalizers below, different
+     * structure: theirs stay private and local because this resource is their
+     * only reader, while hours have four writers, so the decision lives in a
+     * shared leaf they can all reach without this resource depending on any of
+     * them.
      *
-     * `hourLines()` also salvages such a row rather than discarding it: the
-     * VALUES of `{"monday": "9-5"}` are the lines a curator meant, so they come
-     * back as `["9-5"]` instead of null.
+     * Validation on the way in is not enough on its own: `SuggestPlaceEditRequest`
+     * accepted a bare `array` until T-128, and rows can reach the column by other
+     * routes entirely (a console command, an import, an admin edit). Served raw,
+     * an associative value lands as a JSON object, the client's `string[]` is a
+     * lie, and `summarizeHours` degrades to an empty list — the hours row silently
+     * disappears again with no error anywhere.
      *
      * @return list<string>|null
      */
     private function openingHoursForResource(): ?array
     {
-        return BusinessDetails::hourLines($this->opening_hours_json);
+        return OpeningHours::salvage($this->opening_hours_json);
+    }
+
+    /**
+     * The stored Google review snippets normalized to the contract shape
+     * (T-128): EXACTLY the six keys `place.json` pins, one row per array entry.
+     *
+     * Same read-boundary argument as {@see galleryForResource()} below, and the
+     * same private/local shape, because this resource is the only reader of
+     * `google_reviews_json` that has to make the decision. The schema's items
+     * block is `additionalProperties: false` with all six keys `required`, and
+     * the contract test only ever sees rows the CURRENT
+     * `GooglePlacesGeocoder::reviews()` writes — so a row from an earlier
+     * version of that writer, or one hand-edited in Filament/tinker, would serve
+     * a payload violating the contract with nothing to catch it. Missing keys
+     * become null (the schema allows null on every one); unknown keys are
+     * dropped; a non-array entry is skipped entirely.
+     *
+     * @return list<array{author: ?string, rating: float|int|null, text: ?string, relative_time: ?string, time: ?int, profile_photo_url: ?string}>
+     */
+    private function googleReviewsForResource(): array
+    {
+        $out = [];
+        /** @var array<int, mixed> $rows — a legacy/hand-edited row may hold non-array items */
+        $rows = (array) $this->google_reviews_json;
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $rating = $row['rating'] ?? null;
+            $time = $row['time'] ?? null;
+            $out[] = [
+                'author' => is_string($row['author'] ?? null) ? $row['author'] : null,
+                'rating' => is_int($rating) || is_float($rating) ? $rating : null,
+                'text' => is_string($row['text'] ?? null) ? $row['text'] : null,
+                'relative_time' => is_string($row['relative_time'] ?? null) ? $row['relative_time'] : null,
+                'time' => is_int($time) ? $time : null,
+                'profile_photo_url' => is_string($row['profile_photo_url'] ?? null) ? $row['profile_photo_url'] : null,
+            ];
+        }
+
+        return $out;
     }
 
     /**

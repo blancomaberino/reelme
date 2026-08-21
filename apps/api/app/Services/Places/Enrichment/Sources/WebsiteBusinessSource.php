@@ -5,6 +5,7 @@ namespace App\Services\Places\Enrichment\Sources;
 use App\Models\Place;
 use App\Services\Http\PublicUrlGuard;
 use App\Services\Places\Enrichment\BusinessEnrichmentSource;
+use App\Support\OpeningHours;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -187,23 +188,25 @@ class WebsiteBusinessSource implements BusinessEnrichmentSource
      * Opening hours as a list of human-readable lines, from either the flat
      * `openingHours` string list or `openingHoursSpecification` objects.
      *
+     * Both readings go out through {@see OpeningHours::fromProvider()} — strict,
+     * because this is a write path; the rule and its reasoning live once, on
+     * {@see OpeningHours} (T-128). A bad member voids the flat reading, and we
+     * fall through to `openingHoursSpecification` rather than persisting a
+     * truncated week.
+     *
+     * `[]`, not null, is what this returns for "nothing found": the caller's
+     * `array_filter` drops both identically, so the field is simply absent from
+     * the patch and hours already on the place survive.
+     *
      * @param  array<string, mixed>  $node
      * @return list<string>
      */
     private function openingHours(array $node): array
     {
         $flat = $node['openingHours'] ?? null;
-        if (is_string($flat) && trim($flat) !== '') {
-            return [trim($flat)];
-        }
-        if (is_array($flat)) {
-            $lines = array_values(array_filter(array_map(
-                fn ($v) => is_string($v) ? trim($v) : null,
-                $flat,
-            )));
-            if ($lines !== []) {
-                return $lines;
-            }
+        $lines = OpeningHours::fromProvider(is_string($flat) ? [$flat] : $flat);
+        if ($lines !== null) {
+            return $lines;
         }
 
         $spec = $node['openingHoursSpecification'] ?? null;
@@ -233,7 +236,10 @@ class WebsiteBusinessSource implements BusinessEnrichmentSource
             }
         }
 
-        return $lines;
+        // Every `$lines` member is already a trimmed non-empty string, so today
+        // this can only turn `[]` into null and back again. Kept so the
+        // invariant still holds if the line-building above changes.
+        return OpeningHours::fromProvider($lines) ?? [];
     }
 
     /**

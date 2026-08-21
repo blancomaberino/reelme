@@ -82,13 +82,16 @@ export interface PlaceDetail {
     google: RatingBlock;
     app: RatingBlock;
   };
+  /**
+   * Cached Google review snippets, at most 5 (02 §3.8). Every row is written by GooglePlacesGeocoder::reviews(), which normalizes Google's payload to exactly these six keys and guards each one — so the shape is pinned rather than left open (T-128: an items block with no `required` and no `additionalProperties` is the same 'union that pins nothing' that hid the opening_hours bug).
+   */
   google_reviews: {
-    author?: string | null;
-    rating?: number | null;
-    text?: string | null;
-    relative_time?: string | null;
-    time?: number | null;
-    profile_photo_url?: string | null;
+    author: string | null;
+    rating: number | null;
+    text: string | null;
+    relative_time: string | null;
+    time: number | null;
+    profile_photo_url: string | null;
   }[];
   /**
    * Multi-source review aggregate (T-082): one normalized row per resolving provider (`native`, `google`, `trustpilot`, …), in display order. A provider with no resolvable id for the place is omitted (no empty rows). `rating` is a 0–5 average; `url` deep links to the full reviews on that source (null for the intrinsic native source); `synced_at` is when external content was last fetched. Coexists with the back-compat `rating.google`/`rating.app`/`google_reviews`.

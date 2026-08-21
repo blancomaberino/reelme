@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\CsvList;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -46,13 +47,8 @@ class SearchRequest extends FormRequest
      */
     public function types(): array
     {
-        // Non-string input (types[]=…) falls back to the default here; the
-        // `string` rule independently rejects it with a 422.
-        $raw = $this->query('types');
-        if (! is_string($raw) || trim($raw) === '') {
-            return self::ALLOWED_TYPES;
-        }
-
-        return array_values(array_unique(array_filter(array_map('trim', explode(',', $raw)))));
+        // Absent, blank or non-string input (types[]=…) falls back to the default
+        // here; the `string` rule independently rejects the last with a 422.
+        return CsvList::parse($this->query('types')) ?? self::ALLOWED_TYPES;
     }
 }

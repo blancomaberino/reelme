@@ -23,7 +23,7 @@ import { Thumbnail } from '@/components/place/thumbnail';
 import { Skeleton, SkeletonGroup } from '@/components/skeleton';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
-import { summarizeHours } from '@/lib/opening-hours';
+import { hourLines } from '@/lib/opening-hours';
 import { directionsUrl, googleMapsUrl, googleReviewsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
 import { useSessionStore } from '@/stores/session';
@@ -97,7 +97,7 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
   // so the sheet can name what is being flagged — the whole point of showing it
   // back is that nobody reports the wrong row.
   const [reportReview, setReportReview] = useState<{ id: string; subject: string } | null>(null);
-  const hours = useMemo(() => summarizeHours(place.opening_hours), [place.opening_hours]);
+  const hours = useMemo(() => hourLines(place.opening_hours), [place.opening_hours]);
   const tags = useMemo(
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
     [place.cuisines, place.vibe_tags, place.dietary_tags],
@@ -218,16 +218,24 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
         ) : null}
 
         {/* Opening hours (T-128). Gated on the LINES, not on a summary label —
-            the old gate was `hours.label`, which `summarizeHours` never
+            the old gate was `hours.label`, a summary the function never
             produced for the flat string list the API actually sends, so this
-            row had never once rendered for anyone.
+            row had never once rendered for anyone. There is no open/closed
+            badge, and that is deliberate — see `hourLines` for why claiming it
+            from this text would be a guess.
 
-            The collapsed row is a neutral affordance rather than an
-            "Open now / Closed" badge on purpose: the lines are prose in the
-            source's language and the place's timezone, so any open/closed
-            claim derived from them is a guess, and the cost of guessing wrong
-            is a wasted trip. See `summarizeHours` for the full reasoning. */}
-        {hours.weekly.length > 0 ? (
+            Why COLLAPSED, given it is then the only row here that shows no
+            data until tapped — the alternative was weighed, not overlooked.
+            Expanded-by-default costs seven rows in the middle of a dense info
+            block, pushing phone, website and directions below the fold on a
+            screen people open to decide whether to go NOW; and there is no
+            honest one-line summary to put in the collapsed row instead,
+            because "today's line" cannot be identified (weekday_text is
+            ordered by the SOURCE locale's first day of week, so no index is a
+            fixed weekday). One tap to seven correct lines beats a permanent
+            seven-row block or a summary that would be a guess. Revisit if the
+            API ever serves structured periods with a timezone. */}
+        {hours.length > 0 ? (
           <>
             <Pressable
               onPress={() => setHoursOpen((v) => !v)}
@@ -251,7 +259,7 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
                 {/* Keyed by index: two days can legitimately carry the same
                     text ("Monday: Closed", "Sunday: Closed"), and keying by
                     the line would collide and drop one of them. */}
-                {hours.weekly.map((line, i) => (
+                {hours.map((line, i) => (
                   <Text key={`${i}-${line}`} style={styles.weeklyLine}>
                     {line}
                   </Text>

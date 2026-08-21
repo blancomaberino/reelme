@@ -15,9 +15,10 @@
 # PRECONDITIONS
 #   - API stack + Metro up via `./scripts/dev.sh start`.
 #   - The dev database holds `la-diecisiete-brasas-y-afines-ekaubv` with its
-#     Google `weekday_text` lines. The assertions below are that row VERBATIM;
-#     if the place is re-enriched and Google answers in another language, they
-#     change with it — that is the point of the feature, not a flaky test.
+#     Google `weekday_text` lines. The assertions below are deliberately loose
+#     about the CONTENT of those lines (see the note further down) — this flow
+#     proves the row is reachable and renders live API text; the exact bytes are
+#     pinned in Jest, where the fixture cannot be changed by a re-enrichment.
 #   - App runs in Spanish (default locale), so the chrome below is the es
 #     strings. The HOUR LINES are English, because they carry the SOURCE's
 #     language, not the reader's — the single clearest reason this screen must
@@ -90,13 +91,22 @@ appId: pet.one.reelmap
 # codepoint, so `.` is the honest way to write "whatever space this really is".
 # That the exact bytes are this surprising is itself the argument for rendering
 # these lines rather than parsing them.
-- assertVisible: "Friday: 12:00.–.4:00.PM, 8:00.PM.–.1:00.AM"
-- assertVisible: "Sunday: 12:00.–.4:30.PM"
-# "Monday: Closed" is on screen and must read as neutral text. Nothing on this
-# screen may claim the venue is open or shut right now: the lines are in the
-# place's local timezone, which the payload does not carry.
-- assertNotVisible: "Open now"
-- assertNotVisible: "Abierto ahora"
+#
+# DAY-AGNOSTIC on purpose. Naming Friday would tie this flow to the dev
+# database's current Google answer: re-enrich the place, or let Google reword a
+# row, and the flow fails for a reason that has nothing to do with the screen —
+# which is how a suite stops being trusted. The exact seven lines ARE pinned,
+# byte-for-byte including the U+2009/U+202F, in the Jest test where the fixture
+# is ours to control (place-detail.test.tsx). Here we prove only that a
+# real two-window row reached the screen intact.
+- assertVisible: ".+: 12:00.–.4:00.PM, 8:00.PM.–.\\d+:00.AM"
+
+# NOT `assertNotVisible: "Open now"`. That was here and it was decoration: the
+# string exists nowhere in the app (only inside a source comment), so it can
+# never fail and it read as coverage of "this screen must not claim open/closed"
+# while providing none. The falsifiable version of that guarantee lives in
+# place-detail.test.tsx, which asserts the collapsed row renders EXACTLY the
+# neutral label — reintroduce a badge and it goes red.
 - takeScreenshot: build/maestro/t128-hours-2-expanded
 
 # --- It collapses again -----------------------------------------------------

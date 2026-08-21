@@ -23,7 +23,7 @@ export type SuggestionField = SuggestionChange['field'];
  * enrichment versus a list of rule strings from the curator form — so a
  * submitted list would have blanked the hours row. That was never true: every
  * writer stores a flat `string[]`, the contract now pins it as one (T-128), and
- * `summarizeHours()` renders those lines verbatim. The shape objection is gone.
+ * `hourLines()` hands those lines to the screen verbatim. The shape objection is gone.
  *
  * It stays out for a smaller, real reason: this form is a
  * `Record<field, string>` of single-line text fields, and hours are a

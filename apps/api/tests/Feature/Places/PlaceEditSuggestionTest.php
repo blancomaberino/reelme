@@ -8,6 +8,7 @@ use App\Models\PlaceEdit;
 use App\Models\PlaceEditSuggestion;
 use App\Models\User;
 use App\Services\Places\PlaceSuggestionService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /** A viewport over Montevideo, for the map-pin regressions below. */
@@ -568,6 +569,106 @@ describe('the field allow-list', function () {
 });
 
 describe('moderating', function () {
+    /**
+     * `PlaceEditor::apply()` normalizes the VALUE's shape, not just the field's
+     * name (T-128 review). `SuggestPlaceEditRequest` accepted a bare `array`
+     * until T-128, so a row QUEUED BEFORE THAT FIX is sitting in the table right
+     * now carrying an associative value, and approving it wrote a JSON object
+     * into a column the contract types `string[]`.
+     *
+     * The guard lives on the WRITE path, not on `patch()`: `patch()` is a read
+     * accessor (`isNoteOnly()` and the moderation renderers call it) and it is
+     * only one of the TWO paths that apply a patch — the operator fast path
+     * below never comes through it. Both tests below start from an associative
+     * proposal and end at a jsonb array, which is what proves the single guard
+     * covers both.
+     */
+    it('applies a legacy associative opening_hours suggestion as a LIST, never an object', function () {
+        $place = Place::factory()->create(['opening_hours_json' => null]);
+        $moderator = User::factory()->create(['is_admin' => true]);
+        // Straight into the column, the way a pre-T-128 row got there — the
+        // submit-time validator is not in this path at all.
+        $suggestion = PlaceEditSuggestion::factory()->create([
+            'place_id' => $place->id,
+            'changes' => ['opening_hours_json' => [
+                'from' => null,
+                'to' => ['monday' => '9-5', 'tuesday' => 'Closed'],
+            ]],
+        ]);
+
+        // The read accessor hands the proposal over UNTOUCHED — coercing here
+        // would change what the moderation queue shows a reviewer.
+        expect($suggestion->patch()['opening_hours_json'])->toBe(['monday' => '9-5', 'tuesday' => 'Closed']);
+
+        app(PlaceSuggestionService::class)->approve($suggestion, $moderator);
+
+        // …and the column holds a jsonb ARRAY, not an object. Read through the
+        // cast an object still decodes to a PHP array, so ask Postgres itself.
+        $place->refresh();
+        expect($place->opening_hours_json)->toBe(['monday: 9-5', 'tuesday: Closed']);
+        expect(DB::selectOne(
+            'select jsonb_typeof(opening_hours_json) as t from places where id = ?',
+            [$place->id],
+        )->t)->toBe('array');
+    });
+
+    it('applies an OWNER’s associative opening_hours edit as a LIST too — the fast path', function () {
+        // THE SECOND APPLY PATH. `submit()` sends a verified operator's edit
+        // straight to `applyAsOwner()` with the patch from the request; it never
+        // constructs a suggestion row and never calls `patch()`. A guard that
+        // lived only on the moderation path would leave this one wide open.
+        $place = Place::factory()->create(['opening_hours_json' => null]);
+        $owner = operatorOfPlace($place);
+
+        $suggestion = app(PlaceSuggestionService::class)->submit($place, $owner, [
+            'opening_hours_json' => ['monday' => '9-5', 'tuesday' => 'Closed'],
+        ]);
+
+        // Applied on submit, not queued.
+        expect($suggestion->status)->toBe(SuggestionStatus::Approved);
+
+        $place->refresh();
+        expect($place->opening_hours_json)->toBe(['monday: 9-5', 'tuesday: Closed']);
+        expect(DB::selectOne(
+            'select jsonb_typeof(opening_hours_json) as t from places where id = ?',
+            [$place->id],
+        )->t)->toBe('array');
+
+        // The AUDIT agrees with the column. `diff()` normalizes its input too,
+        // so the recorded `to` cannot say `{"monday":"9-5"}` while the place
+        // holds `["monday: 9-5"]`.
+        expect($suggestion->changes['opening_hours_json']['to'])->toBe(['monday: 9-5', 'tuesday: Closed']);
+        expect($suggestion->placeEdit?->changes['opening_hours_json']['to'])->toBe(['monday: 9-5', 'tuesday: Closed']);
+    });
+
+    it('applies an unusable opening_hours suggestion as null rather than garbage', function () {
+        $place = Place::factory()->create(['opening_hours_json' => ['Mo-Fr 09:00–17:00']]);
+        $suggestion = PlaceEditSuggestion::factory()->create([
+            'place_id' => $place->id,
+            'changes' => ['opening_hours_json' => ['from' => null, 'to' => [['open' => '09:00']]]],
+        ]);
+
+        app(PlaceSuggestionService::class)->approve($suggestion, User::factory()->create(['is_admin' => true]));
+
+        expect($place->refresh()->opening_hours_json)->toBeNull();
+    });
+
+    it('leaves a well-formed opening_hours suggestion exactly as proposed', function () {
+        // The normalizer narrows a bad shape; it must not touch a good one.
+        $place = Place::factory()->create(['opening_hours_json' => null]);
+        $suggestion = PlaceEditSuggestion::factory()->create([
+            'place_id' => $place->id,
+            'changes' => ['opening_hours_json' => [
+                'from' => null,
+                'to' => ['Lu-Vi 12:00–15:00', 'Sa 20:00–23:30'],
+            ]],
+        ]);
+
+        app(PlaceSuggestionService::class)->approve($suggestion, User::factory()->create(['is_admin' => true]));
+
+        expect($place->refresh()->opening_hours_json)->toBe(['Lu-Vi 12:00–15:00', 'Sa 20:00–23:30']);
+    });
+
     it('applies an approved suggestion, locks the fields and links the audit row', function () {
         $place = Place::factory()->create(['phone' => '+598 2 111 1111']);
         $moderator = User::factory()->create(['is_admin' => true]);

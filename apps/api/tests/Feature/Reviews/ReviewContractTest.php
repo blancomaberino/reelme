@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Place;
 use App\Models\Review;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,13 +25,8 @@ uses(RefreshDatabase::class);
  * reason these live in their own file rather than as an extra assertion in
  * ReviewApiTest.
  */
-function contractReviewPlace(): Place
-{
-    return Place::factory()->active()->atPoint(51.5, -0.13)->create();
-}
-
 it('validates the POST response against review.json', function () {
-    $place = contractReviewPlace();
+    $place = reviewPlace();
     Sanctum::actingAs(User::factory()->create(['is_public' => true]));
 
     $row = $this->postJson("/api/v1/places/{$place->id}/reviews", [
@@ -49,7 +43,7 @@ it('validates the POST response against review.json', function () {
 });
 
 it('validates the PUT response against review.json, for a public and a private author', function () {
-    $place = contractReviewPlace();
+    $place = reviewPlace();
 
     Sanctum::actingAs(User::factory()->create(['is_public' => true]));
     $public = $this->putJson("/api/v1/places/{$place->id}/reviews", [
@@ -75,7 +69,7 @@ it('validates the PUT response against review.json, for a public and a private a
 });
 
 it('validates every row of the reviews list against review.json', function () {
-    $place = contractReviewPlace();
+    $place = reviewPlace();
     Review::factory()->create([
         'place_id' => $place->id,
         'user_id' => User::factory()->create(['is_public' => true])->id,
@@ -99,7 +93,7 @@ it('validates every row of the reviews list against review.json', function () {
 });
 
 it('serves is_own as a boolean for a guest reading the list', function () {
-    $place = contractReviewPlace();
+    $place = reviewPlace();
     Review::factory()->create([
         'place_id' => $place->id,
         'user_id' => User::factory()->create(['is_public' => true])->id,

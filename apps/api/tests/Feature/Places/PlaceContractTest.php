@@ -88,25 +88,6 @@ function contractPlace(): Place
 }
 
 /**
- * The include-set the place-detail contract is exercised with — DERIVED from
- * the endpoint's own allow-list, never a literal typed into this file.
- *
- * A contract test pinned to a hand-written `?include=sources,offers` is the
- * T-114/T-116 failure shape: a gate that cannot fail, because it validates a
- * combination no client sends and no fixture populates. Reading the allow-list
- * instead makes the tested set (a) always a superset of what any client can
- * successfully request — an unknown member is a 422 in PlaceShowRequest, never
- * a silent drop — and (b) self-extending: add an embed to the endpoint and this
- * test starts demanding a schema and a fixture for it on the next run.
- *
- * @return list<string>
- */
-function contractDetailIncludes(): array
-{
-    return PlaceShowRequest::allowedIncludes();
-}
-
-/**
  * The include-set the mobile place screen sends, parsed out of the hook that
  * sends it (apps/mobile/src/api/hooks/usePlace.ts).
  *
@@ -118,7 +99,12 @@ function contractDetailIncludes(): array
  */
 function mobilePlaceIncludes(string $source): array
 {
-    if (preg_match('/include:\s*[\'"]([^\'"]*)[\'"]/', $source, $m) !== 1) {
+    // Anchored on the `params: { … }` object, not on a bare `include:`. The
+    // unanchored form took the FIRST match anywhere in the file, so a comment or
+    // a docblock that happened to mention `include: 'x'` above the real call
+    // would win it — and this guard would go on cheerfully checking a string the
+    // hook never sends, which is precisely the silent-pass it exists to prevent.
+    if (preg_match('/params:\s*\{[^}]*include:\s*[\'"]([^\'"]*)[\'"]/', $source, $m) !== 1) {
         throw new RuntimeException(
             'Could not find the `include:` literal in usePlace.ts. If the hook now builds its '
             .'include-set another way, update mobilePlaceIncludes() to read it from there — do '
@@ -143,7 +129,13 @@ it('index rows validate against place-summary.json', function () {
 
 it('place detail validates against place.json with every supported include', function () {
     $place = contractPlace();
-    $includes = contractDetailIncludes();
+    // DERIVED from the endpoint's own allow-list, never a literal typed here: a
+    // contract test pinned to a hand-written `?include=sources,offers` is the
+    // T-114/T-116 shape — a gate that cannot fail, because it validates a
+    // combination no client sends and no fixture populates. Reading the
+    // allow-list makes this self-extending instead: add an embed and this test
+    // starts demanding a schema and a fixture for it on the next run.
+    $includes = PlaceShowRequest::allowedIncludes();
     expect($includes)->not->toBeEmpty();
 
     $data = $this->getJson("/api/v1/places/{$place->slug}?include=".implode(',', $includes))
@@ -172,7 +164,7 @@ it('exercises both author branches of review.json in the reviews embed', functio
 
     // Each row on its own, so a failure names the review rather than the place.
     foreach ($reviews as $review) {
-        expect(ApiSchema::errors(ApiSchema::validate($review, 'review')))->toBe([]);
+        assertMatchesContract($review, 'review');
     }
 });
 
@@ -183,14 +175,15 @@ it('serves opening_hours as a flat list of strings when the place has hours', fu
         'Tuesday: Closed',
     ]]);
 
-    $data = $this->getJson("/api/v1/places/{$place->slug}")->assertOk()->json('data');
+    $response = $this->getJson("/api/v1/places/{$place->slug}")->assertOk();
+    $data = $response->json('data');
 
-    // The JSON must be an ARRAY, not an object: a place whose hours were stored
-    // associatively round-trips through jsonb as `{"monday": …}`, which still
-    // decodes to a PHP array here — so assert on the encoded payload, which is
-    // what the client actually parses.
-    $encoded = json_encode($data['opening_hours']);
-    expect($encoded)->toStartWith('[');
+    // Asserted on the RAW RESPONSE BODY — the bytes the client parses. Neither
+    // `toBe([...])` nor a re-encode of the decoded value can catch an object
+    // here: PHP decodes BOTH `["a","b"]` and `{"0":"a","1":"b"}` to the same
+    // list, so re-encoding either one starts with '['. Only the wire format
+    // distinguishes them.
+    expect($response->getContent())->toContain('"opening_hours":[');
     expect($data['opening_hours'])->toBe([
         'Monday: 9:00 AM – 11:00 PM',
         'Tuesday: Closed',
@@ -199,7 +192,7 @@ it('serves opening_hours as a flat list of strings when the place has hours', fu
         expect($line)->toBeString();
     }
 
-    expect(ApiSchema::errors(ApiSchema::validate($data, 'place')))->toBe([]);
+    assertMatchesContract($data, 'place');
 });
 
 it('serves a legacy object-shaped opening_hours as a list, not an object', function () {
@@ -216,25 +209,65 @@ it('serves a legacy object-shaped opening_hours as a list, not an object', funct
     expect(json_decode(DB::table('places')->where('id', $place->id)->value('opening_hours_json'), true))
         ->toBe(['monday' => '9-5', 'tuesday' => 'Closed']);
 
-    $data = $this->getJson("/api/v1/places/{$place->slug}")->assertOk()->json('data');
+    $response = $this->getJson("/api/v1/places/{$place->slug}")->assertOk();
+    $data = $response->json('data');
 
     // Served as a LIST, so the client's `string[]` is not a lie. Asserted on the
-    // encoded payload because an associative array still decodes to a PHP array
-    // here — `toBe([...])` alone would pass on the object shape.
-    expect(json_encode($data['opening_hours']))->toStartWith('[');
-    // Salvaged rather than discarded: the VALUES are the lines a curator meant.
-    expect($data['opening_hours'])->toBe(['9-5', 'Closed']);
-    expect(ApiSchema::errors(ApiSchema::validate($data, 'place')))->toBe([]);
+    // RAW BODY: an associative array decodes to a PHP array here, so any
+    // assertion made after `json()` has already lost the distinction.
+    expect($response->getContent())->toContain('"opening_hours":[');
+    // Salvaged rather than discarded — and the KEY rides along. A bare "9-5" on a
+    // place detail reads as "open 9-5 every day", so dropping the day is worse
+    // than useless; `OpeningHours::salvage()` renders it as "monday: 9-5".
+    expect($data['opening_hours'])->toBe(['monday: 9-5', 'tuesday: Closed']);
+    assertMatchesContract($data, 'place');
 });
 
 it('serves opening_hours as null when the place has none', function () {
     $place = contractPlace();
     expect($place->opening_hours_json)->toBeNull();
 
+    $response = $this->getJson("/api/v1/places/{$place->slug}")->assertOk();
+    $data = $response->json('data');
+
+    // null, never `[]`: the client omits the row on null, but renders an empty
+    // hours block — a heading with nothing under it — on an empty list.
+    expect($response->getContent())->toContain('"opening_hours":null');
+    expect($data['opening_hours'])->toBeNull();
+    assertMatchesContract($data, 'place');
+});
+
+it('serves a legacy google_reviews row as the six keys place.json pins', function () {
+    $place = contractPlace();
+
+    // Written PAST THE MODEL CAST, the way a row from an earlier version of
+    // `GooglePlacesGeocoder::reviews()` — or a hand edit in Filament/tinker —
+    // got there. The contract test only ever sees rows the CURRENT writer
+    // produces, so without this the schema's `additionalProperties: false` and
+    // its six `required` keys are pinned against a payload nothing can violate.
+    DB::table('places')->where('id', $place->id)->update([
+        'google_reviews_json' => json_encode([
+            // Missing `relative_time`, `time` and `profile_photo_url`; carries a
+            // `language` key the schema forbids; `rating` arrived as a string.
+            ['author' => 'Jane D.', 'text' => 'Incredible.', 'rating' => '5', 'language' => 'en'],
+            'not even an object',
+        ]),
+        'google_reviews_synced_at' => now(),
+    ]);
+
     $data = $this->getJson("/api/v1/places/{$place->slug}")->assertOk()->json('data');
 
-    expect($data['opening_hours'])->toBeNull();
-    expect(ApiSchema::errors(ApiSchema::validate($data, 'place')))->toBe([]);
+    // The contract first: that is the thing the read boundary defends, and it is
+    // what goes red the moment the column is served raw again.
+    assertMatchesContract($data, 'place');
+    expect($data['google_reviews'])->toBe([[
+        'author' => 'Jane D.',
+        'rating' => null, // '5' is a string, and the schema says number|null
+        'text' => 'Incredible.',
+        'relative_time' => null,
+        'time' => null,
+        'profile_photo_url' => null,
+    ]]);
 });
 
 it('sources rows validate against place-source.json', function () {
@@ -254,6 +287,15 @@ it('reads the mobile include-set out of the hook, and refuses a hook it cannot r
         ->toBe(['sources', 'reviews', 'offers']);
     expect(mobilePlaceIncludes('params: { include: "sources" },'))->toBe(['sources']);
 
+    // A DECOY must not win. Prose above the real call that spells `include: '…'`
+    // is the cheapest way for this guard to start checking the wrong string, and
+    // nothing downstream would notice: the assertions below would simply pass
+    // against a set the app does not send.
+    expect(mobilePlaceIncludes(
+        "// historical note: this used to send include: 'everything,and,more'\n"
+        ."  params: { include: 'sources' },"
+    ))->toBe(['sources']);
+
     // The failure mode that matters: the literal moved, and the guard below must
     // shout instead of silently passing on an include-set it never found.
     expect(fn () => mobilePlaceIncludes('params: { include: buildIncludes() },'))
@@ -267,10 +309,23 @@ it('accepts every include the mobile place screen sends', function () {
     // decides a merge (.github/workflows/ci.yml checks out the repo and runs the
     // API job straight on the runner). Locally it skips, loudly, rather than
     // pretending to have checked.
+    // The skip is gated on the mobile TREE, not on the hook file. `is_file($hook)`
+    // is false in exactly two situations — the Sail container, and the hook having
+    // been RENAMED — and the second is the one change this guard exists to catch.
+    // Skipping on it retired the guard in CI on the very PR that moved its target,
+    // and `composer test` is bare `pest` with no `--fail-on-skipped`, so a skip is
+    // indistinguishable from a pass in the log that decides the merge.
+    $tree = base_path('../mobile/src');
     $hook = base_path('../mobile/src/api/hooks/usePlace.ts');
-    if (! is_file($hook)) {
-        $this->markTestSkipped("apps/mobile is not reachable from here ({$hook}); this guard runs in CI.");
+    if (! is_dir($tree)) {
+        $this->markTestSkipped("apps/mobile is not reachable from here ({$tree}); this guard runs in CI.");
     }
+
+    expect(is_file($hook))->toBeTrue(
+        "apps/mobile is on disk but {$hook} is not — the place hook moved. Update BOTH the "
+        .'path in tests/Feature/Places/PlaceContractTest.php and the hardcoded literal in '
+        .'.github/workflows/ci.yml, which reads the same path and degrades the same way.'
+    );
 
     $sent = mobilePlaceIncludes((string) file_get_contents($hook));
     expect($sent)->not->toBeEmpty();
@@ -281,6 +336,7 @@ it('accepts every include the mobile place screen sends', function () {
     $unknown = array_diff($sent, PlaceShowRequest::allowedIncludes());
     expect($unknown)->toBe([], 'usePlace.ts sends include(s) the API rejects: '.implode(', ', $unknown));
 
-    // …and the payload the contract test above validates must cover them.
-    expect(array_diff($sent, contractDetailIncludes()))->toBe([]);
+    // The other direction — every allowed include is EXERCISED by a populated
+    // fixture — is asserted where the payload exists, in the
+    // `place detail validates against place.json with every supported include` test.
 });

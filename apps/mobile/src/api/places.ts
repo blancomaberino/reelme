@@ -97,7 +97,7 @@ export type ReviewSourceSummary = {
 
 /**
  * A native (in-app) review — place detail `reviews` (?include=reviews) and the
- * body of PUT /places/{id}/review. Derived from review.json (T-128): the
+ * body of PUT /places/{place}/reviews. Derived from review.json (T-128): the
  * hand-written version had already lost `updated_at` and the author's `name`,
  * both of which ReviewResource sends.
  */
@@ -155,7 +155,7 @@ export type PlaceDetail = {
   /**
    * Human-readable opening-hour lines, one rule per entry, rendered verbatim —
    * the wording and language are the source's. A flat list of strings, which is
-   * what every API writer stores; see {@link summarizeHours}.
+   * what every API writer stores; see {@link hourLines}.
    */
   opening_hours: ContractPlaceDetail['opening_hours'];
   phone: string | null;

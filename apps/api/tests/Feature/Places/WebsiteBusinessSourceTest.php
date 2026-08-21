@@ -124,3 +124,49 @@ it('emits a single-entry gallery for a lone schema.org image', function () {
             ['url' => 'https://cdn.example/only.jpg', 'source' => 'website', 'attribution' => null],
         ]);
 });
+
+/**
+ * Scraped hours are a WRITE, so they go through the strict normalizer (T-128
+ * review). The flat-`openingHours` branch used to filter out non-string members
+ * and keep the rest — which is the dangerous kind of tolerance here: a shorter
+ * list is still NON-EMPTY, so it wins BusinessEnricher's first-non-empty merge
+ * and replaces a venue's good hours with half a week.
+ */
+it('reads a flat openingHours list of strings verbatim', function () {
+    $html = '<script type="application/ld+json">'.json_encode([
+        '@type' => 'Restaurant',
+        'openingHours' => ['Mo-Fr 09:00-17:00', 'Sa 10:00-14:00'],
+    ], JSON_THROW_ON_ERROR).'</script>';
+
+    expect(scrapeSite($html)['opening_hours_json'])->toBe(['Mo-Fr 09:00-17:00', 'Sa 10:00-14:00']);
+});
+
+it('does NOT truncate a flat openingHours list that holds a non-string — it falls through', function () {
+    $html = '<script type="application/ld+json">'.json_encode([
+        '@type' => 'Restaurant',
+        // One malformed member among good ones. The old filter yielded
+        // ['Mo-Fr 09:00-17:00', 'Su Closed'] — a plausible-looking, WRONG week.
+        'openingHours' => ['Mo-Fr 09:00-17:00', ['opens' => '10:00'], 'Su Closed'],
+        'openingHoursSpecification' => [
+            ['dayOfWeek' => ['https://schema.org/Sunday'], 'opens' => '11:00', 'closes' => '15:00'],
+        ],
+    ], JSON_THROW_ON_ERROR).'</script>';
+
+    $patch = scrapeSite($html);
+
+    expect($patch['opening_hours_json'])->not->toBe(['Mo-Fr 09:00-17:00', 'Su Closed']);
+    // Falls through to the structured source rather than persisting a partial one.
+    expect($patch['opening_hours_json'])->toBe(['Sunday 11:00–15:00']);
+});
+
+it('omits opening_hours_json entirely when nothing usable is found, leaving existing hours alone', function () {
+    $html = '<script type="application/ld+json">'.json_encode([
+        '@type' => 'Restaurant',
+        'telephone' => '+351 12 345',
+        'openingHours' => ['', ['opens' => '10:00']],
+    ], JSON_THROW_ON_ERROR).'</script>';
+
+    // Absent, not `[]` and not a truncated list: the enricher only merges fields
+    // the patch actually carries, so the place keeps whatever hours it had.
+    expect(scrapeSite($html))->not->toHaveKey('opening_hours_json');
+});
