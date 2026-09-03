@@ -270,6 +270,34 @@ it('serves a legacy google_reviews row as the six keys place.json pins', functio
     ]]);
 });
 
+/**
+ * `$count` cached Google review rows written PAST the model cast, the way a row
+ * from an earlier version of `GooglePlacesGeocoder::reviews()` — or a hand edit
+ * in Filament/tinker — got there. Shared by the two cap tests below, because
+ * `google_reviews` and `review_sources[].snippets` read THE SAME column, and a
+ * fixture that drifts between them is how the second one went uncapped.
+ *
+ * `google_place_id` and `google_rating` are set so the Google review SOURCE
+ * resolves too — `GoogleReviewSource::summary()` returns null without them, and
+ * the snippets assertion would then pass against an absent row.
+ */
+function seedLegacyGoogleReviews(Place $place, int $count): void
+{
+    DB::table('places')->where('id', $place->id)->update([
+        'google_place_id' => 'ChIJcap0000000000000000000',
+        'google_rating' => 4.5,
+        'google_reviews_json' => json_encode(array_map(fn (int $i): array => [
+            'author' => "Reviewer {$i}",
+            'rating' => 5,
+            'text' => "Review number {$i}.",
+            'relative_time' => 'a week ago',
+            'time' => 1700000000 + $i,
+            'profile_photo_url' => null,
+        ], range(1, $count))),
+        'google_reviews_synced_at' => now(),
+    ]);
+}
+
 it('caps google_reviews at the 5 place.json allows, however many the column holds', function () {
     $place = contractPlace();
 
@@ -279,17 +307,7 @@ it('caps google_reviews at the 5 place.json allows, however many the column hold
     // distrust what is already in the column. Without a cap here the schema's
     // `maxItems: 5` (added reviewing T-128) would be violated by a LIVE
     // response — the tightening would have moved the bug rather than fixed it.
-    DB::table('places')->where('id', $place->id)->update([
-        'google_reviews_json' => json_encode(array_map(fn (int $i): array => [
-            'author' => "Reviewer {$i}",
-            'rating' => 5,
-            'text' => "Review number {$i}.",
-            'relative_time' => 'a week ago',
-            'time' => 1700000000 + $i,
-            'profile_photo_url' => null,
-        ], range(1, 6))),
-        'google_reviews_synced_at' => now(),
-    ]);
+    seedLegacyGoogleReviews($place, 6);
 
     $data = $this->getJson("/api/v1/places/{$place->slug}")->assertOk()->json('data');
 
@@ -298,6 +316,29 @@ it('caps google_reviews at the 5 place.json allows, however many the column hold
     // The FIRST five, not an arbitrary five — Google orders them by relevance.
     expect(array_column($data['google_reviews'], 'author'))
         ->toBe(['Reviewer 1', 'Reviewer 2', 'Reviewer 3', 'Reviewer 4', 'Reviewer 5']);
+});
+
+it('caps review_sources snippets too — the same column served through a second door', function () {
+    $place = contractPlace();
+
+    // `google_reviews` and `review_sources[].snippets` both read
+    // `google_reviews_json`. Reviewing T-128 capped the first and left the
+    // second serving every row, so a six-row legacy column stayed fully exposed
+    // through a door nobody had shut. Six rows, both doors, one assertion each.
+    seedLegacyGoogleReviews($place, 6);
+
+    $data = $this->getJson("/api/v1/places/{$place->slug}")->assertOk()->json('data');
+
+    assertMatchesContract($data, 'place');
+
+    $google = collect($data['review_sources'])->firstWhere('source', 'google');
+    expect($google)->not->toBeNull('the google review source did not resolve — the fixture no longer exercises this path')
+        ->and($google['snippets'])->toHaveCount(5)
+        ->and(array_column($google['snippets'], 'author'))
+        ->toBe(['Reviewer 1', 'Reviewer 2', 'Reviewer 3', 'Reviewer 4', 'Reviewer 5']);
+
+    // And the sibling door stays shut.
+    expect($data['google_reviews'])->toHaveCount(5);
 });
 
 it('sources rows validate against place-source.json', function () {

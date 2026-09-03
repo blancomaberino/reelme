@@ -90,3 +90,23 @@ it('answers 422 for an include of "0", which a falsey filter used to swallow', f
     // is the new member and not the shape of the URL.
     $this->getJson("/api/v1/places/{$place->slug}?include=sources")->assertOk();
 });
+
+/**
+ * The other `CsvList::parse()` caller. `CsvList.php`'s own comment names
+ * `?types=0` as a scenario the falsey filter broke — "would have meant 'every
+ * type' instead of 'the type 0'" — but the unit test proves only the leaf, and
+ * a future change that re-inlines a callback-less filter in `SearchRequest`
+ * would ship green. This walks the wiring.
+ */
+it('answers 422 for a types of "0", which a falsey filter used to swallow', function () {
+    // Under the bare `array_filter`, "0" was dropped, `types()` returned `[]`,
+    // `array_diff([], ALLOWED)` was empty, and the request was answered 200 —
+    // the unknown type silently gone instead of refused.
+    $this->getJson('/api/v1/search?q=ramen&types=0')
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.types.0', 'Unknown type: 0.');
+
+    // Control: a real type on the same query is accepted, so the 422 above is
+    // about the "0" and not about the shape of the request.
+    $this->getJson('/api/v1/search?q=ramen&types=places')->assertOk();
+});

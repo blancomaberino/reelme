@@ -121,6 +121,7 @@
           "synced_at": { "type": ["string", "null"], "description": "ISO 8601 time the external summary was last fetched; null for computed sources." },
           "snippets": {
             "type": "array",
+            "maxItems": 5,
             "items": {
               "type": "object",
               "additionalProperties": false,

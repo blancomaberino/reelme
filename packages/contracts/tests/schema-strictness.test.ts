@@ -91,16 +91,26 @@ function typesOf(node: Node): string[] {
  * fired at a synthetic offender — a structural guard nobody has watched fail
  * is worth as little as the union it was written to catch.
  */
+/**
+ * A node that describes an object, whether or not it says so.
+ *
+ * `type` is OPTIONAL in JSON Schema: `{ "properties": { … } }` with no `type`
+ * validates any object AND admits every unlisted field, which is precisely the
+ * shape rules 2 and 3 forbid — yet both used to require `type: "object"` to be
+ * present, so dropping that one line made a schema invisible to the checks
+ * instead of failing them. The corpus happens not to contain one today; "the
+ * corpus happens to be clean" is the reasoning this file exists to distrust.
+ */
+const describesObject = (n: Node): boolean =>
+  'properties' in n && (typesOf(n).length === 0 || typesOf(n).includes('object'));
+
 export const violates = {
   openArray: (n: Node): boolean => typesOf(n).includes('array') && !('items' in n),
 
-  openObject: (n: Node): boolean =>
-    typesOf(n).includes('object') && 'properties' in n && n.additionalProperties !== false,
+  openObject: (n: Node): boolean => describesObject(n) && n.additionalProperties !== false,
 
   allOptional: (n: Node): boolean =>
-    typesOf(n).includes('object') &&
-    'properties' in n &&
-    !(Array.isArray(n.required) && n.required.length > 0),
+    describesObject(n) && !(Array.isArray(n.required) && n.required.length > 0),
 
   objectArrayUnion: (n: Node): boolean =>
     typesOf(n).includes('object') && typesOf(n).includes('array'),
@@ -116,7 +126,14 @@ describe.each(files)('%s', (file) => {
 
   // A `$ref` node carries no `type` of its own, so it is not a subject here —
   // the target it points at is checked when that target is walked.
-  const typed = nodes.filter(([, n]) => typesOf(n).length > 0 && !('$ref' in n));
+  //
+  // That exclusion is ALL this filter does. Each `violates.*` predicate already
+  // decides for itself what it is a rule about, and re-deriving "is this a
+  // subject" here as the union of what the four rules happen to need meant two
+  // places encoded it and could drift — adding `describesObject` to the
+  // predicates had already required hand-updating this line to match, which is
+  // the drift, caught in the act.
+  const typed = nodes.filter(([, n]) => !('$ref' in n));
 
   it('declares `items` for every array — an open array generates unknown[]', () => {
     const open = typed
@@ -197,6 +214,26 @@ describe('the rules themselves', () => {
     expect(violates.openObject(map)).toBe(false);
   });
 
+  it('sees an object that never says it is one — `type` is optional in JSON Schema', () => {
+    // `{ properties: {...} }` with no `type` validates any object AND admits
+    // every unlisted field. Both rules used to require `type: "object"` to be
+    // present, so omitting that single line made a schema invisible to the
+    // checks rather than failing them — a subtler version of the union that
+    // started all this.
+    const typeless = { properties: { name: { type: 'string' } } };
+    expect(violates.openObject(typeless)).toBe(true);
+    expect(violates.allOptional(typeless)).toBe(true);
+
+    // Closed and required, still with no `type`: nothing to complain about.
+    const closed = { properties: { name: { type: 'string' } }, additionalProperties: false, required: ['name'] };
+    expect(violates.openObject(closed)).toBe(false);
+    expect(violates.allOptional(closed)).toBe(false);
+
+    // A node with neither `type` nor `properties` is not an object subject.
+    expect(violates.openObject({ description: 'just prose' })).toBe(false);
+    expect(violates.allOptional({ description: 'just prose' })).toBe(false);
+  });
+
   it('allOptional flags `required: []` — an empty list makes every field optional', () => {
     const properties = { name: { type: 'string' } };
     expect(violates.allOptional({ type: 'object', properties })).toBe(true);
@@ -238,7 +275,14 @@ describe('the traversal', () => {
     type: 'object',
     additionalProperties: false,
     required: ['a'],
-    properties: { a: openArray },
+    // `map` is a dictionary node — no `properties`, a SCHEMA-valued
+    // `additionalProperties` — which is the only shape the walker recurses that
+    // key for. The root's own `additionalProperties: false` is a boolean, so
+    // with only that in the fixture nothing was ever recursed through it, and
+    // deleting `additionalProperties` from the walker's key list left all 102
+    // tests green. That is this suite's own blind spot, in the suite added to
+    // close exactly that class.
+    properties: { a: openArray, map: { type: 'object', additionalProperties: openArray } },
     definitions: { d: openArray },
     patternProperties: { '^x-': openArray },
     items: openArray,
@@ -256,6 +300,7 @@ describe('the traversal', () => {
     ['patternProperties', '/patternProperties/^x-'],
     ['items', '/items'],
     ['not', '/not'],
+    ['additionalProperties (map value)', '/properties/map/additionalProperties'],
     ['anyOf', '/anyOf[0]'],
     ['oneOf', '/oneOf[0]'],
     ['allOf', '/allOf[0]'],
@@ -270,9 +315,9 @@ describe('the traversal', () => {
 
   it('hands every offender it finds to the rules — walker and rules, connected', () => {
     // The two halves joined: if the walker misses a container, this count drops
-    // and the corpus suite silently narrows. 8 containers + the root.
+    // and the corpus suite silently narrows. One open array per container key.
     const open = subschemas(doc, '').filter(([, n]) => violates.openArray(n));
-    expect(open).toHaveLength(8);
+    expect(open).toHaveLength(9);
   });
 
   it('finds a non-trivial number of nodes in the real corpus', () => {

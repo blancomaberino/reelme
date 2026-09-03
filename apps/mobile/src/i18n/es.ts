@@ -130,7 +130,7 @@ export const es: Record<MessageKey, string> = {
   'suggest.field.hours': 'Horarios',
   'suggest.field.note': '¿Otra cosa? Contanos',
   'suggest.field.notePlaceholder':
-    'Por ejemplo: los horarios están mal, cerró, o el pin está en la vereda de enfrente',
+    'Por ejemplo: los horarios están mal, cerró o el pin está en la vereda de enfrente',
   'suggest.field.noteHint': 'Contanos con tus palabras. Un moderador lo lee.',
   'suggest.venue.note': 'Nos escribieron',
   'suggest.venue.title': 'Cambios sugeridos',

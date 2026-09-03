@@ -3,6 +3,7 @@
 namespace App\Services\Reviews\Trustpilot;
 
 use App\Services\Reviews\ReviewSnippet;
+use App\Support\CachedReviews;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -96,7 +97,7 @@ class TrustpilotClient
         }
 
         $snippets = [];
-        foreach (array_slice($reviews, 0, 5) as $review) {
+        foreach (array_slice($reviews, 0, CachedReviews::MAX) as $review) {
             if (! is_array($review)) {
                 continue;
             }

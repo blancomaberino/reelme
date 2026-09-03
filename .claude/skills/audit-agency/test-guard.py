@@ -14,8 +14,10 @@ The command strings are ASSEMBLED from fragments so that this file does not
 itself trip the user-level gate that scans raw command text.
 """
 
+import importlib.util
 import json
 import os
+import pathlib
 import subprocess
 import sys
 import tempfile
@@ -58,6 +60,11 @@ CASES = [
     ("[audit] quote splicing", "git pu''sh origin main", "DENY"),
     ("quote splicing, double", 'git pu""sh origin main', "DENY"),
     ("push in a later segment", "cd /tmp ; echo hi ; " + PUSH, "DENY"),
+    # [audit2] found by the second review round, all reproduced before fixing.
+    ("[audit2] newline-joined after cd", "cd /tmp\n" + PUSH + " origin main", "DENY"),
+    ("[audit2] newline-joined after any cmd", "make build\n" + PUSH, "DENY"),
+    ("[audit2] multi-line with blank lines", "echo one\n\n" + PUSH + "\n", "DENY"),
+    ("[audit2] trailing cd must not redirect", PUSH + " origin main ; cd /tmp", "DENY"),
     # --- must be allowed -------------------------------------------------
     ("unrelated command", "ls -la", "ALLOW"),
     ("pushd is not push", "pushd /tmp", "ALLOW"),
@@ -94,6 +101,60 @@ def main():
     print(f"{'PASS' if ok else 'FAIL'}  {'bad project dir fails closed':38s} want=DENY  got={got}")
     if not ok:
         failures.append("bad project dir")
+
+    # [audit2] A trailing `cd` into a repo that DOES hold a valid receipt must
+    # not launder a push in a repo that does not. target_dir() used to scan every
+    # segment, so a follow-up `cd` decided where the receipt was looked for.
+    #
+    # Built hermetically — a real temp repo carrying a REAL matching receipt —
+    # because the first version of this case pointed at this repo and passed
+    # either way: during development this tree is dirty, so its receipt is stale
+    # and the answer is DENY with or without the bug. A test that cannot fail is
+    # the thing this suite exists to catch, and it caught itself.
+    with tempfile.TemporaryDirectory() as clean, tempfile.TemporaryDirectory() as bare:
+        subprocess.run(["git", "init", "-q", clean], check=True)
+        subprocess.run(["git", "-C", clean, "config", "user.email", "t@t"], check=True)
+        subprocess.run(["git", "-C", clean, "config", "user.name", "t"], check=True)
+        (pathlib.Path(clean) / "f.txt").write_text("hello\n")
+        subprocess.run(["git", "-C", clean, "add", "-A"], check=True)
+        subprocess.run(["git", "-C", clean, "commit", "-qm", "init"], check=True)
+
+        spec = importlib.util.spec_from_file_location("guard", HOOK)
+        guard = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(guard)
+        head, tree = guard.state(clean)
+        rec = pathlib.Path(clean) / ".claude" / "state"
+        rec.mkdir(parents=True)
+        (rec / "audit-receipt.json").write_text(
+            json.dumps({"head": head, "tree": tree, "verdict": "clean"})
+        )
+
+        # Sanity: the receipt IS valid there, so a push judged against `clean`
+        # would be allowed. Without this the next assertion proves nothing.
+        got = decision(PUSH, project_dir=clean)
+        ok = got == "ALLOW"
+        print(f"{'PASS' if ok else 'FAIL'}  {'[audit2] control: valid receipt allows':38s} want=ALLOW got={got}")
+        if not ok:
+            failures.append("laundering control")
+
+        # The real case: pushing from a receipt-less repo, with a trailing cd
+        # into the one that has a receipt, must still be denied.
+        got = decision(PUSH + " origin main ; cd " + clean, project_dir=bare)
+        ok = got == "DENY"
+        print(f"{'PASS' if ok else 'FAIL'}  {'[audit2] trailing cd cannot launder':38s} want=DENY  got={got}")
+        if not ok:
+            failures.append("trailing cd launder")
+
+    # [audit2] A non-dict payload must not crash the hook into silence (which the
+    # harness reads as allow).
+    p = subprocess.run(
+        [sys.executable, HOOK], input=json.dumps(["not", "a", "dict"]),
+        capture_output=True, text=True, env=dict(os.environ, CLAUDE_PROJECT_DIR=ROOT),
+    )
+    ok = p.returncode == 0
+    print(f"{'PASS' if ok else 'FAIL'}  {'[audit2] non-dict payload no crash':38s} want=exit0 got={p.returncode}")
+    if not ok:
+        failures.append("non-dict payload")
 
     # A directory that is not a git repo must also fail closed.
     with tempfile.TemporaryDirectory() as tmp:

@@ -37,6 +37,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 
@@ -53,9 +54,16 @@ GH_PR_ACTIONS = {"create", "edit", "ready", "merge"}
 def run(args: list[str], cwd: str) -> str:
     """A git command's stdout, or "" if it fails for any reason."""
     try:
-        p = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=10)
+        # errors="replace": a tracked file holding invalid UTF-8 (a binary blob,
+        # a latin-1 fixture) made `git diff` undecodable, and the resulting
+        # UnicodeDecodeError escaped this function, killed the hook, and printed
+        # NOTHING — which the harness reads as allow. A gate that fails open on
+        # a byte is not a gate.
+        p = subprocess.run(
+            args, cwd=cwd, capture_output=True, text=True, errors="replace", timeout=10
+        )
         return p.stdout if p.returncode == 0 else ""
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError):
         return ""
 
 
@@ -90,21 +98,28 @@ def segments(cmd: str) -> list[list[str]]:
     `make && git push` must be caught, and `echo push` must not be — the word
     has to be the SUBCOMMAND of its own segment, not merely present somewhere.
     """
-    lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
-    lex.whitespace_split = True
-    try:
-        tokens = list(lex)
-    except ValueError:
-        # Unbalanced quotes: unparseable, so fall back to a crude substring test
-        # and let the caller fail CLOSED on a hit rather than guess.
-        raise
-
+    # Lines are split BEFORE tokenizing, not by shlex. A newline separates two
+    # commands exactly like `;`, but shlex's default whitespace set swallows it,
+    # so `cd /tmp\ngit push` tokenized to the single argv ['cd','/tmp','git',
+    # 'push'] — argv[0] is `cd`, the push was never classified, and the gate let
+    # it through. Multi-line commands are the normal way these get written, so
+    # that was not an edge case, it was most of them. Removing `\n` from
+    # lex.whitespace is NOT the fix: it makes the newline part of the adjacent
+    # token ('/tmp\ngit') instead of a separator.
     out: list[list[str]] = [[]]
-    for tok in tokens:
-        if tok in ("&&", "||", ";", "|", "&", "\n"):
-            out.append([])
-        else:
-            out[-1].append(tok)
+    for line in cmd.split("\n"):
+        if not line.strip():
+            continue
+        lex = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        # Unbalanced quotes raise ValueError; re-raised so the caller fails
+        # CLOSED on a hit rather than guessing.
+        for tok in lex:
+            if tok in ("&&", "||", ";", "|", "&"):
+                out.append([])
+            else:
+                out[-1].append(tok)
+        out.append([])  # end of line = end of command
     return [s for s in out if s]
 
 
@@ -128,16 +143,22 @@ def classify(argv: list[str]) -> str | None:
     return None
 
 
-def target_dir(cmd_segments: list[list[str]], default: str) -> str:
-    """Where the gated command actually operates.
+def target_dir(cmd_segments: list[list[str]], default: str, upto: int) -> str:
+    """Where the gated command at index `upto` actually operates.
 
-    Follows a leading `cd`, and `git -C <dir>`, so a push in another checkout is
-    judged against THAT repo's receipt rather than this one's — otherwise the
-    gate either denies an unrelated repo for no reason or, worse, waves it
-    through on a receipt that was never about it.
+    Follows a preceding `cd`, and that segment's own `git -C <dir>`, so a push in
+    another checkout is judged against THAT repo's receipt rather than this
+    one's — otherwise the gate either denies an unrelated repo for no reason or,
+    worse, waves it through on a receipt that was never about it.
+
+    `upto` is the point of the whole signature. Scanning EVERY segment meant a
+    trailing `cd` changed where the receipt was looked for: `git push origin main
+    ; cd ../other-repo` pushed here and was judged against ../other-repo. That is
+    an ordinary shape — a follow-up `cd` for the next command — not an attack.
+    A directory change after the push cannot affect the push.
     """
     cwd = default
-    for argv in cmd_segments:
+    for argv in cmd_segments[: upto + 1]:
         if argv and os.path.basename(argv[0]) == "cd" and len(argv) > 1:
             cwd = argv[1] if os.path.isabs(argv[1]) else os.path.join(cwd, argv[1])
         if argv and os.path.basename(argv[0]) == "git" and "-C" in argv:
@@ -161,8 +182,22 @@ def state(repo: str) -> tuple[str, str]:
     h.update(run(["git", "diff", "HEAD"], repo).encode())  # staged + unstaged content
     untracked = run(["git", "ls-files", "--others", "--exclude-standard"], repo).split("\n")
     for path in sorted(f for f in untracked if f):
+        # The receipt never describes itself. In this repo `.claude/state/` is
+        # gitignored so it never appeared here anyway, but in a checkout where it
+        # is not, writing the receipt changed the very hash it had just recorded
+        # and the receipt could never validate — found by the gate's own
+        # hermetic test, which built a scratch repo with no such ignore rule.
+        if path == RECEIPT:
+            continue
         h.update(path.encode())
         try:
+            # Regular files only. A FIFO left in the tree blocks open() forever
+            # waiting for a writer, and a symlink to /dev/zero reads forever —
+            # either one wedges EVERY push from then on, with no timeout to
+            # recover, because this loop has none of the git calls' protection.
+            if not stat.S_ISREG(os.lstat(os.path.join(repo, path)).st_mode):
+                h.update(b"<non-regular>")
+                continue
             with open(os.path.join(repo, path), "rb") as fh:
                 h.update(hashlib.sha256(fh.read()).hexdigest().encode())
         except OSError:
@@ -208,7 +243,12 @@ def main() -> None:
         payload = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):
         return
-    cmd = (payload.get("tool_input") or {}).get("command") or ""
+    # A non-dict top-level payload would AttributeError here and kill the hook
+    # with empty stdout, which the harness reads as allow.
+    if not isinstance(payload, dict):
+        return
+    tool_input = payload.get("tool_input")
+    cmd = (tool_input.get("command") if isinstance(tool_input, dict) else "") or ""
     if not cmd.strip():
         return
 
@@ -222,12 +262,16 @@ def main() -> None:
             deny("The command could not be parsed (unbalanced quotes), so the gate cannot tell what it does.", "run this")
         return
 
-    action = next((a for s in segs if (a := classify(s))), None)
+    action, gated_at = None, 0
+    for i, seg in enumerate(segs):
+        if (a := classify(seg)) is not None:
+            action, gated_at = a, i
+            break
     if action is None:
         return
 
     default_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-    repo = target_dir(segs, default_dir)
+    repo = target_dir(segs, default_dir, gated_at)
     if not os.path.isdir(repo):
         deny(f"The target directory ({repo}) does not exist, so no audit receipt could be checked.", action)
 
@@ -259,4 +303,19 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # Fail CLOSED on anything unforeseen. Four separate point-fixes this session
+    # (newline splitting, the target_dir index, the receipt hashing itself, a
+    # non-regular untracked file) were all the SAME failure: an unhandled case
+    # produced empty stdout, and empty stdout means allow. Patching each one as
+    # it was found leaves the next unanticipated case silently open, so the
+    # default itself is inverted — an unexpected error is now a loud deny.
+    # SystemExit is how deny() and the allow paths return, so it must pass through.
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException as exc:  # noqa: BLE001 — deliberately total
+        deny(
+            f"The audit gate errored ({type(exc).__name__}: {exc}), so it cannot vouch for this commit.",
+            "run this",
+        )

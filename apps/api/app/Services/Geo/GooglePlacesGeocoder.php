@@ -3,6 +3,7 @@
 namespace App\Services\Geo;
 
 use App\Services\Geo\Exceptions\GeocodeFailed;
+use App\Support\CachedReviews;
 use App\Support\OpeningHours;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -250,7 +251,7 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
         }
 
         $normalized = [];
-        foreach (array_slice($reviews, 0, 5) as $review) {
+        foreach (array_slice($reviews, 0, CachedReviews::MAX) as $review) {
             if (! is_array($review)) {
                 continue;
             }

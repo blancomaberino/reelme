@@ -19,6 +19,12 @@ namespace App\Support;
  * column want opposite treatment. **This is the whole argument; every call site
  * points here rather than restating it.**
  *
+ * The axis is WRITE vs REAPPLY, not literally "a provider" vs "a column": the
+ * Filament textarea is a curator's write and takes the strict temper, while
+ * PlaceEditor reapplying a suggestion queued before the shape was validated
+ * takes the lenient one. Reviewing T-128 found the older wording could send a
+ * call site that is neither to the wrong half by pattern-matching the noun.
+ *
  * - {@see fromProvider()} is STRICT and all-or-nothing — for every path that
  *   takes a value from a PROVIDER (a Google fetch, a website scrape, a cache
  *   rehydrate). A lenient filter there is actively dangerous: a provider list

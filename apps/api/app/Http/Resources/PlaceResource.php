@@ -6,6 +6,7 @@ use App\Models\Place;
 use App\Models\User;
 use App\Models\UserPlaceTag;
 use App\Services\Places\PlaceAggregations;
+use App\Support\CachedReviews;
 use App\Support\OpeningHours;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -25,13 +26,6 @@ use Illuminate\Support\Collection;
  */
 class PlaceResource extends JsonResource
 {
-    /**
-     * How many cached Google review snippets a detail payload may carry —
-     * `place.json`'s `maxItems: 5` (02 §3.8), restated here because this is the
-     * boundary that has to honour it. {@see googleReviewsForResource()}.
-     */
-    private const GOOGLE_REVIEW_CAP = 5;
-
     /** @var list<string> */
     private array $includes = [];
 
@@ -241,12 +235,13 @@ class PlaceResource extends JsonResource
      * dropped; a non-array entry is skipped entirely.
      *
      * AND the count is capped here, not only in the writer. `place.json` says
-     * `maxItems: 5`; `GooglePlacesGeocoder::reviews()` slices to 5 on the write
-     * — but that is the CURRENT writer, which is precisely the assumption the
-     * paragraph above exists to distrust. A six-row legacy column would serve
-     * six and break the contract on a live response, so the cap belongs at the
-     * boundary that has to keep the promise. Extra rows are dropped, not
-     * refused: the row already exists, and five real reviews beat a 500.
+     * `maxItems: 5` ({@see CachedReviews}); `GooglePlacesGeocoder::reviews()`
+     * slices on the write — but that is the CURRENT writer, which is precisely
+     * the assumption the paragraph above exists to distrust. A six-row legacy
+     * column would serve six and break the contract on a live response, so the
+     * cap belongs at the boundary that has to keep the promise. Extra rows are
+     * dropped, not refused: the row already exists, and five real reviews beat
+     * a 500.
      *
      * @return list<array{author: ?string, rating: float|int|null, text: ?string, relative_time: ?string, time: ?int, profile_photo_url: ?string}>
      */
@@ -254,24 +249,35 @@ class PlaceResource extends JsonResource
     {
         $out = [];
         /** @var array<int, mixed> $rows — a legacy/hand-edited row may hold non-array items */
-        $rows = (array) $this->google_reviews_json;
+        // Sliced on the way IN, not on the way out: a corrupted import with
+        // hundreds of rows would otherwise pay full normalization on every
+        // detail request to keep five. The loop preserves order, so the first
+        // five of the input are the first five of the output.
+        $rows = array_slice((array) $this->google_reviews_json, 0, CachedReviews::MAX);
         foreach ($rows as $row) {
             if (! is_array($row)) {
                 continue;
             }
             $rating = $row['rating'] ?? null;
             $time = $row['time'] ?? null;
+            $photo = $row['profile_photo_url'] ?? null;
             $out[] = [
                 'author' => is_string($row['author'] ?? null) ? $row['author'] : null,
-                'rating' => is_int($rating) || is_float($rating) ? $rating : null,
+                // Clamped and scheme-checked to match {@see ReviewSnippet::fromArray()},
+                // which decodes THIS SAME COLUMN for `review_sources[].snippets`.
+                // The two readers had drifted apart: a legacy row with a rating of
+                // 9 or a `javascript:` photo URL was rejected by one and served
+                // by the other. Whichever guard is right, it cannot be right in
+                // only one of two readers of one column.
+                'rating' => is_int($rating) || is_float($rating) ? max(0.0, min(5.0, (float) $rating)) : null,
                 'text' => is_string($row['text'] ?? null) ? $row['text'] : null,
                 'relative_time' => is_string($row['relative_time'] ?? null) ? $row['relative_time'] : null,
                 'time' => is_int($time) ? $time : null,
-                'profile_photo_url' => is_string($row['profile_photo_url'] ?? null) ? $row['profile_photo_url'] : null,
+                'profile_photo_url' => is_string($photo) && preg_match('#^https?://#i', $photo) === 1 ? $photo : null,
             ];
         }
 
-        return array_slice($out, 0, self::GOOGLE_REVIEW_CAP);
+        return $out;
     }
 
     /**
