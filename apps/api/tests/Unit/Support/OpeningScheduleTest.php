@@ -246,6 +246,64 @@ it('refuses an always-open entry sitting beside ordinary trading days', function
         ->toBeTrue();
 });
 
+it('fromStored reads the NORMALIZED shape, which fromProvider cannot', function () {
+    // The seam a fix round broke and a review caught: `BusinessDetails::toArray()`
+    // caches the ALREADY-NORMALIZED list, so rehydrating it with the provider
+    // parser reads every entry as malformed and yields null — leaving the column
+    // unwritten for every place, silently. Three tempers, three shapes.
+    $normalized = [['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00']];
+
+    expect(OpeningSchedule::fromStored($normalized))->toBe($normalized);
+    expect(OpeningSchedule::fromProvider($normalized))->toBeNull();
+});
+
+it('fromStored is all-or-nothing, unlike salvage', function () {
+    // Why it is not just salvage(): this value feeds BusinessEnricher's
+    // first-non-empty merge, and a shorter-but-non-empty week still wins it —
+    // silently deleting a service from a place that had it right.
+    $oneBad = [
+        ['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00'],
+        ['open_day' => 99, 'open_time' => 'nope', 'close_day' => null, 'close_time' => null],
+    ];
+
+    expect(OpeningSchedule::salvage($oneBad))->toHaveCount(1);
+    expect(OpeningSchedule::fromStored($oneBad))->toBeNull();
+});
+
+it('refuses a lone close-less period that is not the documented 24/7 shape', function () {
+    // Cardinality alone was not enough: ONE trading day whose close never
+    // arrived passed as "always open" and reported the venue open at every
+    // instant of the week, Sunday 03:00 included.
+    $loneMonday = [['open' => ['day' => 1, 'time' => '0900']]];
+    expect(OpeningSchedule::fromProvider($loneMonday))->toBeNull();
+
+    // The real shape still works.
+    $genuine = [['open' => ['day' => 0, 'time' => '0000']]];
+    expect(OpeningSchedule::fromProvider($genuine))->toHaveCount(1);
+
+    // And a stored row of that broken shape does not report open on a Sunday.
+    $stored = [['open_day' => 1, 'open_time' => '09:00', 'close_day' => null, 'close_time' => null]];
+    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', at('2026-09-13 06:00')))->toBeNull();
+});
+
+it('accepts a backward-compatibility zone id, not only the canonical list', function () {
+    // `DateTimeZone::listIdentifiers()` returns the 419 CANONICAL ids and omits
+    // 81 aliases this same PHP build constructs happily. Pinning that list would
+    // refuse a provider answering with an alias, cache the refusal, and — since
+    // enrichment never revisits a place — leave that venue without a cue forever.
+    $week = [['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00']];
+    $alias = 'America/Montreal';
+
+    expect(in_array($alias, DateTimeZone::listIdentifiers(), true))->toBeFalse();
+    expect(OpeningSchedule::stateAt($week, $alias, at('2026-09-07 18:00')))->not->toBeNull();
+
+    // Still narrow: an offset or an abbreviation is what this column must never hold.
+    expect(OpeningSchedule::stateAt($week, '+05:00', at('2026-09-07 18:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($week, 'EST', at('2026-09-07 18:00')))->toBeNull();
+    // UTC is the one legitimate id with no region.
+    expect(OpeningSchedule::stateAt($week, 'UTC', at('2026-09-07 18:00')))->not->toBeNull();
+});
+
 it('voids a period list longer than a real week', function () {
     // A week is at most two services a day. Anything longer is a malformed
     // payload, and storing it would mean re-validating an unbounded list on every

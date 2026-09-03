@@ -1,4 +1,4 @@
-import { openStateLabel } from '@/lib/opening-hours';
+import { OPEN_STATE_MAX_AGE_MS, openStateLabel } from '@/lib/opening-hours';
 
 /**
  * The status cue's wording decision (T-155).
@@ -58,4 +58,27 @@ it('never re-derives the answer — it reports whatever open_now says', () => {
   // different one, so second-guessing the server here is exactly the bug class
   // T-128 removed.
   expect(openStateLabel({ open_now: true, closes_at: '00:01', opens_at: null })?.open).toBe(true);
+});
+
+it('drops the cue once the payload is stale, rather than showing an old answer', () => {
+  // The place query is persisted for 24h, so a cold start with no network can
+  // paint an 11-hour-old payload. "Open · closes 23:00" at nine the next morning
+  // is exactly the confidently-wrong "open" this feature exists to avoid,
+  // arriving by a route the SERVER cannot close — it was right when it answered.
+  const open = { open_now: true, closes_at: '23:00', opens_at: null };
+
+  // Fresh, and right up to the boundary, the cue stands.
+  expect(openStateLabel(open, 0)).not.toBeNull();
+  expect(openStateLabel(open, OPEN_STATE_MAX_AGE_MS)).not.toBeNull();
+
+  // A millisecond past it, there is no claim at all — not a "closed" claim.
+  expect(openStateLabel(open, OPEN_STATE_MAX_AGE_MS + 1)).toBeNull();
+  // Including for a CLOSED payload: staleness removes the cue, it does not
+  // default to shut.
+  expect(openStateLabel({ open_now: false, closes_at: null, opens_at: '19:00' }, 11 * 60 * 60 * 1000))
+    .toBeNull();
+});
+
+it('treats a missing age as fresh, so a caller that cannot know is not punished', () => {
+  expect(openStateLabel({ open_now: true, closes_at: null, opens_at: null })).not.toBeNull();
 });

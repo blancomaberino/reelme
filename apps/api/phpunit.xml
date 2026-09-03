@@ -69,6 +69,6 @@
              the timezone resolver, the photo resolver — because each one gates on
              it. Without this the container reads a developer's own .env, and a
              pipeline test that forgets bindGeocoder() spends real money. -->
-        <env name="GOOGLE_PLACES_API_KEY" value=""/>
+        <env name="GOOGLE_PLACES_API_KEY" value="" force="true"/>
     </php>
 </phpunit>

@@ -4,10 +4,12 @@ namespace App\Services\Geo;
 
 use App\Support\OpeningSchedule;
 use DateTimeZone;
+use Exception;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * {@see TimezoneResolver} backed by the Google Time Zone API (T-155).
@@ -65,7 +67,7 @@ class GoogleTimezoneResolver implements TimezoneResolver
         // is — see FAILURE_CACHE_HOURS.
         $cached = Cache::get($key);
 
-        if (! is_array($cached)) {
+        if (! is_array($cached) || ! array_key_exists('zone', $cached)) {
             $cached = $this->fetch($lat, $lng);
             Cache::put(
                 $key,
@@ -119,7 +121,10 @@ class GoogleTimezoneResolver implements TimezoneResolver
             // (REQUEST_DENIED, OVER_QUERY_LIMIT, INVALID_REQUEST) is a condition an
             // operator can fix, so it must expire quickly and say so in the log.
             if ($status !== 'ZERO_RESULTS') {
-                Log::warning('Google Time Zone answered status '.(is_string($status) ? $status : 'unknown').'.');
+                // Bounded and stripped: a provider-controlled string with embedded
+                // newlines would otherwise forge log records.
+                $safe = is_string($status) ? Str::limit(preg_replace('/[[:cntrl:]]/', '', $status) ?? '', 40) : 'unknown';
+                Log::warning('Google Time Zone answered status '.$safe.'.');
             }
 
             return ['zone' => null, 'failed' => $status !== 'ZERO_RESULTS'];
@@ -130,8 +135,21 @@ class GoogleTimezoneResolver implements TimezoneResolver
         // Validated, not trusted. A third-party string reaches a column that the
         // status computation later feeds to DateTimeZone; anything PHP's own tz
         // database does not list is not a zone we can compute against.
-        if (! is_string($zone) || ! in_array($zone, DateTimeZone::listIdentifiers(), true)) {
-            Log::warning('Google Time Zone returned an id PHP does not recognize.');
+        // Validated, not trusted — but validated the way OpeningSchedule will
+        // read it back, or a value accepted here would be silently unusable
+        // later. `listIdentifiers()` is the CANONICAL set only (419 of the 500
+        // ids this build knows), so pinning it would reject the very aliases
+        // Google may answer with and cache the rejection.
+        if (! is_string($zone) || ($zone !== 'UTC' && ! str_contains($zone, '/'))) {
+            Log::warning('Google Time Zone returned an id that is not a region zone.');
+
+            return ['zone' => null, 'failed' => true];
+        }
+
+        try {
+            $zone = (new DateTimeZone($zone))->getName();
+        } catch (Exception) {
+            Log::warning('Google Time Zone returned an id PHP cannot construct.');
 
             return ['zone' => null, 'failed' => true];
         }

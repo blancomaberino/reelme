@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -35,7 +35,7 @@ export default function PlaceDetailScreen() {
   const styles = useMemo(() => makeStyles(c), [c]);
   // usePlace polls while the gallery is empty (a just-shared place enriches
   // async), so the carousel fills in on its own — no route flag needed.
-  const { data: place, isLoading, isError, refetch } = usePlace(slug ?? '');
+  const { data: place, isLoading, isError, refetch, dataUpdatedAt } = usePlace(slug ?? '');
   const authed = useSessionStore((s) => s.status === 'authed');
   const [saveOpen, setSaveOpen] = useState(false);
 
@@ -53,7 +53,7 @@ export default function PlaceDetailScreen() {
       ) : isError || !place ? (
         <ErrorState styles={styles} c={c} onRetry={() => void refetch()} />
       ) : (
-        <PlaceBody place={place} authed={authed} styles={styles} c={c} />
+        <PlaceBody place={place} authed={authed} styles={styles} c={c} fetchedAt={dataUpdatedAt} />
       )}
       {place ? <SaveToListSheet placeId={place.id} visible={saveOpen} onClose={() => setSaveOpen(false)} /> : null}
     </SafeAreaView>
@@ -86,7 +86,41 @@ function Header({
   );
 }
 
-function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: boolean; styles: Styles; c: Palette }) {
+/**
+ * How old the current payload is, in ms, re-read on a timer.
+ *
+ * Its own hook so the impure clock read stays inside an effect. The interval is
+ * coarse on purpose: this decides whether a status cue is still trustworthy, not
+ * anything that needs to tick.
+ */
+function useAgeOf(fetchedAt: number): number {
+  const [age, setAge] = useState(0);
+
+  useEffect(() => {
+    const tick = () => setAge(Date.now() - fetchedAt);
+    tick();
+    const id = setInterval(tick, 30_000);
+
+    return () => clearInterval(id);
+  }, [fetchedAt]);
+
+  return age;
+}
+
+function PlaceBody({
+  place,
+  authed,
+  styles,
+  c,
+  fetchedAt,
+}: {
+  place: PlaceDetail;
+  authed: boolean;
+  styles: Styles;
+  c: Palette;
+  /** When this payload was fetched (react-query `dataUpdatedAt`). See `openState`. */
+  fetchedAt: number;
+}) {
   const t = useT();
   const fmt = useFormat();
   const [hoursOpen, setHoursOpen] = useState(false);
@@ -98,7 +132,13 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
   // back is that nobody reports the wrong row.
   const [reportReview, setReportReview] = useState<{ id: string; subject: string } | null>(null);
   const hours = useMemo(() => hourLines(place.opening_hours), [place.opening_hours]);
-  const openState = useMemo(() => openStateLabel(place.open_state), [place.open_state]);
+  // The second argument is the payload's AGE: past a few minutes the cue is
+  // dropped rather than shown stale (see `openStateLabel`). The clock is read in
+  // an effect, not during render — `Date.now()` in a render body is impure, and
+  // the React Compiler rejects it. Reading it on a timer is also better
+  // behaviour: a screen left open past the window loses the claim on its own
+  // instead of holding a verdict that quietly went out of date.
+  const openState = openStateLabel(place.open_state, useAgeOf(fetchedAt));
   const tags = useMemo(
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
     [place.cuisines, place.vibe_tags, place.dietary_tags],

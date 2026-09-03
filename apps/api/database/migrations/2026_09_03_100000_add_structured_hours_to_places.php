@@ -12,7 +12,10 @@ use Illuminate\Support\Facades\Schema;
  * `opening_hours_json` stays exactly as it is: the flat `string[]` of
  * human-readable lines the client renders verbatim (T-128). It is not touched,
  * not reinterpreted, and not turned into a union — that union is precisely the
- * defect T-128 removed. These are two NEW nullable columns beside it.
+ * defect T-128 removed. These are two NEW nullable columns.
+ *
+ * (`->after()` below is kept for readers' benefit only. It is a MySQL clause
+ * Postgres ignores, so both columns land at the end of the table regardless.)
  *
  * Why both columns, and why either being null must void the cue:
  *

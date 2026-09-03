@@ -71,6 +71,13 @@ export function hourLines(hours: OpeningHours | null | undefined): string[] {
 }
 
 /**
+ * How stale a payload may be before its open/closed cue is dropped. Minutes, not
+ * hours: a venue can close inside this window, and the cost of being wrong is
+ * someone standing at a locked door.
+ */
+export const OPEN_STATE_MAX_AGE_MS = 5 * 60 * 1000;
+
+/**
  * The status cue for a place, or NULL when there is no honest one to show
  * (T-155).
  *
@@ -91,8 +98,19 @@ export function hourLines(hours: OpeningHours | null | undefined): string[] {
  */
 export function openStateLabel(
   state: OpenState | null | undefined,
+  ageMs = 0,
 ): { key: MessageKey; vars?: { time: string }; open: boolean } | null {
   if (!state || typeof state.open_now !== 'boolean') return null;
+
+  // THE CUE AGES OUT. `open_state` is a fact about the moment the API answered,
+  // and the place query is persisted for 24h — so a cold start with no network
+  // can paint an 11-hour-old payload saying "Abierto · cierra 23:30" at nine the
+  // next morning, with the refetch never resolving. That is exactly the
+  // confidently-wrong "open" this whole feature is built to avoid, arriving by a
+  // route the server cannot close. Past the window the cue disappears and the
+  // hours lines remain — the same honest degradation as a place with no
+  // structured hours at all.
+  if (ageMs > OPEN_STATE_MAX_AGE_MS) return null;
 
   const clock = (value: unknown): string | null =>
     typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;

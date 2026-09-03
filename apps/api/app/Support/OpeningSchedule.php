@@ -5,6 +5,7 @@ namespace App\Support;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
+use Exception;
 
 /**
  * The one place a provider's STRUCTURED opening hours become
@@ -107,18 +108,50 @@ final class OpeningSchedule
         }
 
         // Google documents exactly one shape for "always open": a SINGLE period,
-        // day 0, time 0000, with no close. A null close sitting beside ordinary
-        // trading days is not a 24/7 venue — it is a payload we do not
-        // understand, and reinterpreting it either way is a guess. (Read one way
-        // it makes the venue open on days it does not trade; read the other it
-        // silently drops the entry.) Void it, like every other unreadable shape.
-        $alwaysOpen = array_filter($periods, fn (array $p): bool => $p['close_time'] === null);
-
-        if ($alwaysOpen !== [] && count($periods) > 1) {
+        // day 0, time 0000, with no close. Anything else carrying a null close is
+        // a payload we do not understand, and reinterpreting it either way is a
+        // guess — read one way it makes the venue open on days it does not trade,
+        // read the other it silently drops the entry. Void it, like every other
+        // unreadable shape.
+        //
+        // The SHAPE is checked, not just the count. An earlier version tested
+        // cardinality alone, so a lone close-less Monday period — one trading day
+        // whose close never arrived — passed as "always open" and reported the
+        // venue open at every instant of the week, including Sunday at 03:00.
+        if (! self::wellFormedAlwaysOpen($periods)) {
             return null;
         }
 
         return $periods;
+    }
+
+    /**
+     * Re-read a value in the STORED shape, all-or-nothing.
+     *
+     * The third temper, and it exists because the other two answer different
+     * questions. {@see fromProvider()} parses GOOGLE's `{open:{day,time}}` shape
+     * — handed our own normalized output it reads every entry as malformed and
+     * returns null. {@see salvage()} reads the stored shape but leniently, so one
+     * bad entry yields a SHORTER week, which is still non-empty and therefore
+     * still wins `BusinessEnricher`'s first-non-empty merge.
+     *
+     * The cached provider payload needs both properties at once: it is already
+     * normalized (so the provider parser cannot read it) and it feeds a merge
+     * that overwrites a place (so a truncated week must not survive).
+     *
+     * @return list<array{open_day: int, open_time: string, close_day: ?int, close_time: ?string}>|null
+     */
+    public static function fromStored(mixed $value): ?array
+    {
+        if (! is_array($value) || ! array_is_list($value) || $value === [] || count($value) > self::MAX_PERIODS) {
+            return null;
+        }
+
+        $salvaged = self::salvage($value);
+
+        // All-or-nothing: salvage() drops what it cannot read, so a shorter result
+        // means something in the list was unreadable and the whole value is void.
+        return $salvaged !== null && count($salvaged) === count($value) ? $salvaged : null;
     }
 
     /**
@@ -172,11 +205,13 @@ final class OpeningSchedule
             ];
         }
 
-        // The stored mirror of the write rule above: a null-close entry means
-        // "never closes", which can only be true of a venue with no other
-        // periods. Beside trading days it is contradictory, and the lenient
-        // temper here drops the contradiction rather than the whole week.
-        if (count($periods) > 1) {
+        // The stored mirror of the write rule above, and it checks the same
+        // SHAPE: a null close means "never closes", which is only credible as the
+        // documented single day-0/00:00 entry. Anything else carrying one is
+        // contradictory, and the lenient temper drops the contradiction rather
+        // than the whole week. Ordered after the parse loop on purpose — an entry
+        // that did not parse cannot be judged.
+        if (! self::wellFormedAlwaysOpen($periods)) {
             $periods = array_values(array_filter($periods, fn (array $p): bool => $p['close_time'] !== null));
         }
 
@@ -274,6 +309,26 @@ final class OpeningSchedule
     }
 
     /**
+     * True when the list carries no close-less entry at all, or carries exactly
+     * the one documented always-open shape: a SINGLE period opening on day 0 at
+     * 00:00 and never closing.
+     *
+     * @param  list<array{open_day: int, open_time: string, close_day: ?int, close_time: ?string}>  $periods
+     */
+    private static function wellFormedAlwaysOpen(array $periods): bool
+    {
+        $closeless = array_values(array_filter($periods, fn (array $p): bool => $p['close_time'] === null));
+
+        if ($closeless === []) {
+            return true; // nothing claims to be always open
+        }
+
+        return count($periods) === 1
+            && $closeless[0]['open_day'] === 0
+            && $closeless[0]['open_time'] === '00:00';
+    }
+
+    /**
      * One `{day, time}` endpoint from a provider payload, or null if it is not
      * one. Google sends `time` as a zero-padded 24-hour "HHMM" string; a
      * non-string, a short string, or an out-of-range clock voids it.
@@ -333,14 +388,27 @@ final class OpeningSchedule
             return null;
         }
 
-        static $identifiers = null;
-        $identifiers ??= array_flip(DateTimeZone::listIdentifiers());
-
-        if (! isset($identifiers[$timezone])) {
+        // A REGION/CITY id that this PHP build can construct — deliberately not
+        // `in_array(DateTimeZone::listIdentifiers())`, which returns only the 419
+        // CANONICAL ids and rejects the 81 backward-compatibility aliases the
+        // same build accepts (America/Montreal and friends). A provider answering
+        // with an alias would have been refused, cached as a failure, and — since
+        // enrichment never revisits a place that already ran — that venue would
+        // never get a cue again.
+        //
+        // The slash is what keeps this narrow. `DateTimeZone` also accepts
+        // "+05:00" and "EST", and both are exactly what this column must never
+        // hold: a fixed offset is wrong for half the year wherever DST applies.
+        // "UTC" is the one legitimate id without a region.
+        if ($timezone !== 'UTC' && ! str_contains($timezone, '/')) {
             return null;
         }
 
-        return new DateTimeZone($timezone);
+        try {
+            return new DateTimeZone($timezone);
+        } catch (Exception) {
+            return null;
+        }
     }
 
     private static function minutes(string $clock): int

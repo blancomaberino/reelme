@@ -52,6 +52,54 @@ it('maps the wider Place Details response into BusinessDetails', function () {
         && str_contains($r->url(), 'opening_hours'));
 });
 
+it('carries the structured periods through the CACHE, not just the first fetch', function () {
+    // The seam that shipped twice. Google's `periods[]` is normalized on the way
+    // in, and `toArray()` caches THAT — our shape, not Google's. Rehydrating it
+    // with the provider parser reads every entry as malformed and yields null, so
+    // `toPlacePatch()` drops the key and the column is never written for any
+    // place, with enrichment reporting success the whole time.
+    //
+    // `Cache::remember` returns the closure's value on a MISS too, so the second
+    // call below is the one that goes through `fromArray()` — which is why a test
+    // that only fetches once cannot see this.
+    Http::fake([
+        '*/details/json*' => Http::response([
+            'status' => 'OK',
+            'result' => [
+                'opening_hours' => [
+                    'weekday_text' => ['Monday: 9–17'],
+                    'periods' => [
+                        ['open' => ['day' => 1, 'time' => '0900'], 'close' => ['day' => 1, 'time' => '1700']],
+                    ],
+                ],
+            ],
+        ]),
+    ]);
+
+    $expected = [['open_day' => 1, 'open_time' => '09:00', 'close_day' => 1, 'close_time' => '17:00']];
+
+    $first = (new GooglePlacesGeocoder)->businessDetails('gp_periods');
+    expect($first->openingHoursPeriods)->toBe($expected);
+
+    // Second call: served from cache, so this one exercises fromArray().
+    $cached = (new GooglePlacesGeocoder)->businessDetails('gp_periods');
+    expect($cached->openingHoursPeriods)->toBe($expected);
+    expect($cached->toPlacePatch())->toHaveKey('opening_hours_periods_json');
+
+    Http::assertSentCount(1);
+});
+
+it('drops a cached period list that has been corrupted, rather than truncating it', function () {
+    // All-or-nothing on the rehydrate: a shorter-but-non-empty week would still
+    // win BusinessEnricher's first-non-empty merge and silently delete a service.
+    $details = BusinessDetails::fromArray(['opening_hours_periods' => [
+        ['open_day' => 1, 'open_time' => '09:00', 'close_day' => 1, 'close_time' => '17:00'],
+        ['open_day' => 'nope', 'open_time' => '09:00', 'close_day' => 1, 'close_time' => '17:00'],
+    ]]);
+
+    expect($details->openingHoursPeriods)->toBeNull();
+});
+
 it('returns null without an API key', function () {
     config()->set('services.google_places.key', '');
 
