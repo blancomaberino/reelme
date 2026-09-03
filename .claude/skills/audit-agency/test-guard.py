@@ -82,6 +82,15 @@ CASES = [
     ("[audit3] unparseable + comment", GHPR + "comment 201 --body 'it'\"'\"'s fine", "ALLOW"),
     ("[audit3] unparseable + merge", GHPR + "merge 201 --body 'it'\"'\"'s fine", "DENY"),
     ("[audit3] unparseable + push", PUSH + " --force 'unclosed", "DENY"),
+    # [audit4] A backslash-newline is a line CONTINUATION — the shell joins the
+    # lines into one command. Narrowing the fallback in [audit3] also bounded it
+    # to a single line, which reopened the hole: with the verb one line below its
+    # program, an unparseable gated command stopped matching and was ALLOWED.
+    # Two reviewers found it independently, 20 minutes after it was written.
+    ("[audit4] continuation push", "git \\\npush origin main", "DENY"),
+    ("[audit4] continuation gh pr", "gh pr \\\ncreate --title x", "DENY"),
+    ("[audit4] unparseable across a continuation", "git \\\npush origin main --tag 'unclosed", "DENY"),
+    ("[audit4] continuation, ungated verb", "gh pr \\\ncomment 201 --body-file /tmp/x", "ALLOW"),
 ]
 
 
@@ -170,6 +179,27 @@ def main():
         print(f"{'PASS' if ok else 'FAIL'}  {'non-repo fails closed':38s} want=DENY  got={got}")
         if not ok:
             failures.append("non-repo")
+
+    # [audit4] The continuation JOIN, asserted structurally rather than through
+    # the allow/deny cases above — those pass either way, because the
+    # unparseable fallback catches a continuation too. The difference the join
+    # makes is that the command gets PARSED (so `classify` and `target_dir` see
+    # real argv) instead of falling back to a crude regex, and only segments()
+    # shows that.
+    spec = importlib.util.spec_from_file_location("guard_seg", HOOK)
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    try:
+        got_segs = guard.segments("git \\\npush origin main")
+    except Exception as exc:  # noqa: BLE001 — a raise here IS the regression
+        # Without the join, shlex hits the trailing backslash and raises
+        # "No escaped character". Caught so this reports as a failed case
+        # rather than a traceback that ends the run before later cases execute.
+        got_segs = f"raised {type(exc).__name__}: {exc}"
+    ok = got_segs == [["git", "push", "origin", "main"]]
+    print(f"{'PASS' if ok else 'FAIL'}  {'[audit4] continuation is parsed, not punted':38s} got={got_segs}")
+    if not ok:
+        failures.append("continuation parsing")
 
     print()
     print("ALL PASS" if not failures else f"FAILURES: {failures}")

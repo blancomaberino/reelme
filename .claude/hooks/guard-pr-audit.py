@@ -106,6 +106,13 @@ def segments(cmd: str) -> list[list[str]]:
     # that was not an edge case, it was most of them. Removing `\n` from
     # lex.whitespace is NOT the fix: it makes the newline part of the adjacent
     # token ('/tmp\ngit') instead of a separator.
+    # A backslash-newline is a CONTINUATION, not a separator — the shell joins
+    # those lines into one command, and splitting on the newline first would
+    # both mis-segment it and leave a trailing backslash that shlex refuses.
+    # `git \<newline> push origin main` is an ordinary way to write a long
+    # invocation, and it reached the unparseable fallback instead of being read.
+    cmd = cmd.replace("\\\n", " ")
+
     out: list[list[str]] = [[]]
     for line in cmd.split("\n"):
         if not line.strip():
@@ -263,9 +270,16 @@ def main() -> None:
         # code — whenever the body contained shell-escaped quotes it could not
         # parse. Failing closed is right; failing closed on commands that were
         # never gated is just a broken tool.
+        # `.*` with DOTALL, not `[^\n]*`. Bounding this to a line was a mistake
+        # copied from `segments()`, where the bound is load-bearing: here the
+        # text is ALREADY unparseable, so there is no separator to protect, and
+        # the bound only created a hole — a gated verb one line below its
+        # program (a continuation, a wrapped invocation) stopped matching and
+        # the command was allowed. Last-resort matching should over-match.
         if re.search(
-            r"\bgit\b[^\n]*\bpush\b|\bgh\b[^\n]*\bpr\b[^\n]*\b(create|edit|ready|merge)\b",
+            r"\bgit\b.*\bpush\b|\bgh\b.*\bpr\b.*\b(create|edit|ready|merge)\b",
             body,
+            re.S,
         ):
             deny("The command could not be parsed (unbalanced quotes), so the gate cannot tell what it does.", "run this")
         return
