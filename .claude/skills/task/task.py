@@ -135,7 +135,7 @@ def cmd_done(doc: dict, task_id: str) -> None:
     t["status"] = "done"
     save(doc)
     print(f"{t['id']} -> done  ({t['title']})")
-    print("Remember the completion report (CLAUDE.md golden rule #5).")
+    print("Remember the completion report (CLAUDE.md golden rule #7).")
 
 
 def cmd_note(doc: dict, task_id: str, text: str) -> None:

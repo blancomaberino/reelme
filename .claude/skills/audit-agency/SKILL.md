@@ -5,7 +5,7 @@ description: Fan the project's agency agents over the branch as independent spec
 
 # Agency audit
 
-Six read-only reviewers over `main...HEAD`, each reading the same diff as a
+Read-only reviewers over `main...HEAD`, each reading the same diff as a
 different specialist. Enforced: `.claude/hooks/guard-pr-audit.py` blocks a push
 and the PR-mutating commands until a receipt matching HEAD **and** the working
 tree's content exists.
@@ -16,6 +16,11 @@ panel drove through the first version of this gate within minutes of it being
 written, two needing nothing more exotic than a flag that takes a value
 (`git -C <dir> push`); they are kept as regressions rather than as a paragraph
 claiming the hole is closed.
+
+**Authority:** CLAUDE.md states the *rule* (Golden Rule #3, pre-PR checklist
+step 2) — when the panel runs and which seats are mandatory. This file is the
+*procedure* — lanes, prompt discipline, receipts. If the two ever disagree about
+the rule, CLAUDE.md wins and this file is the one to correct.
 
 ## Why this exists alongside the other gates
 
@@ -34,8 +39,10 @@ started requiring. Both were green under every other gate.
 
 ## Running it
 
-**One message, six `Agent` calls, so they run concurrently.** Six sequential
-calls is a different and much slower thing.
+**One message, one `Agent` call per seat, so they run concurrently.** Sequential
+calls are a different and much slower thing. How many seats is a judgement about
+the diff — a two-file docs change does not want the mobile and UI lanes — but
+Security and Architecture are always two of them.
 
 | Dimension | Agent type | Reads for |
 | --- | --- | --- |

@@ -51,7 +51,7 @@ status `in_progress` — don't mark it done.
 ## Closing out
 
 `done T-###` only after the PR is merged (or the user says it's complete). Then end
-your reply with the mandatory completion report — this is golden rule #5, not optional:
+your reply with the mandatory completion report — this is golden rule #7, not optional:
 
 > **✅ Task:** `T-###` — <title>
 > **What it is:** 1–2 sentences on the user- or operator-facing effect, not the file list.
