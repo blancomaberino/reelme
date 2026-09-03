@@ -216,3 +216,71 @@ describe('the rules themselves', () => {
     }
   });
 });
+
+/**
+ * The traversal, fired at a document whose shape is known.
+ *
+ * `subschemas()` is the only path from a schema file to the nodes the rules get
+ * applied to, and until this suite existed nothing exercised it: the rules were
+ * tested on hand-built literals, and the corpus suite fed them whatever the
+ * walker happened to return. A walker that quietly stopped recursing — a
+ * dropped container key, a missed array element — would have made the corpus
+ * suite check FEWER nodes and go on reporting `[]`, which is green. That is the
+ * same "passes while looking at nothing" failure the rules above forbid in a
+ * schema, so the walker does not get to be exempt from it.
+ */
+describe('the traversal', () => {
+  // One offender of a different kind under each container key, so a container
+  // the walker forgets shows up as a specific missing path rather than a
+  // slightly smaller number.
+  const openArray = { type: 'array' };
+  const doc = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['a'],
+    properties: { a: openArray },
+    definitions: { d: openArray },
+    patternProperties: { '^x-': openArray },
+    items: openArray,
+    not: openArray,
+    anyOf: [openArray],
+    oneOf: [openArray],
+    allOf: [openArray],
+  };
+
+  const paths = subschemas(doc, '').map(([path]) => path);
+
+  it.each([
+    ['properties', '/properties/a'],
+    ['definitions', '/definitions/d'],
+    ['patternProperties', '/patternProperties/^x-'],
+    ['items', '/items'],
+    ['not', '/not'],
+    ['anyOf', '/anyOf[0]'],
+    ['oneOf', '/oneOf[0]'],
+    ['allOf', '/allOf[0]'],
+  ])('recurses through `%s`', (_key, path) => {
+    expect(paths).toContain(path);
+  });
+
+  it('reaches a node nested several levels down', () => {
+    const nested = { properties: { a: { items: { properties: { b: openArray } } } } };
+    expect(subschemas(nested, '').map(([p]) => p)).toContain('/properties/a/items/properties/b');
+  });
+
+  it('hands every offender it finds to the rules — walker and rules, connected', () => {
+    // The two halves joined: if the walker misses a container, this count drops
+    // and the corpus suite silently narrows. 8 containers + the root.
+    const open = subschemas(doc, '').filter(([, n]) => violates.openArray(n));
+    expect(open).toHaveLength(8);
+  });
+
+  it('finds a non-trivial number of nodes in the real corpus', () => {
+    // The backstop for a walker that returns [] — every corpus rule would pass
+    // vacuously, which is indistinguishable from a clean corpus. The floor is
+    // deliberately far below the current count; it is a liveness check, not a
+    // number to keep updating.
+    const place = JSON.parse(readFileSync(join(SCHEMAS_DIR, 'place.json'), 'utf8')) as Node;
+    expect(subschemas(place, '').length).toBeGreaterThan(30);
+  });
+});

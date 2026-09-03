@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Record that the agency audit ran against the CURRENT state of the branch.
 #
-# The receipt is keyed to HEAD **and** the working tree, so it stops being valid
-# the moment either moves: a new commit, an amend, a rebase, or an uncommitted
-# edit. That is the whole point — a receipt that survives a change would certify
-# code nobody audited, which is the failure mode this exists to prevent (see
-# `green-check-is-not-a-review`: a check that reads "pass" while never looking
-# is worse than no check, because it stops anyone else from looking either).
+# The receipt is keyed to HEAD **and** the working tree's CONTENT, so it stops
+# being valid the moment either moves: a new commit, an amend, a rebase, or an
+# uncommitted edit. That is the whole point — a receipt that survived a change
+# would certify code nobody audited, which is the failure this exists to
+# prevent (see `green-check-is-not-a-review`: a check that reads "pass" while
+# never looking is worse than no check, because it stops anyone else looking).
+#
+# The hash is computed by importing the hook that CHECKS it, never by
+# reimplementing it here. Two copies of this calculation would drift, and the
+# failure mode of drift is a receipt that can never match — or, far worse, one
+# that matches when it should not.
 set -euo pipefail
 
 cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
@@ -26,19 +31,40 @@ case "$verdict" in
 esac
 
 mkdir -p .claude/state
-head=$(git rev-parse HEAD)
-# Tracked-file state, staged and unstaged, so an uncommitted edit invalidates.
-tree=$(git status --porcelain=v1 | shasum -a 256 | cut -d' ' -f1)
 
-cat > .claude/state/audit-receipt.json <<JSON
-{
-  "head": "$head",
-  "tree": "$tree",
-  "branch": "$(git rev-parse --abbrev-ref HEAD)",
-  "verdict": "$verdict",
-  "note": "${2:-}",
-  "recorded_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-}
-JSON
+VERDICT="$verdict" NOTE="${2:-}" python3 - <<'PY'
+import importlib.util, json, os, pathlib, subprocess
 
-echo "✅ Agency audit receipt recorded for ${head:0:8} ($verdict)."
+spec = importlib.util.spec_from_file_location("guard", ".claude/hooks/guard-pr-audit.py")
+guard = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(guard)
+
+repo = os.getcwd()
+head, tree = guard.state(repo)
+if not head:
+    raise SystemExit("not a git repository, or git failed — no receipt written")
+
+branch = subprocess.run(
+    ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True
+).stdout.strip()
+
+# json.dump, not string interpolation: a note containing a quote used to corrupt
+# the file, which then failed closed on the next read — harmless but sloppy.
+pathlib.Path(".claude/state/audit-receipt.json").write_text(
+    json.dumps(
+        {
+            "head": head,
+            "tree": tree,
+            "branch": branch,
+            "verdict": os.environ["VERDICT"],
+            "note": os.environ["NOTE"],
+            "recorded_at": subprocess.run(
+                ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"], capture_output=True, text=True
+            ).stdout.strip(),
+        },
+        indent=2,
+    )
+    + "\n"
+)
+print(f"✅ Agency audit receipt recorded for {head[:8]} ({os.environ['VERDICT']}).")
+PY

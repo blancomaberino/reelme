@@ -6,9 +6,16 @@ description: Fan the project's agency agents over the branch as six independent 
 # Agency audit
 
 Six read-only reviewers over `main...HEAD`, each reading the same diff as a
-different specialist. Enforced: `.claude/hooks/guard-pr-audit.sh` blocks a push
+different specialist. Enforced: `.claude/hooks/guard-pr-audit.py` blocks a push
 and the PR-mutating commands until a receipt matching HEAD **and** the working
-tree exists.
+tree's content exists.
+
+The gate has its own tests — `python3 .claude/skills/audit-agency/test-guard.py`
+(23 cases). Run them after touching the hook. Three of them are bypasses the
+panel drove through the first version of this gate within minutes of it being
+written, two needing nothing more exotic than a flag that takes a value
+(`git -C <dir> push`); they are kept as regressions rather than as a paragraph
+claiming the hole is closed.
 
 ## Why this exists alongside the other gates
 
@@ -78,8 +85,13 @@ Use `clean` as the verdict when nothing needed fixing.
 
 ## Notes
 
-- The receipt dies on the next commit, amend, rebase, or uncommitted edit. That
-  is deliberate: re-audit rather than reaching for the escape hatch.
+- The receipt dies on the next commit, amend, rebase, or uncommitted edit — it
+  hashes the tree's CONTENT, not `git status` output, because status prints
+  paths and codes, so a second edit to an already-modified file left the old
+  hash intact and the receipt certified code the audit never saw.
+- **The gate is a process check, not a security boundary.** A subshell, an
+  alias, or `$(echo pu)sh` gets through, and that is accepted; the threat model
+  is a busy agent taking a shortcut, not someone attacking their own repo.
 - `REELMAP_SKIP_AUDIT=1` exists for a push the audit cannot apply to. Reaching
   for it because the audit is slow is how the check becomes decoration.
 - Findings converging from two independent lanes are the ones to trust most; a
