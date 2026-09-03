@@ -5,6 +5,7 @@ namespace App\Services\Places;
 use App\Enums\ContactFieldSource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
+use App\Support\OpeningHours;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -18,6 +19,8 @@ use Illuminate\Support\Facades\DB;
  *  2. **Audited.** Any real change writes one {@see PlaceEdit} row with the
  *     per-field from→to diff; a no-op patch writes nothing.
  *  3. **Scoped.** Only {@see Place::CURATED_FIELDS} are writable here.
+ *  4. **Shaped.** A field whose stored value has a contract is coerced to it
+ *     ({@see normalize()}), so no origin can write a shape its readers forbid.
  */
 class PlaceEditor
 {
@@ -39,7 +42,7 @@ class PlaceEditor
     ): ?PlaceEdit {
         // Only curated fields are writable. Filter to the writable set before we
         // take the lock so an all-noise patch never opens a transaction.
-        $patch = array_intersect_key($patch, array_flip(Place::CURATED_FIELDS));
+        $patch = $this->normalize(array_intersect_key($patch, array_flip(Place::CURATED_FIELDS)));
         if ($patch === []) {
             return null;
         }
@@ -137,7 +140,13 @@ class PlaceEditor
      */
     public function diff(Place $place, array $patch): array
     {
-        $patch = array_intersect_key($patch, array_flip(Place::CURATED_FIELDS));
+        // Normalized here TOO, not only in apply(). `submit()` diffs a raw
+        // request patch to build the suggestion's stored `{from, to}` audit, and
+        // an un-normalized `to` would make the audit row say `{"monday":"9-5"}`
+        // while the column apply() writes holds `["monday: 9-5"]` — the record
+        // of a change disagreeing with the change. `normalize()` is idempotent,
+        // so apply()'s own call re-running it here costs nothing.
+        $patch = $this->normalize(array_intersect_key($patch, array_flip(Place::CURATED_FIELDS)));
         if ($patch === []) {
             return [];
         }
@@ -163,6 +172,41 @@ class PlaceEditor
         }
 
         return $changes;
+    }
+
+    /**
+     * Coerce the values whose STORED SHAPE has a contract, so a patch cannot
+     * write one the column's readers forbid (T-128).
+     *
+     * Here, and not in the callers, because this class is the line every write
+     * crosses — the moderator approving a stranger's proposal
+     * (`PlaceSuggestionService::approve()` → `PlaceEditSuggestion::patch()`), the
+     * operator's own edit applying on submit (`submit()` → `applyAsOwner()`,
+     * which never touches `patch()`), a Filament edit, and an enrichment run.
+     * The same reason the field allow-list and the manual-override lock live
+     * here: two guards for one invariant is the split that drifts, and the half
+     * that drifts is the one nobody exercises.
+     *
+     * Field-name filtering alone is only half a chokepoint:
+     * `SuggestPlaceEditRequest` accepted a bare `array` for `opening_hours_json`
+     * until T-128, so a row queued before that fix still carries
+     * `{"monday": "9-5"}` and would apply it verbatim.
+     *
+     * `salvage()`, not `fromProvider()` — see {@see OpeningHours} for the
+     * strict-vs-lenient rule. `null` — a patch that CLEARS the hours — stays null.
+     *
+     * Idempotent: normalizing an already-normalized patch returns it unchanged.
+     *
+     * @param  array<string, mixed>  $patch
+     * @return array<string, mixed>
+     */
+    private function normalize(array $patch): array
+    {
+        if (array_key_exists('opening_hours_json', $patch)) {
+            $patch['opening_hours_json'] = OpeningHours::salvage($patch['opening_hours_json']);
+        }
+
+        return $patch;
     }
 
     /** Two cast attribute values differ — arrays compared by content, not identity. */

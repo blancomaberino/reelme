@@ -58,6 +58,38 @@ it('maps find-place + details into a GeocodeResult', function () {
         ->and($result->reviews[1]['profile_photo_url'])->toBeNull();
 });
 
+it('nulls a Google review timing field that is not the type the contract pins', function () {
+    // `place.json` pins `relative_time` to string|null and `time` to
+    // integer|null, and this payload is not schema-checked on the wire — Google
+    // is a third party. `?? null` would pass BOTH of these straight into
+    // `google_reviews_json`, where the read boundary can only null them out
+    // after the fact. The row is written wrong, not just served wrong.
+    Http::fake([
+        '*/findplacefromtext/json*' => Http::response(placesFixture('findplace.json')),
+        '*/details/json*' => Http::response(['status' => 'OK', 'result' => [
+            'place_id' => 'ChIJ_bad_review_types',
+            'name' => 'Lanzhou Noodle House',
+            'reviews' => [[
+                'author_name' => 'Maria S.',
+                'rating' => 5,
+                'text' => 'Great.',
+                'relative_time_description' => ['value' => '2 weeks ago'], // object, not a string
+                'time' => '1699000000',                                    // numeric STRING, not an int
+            ]],
+        ]]),
+    ]);
+
+    $reviews = geocoder()->findPlace('Lanzhou Noodle House', new GeoHints(city: 'Lisbon'))?->reviews;
+
+    expect($reviews)->toHaveCount(1);
+    expect($reviews[0]['relative_time'])->toBeNull();
+    expect($reviews[0]['time'])->toBeNull();
+    // The keys the same row got right are untouched — this narrows the bad
+    // values, it does not void the review.
+    expect($reviews[0]['author'])->toBe('Maria S.');
+    expect($reviews[0]['text'])->toBe('Great.');
+});
+
 it('sends the minimal field mask on the details request (billing guard)', function () {
     Http::fake([
         '*/findplacefromtext/json*' => Http::response(placesFixture('findplace.json')),

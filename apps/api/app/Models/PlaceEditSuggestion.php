@@ -159,6 +159,13 @@ class PlaceEditSuggestion extends Model
         // command, an import, a future surface) still cannot write a field the
         // allow-list excludes. PlaceEditor's own filter is the wider *curated*
         // set, which includes the picture URLs a suggestion may never propose.
+        // The same argument applies to the VALUE's SHAPE, but NOT here: this is a
+        // read accessor (`isNoteOnly()` and the moderation renderers call it), so
+        // coercing in it would change what a reviewer is shown, and it is only
+        // ONE of the two paths that apply a patch — the operator fast path in
+        // `PlaceSuggestionService::submit()` never comes through here.
+        // {@see PlaceEditor::apply()} is the line both cross, and that is where
+        // the shape is normalized.
         return array_intersect_key($patch, array_flip(self::FIELDS));
     }
 

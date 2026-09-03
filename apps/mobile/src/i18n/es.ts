@@ -96,6 +96,7 @@ export const es: Record<MessageKey, string> = {
   'place.sourceCount': '{{count}} fuentes',
   'place.sourceCount_one': '{{count}} fuente',
   'place.sourceCount_other': '{{count}} fuentes',
+  'place.hours': 'Horarios',
   'place.hoursShow': 'Ver horario semanal',
   'place.hoursHide': 'Ocultar horario semanal',
   'place.openInMap': 'Abrir en el mapa',
@@ -128,7 +129,8 @@ export const es: Record<MessageKey, string> = {
   'suggest.field.website': 'Sitio web',
   'suggest.field.hours': 'Horarios',
   'suggest.field.note': '¿Otra cosa? Contanos',
-  'suggest.field.notePlaceholder': 'Por ejemplo: cerró, o el pin está en la vereda de enfrente',
+  'suggest.field.notePlaceholder':
+    'Por ejemplo: los horarios están mal, cerró o el pin está en la vereda de enfrente',
   'suggest.field.noteHint': 'Contanos con tus palabras. Un moderador lo lee.',
   'suggest.venue.note': 'Nos escribieron',
   'suggest.venue.title': 'Cambios sugeridos',

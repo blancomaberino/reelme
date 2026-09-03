@@ -23,6 +23,22 @@ class PlaceMerger
     /** Loser fields the merge itself mutates (and unmerge must restore). */
     private const MUTATED_FIELDS = ['google_place_id', 'status', 'merged_into_place_id'];
 
+    /** Loser fields the backfill may donate to a survivor that has none. */
+    private const BACKFILL_FIELDS = [
+        'google_place_id', 'address_line1', 'address_line2', 'city', 'region',
+        'postal_code', 'cuisine_primary', 'price_range', 'phone', 'website',
+        'opening_hours_json',
+    ];
+
+    /**
+     * Contact-field provenance that travels WITH the value it describes (T-117):
+     * backfilling a website/phone without its `*_source` would leave a
+     * Google-sourced value stamped unknown — which reads as untrusted and wrongly
+     * denies a legitimate owner the website/phone claim. One source of truth for
+     * "who owns this field", never two that drift.
+     */
+    private const CONTACT_SOURCE_FIELDS = ['website' => 'website_source', 'phone' => 'phone_source'];
+
     /**
      * Merge $loser into $winner. Idempotent-safe: merging a place into itself or
      * into its own survivor is a no-op (and writes no audit row).
@@ -117,14 +133,28 @@ class PlaceMerger
 
             // Capture the loser's data, then tombstone it — releasing its unique
             // google_place_id before the survivor can claim it in the backfill.
+            //
+            // TWO reads of the SAME pre-tombstone state, because the two consumers
+            // want opposite things:
+            //   $donor    RAW attributes — what is literally on the row, which is
+            //             what an audit snapshot must record.
+            //   $donated  CAST attributes — what the backfill copies.
+            // Copying a RAW value back through the cast encodes it a SECOND time.
+            // `opening_hours_json` is cast `array`, so its raw attribute is already
+            // an encoded JSON string; assigning that to the winner stored a JSON
+            // *string* inside jsonb (`"[\"Mo 09:00-17:00\"]"`, jsonb_typeof
+            // 'string'). Nothing can render that: PlaceResource's normalizer sees a
+            // PHP string, not an array, and serves null — the survivor's donated
+            // hours silently vanish (T-128).
             $donor = $loser->getAttributes();
+            $donated = $this->donatedValues($loser);
 
             $loser->google_place_id = null;
             $loser->status = PlaceStatus::Merged;
             $loser->merged_into_place_id = $winner->id;
             $loser->save();
 
-            $backfilled = $this->backfill($winner, $donor);
+            $backfilled = $this->backfill($winner, $donated);
             $this->ensurePrimary($winner);
             $this->recount($winner);
             $this->recount($loser); // tombstone donated everything — zero, not stale
@@ -338,40 +368,42 @@ class PlaceMerger
     }
 
     /**
-     * Copy the loser's non-null scalar fields into the winner's empty ones. Takes
-     * the loser's raw attributes captured *before* it was tombstoned (its unique
-     * google_place_id is released on tombstone so the winner can claim it here).
-     * Returns field => donated value for the audit row.
+     * The loser's donatable values read THROUGH the model's casts, captured
+     * before the tombstone mutates it. {@see backfill()} assigns these back
+     * through the same casts, so a cast column round-trips as its PHP value
+     * (`list<string>` for `opening_hours_json`) instead of being re-encoded.
      *
-     * @param  array<string, mixed>  $donor
      * @return array<string, mixed>
      */
-    private function backfill(Place $winner, array $donor): array
+    private function donatedValues(Place $loser): array
     {
-        $fields = [
-            'google_place_id', 'address_line1', 'address_line2', 'city', 'region',
-            'postal_code', 'cuisine_primary', 'price_range', 'phone', 'website',
-            'opening_hours_json',
-        ];
+        return $loser->only([...self::BACKFILL_FIELDS, ...array_values(self::CONTACT_SOURCE_FIELDS)]);
+    }
 
-        // Contact-field provenance travels WITH the value it describes (T-117):
-        // backfilling a website/phone without its `*_source` would leave a
-        // Google-sourced value stamped unknown — which reads as untrusted and
-        // wrongly denies a legitimate owner the website/phone claim. One source of
-        // truth for "who owns this field", never two that drift.
-        $sourceOf = ['website' => 'website_source', 'phone' => 'phone_source'];
-
+    /**
+     * Copy the loser's non-null scalar fields into the winner's empty ones. Takes
+     * the loser's CAST values captured *before* it was tombstoned (its unique
+     * google_place_id is released on tombstone so the winner can claim it here) —
+     * see {@see donatedValues()} for why cast and not raw.
+     * Returns field => donated value for the audit row.
+     *
+     * @param  array<string, mixed>  $donated
+     * @return array<string, mixed>
+     */
+    private function backfill(Place $winner, array $donated): array
+    {
         $backfilled = [];
-        foreach ($fields as $field) {
-            if ($winner->{$field} === null && ($donor[$field] ?? null) !== null) {
-                $winner->{$field} = $donor[$field];
+        foreach (self::BACKFILL_FIELDS as $field) {
+            if ($winner->{$field} === null && ($donated[$field] ?? null) !== null) {
+                $winner->{$field} = $donated[$field];
                 $backfilled[$field] = $winner->getAttribute($field);
-                if (isset($sourceOf[$field])) {
-                    $winner->{$sourceOf[$field]} = $donor[$sourceOf[$field]] ?? null;
+                if (isset(self::CONTACT_SOURCE_FIELDS[$field])) {
+                    $sourceField = self::CONTACT_SOURCE_FIELDS[$field];
+                    $winner->{$sourceField} = $donated[$sourceField] ?? null;
                     // Record the source in the audit row too, so unmerge() nulls it
                     // alongside its value — otherwise the survivor keeps a dangling
                     // `*_source` after the website/phone it described is gone.
-                    $backfilled[$sourceOf[$field]] = $winner->getAttribute($sourceOf[$field]);
+                    $backfilled[$sourceField] = $winner->getAttribute($sourceField);
                 }
             }
         }

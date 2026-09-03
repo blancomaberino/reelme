@@ -6,6 +6,8 @@ use App\Models\Place;
 use App\Models\User;
 use App\Models\UserPlaceTag;
 use App\Services\Places\PlaceAggregations;
+use App\Support\CachedReviews;
+use App\Support\OpeningHours;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -99,7 +101,7 @@ class PlaceResource extends JsonResource
             // treated as true.
             'can_edit' => $this->viewerOwnsPlace($request),
             'google_place_id' => $this->google_place_id,
-            'opening_hours' => $this->opening_hours_json,
+            'opening_hours' => $this->openingHoursForResource(),
             'phone' => $this->phone,
             'website' => $this->website,
             // Curated business picture (T-084): the main image drives the detail
@@ -130,7 +132,7 @@ class PlaceResource extends JsonResource
                     'count' => (int) $this->reviews_count,
                 ],
             ],
-            'google_reviews' => $this->google_reviews_json ?? [],
+            'google_reviews' => $this->googleReviewsForResource(),
             // Pluggable multi-source aggregate (T-082): per-source rating rows
             // (Google, native, Trustpilot, …), each with a deep link + snippets.
             // The `rating.google` / `rating.app` / `google_reviews` above stay for
@@ -190,6 +192,92 @@ class PlaceResource extends JsonResource
         );
 
         return implode(', ', array_map(fn ($p) => trim((string) $p), $parts));
+    }
+
+    /**
+     * The stored hours normalized to the contract shape (T-128): a flat list of
+     * strings, or null. `salvage()`, not `fromProvider()` — see
+     * {@see OpeningHours} for the strict-vs-lenient rule.
+     *
+     * Same read-boundary argument as the two normalizers below, different
+     * structure: theirs stay private and local because this resource is their
+     * only reader, while hours have four writers, so the decision lives in a
+     * shared leaf they can all reach without this resource depending on any of
+     * them.
+     *
+     * Validation on the way in is not enough on its own: `SuggestPlaceEditRequest`
+     * accepted a bare `array` until T-128, and rows can reach the column by other
+     * routes entirely (a console command, an import, an admin edit). Served raw,
+     * an associative value lands as a JSON object, the client's `string[]` is a
+     * lie, and `summarizeHours` degrades to an empty list — the hours row silently
+     * disappears again with no error anywhere.
+     *
+     * @return list<string>|null
+     */
+    private function openingHoursForResource(): ?array
+    {
+        return OpeningHours::salvage($this->opening_hours_json);
+    }
+
+    /**
+     * The stored Google review snippets normalized to the contract shape
+     * (T-128): EXACTLY the six keys `place.json` pins, one row per array entry.
+     *
+     * Same read-boundary argument as {@see galleryForResource()} below, and the
+     * same private/local shape, because this resource is the only reader of
+     * `google_reviews_json` that has to make the decision. The schema's items
+     * block is `additionalProperties: false` with all six keys `required`, and
+     * the contract test only ever sees rows the CURRENT
+     * `GooglePlacesGeocoder::reviews()` writes — so a row from an earlier
+     * version of that writer, or one hand-edited in Filament/tinker, would serve
+     * a payload violating the contract with nothing to catch it. Missing keys
+     * become null (the schema allows null on every one); unknown keys are
+     * dropped; a non-array entry is skipped entirely.
+     *
+     * AND the count is capped here, not only in the writer. `place.json` says
+     * `maxItems: 5` ({@see CachedReviews}); `GooglePlacesGeocoder::reviews()`
+     * slices on the write — but that is the CURRENT writer, which is precisely
+     * the assumption the paragraph above exists to distrust. A six-row legacy
+     * column would serve six and break the contract on a live response, so the
+     * cap belongs at the boundary that has to keep the promise. Extra rows are
+     * dropped, not refused: the row already exists, and five real reviews beat
+     * a 500.
+     *
+     * @return list<array{author: ?string, rating: float|int|null, text: ?string, relative_time: ?string, time: ?int, profile_photo_url: ?string}>
+     */
+    private function googleReviewsForResource(): array
+    {
+        $out = [];
+        /** @var array<int, mixed> $rows — a legacy/hand-edited row may hold non-array items */
+        // Sliced on the way IN, not on the way out: a corrupted import with
+        // hundreds of rows would otherwise pay full normalization on every
+        // detail request to keep five. The loop preserves order, so the first
+        // five of the input are the first five of the output.
+        $rows = array_slice((array) $this->google_reviews_json, 0, CachedReviews::MAX);
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $rating = $row['rating'] ?? null;
+            $time = $row['time'] ?? null;
+            $photo = $row['profile_photo_url'] ?? null;
+            $out[] = [
+                'author' => is_string($row['author'] ?? null) ? $row['author'] : null,
+                // Clamped and scheme-checked to match {@see ReviewSnippet::fromArray()},
+                // which decodes THIS SAME COLUMN for `review_sources[].snippets`.
+                // The two readers had drifted apart: a legacy row with a rating of
+                // 9 or a `javascript:` photo URL was rejected by one and served
+                // by the other. Whichever guard is right, it cannot be right in
+                // only one of two readers of one column.
+                'rating' => is_int($rating) || is_float($rating) ? max(0.0, min(5.0, (float) $rating)) : null,
+                'text' => is_string($row['text'] ?? null) ? $row['text'] : null,
+                'relative_time' => is_string($row['relative_time'] ?? null) ? $row['relative_time'] : null,
+                'time' => is_int($time) ? $time : null,
+                'profile_photo_url' => is_string($photo) && preg_match('#^https?://#i', $photo) === 1 ? $photo : null,
+            ];
+        }
+
+        return $out;
     }
 
     /**

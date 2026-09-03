@@ -3,6 +3,8 @@
 namespace App\Services\Geo;
 
 use App\Services\Geo\Exceptions\GeocodeFailed;
+use App\Support\CachedReviews;
+use App\Support\OpeningHours;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -85,19 +87,24 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
     /**
      * Map a Google Place Details `result` (business field mask) to our DTO.
      * Prefers the international phone number; opening hours are stored as the
-     * human-readable `weekday_text` lines (the shape the place detail renders).
+     * human-readable `weekday_text` lines (the shape the place detail renders) —
+     * NEVER Google's `{periods, weekday_text}` object, which the contract's
+     * `string[]` forbids. {@see OpeningHours::fromProvider()} enforces that on the
+     * way in rather than trusting an unvalidated third-party payload (T-128), and
+     * enforces it ALL-OR-NOTHING: one non-string in `weekday_text` voids the whole
+     * value, because a truncated week would still be non-empty and would still win
+     * the enricher's first-non-empty merge over hours the place already had.
      *
      * @param  array<string, mixed>  $result
      */
     private function mapBusinessDetails(array $result): BusinessDetails
     {
         $phone = $result['international_phone_number'] ?? $result['formatted_phone_number'] ?? null;
-        $weekdayText = $result['opening_hours']['weekday_text'] ?? null;
 
         return new BusinessDetails(
             phone: is_string($phone) && trim($phone) !== '' ? trim($phone) : null,
             website: is_string($result['website'] ?? null) && trim($result['website']) !== '' ? trim($result['website']) : null,
-            openingHours: is_array($weekdayText) && $weekdayText !== [] ? array_values($weekdayText) : null,
+            openingHours: OpeningHours::fromProvider($result['opening_hours']['weekday_text'] ?? null),
             rating: isset($result['rating']) ? (float) $result['rating'] : null,
             ratingCount: isset($result['user_ratings_total']) ? (int) $result['user_ratings_total'] : null,
             images: $this->photos($result['photos'] ?? null),
@@ -244,19 +251,25 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
         }
 
         $normalized = [];
-        foreach (array_slice($reviews, 0, 5) as $review) {
+        foreach (array_slice($reviews, 0, CachedReviews::MAX) as $review) {
             if (! is_array($review)) {
                 continue;
             }
 
             $photo = $review['profile_photo_url'] ?? null;
+            // Google is a third party and this payload is not schema-checked on
+            // the wire, so every key is TYPE-guarded, not merely defaulted:
+            // `?? null` passes an object or a numeric string straight through to
+            // a column whose contract pins `string|null` / `integer|null`.
+            $relativeTime = $review['relative_time_description'] ?? null;
+            $time = $review['time'] ?? null;
 
             $normalized[] = [
                 'author' => (string) ($review['author_name'] ?? ''),
                 'rating' => (int) ($review['rating'] ?? 0),
                 'text' => (string) ($review['text'] ?? ''),
-                'relative_time' => $review['relative_time_description'] ?? null,
-                'time' => $review['time'] ?? null,
+                'relative_time' => is_string($relativeTime) ? $relativeTime : null,
+                'time' => is_int($time) ? $time : null,
                 // Google returns the reviewer's avatar in the same review object
                 // (no field-mask/billing change); http(s) only, cached under the
                 // same ToS refresh sweep as author/text.

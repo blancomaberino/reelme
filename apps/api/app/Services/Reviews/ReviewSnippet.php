@@ -2,6 +2,8 @@
 
 namespace App\Services\Reviews;
 
+use App\Support\CachedReviews;
+
 /**
  * One normalized review excerpt, source-agnostic (T-082). Every provider — the
  * cached Google snippets, Trustpilot, a future source — maps its own payload to
@@ -49,13 +51,32 @@ final readonly class ReviewSnippet
      * Trustpilot snapshot, any external driver's stored snippets — to a snippet
      * list, skipping non-array rows. The shared decode both external drivers use.
      *
+     * CAPPED at {@see CachedReviews::MAX}, and this is the reason the cap lives
+     * at a decode rather than at one caller. Reviewing T-128 capped
+     * `google_reviews` in `PlaceResource` and left this path alone — but
+     * `GoogleReviewSource` reads THE SAME `google_reviews_json` column through
+     * here into `review_sources[].snippets`, so a six-row legacy column stayed
+     * fully served through the second door while the first one was shut. Every
+     * driver's snippets go through this function; capping here is what makes
+     * the contract's `maxItems` true for all of them.
+     *
+     * The cap is a PARAMETER with the contract's value as its default, not a
+     * constant buried in the decode: capped-by-default is the behaviour every
+     * caller wants, but a future one that legitimately needs the whole set (an
+     * admin export, a moderation view) should be able to say so at the call
+     * site rather than discover the limit from in here.
+     *
      * @return list<self>
      */
-    public static function listFromArray(mixed $rows): array
+    public static function listFromArray(mixed $rows, int $limit = CachedReviews::MAX): array
     {
         return array_map(
             self::fromArray(...),
-            array_values(array_filter(is_array($rows) ? $rows : [], is_array(...))),
+            array_slice(
+                array_values(array_filter(is_array($rows) ? $rows : [], is_array(...))),
+                0,
+                $limit,
+            ),
         );
     }
 

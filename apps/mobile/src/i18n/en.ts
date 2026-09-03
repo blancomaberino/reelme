@@ -99,6 +99,7 @@ export const en = {
   'place.sourceCount': '{{count}} sources',
   'place.sourceCount_one': '{{count}} source',
   'place.sourceCount_other': '{{count}} sources',
+  'place.hours': 'Opening hours',
   'place.hoursShow': 'Show weekly hours',
   'place.hoursHide': 'Hide weekly hours',
   'place.openInMap': 'Open in map',
@@ -134,7 +135,8 @@ export const en = {
   // things people most want to correct — "this closed down", "the photo is of
   // another restaurant" — are exactly the ones the five fields above cannot say.
   'suggest.field.note': 'Anything else?',
-  'suggest.field.notePlaceholder': 'e.g. this place closed down, or the pin is on the wrong side of the street',
+  'suggest.field.notePlaceholder':
+    'e.g. the hours are wrong, this place closed down, or the pin is on the wrong side of the street',
   'suggest.field.noteHint': 'Tell us in your own words. A moderator reads it.',
   'suggest.venue.note': 'They wrote',
   'suggest.venue.title': 'Suggested changes',

@@ -4,15 +4,19 @@
 // @reelmap/contracts (T-094, T-102), so a renamed/removed API field breaks these
 // at typecheck time, not on-device: PlaceSummary, UserSummary and FeedItem here,
 // UserProfile in ./profile.ts, ShareDetail in ./shares.ts, the list shapes in
-// ./lists.ts. What stays hand-written below is what has no schema yet (map/search
-// rows, and PlaceDetail — pending the gaps in place.json, e.g. ?include=reviews);
-// migrate each as its schema lands.
+// ./lists.ts. What stays hand-written below is what has no schema yet (the
+// map/search rows). PlaceDetail is still spelled out here because several of its
+// fields are optional for older cached payloads, but every field the contract
+// pins is DERIVED from it (opening_hours, reviews) rather than restated — a
+// restated field is exactly how `opening_hours` drifted (T-128).
 import type { Offer } from './offers';
 
 import type {
   FeedItem as ContractFeedItem,
   InfluencerSummary as ContractInfluencerSummary,
+  PlaceDetail as ContractPlaceDetail,
   PlaceSummary as ContractPlaceSummary,
+  Review as ContractReview,
   UserSummary as ContractUserSummary,
 } from '@reelmap/contracts';
 
@@ -91,15 +95,13 @@ export type ReviewSourceSummary = {
   snippets: ReviewSnippet[];
 };
 
-/** A native (in-app) review (place detail `reviews`, via ?include=reviews). */
-export type AppReview = {
-  id: string;
-  rating: number;
-  body: string | null;
-  author: { username: string; avatar_path: string | null } | null;
-  is_own: boolean;
-  created_at: string | null;
-};
+/**
+ * A native (in-app) review — place detail `reviews` (?include=reviews) and the
+ * body of PUT /places/{place}/reviews. Derived from review.json (T-128): the
+ * hand-written version had already lost `updated_at` and the author's `name`,
+ * both of which ReviewResource sends.
+ */
+export type AppReview = ContractReview;
 
 /**
  * One place_source on the detail screen — the provenance card. `source_post`
@@ -150,7 +152,12 @@ export type PlaceDetail = {
    */
   can_edit?: boolean;
   google_place_id: string | null;
-  opening_hours: OpeningHours | null;
+  /**
+   * Human-readable opening-hour lines, one rule per entry, rendered verbatim —
+   * the wording and language are the source's. A flat list of strings, which is
+   * what every API writer stores; see {@link hourLines}.
+   */
+  opening_hours: ContractPlaceDetail['opening_hours'];
   phone: string | null;
   website: string | null;
   // Curated business picture (T-084): the main image drives the detail hero
@@ -184,7 +191,7 @@ export type PlaceDetail = {
   /** Card/bank/wallet payment discounts across the place's sources (T-079). */
   discounts: Discount[];
   google_reviews?: GoogleReview[];
-  reviews?: AppReview[];
+  reviews?: ContractPlaceDetail['reviews'];
   sources?: PlaceSourceItem[];
   /**
    * The venue's LIVE offers (T-042 `?include=offers`). The API filters to the
@@ -216,16 +223,10 @@ export type MyPlaceTag = {
 };
 
 /**
- * Google-style opening hours: `periods` are weekly open/close windows keyed by
- * day-of-week (0 = Sunday). Shape mirrors the Places API `opening_hours` we cache.
+ * Opening hours as the API stores and serves them: a flat list of human-readable
+ * rule lines. Derived from the contract, never restated (T-128).
  */
-export type OpeningHours = {
-  periods?: {
-    open: { day: number; time: string };
-    close?: { day: number; time: string };
-  }[];
-  weekday_text?: string[];
-};
+export type OpeningHours = NonNullable<ContractPlaceDetail['opening_hours']>;
 
 // --- Map ---
 

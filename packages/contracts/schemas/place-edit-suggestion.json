@@ -56,10 +56,10 @@
             "description": "Column name — the same vocabulary the submit endpoint accepts. The picture fields are absent by design: a suggestion may not propose an image URL."
           },
           "from": {
-            "type": ["string", "number", "array", "null"],
+            "allOf": [{ "$ref": "#/definitions/suggestedValue" }],
             "description": "The value the submitter was looking at, captured at submit time. A reviewer compares it against the place as it is now to spot a proposal that has been overtaken."
           },
-          "to": { "type": ["string", "number", "array", "null"] }
+          "to": { "$ref": "#/definitions/suggestedValue" }
         }
       }
     },
@@ -70,5 +70,12 @@
     },
     "created_at": { "type": "string", "format": "date-time" },
     "reviewed_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "definitions": {
+    "suggestedValue": {
+      "description": "One side of a proposed change. `array` is bounded to a list of STRINGS rather than left open (T-128): the only array-valued member of the `field` enum is `opening_hours_json`, which place.json pins as a flat string[]. An unbounded \"array\" here generates `unknown[]`, which is the same union-that-pins-nothing that hid the opening-hours bug on the other endpoint.",
+      "type": ["string", "number", "array", "null"],
+      "items": { "type": "string" }
+    }
   }
 }

@@ -67,7 +67,15 @@ class SuggestPlaceEditRequest extends FormRequest
             'website' => ['sometimes', 'nullable', 'url:http,https', 'max:2048'],
             // One rule per line, as the curator form stores them. Bounded so a
             // proposal stays something a moderator can read in one screen.
-            'opening_hours_json' => ['sometimes', 'nullable', 'array', 'max:14'],
+            //
+            // `list`, not just `array` (T-128): the contract pins this column as
+            // a FLAT LIST OF STRINGS, and `array` alone accepts
+            // `opening_hours_json[monday]=9-5` — every element is still a string,
+            // so the `.*` rule passes, and the value lands in `jsonb` as a JSON
+            // OBJECT. An operator edit applies straight to the place, so that one
+            // request is enough to serve a payload the client's `string[]` type
+            // says is impossible.
+            'opening_hours_json' => ['sometimes', 'nullable', 'array', 'list', 'max:14'],
             'opening_hours_json.*' => ['string', 'max:120'],
             // "Something else is wrong" (T-112) — not a column on `places`, so
             // it is validated here and read by `note()` rather than by `patch()`.

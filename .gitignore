@@ -43,6 +43,7 @@ graphify-out/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/state/
+.claude/hooks/__pycache__/
 
 # Maestro E2E screenshot output (apps/mobile/.maestro flows write here).
 build/maestro/

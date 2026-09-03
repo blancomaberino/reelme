@@ -20,6 +20,7 @@ export type { FeedItem } from './generated/feed-item';
 export type { PlaceListSummary } from './generated/place-list';
 export type { PlaceListDetail } from './generated/place-list-detail';
 export type { Offer } from './generated/offer';
+export type { Review } from './generated/review';
 export type { Report } from './generated/report';
 export type { Redemption } from './generated/redemption';
 export type { Notification } from './generated/notification';
