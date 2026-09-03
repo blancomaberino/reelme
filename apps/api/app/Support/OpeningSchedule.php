@@ -163,10 +163,16 @@ final class OpeningSchedule
      * omission, and rendering the weekday belongs to the client's locale, not to
      * this method.
      *
+     * `$now` is REQUIRED and deliberately has no default. A `new DateTimeImmutable`
+     * fallback here would read the system clock and silently ignore the
+     * application's — so `travelTo()` could not move it, every call site's cue
+     * would be untestable, and the bug would look like a passing test. Callers
+     * pass `now()`.
+     *
      * @param  mixed  $periods  the raw column value; salvaged here so callers need not
      * @return array{open_now: bool, closes_at: ?string, opens_at: ?string}|null
      */
-    public static function stateAt(mixed $periods, ?string $timezone, ?DateTimeInterface $now = null): ?array
+    public static function stateAt(mixed $periods, ?string $timezone, DateTimeInterface $now): ?array
     {
         $zone = self::zone($timezone);
         $schedule = self::salvage($periods);
@@ -175,7 +181,7 @@ final class OpeningSchedule
             return null;
         }
 
-        $local = DateTimeImmutable::createFromInterface($now ?? new DateTimeImmutable)->setTimezone($zone);
+        $local = DateTimeImmutable::createFromInterface($now)->setTimezone($zone);
         // `N` is 1 (Monday) … 7 (Sunday); Google's day 0 is Sunday, so 7 maps to 0.
         $minuteOfWeek = ((int) $local->format('N') % 7) * self::DAY
             + (int) $local->format('G') * 60

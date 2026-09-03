@@ -158,6 +158,14 @@ export type PlaceDetail = {
    * what every API writer stores; see {@link hourLines}.
    */
   opening_hours: ContractPlaceDetail['opening_hours'];
+  /**
+   * Whether the venue is open right now — decided by the API from structured
+   * periods and the venue's own timezone (T-155). NULL means unknowable, and
+   * the screen must then show {@link opening_hours} with NO status cue; it is
+   * never rendered as "Closed". The periods and timezone themselves are not
+   * served on purpose: one implementation decides this, and it is not this one.
+   */
+  open_state: ContractPlaceDetail['open_state'];
   phone: string | null;
   website: string | null;
   // Curated business picture (T-084): the main image drives the detail hero
@@ -227,6 +235,7 @@ export type MyPlaceTag = {
  * rule lines. Derived from the contract, never restated (T-128).
  */
 export type OpeningHours = NonNullable<ContractPlaceDetail['opening_hours']>;
+export type OpenState = NonNullable<ContractPlaceDetail['open_state']>;
 
 // --- Map ---
 

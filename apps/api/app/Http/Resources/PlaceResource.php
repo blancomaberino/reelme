@@ -8,6 +8,7 @@ use App\Models\UserPlaceTag;
 use App\Services\Places\PlaceAggregations;
 use App\Support\CachedReviews;
 use App\Support\OpeningHours;
+use App\Support\OpeningSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -102,6 +103,13 @@ class PlaceResource extends JsonResource
             'can_edit' => $this->viewerOwnsPlace($request),
             'google_place_id' => $this->google_place_id,
             'opening_hours' => $this->openingHoursForResource(),
+            // The computed status, or null when it is not knowable (T-155). The
+            // structured periods and the timezone behind it are deliberately NOT
+            // served: shipping a second, parseable copy of the week is how the
+            // client came to invent its own reading last time (T-128). One
+            // implementation decides open/closed — this one — and the client
+            // renders its answer.
+            'open_state' => OpeningSchedule::stateAt($this->opening_hours_periods_json, $this->timezone, now()),
             'phone' => $this->phone,
             'website' => $this->website,
             // Curated business picture (T-084): the main image drives the detail

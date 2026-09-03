@@ -1,4 +1,5 @@
-import type { OpeningHours } from '@/api/places';
+import type { OpeningHours, OpenState } from '@/api/places';
+import type { MessageKey } from '@/i18n/en';
 
 
 /**
@@ -47,8 +48,11 @@ import type { OpeningHours } from '@/api/places';
  *
  * A wrong "Open now" is worse than no badge, so this claims nothing: it returns
  * only the lines, for the screen to render verbatim, letting the reader
- * judge in the source's own words. When the API serves structured periods WITH
- * a timezone, compute it here — do not reintroduce text parsing.
+ * judge in the source's own words. The API now serves a computed `open_state`
+ * (T-155) — see {@link openStateLabel}. It is decided server-side from
+ * structured periods and the venue's own IANA timezone, which is why the parse
+ * warned against above never happened: nothing below reads these lines to
+ * decide open or closed, and nothing should.
  *
  * Total: never throws. Tolerates `null`/`undefined`, an empty array, and
  * non-string or blank entries slipping through at runtime — the payload is
@@ -64,4 +68,45 @@ export function hourLines(hours: OpeningHours | null | undefined): string[] {
     .filter((line): line is string => typeof line === 'string')
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+}
+
+/**
+ * The status cue for a place, or NULL when there is no honest one to show
+ * (T-155).
+ *
+ * The API decides open-or-closed; this only chooses WHICH MESSAGE says so, and
+ * returns its key rather than a rendered string — so the decision is testable
+ * without asserting on Spanish. `open_state`
+ * is null whenever the venue has no structured periods or no timezone, and null
+ * MUST render as no cue — never "Cerrado". A confidently wrong "Closed" sends
+ * someone away from a restaurant that is open and wanted their business, which
+ * is the whole reason the previous summary was deleted in T-128.
+ *
+ * `closes_at` / `opens_at` are venue-local wall clocks the server already
+ * formatted; they are interpolated, never re-parsed against the device clock,
+ * which belongs to a different timezone than the venue in the case that matters.
+ *
+ * Total: never throws. A malformed cached object (one predating this field)
+ * yields no cue rather than a wrong one.
+ */
+export function openStateLabel(
+  state: OpenState | null | undefined,
+): { key: MessageKey; vars?: { time: string }; open: boolean } | null {
+  if (!state || typeof state.open_now !== 'boolean') return null;
+
+  const clock = (value: unknown): string | null =>
+    typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
+
+  if (state.open_now) {
+    const until = clock(state.closes_at);
+    // A venue that never closes has no closing time — say "open", not "closes 00:00".
+    return until
+      ? { key: 'place.openUntil', vars: { time: until }, open: true }
+      : { key: 'place.openNow', open: true };
+  }
+
+  const next = clock(state.opens_at);
+  return next
+    ? { key: 'place.closedUntil', vars: { time: next }, open: false }
+    : { key: 'place.closedNow', open: false };
 }

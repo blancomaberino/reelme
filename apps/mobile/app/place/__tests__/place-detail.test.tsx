@@ -30,6 +30,7 @@ const PLACE: PlaceDetail = {
   address: 'Rbla. República de México, Montevideo, UY',
   google_place_id: 'ChIJn-slTW6Gn5URoY55e-CgaHY',
   opening_hours: null,
+  open_state: null,
   phone: '+59829021621',
   website: 'https://sofitel.com',
   image_url: null,
@@ -757,5 +758,77 @@ describe('suggesting an edit', function () {
 
     expect(screen.getByLabelText('Something wrong? Suggest a change')).toBeOnTheScreen();
     expect(screen.getByText('Something wrong? Suggest a change')).toBeOnTheScreen();
+  });
+});
+
+describe('open/closed cue (T-155)', () => {
+  // Annotated for the same reason as the hours fixtures above: an unannotated
+  // literal would let a wrong `open_state` shape in through its own guard.
+  const withState = (open_state: PlaceDetail['open_state']): PlaceDetail => ({
+    ...PLACE,
+    opening_hours: LA_DIECISIETE,
+    open_state,
+  });
+
+  it('carries the server’s answer in the collapsed row, beside the label', async () => {
+    mock
+      .onGet(`/places/${PLACE.slug}`)
+      .reply(200, { data: withState({ open_now: true, closes_at: '23:00', opens_at: null }) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    const row = await screen.findByTestId('place-hours');
+    // The whole point of the collapsed row now: someone deciding whether to go
+    // NOW gets the answer without tapping, and without the seven-row block.
+    expect(visibleText(row).join(' ')).toContain('Open · closes 23:00');
+    // Still collapsed — the cue replaces the tap for the status, not for the week.
+    expect(screen.queryByTestId('place-hours-weekly')).toBeNull();
+
+    // And it is in the row's ACCESSIBLE NAME, not only its rendered text. iOS
+    // collapses a Pressable that has a role + label into one element and drops
+    // its children from the accessibility tree, so a cue left as a child is
+    // invisible to VoiceOver — a screen-reader user deciding whether to go now
+    // would hear "show weekly hours" and never the answer. Caught on a device,
+    // where the row rendered the cue perfectly and announced nothing.
+    expect(row.props.accessibilityLabel).toBe('Open · closes 23:00, Show weekly hours');
+  });
+
+  it('says closed with the next opening when the API supplies one', async () => {
+    mock
+      .onGet(`/places/${PLACE.slug}`)
+      .reply(200, { data: withState({ open_now: false, closes_at: null, opens_at: '19:00' }) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    expect(visibleText(await screen.findByTestId('place-hours')).join(' ')).toContain(
+      'Closed · opens 19:00',
+    );
+  });
+
+  it('renders the label ALONE when the API could not decide', async () => {
+    // The rule the whole task is built around: unknowable must not become
+    // "Closed". This is the assertion that fails if anyone ever defaults it.
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withState(null) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    const row = await screen.findByTestId('place-hours');
+    expect(visibleText(row)).toEqual(['Opening hours']);
+    // No claim in the accessible name either — the null path must be silent in
+    // both channels, not just the visual one.
+    expect(row.props.accessibilityLabel).toBe('Show weekly hours');
+  });
+
+  it('still expands to the source lines, unchanged, with a cue present', async () => {
+    // The cue must not have cost the hours: T-128's lines still render verbatim.
+    mock
+      .onGet(`/places/${PLACE.slug}`)
+      .reply(200, { data: withState({ open_now: true, closes_at: '23:00', opens_at: null }) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    fireEvent.press(await screen.findByTestId('place-hours'));
+
+    expect(visibleText(screen.getByTestId('place-hours-weekly'))).toEqual(LA_DIECISIETE);
   });
 });

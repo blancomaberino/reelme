@@ -34,6 +34,20 @@ export interface PlaceDetail {
    * Human-readable opening-hour lines, one rule per entry, exactly as the client shows them (e.g. "Monday: 9:00 AM – 11:00 PM", or a schema.org rule like "Mo-Fr 09:00-17:00"). A FLAT LIST OF STRINGS — never Google's {periods, weekday_text} object: every writer (GooglePlacesGeocoder, WebsiteBusinessSource, the suggest-an-edit request, the Filament form) stores weekday text lines. The wording and language are the source's, so the client renders them verbatim rather than parsing them.
    */
   opening_hours: string[] | null;
+  /**
+   * Whether the venue is open RIGHT NOW, computed server-side from structured periods and the venue's IANA timezone (T-155). NULL means the answer is not knowable — no structured periods, or no timezone — and the client must then show the `opening_hours` lines with NO status cue. Null is never to be rendered as "Closed": a confidently wrong "Closed" sends someone away from a restaurant that is open. The periods and the timezone themselves are deliberately NOT served: one implementation decides this (App\Support\OpeningSchedule) and the client renders its answer, because shipping a second parseable copy of the week is how the client came to invent its own reading in T-128. Google's own `open_now` is never forwarded — it is true at fetch time and a lie for the 30 days the response is cached.
+   */
+  open_state: {
+    open_now: boolean;
+    /**
+     * Venue-local wall clock at which the current opening period ends. Null while closed, and also null for a venue that never closes.
+     */
+    closes_at: string | null;
+    /**
+     * Venue-local wall clock of the next opening, and ONLY when it falls on the same local day. Null while open, and null when the next opening is tomorrow — "opens 11:00" without a weekday would read as "in an hour", and rendering the weekday belongs to the client's locale.
+     */
+    opens_at: string | null;
+  } | null;
   phone: string | null;
   website: string | null;
   /**

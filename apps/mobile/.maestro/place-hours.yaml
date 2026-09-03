@@ -1,4 +1,4 @@
-# Opening hours on the place detail (E2E, iOS simulator) — T-128.
+# Opening hours on the place detail (E2E, iOS simulator) — T-128, extended by T-155.
 #
 # WHY THIS FLOW EXISTS. The hours row had never rendered for a single user, and
 # every test in the suite agreed it was fine. `summarizeHours` read `.periods`
@@ -62,7 +62,23 @@ appId: pet.one.reelmap
 # accessibility element and its children vanish from the tree Maestro reads.
 # The label IS the row's accessible name, so that is what to assert — and it
 # doubles as a check that the collapsed/expanded label swap is wired.
-- assertVisible: "Ver horario semanal"
+#
+# T-155 made this a PREFIX match, and both halves of that are deliberate.
+#
+# The status cue lives IN this accessible name, not merely inside the row: iOS
+# collapses a Pressable carrying a role + label into ONE accessibility element
+# and drops its children, so a cue rendered as a child is invisible to
+# VoiceOver — a screen-reader user deciding whether to go now would hear "ver
+# horario semanal" and never the answer. The name is therefore
+# "Abierto · cierra 23:30, Ver horario semanal" when the API can decide, and
+# bare when it cannot.
+#
+# So the assertion must tolerate both, because WHICH ONE this place shows is a
+# fact about the dev database, not about the screen — the same reason the hour
+# lines below are asserted day-agnostically. Pinning the bare label here would
+# make this flow go red the day someone enriches this venue, for a reason that
+# has nothing to do with the code.
+- assertVisible: ".*Ver horario semanal"
 
 # Collapsed, the lines are NOT on screen. This is the positive control for the
 # assertion below: without it, "the lines appeared" could just mean they were
@@ -78,7 +94,7 @@ appId: pet.one.reelmap
     timeout: 10000
 # Expanded, the row's accessible name flips — an expanded control that still
 # says "show" is a screen-reader lie, and nothing else on screen would catch it.
-- assertVisible: "Ocultar horario semanal"
+- assertVisible: ".*Ocultar horario semanal"
 # A day with TWO windows, the second crossing midnight — the shape a naive
 # parser mangles, and the reason the screen renders text instead of parsing it.
 #
@@ -101,19 +117,41 @@ appId: pet.one.reelmap
 # real two-window row reached the screen intact.
 - assertVisible: ".+: 12:00.–.4:00.PM, 8:00.PM.–.\\d+:00.AM"
 
-# NOT `assertNotVisible: "Open now"`. That was here and it was decoration: the
-# string exists nowhere in the app (only inside a source comment), so it can
-# never fail and it read as coverage of "this screen must not claim open/closed"
-# while providing none. The falsifiable version of that guarantee lives in
-# place-detail.test.tsx, which asserts the collapsed row renders EXACTLY the
-# neutral label — reintroduce a badge and it goes red.
+# T-155 CHANGED WHAT THIS ASSERTION MEANS, so it is now here on purpose.
+#
+# Previously `assertNotVisible: "Open now"` was decoration: the string existed
+# nowhere in the app, so it could never fail. It now exists — the screen renders
+# a real open/closed cue when the API serves `open_state`. That makes the
+# absence assertion FALSIFIABLE for the first time, and it is asserting the rule
+# the whole task is built around:
+#
+#   this place has no structured periods and no timezone, so the API sends
+#   `open_state: null`, and null must render as NO CLAIM — never "Cerrado".
+#
+# Delete the null guard in `openStateLabel`, or default it to closed, and this
+# line goes red on a real device against the real API. The es strings are what
+# to assert, because the app runs in Spanish; the hour LINES stay English
+# because they carry the source's language, not the reader's.
+#
+# WHERE THE CUE'S OWN BEHAVIOUR IS PROVEN. Not here: whether this venue has
+# structured hours is a property of the dev database, so an assertion either way
+# would be pinned to data this flow does not own. It is pinned instead in
+# place-detail.test.tsx, over fixtures that cannot drift — including that a null
+# `open_state` renders NO claim in both the visual row and the accessible name.
+#
+# It was also verified ON DEVICE during T-155, which is how the VoiceOver gap
+# above was found at all. To repeat it: set `timezone` and
+# `opening_hours_periods_json` on this row (a period covering the current local
+# time), reload, and assert `".*Abierto . cierra HH:MM, .*"`; then restore both
+# columns to null. Note the app CACHES the place detail, so the row reverts on
+# screen only after the query refetches.
 - takeScreenshot: build/maestro/t128-hours-2-expanded
 
 # --- It collapses again -----------------------------------------------------
 - tapOn:
     id: "place-hours"
 - assertNotVisible: "Monday: Closed"
-- assertVisible: "Ver horario semanal"
+- assertVisible: ".*Ver horario semanal"
 
 # --- Leave the app where we found it ----------------------------------------
 - stopApp

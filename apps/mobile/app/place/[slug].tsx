@@ -23,7 +23,7 @@ import { Thumbnail } from '@/components/place/thumbnail';
 import { Skeleton, SkeletonGroup } from '@/components/skeleton';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
-import { hourLines } from '@/lib/opening-hours';
+import { hourLines, openStateLabel } from '@/lib/opening-hours';
 import { directionsUrl, googleMapsUrl, googleReviewsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
 import { useSessionStore } from '@/stores/session';
@@ -98,6 +98,7 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
   // back is that nobody reports the wrong row.
   const [reportReview, setReportReview] = useState<{ id: string; subject: string } | null>(null);
   const hours = useMemo(() => hourLines(place.opening_hours), [place.opening_hours]);
+  const openState = useMemo(() => openStateLabel(place.open_state), [place.open_state]);
   const tags = useMemo(
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
     [place.cuisines, place.vibe_tags, place.dietary_tags],
@@ -233,19 +234,46 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
             because "today's line" cannot be identified (weekday_text is
             ordered by the SOURCE locale's first day of week, so no index is a
             fixed weekday). One tap to seven correct lines beats a permanent
-            seven-row block or a summary that would be a guess. Revisit if the
-            API ever serves structured periods with a timezone. */}
+            seven-row block or a summary that would be a guess.
+
+            T-155 met that condition: the API now serves `open_state`, computed
+            from structured periods and the venue's own timezone, so the
+            collapsed row CAN carry an honest status. It is still not parsed
+            from these lines — the cue is the server's answer, rendered. When
+            `open_state` is null the row reads exactly as it did before: the
+            label alone, and no claim. */}
         {hours.length > 0 ? (
           <>
             <Pressable
               onPress={() => setHoursOpen((v) => !v)}
               accessibilityRole="button"
-              accessibilityLabel={hoursOpen ? t('place.hoursHide') : t('place.hoursShow')}
+              // The status cue must be IN this label, not merely rendered inside
+              // the row. A Pressable with an accessibilityRole + label collapses
+              // into ONE accessibility element on iOS and its children vanish
+              // from the tree — so a cue left as a child is invisible to
+              // VoiceOver (and to Maestro, which reads the same tree). Someone
+              // using a screen reader to decide whether to go now would hear
+              // only "show weekly hours" and never the answer.
+              accessibilityLabel={[
+                openState ? t(openState.key, openState.vars) : null,
+                hoursOpen ? t('place.hoursHide') : t('place.hoursShow'),
+              ]
+                .filter(Boolean)
+                .join(', ')}
               accessibilityState={{ expanded: hoursOpen }}
               testID="place-hours"
             >
               <Row icon="time-outline" c={c} styles={styles}>
                 <Text style={styles.rowText}>{t('place.hours')}</Text>
+                {/* A SIBLING of the label, not nested inside it: nested text
+                    collapses into one node, which would fold the neutral label
+                    and the status claim into a single string for a screen
+                    reader and for any test reading the row. */}
+                {openState ? (
+                  <Text style={openState.open ? styles.openCue : styles.closedCue}>
+                    {t(openState.key, openState.vars)}
+                  </Text>
+                ) : null}
                 <Ionicons
                   name={hoursOpen ? 'chevron-up' : 'chevron-down'}
                   size={16}
@@ -683,6 +711,10 @@ const makeStyles = (c: Palette) =>
     rowIcon: { marginTop: 1 },
     rowBody: { flex: 1, flexDirection: 'row', alignItems: 'center' },
     rowText: { flex: 1, fontSize: 15, color: c.text, lineHeight: 21 },
+    // Semantic, not decorative: the two states must be distinguishable without
+    // reading, and without relying on colour alone — the words differ too.
+    openCue: { color: c.green, fontWeight: '600' },
+    closedCue: { color: c.muted, fontWeight: '600' },
     chevron: { marginLeft: 8 },
     weekly: { paddingLeft: 30, gap: 4, paddingBottom: 4 },
     weeklyLine: { fontSize: 14, color: c.muted },

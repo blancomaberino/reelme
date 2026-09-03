@@ -56,6 +56,18 @@ return [
     | Drives both the daily `reelmap:google:refresh-stale` sweep AND the on-demand
     | refresh a re-share triggers when it re-resolves a known-but-stale place.
     */
+    /*
+    | Venue timezone lookup (T-155). A SEPARATELY BILLED Google API call — Place
+    | Details carries no timezone at any field mask — made once per place and
+    | cached for a year. Disable to stop resolving it; places without one show
+    | their hours lines and no open/closed cue, which is the honest degradation.
+    */
+    'enrich' => [
+        'timezone' => [
+            'enabled' => (bool) env('PLACES_ENRICH_TIMEZONE_ENABLED', true),
+        ],
+    ],
+
     'google' => [
         'refresh_after_days' => (int) env('PLACES_GOOGLE_REFRESH_AFTER_DAYS', 30),
     ],

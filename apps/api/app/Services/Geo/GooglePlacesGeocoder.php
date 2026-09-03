@@ -5,6 +5,7 @@ namespace App\Services\Geo;
 use App\Services\Geo\Exceptions\GeocodeFailed;
 use App\Support\CachedReviews;
 use App\Support\OpeningHours;
+use App\Support\OpeningSchedule;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -105,6 +106,11 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
             phone: is_string($phone) && trim($phone) !== '' ? trim($phone) : null,
             website: is_string($result['website'] ?? null) && trim($result['website']) !== '' ? trim($result['website']) : null,
             openingHours: OpeningHours::fromProvider($result['opening_hours']['weekday_text'] ?? null),
+            // The same week Google already sent and this class used to throw away
+            // (T-155). `periods` is in the response BUSINESS_FIELDS already pays
+            // for, so reading it costs nothing; it is stored beside the lines, never
+            // merged into them.
+            openingHoursPeriods: OpeningSchedule::fromProvider($result['opening_hours']['periods'] ?? null),
             rating: isset($result['rating']) ? (float) $result['rating'] : null,
             ratingCount: isset($result['user_ratings_total']) ? (int) $result['user_ratings_total'] : null,
             images: $this->photos($result['photos'] ?? null),
