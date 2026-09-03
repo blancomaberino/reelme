@@ -39,7 +39,7 @@
     "google_place_id": { "type": ["string", "null"] },
     "opening_hours": {
       "type": ["array", "null"],
-      "description": "Human-readable opening-hour lines, one rule per entry, exactly as the client shows them (e.g. \"Monday: 9:00 AM – 11:00 PM\", or a schema.org rule like \"Mo-Fr 09:00-17:00\"). A FLAT LIST OF STRINGS — never Google's {periods, weekday_text} object: every writer (GooglePlacesGeocoder, WebsiteBusinessSource, the suggest-an-edit request, the Filament form) stores weekday text lines. The wording and language are the source's, so the client renders them verbatim rather than parsing them.",
+      "description": "Human-readable opening-hour lines, one rule per entry, exactly as the client shows them. A FLAT LIST OF STRINGS — never Google's {periods, weekday_text} object. TWO ORIGINS, and the client renders both the same way: (1) when the place has structured periods, the lines are GENERATED server-side in the REQUEST'S LOCALE (T-168) — localized day names, the locale's first day of the week, its 12/24-hour clock, and a localized word for a closed day derived from the absence of a period; (2) otherwise they are the source's own prose, in the source's language and day order, rendered VERBATIM. The client must never parse these lines in either case: from prose the weekday order and the meridiem are ambiguous (T-128), and from generated lines there is nothing to recover that `open_state` and the API do not already provide. Because origin (1) depends on the request locale, a cached copy may be in a previously requested language until it is refetched.",
       "items": { "type": "string" }
     },
     "open_state": {

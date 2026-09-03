@@ -113,6 +113,45 @@ it('never forwards a stale provider verdict — the state is recomputed per requ
     expect($this->getJson("/api/v1/places/{$place->slug}")->json('data.open_state.open_now'))->toBeFalse();
 });
 
+// ------------------------------------------------------ hours in the reader's language
+
+it('serves the hours in the language the reader asked for', function () {
+    // The bug the owner reported from a screenshot: a voseo-Spanish app showing
+    // "Monday: Closed". Same row, same request, two readers — this is the
+    // assertion T-168 exists for.
+    $place = Place::factory()->active()->create([
+        'opening_hours_json' => ['Monday: 12:00 – 4:00 PM'],
+        'opening_hours_periods_json' => mondayLunchToLate(),
+    ]);
+
+    $es = $this->withHeader('Accept-Language', 'es')
+        ->getJson("/api/v1/places/{$place->slug}")->json('data.opening_hours');
+    $en = $this->withHeader('Accept-Language', 'en')
+        ->getJson("/api/v1/places/{$place->slug}")->json('data.opening_hours');
+
+    expect($es[0])->toBe('Lunes: 11:00 – 23:00');
+    expect($en)->toContain('Monday: 11:00 AM – 11:00 PM');
+    // Spanish starts the week on Monday, English on Sunday.
+    expect($en[0])->toStartWith('Sunday');
+    // And the source's English prose is nowhere in the Spanish answer.
+    expect(implode(' ', $es))->not->toContain('Closed');
+});
+
+it('still renders the source’s prose VERBATIM when there are no structured periods', function () {
+    // The other half of the pair, and the T-128 rule that does not go away: with
+    // nothing structured to render from, the lines are the source's own words, in
+    // the source's language and day order, untouched. Translating them would mean
+    // parsing them, which is the defect T-128 removed.
+    $place = Place::factory()->active()->create([
+        'opening_hours_json' => ['Monday: Closed', 'Tuesday: 12:00 – 4:00 PM'],
+        'opening_hours_periods_json' => null,
+    ]);
+
+    expect($this->withHeader('Accept-Language', 'es')
+        ->getJson("/api/v1/places/{$place->slug}")->json('data.opening_hours'))
+        ->toBe(['Monday: Closed', 'Tuesday: 12:00 – 4:00 PM']);
+});
+
 // ------------------------------------------------- the timezone half's source
 
 it('resolves a timezone for a place that has none', function () {

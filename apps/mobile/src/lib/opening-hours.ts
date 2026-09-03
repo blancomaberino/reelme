@@ -6,10 +6,21 @@ import type { MessageKey } from '@/i18n/en';
  * The lines to show for a place's opening hours (T-033, fixed in T-128).
  *
  * The input is a FLAT LIST OF HUMAN-READABLE STRINGS — what every API writer
- * stores and what `packages/contracts/schemas/place.json` pins: Google
- * `weekday_text` lines ("Monday: 9:00 AM – 11:00 PM"), schema.org rules
- * ("Mo-Fr 09:00-17:00"), or whatever a curator typed. It is prose, in the
- * SOURCE's wording and language — not a machine-readable structure.
+ * stores and what `packages/contracts/schemas/place.json` pins. It now has TWO
+ * origins, and this function treats them identically (T-168):
+ *
+ *  - **Generated**, when the place has structured periods: the API writes the
+ *    week itself in the REQUEST'S locale — Spanish day names, the locale's first
+ *    day of the week and its 12/24-hour clock, and a localized word for a closed
+ *    day taken from the ABSENCE of an interval. A voseo-Spanish app showing
+ *    "Monday: Closed" is what prompted it.
+ *  - **The source's own prose** otherwise: Google `weekday_text`
+ *    ("Monday: 9:00 AM – 11:00 PM"), a schema.org rule, or whatever a curator
+ *    typed — in the source's wording, language and day order.
+ *
+ * Either way it is text to render, never a structure to read. The reasons below
+ * are why the second kind must not be parsed; the first kind removes the need
+ * to, because the API already did the reading.
  *
  * ## Why this returns only lines, and claims nothing about open-or-closed
  *
