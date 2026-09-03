@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
+import { LOCALIZED_KEY_PREFIXES } from '@/api/keys';
 import { queryClient } from '@/api/query-client';
 
 export type Locale = 'es' | 'en';
@@ -28,41 +29,11 @@ type SettingsState = {
   hydrate: () => Promise<void>;
 };
 
-/**
- * The ONE place the in-memory locale changes, because a locale change has a
- * consequence beyond the field.
- *
- * Anything the SERVER localizes has to be re-asked for: switching language here
- * only changes `Accept-Language` on the NEXT request, so a cached payload is
- * still the one the API rendered for the old one. Opening hours are the visible
- * case (T-168) — the API writes those lines itself, so a cached place shows an
- * English week under a Spanish UI until something refetches it.
- *
- * Both writers go through this. The first version put the rule inside
- * `setLocale` only, and `hydrate()` — which restores the SAVED language on every
- * cold start, and is the path that actually differs from the default — wrote the
- * field directly and skipped it. Found by review, not by a test: the test
- * asserted the setter it was written beside rather than the invariant, so a
- * second writer of the same state was invisible to it.
- */
-function applyLocale(set: (partial: Partial<SettingsState>) => void, next: Locale): void {
-  if (useSettingsStore.getState().locale === next) {
-    return;
-  }
-
-  set({ locale: next });
-  // Scoped to the places tree — clearing the whole cache would also discard the
-  // payload that restores a session offline.
-  void queryClient.invalidateQueries({ queryKey: ['places'] });
-}
-
 export const useSettingsStore = create<SettingsState>((set) => ({
   locale: DEFAULT_LOCALE,
   currency: DEFAULT_CURRENCY,
   setLocale: (locale) => {
-    applyLocale(set, locale);
-    // Persisted here and NOT in applyLocale: hydrate() is reading this value
-    // back, so writing it there would echo it straight to disk again.
+    set({ locale });
     void SecureStore.setItemAsync(LOCALE_KEY, locale);
   },
   setCurrency: (currency) => {
@@ -74,10 +45,43 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       SecureStore.getItemAsync(LOCALE_KEY),
       SecureStore.getItemAsync(CURRENCY_KEY),
     ]);
-    // Through applyLocale, not `set`: restoring a saved language IS a locale
-    // change, and it is the one most likely to differ from the default — this is
-    // the cold start of every user who has ever switched.
-    if (savedLocale === 'es' || savedLocale === 'en') applyLocale(set, savedLocale);
+    if (savedLocale === 'es' || savedLocale === 'en') set({ locale: savedLocale });
     if (savedCurrency === '$' || savedCurrency === '€' || savedCurrency === '£') set({ currency: savedCurrency });
   },
 }));
+
+/**
+ * Anything the SERVER localizes is re-asked for whenever the language changes.
+ *
+ * Switching language only changes `Accept-Language` on the NEXT request, so a
+ * cached payload is still the one the API rendered for the old one. Opening
+ * hours are the visible case (T-168): the API writes those lines itself, so a
+ * cached place shows an English week under a Spanish UI until something
+ * refetches it.
+ *
+ * **A subscription, not a call inside each setter, and that is the whole
+ * lesson.** The first version put the rule in `setLocale`; `hydrate()` — the
+ * cold start of every user who ever switched, and so the path most likely to
+ * change the language — wrote the field directly and skipped it. Moving it to
+ * both writers only moved the problem: a third writer, including a bare
+ * `useSettingsStore.setState({ locale })` from anywhere, would skip it again,
+ * and the test enumerating the store's own methods could not see that either.
+ *
+ * Subscribing puts the rule where the STATE changes rather than where a caller
+ * happens to be, so it holds for every writer that exists and every writer that
+ * will. See CLAUDE.md, Wiring & seams #5.
+ *
+ * Scoped to the keys the server actually localizes ({@link LOCALIZED_KEY_PREFIXES},
+ * which lives beside the key factory so it is under the nose of whoever adds the
+ * next localized endpoint) — not to everything, since clearing the whole cache
+ * would also discard the payload that restores a session offline.
+ */
+useSettingsStore.subscribe((state, previous) => {
+  if (state.locale === previous.locale) {
+    return;
+  }
+
+  for (const queryKey of LOCALIZED_KEY_PREFIXES) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
+});
