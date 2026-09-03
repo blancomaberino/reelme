@@ -3,6 +3,7 @@
 use App\Models\Place;
 use App\Services\Geo\TimezoneResolver;
 use App\Services\Places\Enrichment\Sources\TimezoneBusinessSource;
+use App\Services\Places\PlaceEditor;
 
 /**
  * The served open/closed cue (T-155), end to end: the column pair on the place,
@@ -114,13 +115,51 @@ it('never forwards a stale provider verdict — the state is recomputed per requ
 
 // ------------------------------------------------- the timezone half's source
 
-it('resolves and stores a timezone for a place that has none', function () {
+it('resolves a timezone for a place that has none', function () {
     $place = Place::factory()->active()->create(['timezone' => null]);
     $resolver = fakeTimezoneResolver('America/Montevideo');
 
     expect((new TimezoneBusinessSource($resolver))->enrich($place))
         ->toBe(['timezone' => 'America/Montevideo']);
     expect($resolver->calls)->toBe(1);
+});
+
+it('PERSISTS both columns through the real enricher, not just returns them', function () {
+    // The test this file was missing, and the reason a blocking defect shipped
+    // green: every other case here writes the columns with the factory, which
+    // is mass assignment and bypasses the only path that writes them for real.
+    // `PlaceEditor::apply()` filters every patch to `Place::CURATED_FIELDS`, so
+    // omitting the two new names there made them unwritable in production while
+    // the whole suite stayed green — enrichment ran, reported success, stamped
+    // `enriched_at`, and silently discarded both values.
+    $place = Place::factory()->active()->create(['timezone' => null]);
+
+    app(PlaceEditor::class)->apply($place, [
+        'timezone' => 'America/Montevideo',
+        'opening_hours_periods_json' => mondayLunchToLate(),
+    ], 'enrichment');
+
+    $fresh = $place->fresh();
+    expect($fresh->timezone)->toBe('America/Montevideo');
+    // `toEqual`, not `toBe`: the column is jsonb, and Postgres stores object keys
+    // sorted by length then bytewise rather than as written — so a round-trip
+    // returns open_day, close_day, open_time, close_time. The CONTENT is what the
+    // contract pins; key order is the database's business. (An identity assertion
+    // here fails for a reason that has nothing to do with the code, which is how
+    // someone ends up "fixing" it by reordering the writer.)
+    expect($fresh->opening_hours_periods_json)->toEqual(mondayLunchToLate());
+});
+
+it('normalizes a malformed period list on the way through the editor', function () {
+    // The write path is also the normalization point: whatever reaches the
+    // column is the contract shape or null, never a caller's raw payload.
+    $place = Place::factory()->active()->create();
+
+    app(PlaceEditor::class)->apply($place, [
+        'opening_hours_periods_json' => [['open_day' => 99, 'open_time' => 'nope']],
+    ], 'enrichment');
+
+    expect($place->fresh()->opening_hours_periods_json)->toBeNull();
 });
 
 it('does not re-bill the lookup for a place that already has one', function () {

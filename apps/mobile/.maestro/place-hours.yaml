@@ -84,6 +84,27 @@ appId: pet.one.reelmap
 # assertion below: without it, "the lines appeared" could just mean they were
 # always there.
 - assertNotVisible: "Monday: Closed"
+
+# ...and NO status cue, because this row has neither structured periods nor a
+# timezone, so the API sends `open_state: null` (T-155). Null must render as no
+# claim — never "Cerrado" — and this is where that is checked against the real
+# API on a real device.
+#
+# These four are FALSIFIABLE, verified rather than assumed: populating the two
+# columns on this row made "Abierto · cierra 23:30" appear in the accessible
+# name, and `.*Abierto.*` matched it. The `.*` on both ends is what makes them
+# work at all — Maestro matches a text selector against the WHOLE string, and
+# the cue is only the head of a longer name ("Abierto · cierra 23:30, Ver
+# horario semanal"), because the cue has to be IN that name to reach VoiceOver.
+# Without the wildcards `assertNotVisible: "Cerrado"` passes on a screen showing
+# exactly that, which is the dead-assertion shape this flow's history warns of.
+#
+# PRECONDITION, stated because these lines depend on it: the seeded row has no
+# structured hours (see PRECONDITIONS above). Enrich this venue and they must
+# become the positive assertions instead — the flow is then testing the other
+# branch, not broken.
+- assertNotVisible: ".*Abierto.*"
+- assertNotVisible: ".*Cerrado.*"
 - takeScreenshot: build/maestro/t128-hours-1-collapsed
 
 # --- Pressing it reveals the source's own lines, verbatim -------------------

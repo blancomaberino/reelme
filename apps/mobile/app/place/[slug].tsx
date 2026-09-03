@@ -254,8 +254,13 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
               // VoiceOver (and to Maestro, which reads the same tree). Someone
               // using a screen reader to decide whether to go now would hear
               // only "show weekly hours" and never the answer.
+              //
+              // The middle dot is swapped for a comma HERE ONLY. VoiceOver reads
+              // `·` aloud as "middle dot", so the announced name would be
+              // "Abierto middle dot cierra 23:00" — the right information,
+              // delivered badly. The visual string keeps the dot.
               accessibilityLabel={[
-                openState ? t(openState.key, openState.vars) : null,
+                openState ? t(openState.key, openState.vars).replace(' · ', ', ') : null,
                 hoursOpen ? t('place.hoursHide') : t('place.hoursShow'),
               ]
                 .filter(Boolean)

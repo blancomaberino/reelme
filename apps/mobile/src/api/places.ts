@@ -164,8 +164,14 @@ export type PlaceDetail = {
    * the screen must then show {@link opening_hours} with NO status cue; it is
    * never rendered as "Closed". The periods and timezone themselves are not
    * served on purpose: one implementation decides this, and it is not this one.
+   *
+   * OPTIONAL as well as nullable, for the same reason as {@link can_edit}: the
+   * query cache is persisted, so a payload cached before this field existed
+   * rehydrates with the key ABSENT, not null. Typing it as always-present would
+   * let a future call site write `place.open_state.open_now` with no compiler
+   * complaint and crash on the first upgrade from an older build.
    */
-  open_state: ContractPlaceDetail['open_state'];
+  open_state?: ContractPlaceDetail['open_state'];
   phone: string | null;
   website: string | null;
   // Curated business picture (T-084): the main image drives the detail hero

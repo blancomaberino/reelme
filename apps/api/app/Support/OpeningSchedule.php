@@ -34,6 +34,9 @@ final class OpeningSchedule
 
     private const WEEK = 10080;
 
+    /** A week holds at most two services a day; the rest is a malformed payload. */
+    private const MAX_PERIODS = 14;
+
     /**
      * Normalize a provider's `periods[]` for storage.
      *
@@ -59,6 +62,14 @@ final class OpeningSchedule
     public static function fromProvider(mixed $value): ?array
     {
         if (! is_array($value) || ! array_is_list($value) || $value === []) {
+            return null;
+        }
+
+        // A real week is at most 14 entries (two services a day). Anything past
+        // MAX_PERIODS is not a schedule, and storing it would mean re-validating
+        // every entry on every read of the place — so it is voided like any other
+        // shape this method does not understand.
+        if (count($value) > self::MAX_PERIODS) {
             return null;
         }
 
@@ -95,6 +106,18 @@ final class OpeningSchedule
             ];
         }
 
+        // Google documents exactly one shape for "always open": a SINGLE period,
+        // day 0, time 0000, with no close. A null close sitting beside ordinary
+        // trading days is not a 24/7 venue — it is a payload we do not
+        // understand, and reinterpreting it either way is a guess. (Read one way
+        // it makes the venue open on days it does not trade; read the other it
+        // silently drops the entry.) Void it, like every other unreadable shape.
+        $alwaysOpen = array_filter($periods, fn (array $p): bool => $p['close_time'] === null);
+
+        if ($alwaysOpen !== [] && count($periods) > 1) {
+            return null;
+        }
+
         return $periods;
     }
 
@@ -115,9 +138,12 @@ final class OpeningSchedule
             return null;
         }
 
+        // Bounded on the read side too: a legacy row written before the cap, or
+        // one written by another path, must not make every request re-validate an
+        // unbounded list.
         $periods = [];
 
-        foreach ($value as $period) {
+        foreach (array_slice($value, 0, self::MAX_PERIODS) as $period) {
             if (! is_array($period)) {
                 continue;
             }
@@ -144,6 +170,14 @@ final class OpeningSchedule
                 'close_day' => $closeDay,
                 'close_time' => $closeTime,
             ];
+        }
+
+        // The stored mirror of the write rule above: a null-close entry means
+        // "never closes", which can only be true of a venue with no other
+        // periods. Beside trading days it is contradictory, and the lenient
+        // temper here drops the contradiction rather than the whole week.
+        if (count($periods) > 1) {
+            $periods = array_values(array_filter($periods, fn (array $p): bool => $p['close_time'] !== null));
         }
 
         return $periods === [] ? null : $periods;
@@ -190,14 +224,16 @@ final class OpeningSchedule
         $nextOpen = null;
 
         foreach ($schedule as $period) {
-            $start = $period['open_day'] * self::DAY + self::minutes($period['open_time']);
 
-            // No close at all: the documented 24/7 shape. Open, and there is no
-            // closing time to report — not "closes at midnight".
+            // No close at all: the documented 24/7 shape. Both normalizers
+            // guarantee such an entry is the ONLY one in the list, so it really
+            // does mean "always", and there is no closing time to report — not
+            // "closes at midnight".
             if ($period['close_day'] === null || $period['close_time'] === null) {
                 return ['open_now' => true, 'closes_at' => null, 'opens_at' => null];
             }
 
+            $start = $period['open_day'] * self::DAY + self::minutes($period['open_time']);
             $end = $period['close_day'] * self::DAY + self::minutes($period['close_time']);
 
             // A close at or before the open crosses midnight (23:00 → 02:00) or

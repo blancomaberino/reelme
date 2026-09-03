@@ -7,6 +7,7 @@ use DateTimeZone;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * {@see TimezoneResolver} backed by the Google Time Zone API (T-155).
@@ -36,6 +37,16 @@ class GoogleTimezoneResolver implements TimezoneResolver
 
     private const CACHE_DAYS = 365;
 
+    /**
+     * A FAILURE is cached for hours, not a year. Google answering
+     * `REQUEST_DENIED` because the Time Zone API is not enabled on the project
+     * is indistinguishable, at this layer, from "this point has no zone" — and
+     * caching the first for a year would leave a whole launch city with no
+     * open/closed cue for twelve months, with nothing in the log to explain it.
+     * Only `ZERO_RESULTS` is a real, durable answer.
+     */
+    private const FAILURE_CACHE_HOURS = 6;
+
     public function resolve(float $lat, float $lng): ?string
     {
         if ($this->apiKey() === '' || abs($lat) > 90.0 || abs($lng) > 180.0) {
@@ -50,15 +61,27 @@ class GoogleTimezoneResolver implements TimezoneResolver
 
         // Cache the miss too, as a sentinel: `Cache::remember` treats a null
         // return as a miss and would re-bill this lookup on every enrich run of
-        // a place the API cannot place.
-        $cached = Cache::remember($key, now()->addDays(self::CACHE_DAYS), function () use ($lat, $lng): array {
-            return ['zone' => $this->fetch($lat, $lng)];
-        });
+        // a place the API cannot place. The TTL depends on WHICH kind of null it
+        // is — see FAILURE_CACHE_HOURS.
+        $cached = Cache::get($key);
+
+        if (! is_array($cached)) {
+            $cached = $this->fetch($lat, $lng);
+            Cache::put(
+                $key,
+                $cached,
+                $cached['failed'] ? now()->addHours(self::FAILURE_CACHE_HOURS) : now()->addDays(self::CACHE_DAYS),
+            );
+        }
 
         return $cached['zone'];
     }
 
-    private function fetch(float $lat, float $lng): ?string
+    /**
+     * @return array{zone: ?string, failed: bool} `failed` distinguishes "we could
+     *                                            not ask" from "there is no zone here"
+     */
+    private function fetch(float $lat, float $lng): array
     {
         try {
             $response = Http::baseUrl(self::BASE_URL)->timeout(10)->get('/json', [
@@ -73,18 +96,33 @@ class GoogleTimezoneResolver implements TimezoneResolver
             // Never surface the message: Guzzle embeds the full request URL,
             // including `?key=<secret>`, which would then reach laravel.log
             // (the same reason GooglePlacesGeocoder::get() swallows it).
-            return null;
+            Log::warning('Google Time Zone request failed (connection error).');
+
+            return ['zone' => null, 'failed' => true];
         }
 
         if ($response->failed()) {
-            return null;
+            // The STATUS only — never the URI, which carries the key.
+            Log::warning('Google Time Zone returned HTTP '.$response->status().'.');
+
+            return ['zone' => null, 'failed' => true];
         }
 
         /** @var array<string, mixed> $json */
         $json = $response->json() ?? [];
 
-        if (($json['status'] ?? null) !== 'OK') {
-            return null;
+        $status = $json['status'] ?? null;
+
+        if ($status !== 'OK') {
+            // ZERO_RESULTS is a real answer — there is no zone for this point, and
+            // asking again next year will not change that. Everything else
+            // (REQUEST_DENIED, OVER_QUERY_LIMIT, INVALID_REQUEST) is a condition an
+            // operator can fix, so it must expire quickly and say so in the log.
+            if ($status !== 'ZERO_RESULTS') {
+                Log::warning('Google Time Zone answered status '.(is_string($status) ? $status : 'unknown').'.');
+            }
+
+            return ['zone' => null, 'failed' => $status !== 'ZERO_RESULTS'];
         }
 
         $zone = $json['timeZoneId'] ?? null;
@@ -93,10 +131,12 @@ class GoogleTimezoneResolver implements TimezoneResolver
         // status computation later feeds to DateTimeZone; anything PHP's own tz
         // database does not list is not a zone we can compute against.
         if (! is_string($zone) || ! in_array($zone, DateTimeZone::listIdentifiers(), true)) {
-            return null;
+            Log::warning('Google Time Zone returned an id PHP does not recognize.');
+
+            return ['zone' => null, 'failed' => true];
         }
 
-        return $zone;
+        return ['zone' => $zone, 'failed' => false];
     }
 
     private function apiKey(): string

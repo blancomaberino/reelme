@@ -213,6 +213,54 @@ it('reports a 24/7 venue as open with no closing time', function () {
     ))->toBe(['open_now' => true, 'closes_at' => null, 'opens_at' => null]);
 });
 
+it('refuses an always-open entry sitting beside ordinary trading days', function () {
+    // Found by review. The 24/7 branch returned open for ANY period with no
+    // close, wherever it sat and whatever day it named — so a week holding a
+    // Monday service plus one always-open entry reported the venue open every
+    // day, including days it does not trade.
+    //
+    // The fix is upstream of the arithmetic: Google documents exactly one shape
+    // for always-open (a SINGLE period, day 0, 0000, no close), so a null close
+    // beside trading days is a payload we cannot read, not a venue to guess at.
+    $contradictory = [
+        ['open' => ['day' => 1, 'time' => '1100'], 'close' => ['day' => 1, 'time' => '2300']],
+        ['open' => ['day' => 1, 'time' => '0000']],
+    ];
+
+    expect(OpeningSchedule::fromProvider($contradictory))->toBeNull();
+
+    // A legacy row already holding that shape keeps its real trading day — the
+    // lenient read drops the contradiction, not the week.
+    $stored = [
+        ['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00'],
+        ['open_day' => 1, 'open_time' => '00:00', 'close_day' => null, 'close_time' => null],
+    ];
+
+    expect(OpeningSchedule::salvage($stored))->toBe([
+        ['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00'],
+    ]);
+    // Wednesday is therefore closed, where it used to read open.
+    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', at('2026-09-09 18:00'))['open_now'])
+        ->toBeFalse();
+    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', at('2026-09-07 18:00'))['open_now'])
+        ->toBeTrue();
+});
+
+it('voids a period list longer than a real week', function () {
+    // A week is at most two services a day. Anything longer is a malformed
+    // payload, and storing it would mean re-validating an unbounded list on every
+    // read of the place.
+    $tooMany = array_fill(0, 15, ['open' => ['day' => 1, 'time' => '1100'], 'close' => ['day' => 1, 'time' => '2300']]);
+    expect(OpeningSchedule::fromProvider($tooMany))->toBeNull();
+
+    $justFits = array_fill(0, 14, ['open' => ['day' => 1, 'time' => '1100'], 'close' => ['day' => 1, 'time' => '2300']]);
+    expect(OpeningSchedule::fromProvider($justFits))->toHaveCount(14);
+
+    // A legacy row written before the cap is bounded on the READ side too.
+    $stored = array_fill(0, 40, ['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00']);
+    expect(OpeningSchedule::salvage($stored))->toHaveCount(14);
+});
+
 it('reports closed on a day the week does not cover', function () {
     // Open Mondays only; asked about a Wednesday.
     $monday = localDay('2026-09-07 18:00', 'America/Montevideo');

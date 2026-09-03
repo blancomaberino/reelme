@@ -74,9 +74,13 @@ final readonly class BusinessDetails
             // so it can be handed a value written by an older, laxer path. Strict,
             // like the geocoder that fills the cache — see {@see OpeningHours}.
             openingHours: OpeningHours::fromProvider($data['opening_hours'] ?? null),
-            // Already normalized on the way in, but re-normalized here for the same
-            // reason: a cached payload may predate this field, or predate a rule.
-            openingHoursPeriods: OpeningSchedule::salvage($data['opening_hours_periods'] ?? null),
+            // STRICT, like the `openingHours` line above and for the same reason:
+            // this rehydrates a CACHED provider payload that will be merged into a
+            // place. `salvage()` here would hand a 13-period week back for a
+            // 14-period venue with one bad entry, and a shorter-but-non-empty list
+            // still wins BusinessEnricher's first-non-empty merge — silently
+            // deleting a service. A dropped Friday evening reads as "Closed".
+            openingHoursPeriods: OpeningSchedule::fromProvider($data['opening_hours_periods'] ?? null),
             rating: isset($data['rating']) ? (float) $data['rating'] : null,
             ratingCount: isset($data['rating_count']) ? (int) $data['rating_count'] : null,
             images: is_array($data['images'] ?? null) ? $data['images'] : [],

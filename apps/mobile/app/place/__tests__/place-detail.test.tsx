@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
-import { Linking, Share } from 'react-native';
+import { Linking, Share, StyleSheet } from 'react-native';
 
 import PlaceDetailScreen from '../[slug]';
 
@@ -10,6 +10,7 @@ import { LA_DIECISIETE, SCHEMA_ORG, SPANISH } from '@/test/opening-hours-fixture
 import { api } from '@/api/client';
 import type { PlaceDetail } from '@/api/places';
 import { useSessionStore } from '@/stores/session';
+import { schemes } from '@/theme/colors';
 
 import { mockRouter } from '../../../jest.setup';
 
@@ -790,7 +791,32 @@ describe('open/closed cue (T-155)', () => {
     // invisible to VoiceOver — a screen-reader user deciding whether to go now
     // would hear "show weekly hours" and never the answer. Caught on a device,
     // where the row rendered the cue perfectly and announced nothing.
-    expect(row.props.accessibilityLabel).toBe('Open · closes 23:00, Show weekly hours');
+    // The middle dot becomes a comma in the ANNOUNCED name only: VoiceOver says
+    // "middle dot" aloud. The visual string above keeps it.
+    expect(row.props.accessibilityLabel).toBe('Open, closes 23:00, Show weekly hours');
+  });
+
+  // The cue's COLOUR, asserted in two separate tests on purpose: one `it` shares
+  // a QueryClient and an axios mock across both renders, so the second render
+  // replays the first response and the assertion silently tests nothing.
+  const cueColorFor = async (state: PlaceDetail['open_state'], text: string) => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withState(state) });
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    return StyleSheet.flatten((await screen.findByText(text)).props.style).color as string | undefined;
+  };
+
+  // Flip the open/closed ternary on the cue's style and every text assertion in
+  // this block still passes — only the colour lies, and someone scanning the row
+  // rather than reading it would misjudge the venue. These two pin the pair.
+  it('paints the open cue in the positive colour', async () => {
+    expect(await cueColorFor({ open_now: true, closes_at: '23:00', opens_at: null }, 'Open · closes 23:00'))
+      .toBe(schemes.light.green);
+  });
+
+  it('paints the closed cue in the muted colour, not the positive one', async () => {
+    expect(await cueColorFor({ open_now: false, closes_at: null, opens_at: '19:00' }, 'Closed · opens 19:00'))
+      .toBe(schemes.light.muted);
   });
 
   it('says closed with the next opening when the API supplies one', async () => {

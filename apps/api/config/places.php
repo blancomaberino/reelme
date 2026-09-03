@@ -56,18 +56,6 @@ return [
     | Drives both the daily `reelmap:google:refresh-stale` sweep AND the on-demand
     | refresh a re-share triggers when it re-resolves a known-but-stale place.
     */
-    /*
-    | Venue timezone lookup (T-155). A SEPARATELY BILLED Google API call — Place
-    | Details carries no timezone at any field mask — made once per place and
-    | cached for a year. Disable to stop resolving it; places without one show
-    | their hours lines and no open/closed cue, which is the honest degradation.
-    */
-    'enrich' => [
-        'timezone' => [
-            'enabled' => (bool) env('PLACES_ENRICH_TIMEZONE_ENABLED', true),
-        ],
-    ],
-
     'google' => [
         'refresh_after_days' => (int) env('PLACES_GOOGLE_REFRESH_AFTER_DAYS', 30),
     ],
@@ -82,6 +70,13 @@ return [
     | disable it (or the Google source) to keep enrichment admin-triggered only.
     */
     'enrich' => [
+        // Venue timezone lookup (T-155). A SEPARATELY BILLED Google call — Place
+        // Details carries no timezone at any field mask — made once per place and
+        // cached. Disable to stop resolving it; a place without one shows its
+        // hours lines and no open/closed cue, which is the honest degradation.
+        'timezone' => [
+            'enabled' => (bool) env('PLACES_ENRICH_TIMEZONE_ENABLED', true),
+        ],
         // Auto-enrich a place the FIRST time it is published (T-099 follow-up):
         // the publish stage queues an EnrichPlace job so a shared place shows its
         // business data + photo gallery without waiting for a manual admin action.
