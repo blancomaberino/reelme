@@ -75,6 +75,13 @@ CASES = [
     ("echoing the word", "echo " + PUSH, "ALLOW"),
     ("a heredoc body mentioning it", "cat > /tmp/n.md <<'EOF'\nwe should " + PUSH + " later\nEOF", "ALLOW"),
     ("grepping for it", "grep -rn 'push' .claude/", "ALLOW"),
+    # [audit3] Unparseable quoting fails CLOSED — but only for the GATED verbs.
+    # The first fallback matched any `gh … pr …`, so a PR COMMENT whose body
+    # contained shell-escaped quotes was denied. Found by the gate denying its
+    # author mid-merge.
+    ("[audit3] unparseable + comment", GHPR + "comment 201 --body 'it'\"'\"'s fine", "ALLOW"),
+    ("[audit3] unparseable + merge", GHPR + "merge 201 --body 'it'\"'\"'s fine", "DENY"),
+    ("[audit3] unparseable + push", PUSH + " --force 'unclosed", "DENY"),
 ]
 
 

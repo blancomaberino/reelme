@@ -258,7 +258,15 @@ def main() -> None:
     except ValueError:
         # Unparseable quoting. Fail CLOSED if the raw text even looks like one of
         # these, rather than allowing something we could not read.
-        if re.search(r"\bgit\b.*\bpush\b|\bgh\b.*\bpr\b", body, re.S):
+        # Only the GATED verbs. The first cut matched any `gh … pr …`, which
+        # denied `gh pr comment` — a read/write on the conversation, not on the
+        # code — whenever the body contained shell-escaped quotes it could not
+        # parse. Failing closed is right; failing closed on commands that were
+        # never gated is just a broken tool.
+        if re.search(
+            r"\bgit\b[^\n]*\bpush\b|\bgh\b[^\n]*\bpr\b[^\n]*\b(create|edit|ready|merge)\b",
+            body,
+        ):
             deny("The command could not be parsed (unbalanced quotes), so the gate cannot tell what it does.", "run this")
         return
 
