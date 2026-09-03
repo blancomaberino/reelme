@@ -32,7 +32,10 @@ export type SuggestionField = SuggestionChange['field'];
  * mapping, and client-side limits mirroring those rules, or a curator gets a
  * 422 with no idea which line was too long — a feature with its own design
  * pass, not a side effect of fixing the payload shape. Until then the API still
- * accepts the field, so a moderator or operator can set it in Filament.
+ * accepts the field, so a moderator or operator can set it in Filament, and the
+ * note's placeholder names wrong hours as something to report — T-128 is what
+ * put hours on the screen to be noticed, so leaving no way to flag them would
+ * have been the gap that feature opened.
  *
  * `region`, `postal_code`, `cuisine_primary` and `price_range` are left out for
  * a different reason: the detail payload does not carry them, so the form could

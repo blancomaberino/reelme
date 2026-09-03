@@ -293,6 +293,28 @@ it('says the change goes to review, and to an operator that it does not', () => 
   expect(screen.getByText('Save')).toBeOnTheScreen();
 });
 
+/**
+ * T-128 made opening hours visible on the detail screen for the first time, so
+ * "the hours are wrong" became the most likely thing a diner now has to report
+ * — and `SUGGEST_FIELDS` deliberately has no hours field (see the rationale on
+ * `SuggestEditInput`: hours are up to fourteen length-capped lines and need a
+ * multi-line editor of their own). The note is the only path in the meantime,
+ * which is worth nothing if the placeholder never says so. Asserted, not just
+ * written, because a placeholder is exactly the kind of copy a later edit
+ * trims without noticing what it was load-bearing for.
+ */
+it('offers the note as the way to report wrong hours, which no field covers', () => {
+  render(<SuggestEditSheet visible onClose={jest.fn()} place={makePlace()} onQueued={jest.fn()} />, {
+    wrapper: Providers,
+  });
+
+  // English copy; es.ts is held to the same key set by the i18n parity test.
+  expect(screen.getByTestId('suggest-note').props.placeholder).toMatch(/hours are wrong/i);
+
+  // The premise: there is no hours field to point at instead.
+  expect(screen.queryByTestId('suggest-opening_hours_json')).toBeNull();
+});
+
 it('surfaces a failed submit instead of closing on it', async () => {
   mock.onPost('/places/cantina-vieja-abc123/suggestions').reply(500);
   const onClose = jest.fn();
