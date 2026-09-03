@@ -81,9 +81,25 @@ So, before any UI task is called done:
 
 4. **A mock that silences a problem IS the problem.** If a test needs a stub to stop something throwing, find out why it throws on device *first*. Never stub a hook the app cannot legally call. Never let a mock invent an identity (testID, id, route) the real component doesn't have — that makes the real one dead and hides every behaviour behind it.
 
-5. **Generated native dirs are stale until proven otherwise.** `ios/` and `android/` are git-ignored build output, and `expo run:*` does **not** re-run prebuild over an existing one. Any change to `app.config.ts` plugins or permissions needs `npx expo prebuild --clean` before anything observed on the device means a thing.
+5. **A new rule needs every writer, and a test at the invariant — not at the setter you happened to write.** *(observed — T-168)*
 
-6. **Do NOT use `simctl openurl` to navigate. Navigate with Maestro.** *(enforced — `.claude/hooks/guard-simulator-deeplink.sh` denies it)*
+   When you give a piece of state a consequence ("changing the locale must re-ask for places", "publishing must recount", "locking must stop enrichment"), the rule belongs at the **one place that state changes**, and the test must enumerate **every way it can change** — not the path you were editing.
+
+   The failure has a fixed shape and it passes everything:
+   - a rule is added to one setter, and something else writes the same field directly;
+   - the test drives that setter, so it proves the guard fires — and cannot notice a second writer exists;
+   - mutation testing agrees, because it only shows the assertion bites on the path it already visits;
+   - **and a diff-scoped review cannot see it**, because the other writer is unchanged code whose *meaning* your diff changed. The reviewer is looking at your commit; the bug is in the file you didn't touch.
+
+   So, concretely:
+   - **Grep for other writers before you add the rule.** `set({ field:` , `->update([`, `fill(`, direct assignment. If there is more than one, route them through a single function and say in a comment that both go through it.
+   - **Write the test over the writers, not over the setter** — a table/`it.each` of "every way this changes", plus an assertion that the list is complete (enumerate the store's mutators, the model's fillable, the callers), so the next writer added makes it red instead of silently joining the gap.
+   - **When briefing a reviewer, name the surface, not just the diff.** "Review `git show <sha>`" structurally excludes the code the change reassigns meaning to. Say: *"this commit makes X mean Y — find everything that already writes X."*
+   - **Distrust a comment that justifies a guard by asserting how other code behaves.** T-168's said "this setter runs on every hydrate". It didn't. Nothing checks a comment, and a false premise beside the code is what stops the next reader looking.
+
+6. **Generated native dirs are stale until proven otherwise.** `ios/` and `android/` are git-ignored build output, and `expo run:*` does **not** re-run prebuild over an existing one. Any change to `app.config.ts` plugins or permissions needs `npx expo prebuild --clean` before anything observed on the device means a thing.
+
+7. **Do NOT use `simctl openurl` to navigate. Navigate with Maestro.** *(enforced — `.claude/hooks/guard-simulator-deeplink.sh` denies it)*
 
    `simctl openurl` sets the app's *launch URL*, and Expo Router replays it on every reload — so the owner's next **Cmd+R lands on whatever screen you were testing**, not home. This has been reported three separate times ("stuck in offers", "stuck in new offer", "STUCK ON THE WRONG PAGE"), each time caused by an agent's own verification. Remembering to clean up afterwards demonstrably does not work; the fix is to stop creating the state.
 
@@ -92,7 +108,7 @@ So, before any UI task is called done:
    - Other residue to restore: `simctl location set` persists until overwritten (**`clear` is a no-op**) — put it back to Montevideo `-34.9011,-56.1645`; and flying the map persists the viewport.
    - **Verify the restore, don't assert it.** Send Cmd+R yourself and screenshot where it lands. Twice this was reported "fixed" without that check, and twice it wasn't.
 
-7. **Never describe a path you haven't walked.** The [task completion report](#task-completion-report) click-path is a claim about the running app. Walk it on the device before writing it down. If a state couldn't be reached (no fix, no seed data, a control that won't take a synthetic tap), say so explicitly — an unverified step reported as verified is worse than an admitted gap.
+8. **Never describe a path you haven't walked.** The [task completion report](#task-completion-report) click-path is a claim about the running app. Walk it on the device before writing it down. If a state couldn't be reached (no fix, no seed data, a control that won't take a synthetic tap), say so explicitly — an unverified step reported as verified is worse than an admitted gap.
 
 ## UI / frontend
 

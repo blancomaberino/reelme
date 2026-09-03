@@ -49,30 +49,57 @@ it('hydrate applies a saved currency', async () => {
 });
 
 describe('locale change re-asks for what the server localized (T-168)', () => {
-  it('invalidates the places tree when the language actually changes', () => {
-    // Changing the language here only changes `Accept-Language` on the NEXT
-    // request. The cached place was rendered by the API for the OLD one, so
-    // without this a Spanish UI keeps showing an English week — which is the bug
-    // T-168 closed, arriving by the cache instead of by the server.
+  // Asserted as an INVARIANT over every writer, not as a property of one setter.
+  // The first version of these tests drove `setLocale` only — so when `hydrate()`
+  // wrote the same field by another path and skipped the invalidation, every test
+  // still passed. The bug was found in review. What follows is the shape that
+  // would have caught it: enumerate the ways the locale can change, and require
+  // the consequence from all of them.
+  const writers: [string, (next: 'es' | 'en') => Promise<void> | void][] = [
+    ['setLocale (the user picks a language in Settings)', (next) =>
+      useSettingsStore.getState().setLocale(next)],
+    ['hydrate (a cold start restores the saved language)', async (next) => {
+      (SecureStore.getItemAsync as jest.Mock).mockImplementation(async (key: string) =>
+        key === 'app_locale' ? next : null,
+      );
+      await useSettingsStore.getState().hydrate();
+    }],
+  ];
+
+  it.each(writers)('invalidates the places tree via %s', async (_name, change) => {
     const spy = jest.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
     useSettingsStore.setState({ locale: 'es' });
 
-    useSettingsStore.getState().setLocale('en');
+    await change('en');
 
+    expect(useSettingsStore.getState().locale).toBe('en');
     expect(spy).toHaveBeenCalledWith({ queryKey: ['places'] });
     spy.mockRestore();
   });
 
-  it('does NOT invalidate when the locale is set to what it already was', () => {
-    // `setLocale` runs on every hydrate, so invalidating unconditionally would
-    // discard the offline cache on each cold start — the exact cost that made
-    // bumping the persist buster the wrong fix.
+  it.each(writers)('does NOT invalidate via %s when the locale is unchanged', async (_name, change) => {
+    // `hydrate()` runs on every cold start, so invalidating unconditionally would
+    // discard the offline cache each launch — the exact cost that made bumping
+    // the persist buster the wrong fix for this.
     const spy = jest.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
     useSettingsStore.setState({ locale: 'es' });
 
-    useSettingsStore.getState().setLocale('es');
+    await change('es');
 
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it('has exactly the writers this suite enumerates', () => {
+    // The guard against the NEXT one. A new way to change the locale must be
+    // added to `writers` above — and if it does not route through applyLocale,
+    // the cases there go red. Without this, a third writer is invisible again.
+    const store = useSettingsStore.getState();
+    const mutators = Object.entries(store)
+      .filter(([key, value]) => typeof value === 'function' && key !== 'setCurrency')
+      .map(([key]) => key)
+      .sort();
+
+    expect(mutators).toEqual(['hydrate', 'setLocale']);
   });
 });

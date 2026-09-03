@@ -17,15 +17,22 @@ use App\Support\OpeningSchedule;
  *    wrong answer this class can give.
  */
 
+/*
+ * Helpers are PREFIXED, not bare `at()` / `scheduleLocalDay()`. Pest's test files share
+ * one global function namespace, so a same-named helper in another file is a
+ * fatal redeclaration in a full-suite run — a failure that never appears when
+ * you run this file alone, which is exactly when you would write it.
+ */
+
 /** An instant, and the venue-local Google day index (0 = Sunday) it falls on. */
-function localDay(string $utc, string $zone): int
+function scheduleLocalDay(string $utc, string $zone): int
 {
     $local = (new DateTimeImmutable($utc, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone($zone));
 
     return ((int) $local->format('N')) % 7;
 }
 
-function at(string $utc): DateTimeImmutable
+function scheduleAt(string $utc): DateTimeImmutable
 {
     return new DateTimeImmutable($utc, new DateTimeZone('UTC'));
 }
@@ -135,10 +142,10 @@ it('salvage keeps a full 24/7 entry, where BOTH sides of the close are absent', 
 it('returns NO STATE — not "closed" — when the data cannot support one', function () {
     $week = [['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00']];
 
-    expect(OpeningSchedule::stateAt($week, null, at('2026-09-07 15:00')))->toBeNull();
-    expect(OpeningSchedule::stateAt($week, '', at('2026-09-07 15:00')))->toBeNull();
-    expect(OpeningSchedule::stateAt(null, 'America/Montevideo', at('2026-09-07 15:00')))->toBeNull();
-    expect(OpeningSchedule::stateAt([], 'America/Montevideo', at('2026-09-07 15:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($week, null, scheduleAt('2026-09-07 15:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($week, '', scheduleAt('2026-09-07 15:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt(null, 'America/Montevideo', scheduleAt('2026-09-07 15:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt([], 'America/Montevideo', scheduleAt('2026-09-07 15:00')))->toBeNull();
 });
 
 it('refuses a fixed offset or an abbreviation as a timezone', function () {
@@ -146,48 +153,48 @@ it('refuses a fixed offset or an abbreviation as a timezone', function () {
     // anywhere DST applies, so a cue computed from one is wrong half the year.
     $week = [['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00']];
 
-    expect(OpeningSchedule::stateAt($week, '+05:00', at('2026-09-07 15:00')))->toBeNull();
-    expect(OpeningSchedule::stateAt($week, 'EST', at('2026-09-07 15:00')))->toBeNull();
-    expect(OpeningSchedule::stateAt($week, 'Mars/Phobos', at('2026-09-07 15:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($week, '+05:00', scheduleAt('2026-09-07 15:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($week, 'EST', scheduleAt('2026-09-07 15:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($week, 'Mars/Phobos', scheduleAt('2026-09-07 15:00')))->toBeNull();
 });
 
 it('reports open with its closing time, inside a normal interval', function () {
     // 2026-09-07 18:00 UTC = 15:00 in Montevideo (UTC-3), a Monday.
-    $day = localDay('2026-09-07 18:00', 'America/Montevideo');
+    $day = scheduleLocalDay('2026-09-07 18:00', 'America/Montevideo');
 
     expect(OpeningSchedule::stateAt(
         [['open_day' => $day, 'open_time' => '11:00', 'close_day' => $day, 'close_time' => '23:00']],
         'America/Montevideo',
-        at('2026-09-07 18:00'),
+        scheduleAt('2026-09-07 18:00'),
     ))->toBe(['open_now' => true, 'closes_at' => '23:00', 'opens_at' => null]);
 });
 
 it('offers a same-day opening time when closed, and none when the next one is tomorrow', function () {
-    $day = localDay('2026-09-07 13:00', 'America/Montevideo'); // 10:00 local, before opening
+    $day = scheduleLocalDay('2026-09-07 13:00', 'America/Montevideo'); // 10:00 local, before opening
 
     expect(OpeningSchedule::stateAt(
         [['open_day' => $day, 'open_time' => '11:00', 'close_day' => $day, 'close_time' => '23:00']],
         'America/Montevideo',
-        at('2026-09-07 13:00'),
+        scheduleAt('2026-09-07 13:00'),
     ))->toBe(['open_now' => false, 'closes_at' => null, 'opens_at' => '11:00']);
 
     // After closing, the next opening is a different local day. "Opens 11:00"
     // without a weekday would read as "in an hour", so nothing is offered.
-    $late = localDay('2026-09-08 02:30', 'America/Montevideo'); // 23:30 local, Monday
+    $late = scheduleLocalDay('2026-09-08 02:30', 'America/Montevideo'); // 23:30 local, Monday
     expect(OpeningSchedule::stateAt(
         [['open_day' => $late, 'open_time' => '11:00', 'close_day' => $late, 'close_time' => '23:00']],
         'America/Montevideo',
-        at('2026-09-08 02:30'),
+        scheduleAt('2026-09-08 02:30'),
     ))->toBe(['open_now' => false, 'closes_at' => null, 'opens_at' => null]);
 });
 
 it('treats the open minute as open and the close minute as closed', function () {
-    $day = localDay('2026-09-07 14:00', 'America/Montevideo'); // 11:00 local exactly
+    $day = scheduleLocalDay('2026-09-07 14:00', 'America/Montevideo'); // 11:00 local exactly
     $week = [['open_day' => $day, 'open_time' => '11:00', 'close_day' => $day, 'close_time' => '23:00']];
 
-    expect(OpeningSchedule::stateAt($week, 'America/Montevideo', at('2026-09-07 14:00'))['open_now'])->toBeTrue();
+    expect(OpeningSchedule::stateAt($week, 'America/Montevideo', scheduleAt('2026-09-07 14:00'))['open_now'])->toBeTrue();
     // 02:00 UTC next day = 23:00 local, the closing minute itself.
-    expect(OpeningSchedule::stateAt($week, 'America/Montevideo', at('2026-09-08 02:00'))['open_now'])->toBeFalse();
+    expect(OpeningSchedule::stateAt($week, 'America/Montevideo', scheduleAt('2026-09-08 02:00'))['open_now'])->toBeFalse();
 });
 
 it('stays open across midnight, including across the week boundary', function () {
@@ -197,11 +204,11 @@ it('stays open across midnight, including across the week boundary', function ()
     $week = [['open_day' => 6, 'open_time' => '22:00', 'close_day' => 0, 'close_time' => '02:00']];
 
     // 2026-09-13 03:30 UTC = Sunday 00:30 local.
-    expect(OpeningSchedule::stateAt($week, 'America/Montevideo', at('2026-09-13 03:30')))
+    expect(OpeningSchedule::stateAt($week, 'America/Montevideo', scheduleAt('2026-09-13 03:30')))
         ->toBe(['open_now' => true, 'closes_at' => '02:00', 'opens_at' => null]);
 
     // 2026-09-13 06:00 UTC = Sunday 03:00 local — an hour after it shut.
-    expect(OpeningSchedule::stateAt($week, 'America/Montevideo', at('2026-09-13 06:00'))['open_now'])
+    expect(OpeningSchedule::stateAt($week, 'America/Montevideo', scheduleAt('2026-09-13 06:00'))['open_now'])
         ->toBeFalse();
 });
 
@@ -209,7 +216,7 @@ it('reports a 24/7 venue as open with no closing time', function () {
     expect(OpeningSchedule::stateAt(
         [['open_day' => 0, 'open_time' => '00:00', 'close_day' => null, 'close_time' => null]],
         'America/Montevideo',
-        at('2026-09-09 07:13'),
+        scheduleAt('2026-09-09 07:13'),
     ))->toBe(['open_now' => true, 'closes_at' => null, 'opens_at' => null]);
 });
 
@@ -240,9 +247,9 @@ it('refuses an always-open entry sitting beside ordinary trading days', function
         ['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00'],
     ]);
     // Wednesday is therefore closed, where it used to read open.
-    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', at('2026-09-09 18:00'))['open_now'])
+    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', scheduleAt('2026-09-09 18:00'))['open_now'])
         ->toBeFalse();
-    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', at('2026-09-07 18:00'))['open_now'])
+    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', scheduleAt('2026-09-07 18:00'))['open_now'])
         ->toBeTrue();
 });
 
@@ -283,7 +290,7 @@ it('refuses a lone close-less period that is not the documented 24/7 shape', fun
 
     // And a stored row of that broken shape does not report open on a Sunday.
     $stored = [['open_day' => 1, 'open_time' => '09:00', 'close_day' => null, 'close_time' => null]];
-    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', at('2026-09-13 06:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($stored, 'America/Montevideo', scheduleAt('2026-09-13 06:00')))->toBeNull();
 });
 
 it('accepts a backward-compatibility zone id, not only the canonical list', function () {
@@ -295,13 +302,13 @@ it('accepts a backward-compatibility zone id, not only the canonical list', func
     $alias = 'America/Montreal';
 
     expect(in_array($alias, DateTimeZone::listIdentifiers(), true))->toBeFalse();
-    expect(OpeningSchedule::stateAt($week, $alias, at('2026-09-07 18:00')))->not->toBeNull();
+    expect(OpeningSchedule::stateAt($week, $alias, scheduleAt('2026-09-07 18:00')))->not->toBeNull();
 
     // Still narrow: an offset or an abbreviation is what this column must never hold.
-    expect(OpeningSchedule::stateAt($week, '+05:00', at('2026-09-07 18:00')))->toBeNull();
-    expect(OpeningSchedule::stateAt($week, 'EST', at('2026-09-07 18:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($week, '+05:00', scheduleAt('2026-09-07 18:00')))->toBeNull();
+    expect(OpeningSchedule::stateAt($week, 'EST', scheduleAt('2026-09-07 18:00')))->toBeNull();
     // UTC is the one legitimate id with no region.
-    expect(OpeningSchedule::stateAt($week, 'UTC', at('2026-09-07 18:00')))->not->toBeNull();
+    expect(OpeningSchedule::stateAt($week, 'UTC', scheduleAt('2026-09-07 18:00')))->not->toBeNull();
 });
 
 it('voids a period list longer than a real week', function () {
@@ -321,31 +328,31 @@ it('voids a period list longer than a real week', function () {
 
 it('reports closed on a day the week does not cover', function () {
     // Open Mondays only; asked about a Wednesday.
-    $monday = localDay('2026-09-07 18:00', 'America/Montevideo');
+    $monday = scheduleLocalDay('2026-09-07 18:00', 'America/Montevideo');
 
     expect(OpeningSchedule::stateAt(
         [['open_day' => $monday, 'open_time' => '11:00', 'close_day' => $monday, 'close_time' => '23:00']],
         'America/Montevideo',
-        at('2026-09-09 18:00'),
+        scheduleAt('2026-09-09 18:00'),
     ))->toBe(['open_now' => false, 'closes_at' => null, 'opens_at' => null]);
 });
 
 it('answers the same instant differently for venues in different zones', function () {
     // 2026-09-07 18:00 UTC is 15:00 in Montevideo and 20:00 in Madrid. A venue
     // closing at 19:00 local is open in one city and shut in the other.
-    $mvd = localDay('2026-09-07 18:00', 'America/Montevideo');
-    $mad = localDay('2026-09-07 18:00', 'Europe/Madrid');
+    $mvd = scheduleLocalDay('2026-09-07 18:00', 'America/Montevideo');
+    $mad = scheduleLocalDay('2026-09-07 18:00', 'Europe/Madrid');
 
     expect(OpeningSchedule::stateAt(
         [['open_day' => $mvd, 'open_time' => '09:00', 'close_day' => $mvd, 'close_time' => '19:00']],
         'America/Montevideo',
-        at('2026-09-07 18:00'),
+        scheduleAt('2026-09-07 18:00'),
     )['open_now'])->toBeTrue();
 
     expect(OpeningSchedule::stateAt(
         [['open_day' => $mad, 'open_time' => '09:00', 'close_day' => $mad, 'close_time' => '19:00']],
         'Europe/Madrid',
-        at('2026-09-07 18:00'),
+        scheduleAt('2026-09-07 18:00'),
     )['open_now'])->toBeFalse();
 });
 
@@ -354,29 +361,29 @@ it('follows the zone across a DST change instead of freezing one offset', functi
     // time therefore lands at 08:30 local in summer and 07:30 in winter, and a
     // venue open 08:00–09:00 is open only in the first. A stored fixed offset
     // would get one of these two answers wrong, every year.
-    $summerDay = localDay('2026-07-01 12:30', 'America/New_York');
-    $winterDay = localDay('2026-01-14 12:30', 'America/New_York');
+    $summerDay = scheduleLocalDay('2026-07-01 12:30', 'America/New_York');
+    $winterDay = scheduleLocalDay('2026-01-14 12:30', 'America/New_York');
 
     expect(OpeningSchedule::stateAt(
         [['open_day' => $summerDay, 'open_time' => '08:00', 'close_day' => $summerDay, 'close_time' => '09:00']],
         'America/New_York',
-        at('2026-07-01 12:30'),
+        scheduleAt('2026-07-01 12:30'),
     )['open_now'])->toBeTrue();
 
     expect(OpeningSchedule::stateAt(
         [['open_day' => $winterDay, 'open_time' => '08:00', 'close_day' => $winterDay, 'close_time' => '09:00']],
         'America/New_York',
-        at('2026-01-14 12:30'),
+        scheduleAt('2026-01-14 12:30'),
     )['open_now'])->toBeFalse();
 });
 
 it('picks the earliest of several intervals in a split day', function () {
     // A lunch/dinner split: closed in the siesta, and the cue names the reopening.
-    $day = localDay('2026-09-07 20:00', 'America/Montevideo'); // 17:00 local, between services
+    $day = scheduleLocalDay('2026-09-07 20:00', 'America/Montevideo'); // 17:00 local, between services
 
     expect(OpeningSchedule::stateAt([
         ['open_day' => $day, 'open_time' => '12:00', 'close_day' => $day, 'close_time' => '15:30'],
         ['open_day' => $day, 'open_time' => '20:00', 'close_day' => $day, 'close_time' => '23:59'],
-    ], 'America/Montevideo', at('2026-09-07 20:00')))
+    ], 'America/Montevideo', scheduleAt('2026-09-07 20:00')))
         ->toBe(['open_now' => false, 'closes_at' => null, 'opens_at' => '20:00']);
 });
