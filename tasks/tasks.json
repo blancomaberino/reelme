@@ -3454,7 +3454,7 @@
       "id": "T-128",
       "title": "place.json is wrong in both directions: hours nobody can render, reviews the schema does not have",
       "phase": "M5",
-      "status": "in_review",
+      "status": "done",
       "depends_on": [
         "T-102",
         "T-033",
