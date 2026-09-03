@@ -4106,7 +4106,7 @@
         "The comment in `guard-simulator-deeplink.sh` no longer claims coverage the code does not have — however this is fixed, the comment matches the behaviour"
       ],
       "agent": "executor",
-      "notes": "Found 2026-08-19 while committing the T-137..T-148 wave: the guard denied a `git commit -F -` because the COMMIT MESSAGE described the command the wave's tasks are about. No simulator was involved. It then denied the write of the companion file for this very task, for the same reason.\n\n`guard-simulator-deeplink.sh` strips quoted spans before matching so that text merely NAMING the command still runs, and its comment lists `git commit -m \"...\"`, a grep, and \"a heredoc writing these very docs\" as the cases it covers. The heredoc case is not actually covered: a heredoc body is not a quoted span, so `sed -e \"s/'[^']*'/''/g\" -e 's/\"[^\"]*\"/\"\"/g'` blanks the `'EOF'` delimiter and leaves the body intact. The `-m` form survives because the message really is inside double quotes; `-F -` and `cat > file <<'EOF'` do not.\n\nBoth guards have the hole by different routes. The deeplink guard relies on quote-stripping, which the heredoc defeats. The DB guard does no stripping and narrowed the PATTERN instead (anchored on `artisan [flags] migrate:fresh|...`) — the more robust of the two, and why it stopped refusing its own commit messages — but a heredoc message containing the literal artisan invocation would still be denied there too. Nobody has hit the DB case yet; it is the same bug waiting.\n\nThis matters more than the inconvenience suggests: the correct response to a false positive is indistinguishable from the incorrect one. Both guards publish an environment escape hatch in their denial message, so an agent blocked while writing a commit message is handed an obvious way out that is exactly what CLAUDE.md forbids (\"Don't route around the hook\") — and that override also covers the real invocations the guard exists to stop. A guard that cries wolf on its own changelog erodes the guard.\n\nDo NOT widen either escape hatch and do not remove either guard: the behaviour they prevent is real and was reported three times. This is about the guards firing on text. Prefer narrowing over stripping — consider requiring the match to sit in command position (line start, or after `;` `&&` `||` `|` `$(`), which removes the need to reason about shell quoting at all.\n\nFull context in tasks/T-149-hook-heredoc-false-positive.md."
+      "notes": "Found 2026-08-19 while committing the T-137..T-148 wave: the guard denied a `git commit -F -` because the COMMIT MESSAGE described the command the wave's tasks are about. No simulator was involved. It then denied the write of the companion file for this very task, for the same reason.\n\n`guard-simulator-deeplink.sh` strips quoted spans before matching so that text merely NAMING the command still runs, and its comment lists `git commit -m \"...\"`, a grep, and \"a heredoc writing these very docs\" as the cases it covers. The heredoc case is not actually covered: a heredoc body is not a quoted span, so `sed -e \"s/'[^']*'/''/g\" -e 's/\"[^\"]*\"/\"\"/g'` blanks the `'EOF'` delimiter and leaves the body intact. The `-m` form survives because the message really is inside double quotes; `-F -` and `cat > file <<'EOF'` do not.\n\nBoth guards have the hole by different routes. The deeplink guard relies on quote-stripping, which the heredoc defeats. The DB guard does no stripping and narrowed the PATTERN instead (anchored on `artisan [flags] migrate:fresh|...`) — the more robust of the two, and why it stopped refusing its own commit messages — but a heredoc message containing the literal artisan invocation would still be denied there too. Nobody has hit the DB case yet; it is the same bug waiting.\n\nThis matters more than the inconvenience suggests: the correct response to a false positive is indistinguishable from the incorrect one. Both guards publish an environment escape hatch in their denial message, so an agent blocked while writing a commit message is handed an obvious way out that is exactly what CLAUDE.md forbids (\"Don't route around the hook\") — and that override also covers the real invocations the guard exists to stop. A guard that cries wolf on its own changelog erodes the guard.\n\nDo NOT widen either escape hatch and do not remove either guard: the behaviour they prevent is real and was reported three times. This is about the guards firing on text. Prefer narrowing over stripping — consider requiring the match to sit in command position (line start, or after `;` `&&` `||` `|` `$(`), which removes the need to reason about shell quoting at all.\n\nFull context in tasks/T-149-hook-heredoc-false-positive.md. THREE CONCRETE HITS observed 2026-09-03, all while doing unrelated work: (1) the CodeRabbit pr-gate blocked a `python3 - <<EOF` heredoc whose PROSE named the four PR-mutating gh subcommands — the heredoc was editing CLAUDE.md's own description of the gate, so documenting the rule was blocked by the rule; (2) guard-pr-audit blocked `git stash push -- <paths>`, which is not a network push at all, purely because the word 'push' appears in it; (3) the same pr-gate then blocked a heredoc writing THIS note, for the same reason as (1). None of the three prevented the action — each was worked around by switching tool (the Edit tool instead of a heredoc; `cp` + `git checkout --` instead of stash), which is the real cost: a guard that is routed around trains the habit that ends in REELMAP_SKIP_AUDIT=1. Fix direction: match the git SUBCOMMAND (the first non-flag argument after `git`), not a substring of the command line, and inspect only the command being run rather than heredoc or quoted payloads."
     },
     {
       "id": "T-150",
@@ -4261,8 +4261,8 @@
     {
       "id": "T-155",
       "title": "\"Open now\" can only come back on structured hours, not on a guess",
-      "phase": "M5",
-      "status": "pending",
+      "phase": "GROW",
+      "status": "in_progress",
       "depends_on": [
         "T-128"
       ],
@@ -4290,7 +4290,400 @@
         "packages/contracts regenerated and committed; schema-strictness still passes"
       ],
       "agent": "executor",
-      "notes": "STARTS WITH AN OWNER DECISION, NOT CODE — filed to hold the question open, not to imply the answer is yes. Filed 2026-09-03 from the T-128 agency audit (six reviewers, PR #201). T-128 deleted summarizeHours() and the collapsed hours row lost its only status cue ('Open now · closes 23:00' in green / 'Closed' in danger). That removal was CORRECT and must not be quietly undone: summarizeHours parsed {periods, weekday_text}, a shape the API has never sent, so the label was always null and the row rendered for nobody for months; inferring status from prose like 'Monday: 11:00 AM – 11:00 PM' has locale-dependent weekday order, sometimes no meridiem, and no timezone, and a confidently wrong 'Closed' sends someone away from an open restaurant. The UI lane flagged the lost affordance and the UX lane independently confirmed computing no status was right — both true, hence a task. Two facts make the scope concrete: (1) the structured data is ALREADY PAID FOR AND DISCARDED — BUSINESS_FIELDS requests opening_hours and Google returns {open_now, periods, weekday_text}, but mapBusinessDetails() at GooglePlacesGeocoder.php:106 takes weekday_text and drops periods; (2) NO TIMEZONE EXISTS ANYWHERE — no places column, and utc_offset_minutes is not requested. Adding it may move the Places SKU (see the billing comment at GooglePlacesGeocoder.php:27), so price it first, and prefer an IANA zone over a fixed offset, which is wrong half the year under DST. Non-goals: reordering/translating weekday_text (it is the source's own wording, rendered verbatim by design), and highlighting 'today' from weekday_text position (its ordering is not a fixed weekday index — free once periods exist, impossible before)."
+      "notes": "OWNER DECISION 2026-09-03: PROCEED. The question this task held open is answered by the owner's own product model (08 section 9.1): \"it's 11pm and I need to know if it's already closed or not\" is the product's core query, so a live open/closed cue is required, not optional. T-156 and T-158 depend on it. The T-128 rule stands unchanged: no structured data, partial data or missing timezone means the static label and NO status cue -- never a guess. STARTS WITH AN OWNER DECISION, NOT CODE — filed to hold the question open, not to imply the answer is yes. Filed 2026-09-03 from the T-128 agency audit (six reviewers, PR #201). T-128 deleted summarizeHours() and the collapsed hours row lost its only status cue ('Open now · closes 23:00' in green / 'Closed' in danger). That removal was CORRECT and must not be quietly undone: summarizeHours parsed {periods, weekday_text}, a shape the API has never sent, so the label was always null and the row rendered for nobody for months; inferring status from prose like 'Monday: 11:00 AM – 11:00 PM' has locale-dependent weekday order, sometimes no meridiem, and no timezone, and a confidently wrong 'Closed' sends someone away from an open restaurant. The UI lane flagged the lost affordance and the UX lane independently confirmed computing no status was right — both true, hence a task. Two facts make the scope concrete: (1) the structured data is ALREADY PAID FOR AND DISCARDED — BUSINESS_FIELDS requests opening_hours and Google returns {open_now, periods, weekday_text}, but mapBusinessDetails() at GooglePlacesGeocoder.php:106 takes weekday_text and drops periods; (2) NO TIMEZONE EXISTS ANYWHERE — no places column, and utc_offset_minutes is not requested. Adding it may move the Places SKU (see the billing comment at GooglePlacesGeocoder.php:27), so price it first, and prefer an IANA zone over a fixed offset, which is wrong half the year under DST. Non-goals: reordering/translating weekday_text (it is the source's own wording, rendered verbatim by design), and highlighting 'today' from weekday_text position (its ordering is not a fixed weekday index — free once periods exist, impossible before)."
+    },
+    {
+      "id": "T-156",
+      "title": "Distance and open/closed reach the screen where the choice is actually made",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [
+        "T-155"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/Map/MapViewport.php",
+        "apps/api/app/Http/Requests/PlaceListingRequest.php",
+        "apps/api/app/Http/Controllers/Api/V1/PlaceController.php",
+        "apps/api/app/Http/Resources/PlaceSummaryResource.php",
+        "packages/contracts/schemas/",
+        "apps/mobile/app/(main)/map.tsx",
+        "apps/mobile/src/components/map/place-sheet.tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md",
+        "05-mobile-app.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "The map pin payload carries `distance_m` and `open_now` when the request supplies a viewer point, and both are absent (not zero, not false) when it does not -- asserted both ways",
+        "The pin sheet renders distance and an open/closed cue; with either value null it renders neither and never fabricates a 'Closed' (the T-155 rule, re-asserted here)",
+        "`GET /places` accepts `sort=distance`, requires `lat`/`lng` with it, and returns 422 when the point is missing",
+        "Distance is computed in SQL, not in PHP per row -- asserted by a query-count test over a multi-page result",
+        "The map centers on the viewer when they are within a configured radius of their own pins, and falls back to the last viewport otherwise; both branches tested",
+        "A pan re-queries with the new viewer-relative values (test the loop, not the first paint)",
+        "packages/contracts regenerated and committed; contract-drift green"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03 from the agency growth review (08-growth-and-opportunities.md, blocker B3). Half the work already exists on the wrong surface: PlaceSummaryResource already emits distance_m for the nearby-offers path. Depends on T-155 for open_now -- if T-155 closes as 'no structured hours', this task ships distance only and the open/closed cue is dropped, not guessed."
+    },
+    {
+      "id": "T-157",
+      "title": "Dishes become a first-class, queryable thing instead of buried JSON",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [],
+      "estimate": "M",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/Dish.php",
+        "apps/api/app/Jobs/PublishShare.php",
+        "apps/api/app/Services/Places/PlaceAggregations.php",
+        "apps/api/app/Http/Requests/PlaceListingRequest.php",
+        "apps/api/app/Models/Builders/PlaceQueryBuilder.php",
+        "apps/api/app/Console/Commands/"
+      ],
+      "spec_refs": [
+        "02-data-model.md",
+        "04-analysis-pipeline.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "A `dishes` row set is written at publish from the extraction snapshot, keyed to the place and the source that claimed it",
+        "`GET /places?dish=pasta` returns places with a matching dish and excludes places without one; matching is case- and accent-insensitive (unaccent/citext are already enabled)",
+        "A place whose extraction carried no dishes produces no rows and is never returned by a dish query -- asserted, so the filter cannot silently degrade to 'everything'",
+        "`PlaceAggregations` reads the table instead of re-parsing JSONB, with a test that asserts identical output before and after the switch",
+        "A backfill command populates existing places and is idempotent: running it twice produces the same row count",
+        "Dish text is treated as untrusted model output -- length-capped and never rendered as markup"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03. Promoted from Wave 3 to a Wave 1 dependency by the owner's product model (08 section 9.1): the core retrieval query is dish-shaped, not cuisine-shaped. pgvector/embeddings are explicitly NOT in scope here -- the plain table answers 'who does pasta'; semantic search is a later task built on this one."
+    },
+    {
+      "id": "T-158",
+      "title": "Tonight — the surface that answers 'where do I eat, here, now'",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [
+        "T-155",
+        "T-156",
+        "T-157"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app/(main)/",
+        "apps/api/app/Http/Controllers/Api/V1/",
+        "apps/api/app/Models/Builders/PlaceQueryBuilder.php"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "The surface answers zone + dish + open-now against the viewer's position, and is reachable from a screen the user is already on -- with a test that presses that control (a render-in-test does not count as reachable)",
+        "Changing any of the three inputs re-queries; asserted for each (test the loop, not the first paint)",
+        "With the open-now filter on, places whose hours are unknown are EXCLUDED rather than guessed either way",
+        "An empty result and a failed request render differently, and the failure state offers a retry",
+        "A result set larger than one screen is virtualized, not `.map()`ed into a ScrollView",
+        "Promoted placement (T-166) cannot reorder this list -- the guard test lives with T-166 and references this endpoint"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03. The highest-value single build in the growth review. Sibling-first: reuse the existing map/list rendering primitives rather than introducing a second card or a second map. Depends on T-155 (hours), T-156 (distance) and T-157 (dishes) -- all three, because the query needs all three."
+    },
+    {
+      "id": "T-159",
+      "title": "Curated maps you subscribe to, as a layer that never buries your own pins",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [],
+      "estimate": "M",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/PlaceList.php",
+        "apps/api/app/Http/Controllers/Api/V1/PlaceListController.php",
+        "apps/api/app/Models/Builders/PlaceQueryBuilder.php",
+        "apps/mobile/app/(main)/map.tsx",
+        "apps/mobile/src/components/map/filter-bar.tsx"
+      ],
+      "spec_refs": [
+        "02-data-model.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "Subscribing to a public list makes its places available as a named, toggleable layer on the map; unsubscribing removes them",
+        "A place the curator adds AFTER a user subscribed appears for that user -- the live half, asserted directly",
+        "Subscribed places never enter `filter=mine`: the user's own place count is unchanged after subscribing, asserted",
+        "A private or unlisted list cannot be subscribed to; subscribing to your own list is rejected",
+        "Toggling a layer re-queries the map rather than filtering a stale client-side set",
+        "A curator deleting the list, or a place being moderator-hidden, removes it from every subscriber's layer"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03 from owner decisions D1 and D2 (08 section 9.3). Sibling-first: this extends place_lists, it does not introduce a second collection type. The existing copy endpoint stays as-is for people who want to own and edit pins."
+    },
+    {
+      "id": "T-160",
+      "title": "Registering stops making the map emptier",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [
+        "T-159"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/(main)/map.tsx",
+        "apps/mobile/app/(auth)/welcome.tsx",
+        "apps/mobile/app/(auth)/register.tsx",
+        "apps/mobile/src/i18n/es.ts"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "A newly registered user with zero places keeps seeing the public map; the switch to `filter=mine` happens on their first save -- both sides asserted",
+        "The map has an empty state distinct from the fetch-error chip, and it offers the two real next actions (share a link, add a curated map)",
+        "Three starter pins are presented and tappable; a test presses one and asserts the place is saved and the banner advances",
+        "`es.ts` empty-state copy is voseo and uses 'enlace'; no tuteo verb forms remain in the file",
+        "The OS location prompt is preceded by an in-app explanation and never fires on cold start unprompted (relates to T-146)"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03 from the growth review's first-session trace. Depends on T-159 so the empty state can offer a curated map as the second fill route rather than only 'go share something'."
+    },
+    {
+      "id": "T-161",
+      "title": "The review screen asks one question, not forty-two",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [],
+      "estimate": "S",
+      "paths": [
+        "apps/mobile/app/shares/[id]/review.tsx",
+        "apps/mobile/src/i18n/es.ts"
+      ],
+      "spec_refs": [
+        "05-mobile-app.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "The primary action publishes the best guess without requiring any field to be touched; a test presses it on a low-confidence extraction and asserts a published place",
+        "Name, location confirmation and the primary action are visible without scrolling; every other field remains reachable behind a disclosure",
+        "Correcting a field and publishing still produces the corrected values (regression test over the existing path)",
+        "Discard is no longer the only alternative to completing the form",
+        "The screen keeps its keyboard avoidance and VoiceOver labels (relates to T-144, T-141)"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03. Pure surfacing task -- publishBestGuess already exists at share.tsx and is wired only to failures. No fields are deleted; they are relocated."
+    },
+    {
+      "id": "T-162",
+      "title": "Been-there: the tap that completes a want-to-go pin",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [],
+      "estimate": "S",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Http/Controllers/Api/V1/PlaceController.php",
+        "apps/api/app/Models/Builders/PlaceQueryBuilder.php",
+        "apps/mobile/app/place/[slug].tsx",
+        "apps/mobile/src/components/map/filter-bar.tsx"
+      ],
+      "spec_refs": [
+        "00-product-spec.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "want-to-go / been / favorite persist per user per place and are filterable on the map",
+        "The states are private: another viewer's profile or public map never exposes them, asserted",
+        "Toggling a state re-queries the map rather than mutating a stale client set",
+        "A place can be marked been without having been want-to-go first",
+        "The controls carry accessible labels and announce their state to VoiceOver"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03. FR-28 was specified in M2 and never built. Kept small on purpose: the private note is in scope, social visibility is explicitly not."
+    },
+    {
+      "id": "T-163",
+      "title": "Shared links stop being dead ends",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/app.config.ts",
+        "apps/api/public/.well-known/",
+        "apps/api/routes/web.php",
+        "apps/api/resources/views/list-share.blade.php",
+        "apps/api/app/Http/Controllers/"
+      ],
+      "spec_refs": [
+        "03-api-design.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "`apple-app-site-association` and `assetlinks.json` are served at their exact paths, with the right content-type, HTTP 200 and no redirect -- asserted by tests",
+        "`app.config.ts` declares `ios.associatedDomains` and an `autoVerify` Android intent filter for the https host",
+        "`/l/{slug}` server-renders `<title>`, `og:title`, `og:description` and `og:image` from the list; a test asserts them in the returned HTML, with JavaScript never executed",
+        "An https list URL opens the app when installed (Maestro flow) and the web page when not",
+        "An unknown, private or unlisted slug renders a safe page that leaks no list contents and no existence signal beyond what the API already returns",
+        "The deep-link target is validated against the same URL guard the push handler uses (relates to T-137, T-138)"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03 from the growth review (blocker B2). This is the multiplier on every distribution item: invites, creator maps, escrow claim pages and story cards are all structurally zero-conversion until it ships."
+    },
+    {
+      "id": "T-164",
+      "title": "Invite links that can be attributed, and people to follow on day one",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [
+        "T-163"
+      ],
+      "estimate": "S",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/Invitation.php",
+        "apps/api/app/Http/Controllers/Api/V1/InviteController.php",
+        "apps/api/app/Http/Controllers/Api/V1/FollowController.php",
+        "apps/mobile/app/(main)/"
+      ],
+      "spec_refs": [
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "An invitation carries a single-use code and records `accepted_at`; `users.referred_by` is set on acceptance and never overwritten afterwards",
+        "An invite link opens the app when installed and a web landing page when not (built on T-163)",
+        "Creator suggestions are derived from the viewer's own shares, exclude already-followed accounts, and require no external permission",
+        "A user with zero shares gets a non-empty, non-embarrassing suggestion surface or none at all -- never a broken list",
+        "Invite codes cannot be enumerated, and an expired or spent code fails closed",
+        "Invitee email retention respects the cap and disclosure from T-125"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03 from owner decision D3. Verified constraint: Instagram exposes no follower/following data to third parties (Meta Instagram Platform docs; Basic Display EOL 2024-12-04)."
+    },
+    {
+      "id": "T-165",
+      "title": "Opt-in contacts matching, with nothing raw leaving the device",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [
+        "T-164"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/mobile/",
+        "apps/api/app/Http/Controllers/Api/V1/",
+        "apps/api/database/migrations/"
+      ],
+      "spec_refs": [
+        "08-growth-and-opportunities.md",
+        "07-risks-decisions.md"
+      ],
+      "acceptance": [
+        "No contacts read happens before an in-app consent screen that states what is sent and what is stored; declining leaves every other part of the app fully usable",
+        "Only salted hashes leave the device; a test asserts no raw phone number or email appears in any request payload",
+        "The server stores no raw contact identifiers, and a user can delete their matches and their uploaded hashes, verified by a test",
+        "Non-users' hashes are not retained beyond the match window",
+        "The consent is separate from analytics and marketing consent (NFR-10)",
+        "Re-running a match is idempotent and rate-limited per user"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03 from owner decision D3. Deliberately sequenced after T-164 so the zero-privacy-cost routes ship first and this can be judged on marginal value."
+    },
+    {
+      "id": "T-166",
+      "title": "Destacado — paid placement that can never touch the near-me answer",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [
+        "T-158"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/database/migrations/",
+        "apps/api/app/Models/Builders/PlaceQueryBuilder.php",
+        "apps/api/app/Http/Controllers/Api/V1/PlaceController.php",
+        "apps/api/app/Filament/",
+        "apps/mobile/src/components/"
+      ],
+      "spec_refs": [
+        "06-monetization.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "A promoted place appears at the top of the browse/discovery lists its promotion is scoped to, carrying a visible, non-dismissible label",
+        "**A test asserts a promoted place does NOT change the ordering of the Tonight / near-me open-now result** for any input -- this test is the point of the task",
+        "A promotion is scoped (neighborhood or cuisine), time-boxed, and disappears on expiry without a manual step",
+        "Filament CRUD for promotions with every create/edit/expire action audit-logged",
+        "A hidden, unpublished or moderator-actioned place cannot be promoted, and losing that status ends the promotion",
+        "No dependency on any payment rail: the task ships complete with manual invoicing"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03 from owner decision D4. This reorders 06-monetization: Destacado is revenue line #1 and the built redemption rail becomes the performance add-on for venues that already see volume. The near-me guard test is a blocking acceptance criterion, not a nice-to-have."
+    },
+    {
+      "id": "T-167",
+      "title": "The public web surface: creator maps and place pages that a link can reach",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [
+        "T-163"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/routes/web.php",
+        "apps/api/resources/views/",
+        "apps/api/app/Http/Controllers/"
+      ],
+      "spec_refs": [
+        "03-api-design.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "`/@handle` and place pages are server-rendered from the existing public endpoints, with content present in the HTML before any JavaScript runs",
+        "No second map implementation: the existing renderer is extracted and reused, not re-written (CLAUDE.md sibling-first)",
+        "Hidden, unpublished, private and blocked-user content never appears, asserted per case",
+        "Per-page OG tags and image; a sitemap route that lists only publicly visible pages",
+        "Each pin links out to the original source post, and an unavailable source is labeled rather than broken (FR-30)",
+        "The page is usable without the app and never gates content behind an install prompt"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03. Depends on T-163 for the link and OG plumbing. Explicitly reverses 00-product-spec section 6.1; record as an ADR in 07-risks-decisions.md when it lands. SEO LANE NOTE (from the T-155 review, 2026-09-03): the repo's ONLY existing web-page precedent, resources/views/list-share.blade.php, is pure client-side JS that fetches the public API and renders from that response — no server-side DB read, no JSON-LD. Copying that pattern for a place page would make schema.org openingHoursSpecification IMPOSSIBLE to emit, because the public contract deliberately stops at the computed `open_state` and never serves the structured periods or the venue timezone (T-155, and that withholding is the right call — a second parseable copy of the week is how T-128 happened). So a place page must be server-rendered against the model, not a client fetch of the public API. The stored shape itself translates cleanly: open_day -> dayOfWeek, HH:MM already matches opens/closes, cross-midnight is schema.org-legal; only the always-open entry needs a small mapper to opens 00:00 / closes 23:59."
+    },
+    {
+      "id": "T-168",
+      "title": "Opening hours reach a Spanish reader in Spanish",
+      "phase": "GROW",
+      "status": "pending",
+      "depends_on": [
+        "T-155"
+      ],
+      "estimate": "M",
+      "paths": [
+        "apps/api/app/Services/Geo/GooglePlacesGeocoder.php",
+        "apps/api/app/Http/Resources/PlaceResource.php",
+        "apps/api/app/Support/OpeningSchedule.php",
+        "apps/api/lang/",
+        "apps/mobile/src/lib/opening-hours.ts",
+        "apps/mobile/app/place/[slug].tsx"
+      ],
+      "spec_refs": [
+        "03-api-design.md",
+        "05-mobile-app.md",
+        "08-growth-and-opportunities.md"
+      ],
+      "acceptance": [
+        "For a place WITH structured periods and a timezone, the weekly hours lines are generated in the request's locale — Spanish day names for a Spanish client — and a test asserts the same place renders different day names for `Accept-Language: es` and `en`",
+        "For a place WITHOUT structured periods the stored prose is still rendered verbatim, unchanged and untranslated, and a test pins that (this is the T-128 rule and it does not go away)",
+        "`GooglePlacesGeocoder::businessDetails()` passes a `language` to Google like its sibling Details calls already do, AND the 30-day cache key includes that language — today the key is the place id alone, so one locale's answer would be served to every other",
+        "Day ORDER follows the reader's locale (Monday-first for es), not the source's — which is only safe now because the order comes from `open_day`, never from a line's position",
+        "Times are formatted for the locale (24-hour for es), not passed through as `12:00 – 4:00 PM`",
+        "A day the venue is closed reads as the locale's word for closed, derived from the ABSENCE of a period for that day rather than from parsing the string 'Closed'",
+        "The 24/7 shape renders as its own line ('Abierto 24 h'), not as 00:00–00:00",
+        "Nothing re-parses the prose lines to produce any of this — the generated lines come from the periods only"
+      ],
+      "agent": "executor",
+      "notes": "Filed 2026-09-03 from the owner's observation on a screenshot: the app is voseo Spanish and the expanded hours read 'Monday: Closed' / '12:00 - 4:00 PM'. TWO causes, and the second is the real one. (1) `GooglePlacesGeocoder::businessDetails()` at line ~70 is the ONLY Places call in that file that omits `language`; the geocode calls at ~301 and ~330 both pass `$hints->language`. So Google answers in English and that English is stored. Passing a language there is necessary but NOT sufficient, and it carries a trap: the response is cached 30 days under `geocode:business:sha1(place_id)` with no language in the key, so adding a per-request language without changing the key serves one locale's prose to everyone. (2) `opening_hours_json` is a single column — server-stored prose can only ever be ONE language for all readers, whatever we ask Google for. The correct fix is to GENERATE the weekly lines from `opening_hours_periods_json` + `timezone` (T-155) in the request's locale, falling back to the stored prose only for places with no structured hours. That also lifts the constraint `hourLines` documents at length: day order and day identity are unknowable from prose (weekday_text is ordered by the SOURCE locale's first day of week, so no index is a fixed weekday) but are trivially known from `open_day`. Do NOT reintroduce text parsing to achieve any of this — that is exactly the T-128 defect, and the whole reason T-155 stored the periods."
     }
   ]
 }

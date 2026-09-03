@@ -3,6 +3,8 @@
 > How to read this file: phases are strictly ordered (M0 → M5). A phase is **done** when every task tagged with it in `tasks/tasks.json` has `status: "done"` and the exit criteria below pass. Agents: always work the lowest incomplete phase; within it, pick any task whose `depends_on` are all done.
 >
 > **PRIORITY OVERRIDE (owner request 2026-07-21):** the **[ARCH](#arch--architecture-hardening-highest-priority)** phase (architecture hardening, T-085–T-097) is the **current highest-priority phase** and is worked **before** any remaining M1/M3/M4/M5 backlog. Within ARCH, honor `depends_on`, then P0 before P1.
+>
+> **PRIORITY OVERRIDE (owner request 2026-09-03):** ARCH is complete; the **[GROW](#grow--retrieval-reach--first-revenue)** phase (T-155–T-167) is now the **current highest-priority phase**, worked before the remaining M1/M3/M4/M5 backlog. Two items are explicitly deferred to the END of the whole queue by owner decision: **product analytics (GA4)** second-to-last, and the **Mercado Pago payout rail** after it. Within GROW, honor `depends_on`.
 
 ## Phase overview
 
@@ -15,6 +17,7 @@
 | M4 | Monetization | Restaurant claims & offers, QR redemptions with attribution, double-entry ledger, Stripe Connect payouts | M2 (M3 for influencer claiming) |
 | M5 | Hardening & Launch | Moderation, GDPR, observability, E2E tests, store submission, production deploy, GitHub Actions CI (scheduled last) | M1–M4 |
 | **ARCH** | **Architecture Hardening** | **Correctness/data-integrity fixes, observability, contract safety, god-object decomposition surfaced by the 2026-07-21 audit — worked next, ahead of remaining backlog** | **M0–M2 (all deps already done)** |
+| **GROW** | **Retrieval, Reach & First Revenue** | **The map answers "where do I eat, here, now"; shared links stop being dead ends; Destacado is the first revenue line — from the 2026-09-03 agency growth review** | **M2 (T-155 for hours)** |
 
 ## M0 — Foundations
 
@@ -146,6 +149,57 @@ when they land.
 - The two confirmed correctness defects (T-085 lock-race, T-086 N+1) have regression tests that
   fail before the fix and pass after.
 - No behavioral regressions: contract drift green; API/mobile suites green.
+
+## GROW — Retrieval, Reach & First Revenue
+
+**Origin:** an agency growth review on **2026-09-03** (six independent specialists: market,
+growth loops, creator virality, product/business model, engagement, platform leverage) plus the
+owner's own product model, both recorded in `08-growth-and-opportunities.md`. 13 tasks
+(**T-155–T-167**), worked before the remaining M1/M3/M4/M5 backlog.
+
+**The product model this phase serves** (08 §9): the map is a list of places you **want to
+visit**, filled from reels *and* from a friend's recommendation. The query it must answer is
+*this zone → what I feel like eating → is it open right now → pick one*.
+
+**Retrieval — the core query (do first)**
+- **T-155** structured hours + timezone → a real `open_now`. *(Owner decision 2026-09-03: proceed —
+  "it's 11pm, is it already closed?" is the product's own question.)*
+- **T-156** distance + open/closed on the map pin payload and the pin sheet; `sort=distance`; the
+  map centers on the viewer instead of their last viewport.
+- **T-157** dishes promoted out of `extraction_snapshot_json` into a queryable table — "who does
+  pasta" is unanswerable today.
+- **T-158** **Tonight**, the decision surface that composes all three.
+
+**Filling the empty map**
+- **T-159** curated maps as **live subscriptions** shown as a **toggleable layer** (owner
+  decisions D1, D2).
+- **T-160** registering stops making the map emptier; real empty state; three starter saves.
+- **T-161** the review screen asks one question instead of forty-two.
+- **T-162** been-there — the completion of a want-to-go pin, and Tonight's ranking signal.
+
+**Reach**
+- **T-163** Universal Links + App Links + server-rendered OG — every shared link is a dead end
+  until this ships, which makes it the multiplier on everything below.
+- **T-164** invite links that can be attributed + creator suggestions from your own shares.
+- **T-165** opt-in contacts matching, with only salted hashes leaving the device (owner decision D3;
+  Instagram exposes no friend graph to third parties).
+- **T-167** the public web surface — `/@handle` creator maps and place pages. **Reverses
+  00-product-spec §6.1** ("web app out of scope"); record as an ADR when it lands.
+
+**First revenue**
+- **T-166** **Destacado** — flat monthly labeled placement, sold by hand, no payment rail needed
+  (owner decision D4). Its blocking acceptance criterion is the guard test: promoted placement
+  must never reorder the "open now, near me" answer.
+
+**Exit criteria**
+- A user standing in a neighborhood at 23:00 can go from opening the app to a shortlist of places
+  that are near them, serve what they want, and are open — in one surface, without tapping through
+  to a detail page to learn either fact.
+- A list URL pasted into WhatsApp renders a real preview card, and opens the app when installed and
+  the web page when not — asserted by a test and a Maestro flow, not by a screenshot.
+- A new user's first session ends with a non-empty map.
+- One venue is paying for a Destacado, and a test proves that promotion cannot reorder the near-me
+  answer.
 
 ## Dependency graph (phase level)
 
