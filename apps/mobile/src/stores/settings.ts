@@ -1,6 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
+import { queryClient } from '@/api/query-client';
+
 export type Locale = 'es' | 'en';
 export type Currency = '$' | '€' | '£';
 
@@ -30,8 +32,20 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   locale: DEFAULT_LOCALE,
   currency: DEFAULT_CURRENCY,
   setLocale: (locale) => {
+    const previous = useSettingsStore.getState().locale;
     set({ locale });
     void SecureStore.setItemAsync(LOCALE_KEY, locale);
+
+    // Anything the SERVER localizes has to be re-asked for, because changing the
+    // language here only changes the `Accept-Language` on the NEXT request — the
+    // cached payload was rendered for the old one. Opening hours are the visible
+    // case (T-168): the API now writes those lines itself, so a cached place
+    // would show a Spanish UI with an English week until something refetched it.
+    // Scoped to the places tree rather than clearing the cache, and skipped when
+    // the language did not actually change (this setter runs on every hydrate).
+    if (previous !== locale) {
+      void queryClient.invalidateQueries({ queryKey: ['places'] });
+    }
   },
   setCurrency: (currency) => {
     set({ currency });

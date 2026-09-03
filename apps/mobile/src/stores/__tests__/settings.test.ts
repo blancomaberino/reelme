@@ -1,5 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
+import { queryClient } from '@/api/query-client';
+
 import { DEFAULT_CURRENCY, DEFAULT_LOCALE, useSettingsStore } from '../settings';
 
 beforeEach(() => {
@@ -44,4 +46,33 @@ it('hydrate applies a saved currency', async () => {
   );
   await useSettingsStore.getState().hydrate();
   expect(useSettingsStore.getState().currency).toBe('£');
+});
+
+describe('locale change re-asks for what the server localized (T-168)', () => {
+  it('invalidates the places tree when the language actually changes', () => {
+    // Changing the language here only changes `Accept-Language` on the NEXT
+    // request. The cached place was rendered by the API for the OLD one, so
+    // without this a Spanish UI keeps showing an English week — which is the bug
+    // T-168 closed, arriving by the cache instead of by the server.
+    const spy = jest.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    useSettingsStore.setState({ locale: 'es' });
+
+    useSettingsStore.getState().setLocale('en');
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['places'] });
+    spy.mockRestore();
+  });
+
+  it('does NOT invalidate when the locale is set to what it already was', () => {
+    // `setLocale` runs on every hydrate, so invalidating unconditionally would
+    // discard the offline cache on each cold start — the exact cost that made
+    // bumping the persist buster the wrong fix.
+    const spy = jest.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    useSettingsStore.setState({ locale: 'es' });
+
+    useSettingsStore.getState().setLocale('es');
+
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
 });

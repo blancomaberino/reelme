@@ -110,3 +110,25 @@ it('answers 422 for a types of "0", which a falsey filter used to swallow', func
     // about the "0" and not about the shape of the request.
     $this->getJson('/api/v1/search?q=ramen&types=places')->assertOk();
 });
+
+/**
+ * `?locale[]=es`. Reported in review as an unauthenticated 500 on every API
+ * route, by analogy with the `near[]`/`bbox[]` defect above — it is NOT. Checked
+ * on PHP 8.5: casting an array is an E_WARNING, the request still answers 200,
+ * and `normalize("Array")` yields null so the default locale applies. The guard
+ * in `RequestLocale::explicit()` stays, because emitting a warning per request
+ * is real log noise and "Array" is not a locale — but the assertion that WOULD
+ * have pinned it is vacuous (it passes with the guard removed, verified), and a
+ * test that cannot fail is worse than no test. What is pinned below is the
+ * behaviour that can actually regress.
+ */
+it('still honours a well-formed locale param', function () {
+    $place = Place::factory()->active()->create([
+        'opening_hours_periods_json' => [
+            ['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00'],
+        ],
+    ]);
+
+    expect($this->getJson("/api/v1/places/{$place->slug}?locale=es")->json('data.opening_hours.0'))
+        ->toBe('Lunes: 11:00 – 23:00');
+});

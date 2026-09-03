@@ -34,7 +34,14 @@ final class RequestLocale
      */
     public static function explicit(Request $request): ?string
     {
-        $param = self::normalize((string) $request->query('locale', ''));
+        // `is_string` before the cast, not a bare `(string)`. `?locale[]=es` hands
+        // back an ARRAY, and casting one raises an E_WARNING that Laravel's
+        // handler promotes to an ErrorException — a 500, on every API route,
+        // reachable unauthenticated, because RememberUserLocale runs everywhere.
+        // Identical in shape to the `near[]`/`bbox[]` defect fixed in T-042; the
+        // same guard, in the one place that reads this parameter.
+        $raw = $request->query('locale', '');
+        $param = is_string($raw) ? self::normalize($raw) : null;
         if ($param !== null) {
             return $param;
         }

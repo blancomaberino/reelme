@@ -152,6 +152,39 @@ it('still renders the source’s prose VERBATIM when there are no structured per
         ->toBe(['Monday: Closed', 'Tuesday: 12:00 – 4:00 PM']);
 });
 
+it('lets a curator’s hand-typed hours win over the generated ones', function () {
+    // Nothing curated can write the PERIODS: Filament edits the lines, the
+    // suggest-an-edit request allows only the lines, and enrichment is the sole
+    // writer of periods. So without this, a moderator correcting "closes 22:00,
+    // not 23:00" would save, lock the column — and every reader would go on
+    // seeing the generated line from Google's stale week. The correction would be
+    // invisible, and permanent, since the lock then stops enrichment refreshing
+    // anything. Users sent to a closed door, moderation with no visible effect.
+    $place = Place::factory()->active()->create([
+        'opening_hours_json' => ['Lunes: cerramos 22:00 (corregido a mano)'],
+        'opening_hours_periods_json' => mondayLunchToLate(),
+    ]);
+    $place->lockFields(['opening_hours_json']);
+    $place->save();
+
+    expect($this->withHeader('Accept-Language', 'es')
+        ->getJson("/api/v1/places/{$place->slug}")->json('data.opening_hours'))
+        ->toBe(['Lunes: cerramos 22:00 (corregido a mano)']);
+});
+
+it('generates again once the hours are unlocked', function () {
+    // The lock is the whole condition — an unlocked place with periods still gets
+    // localized lines, so the guard narrows nothing it should not.
+    $place = Place::factory()->active()->create([
+        'opening_hours_json' => ['Monday: 12:00 – 4:00 PM'],
+        'opening_hours_periods_json' => mondayLunchToLate(),
+    ]);
+
+    expect($this->withHeader('Accept-Language', 'es')
+        ->getJson("/api/v1/places/{$place->slug}")->json('data.opening_hours.0'))
+        ->toBe('Lunes: 11:00 – 23:00');
+});
+
 // ------------------------------------------------- the timezone half's source
 
 it('resolves a timezone for a place that has none', function () {

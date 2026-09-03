@@ -229,6 +229,21 @@ class PlaceResource extends JsonResource
         // Generated in the READER's language when the place has structured
         // periods (T-168), falling back to the source's verbatim prose when it
         // does not. Not a translation of that prose — see {@see WeeklyHours}.
+        //
+        // A HUMAN-LOCKED value wins outright, and this branch is the whole
+        // reason the lock means anything here. Nothing curated can write
+        // `opening_hours_periods_json` — Filament edits the LINES, the
+        // suggest-an-edit request allows only the lines, and enrichment is the
+        // sole writer of periods. So without this, a curator correcting "closes
+        // 22:00, not 23:00" would save, lock the column, and watch the screen go
+        // on showing the generated line from the stale periods — a correction
+        // that is invisible and, because the lock then stops enrichment
+        // refreshing anything, permanent. The lock says a person owns this
+        // field; generating over it would say otherwise.
+        if ($this->isFieldLocked('opening_hours_json')) {
+            return OpeningHours::salvage($this->opening_hours_json);
+        }
+
         return WeeklyHours::lines($this->opening_hours_periods_json, RequestLocale::resolve($request))
             ?? OpeningHours::salvage($this->opening_hours_json);
     }

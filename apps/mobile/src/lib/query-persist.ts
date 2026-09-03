@@ -25,6 +25,14 @@ const CACHE_KEY = 'reelmap-query-cache';
  * key reshuffle). A mismatched buster makes the restore a no-op instead of
  * rehydrating data the current code can't read.
  */
+// NOT bumped for T-168, deliberately. Hours are now generated in the request's
+// locale, so a payload persisted before it holds lines in another language — but
+// bumping this discards EVERY persisted cache for every user, including the one
+// that restores a session offline (`offline-cold-start.test.tsx` fails on the
+// bump, which is the blast radius made visible). A stale language is cosmetic
+// and heals on the next fetch; a cold start that drops to guest is not. The
+// targeted fix lives in `setLocale`, which invalidates the affected queries when
+// the language actually changes.
 const CACHE_BUSTER = 'v1';
 
 /**
