@@ -55,7 +55,16 @@ final class OpeningHours
      */
     public static function fromProvider(mixed $value): ?array
     {
-        if (! is_array($value)) {
+        // A LIST, not merely an array. `['monday' => '9-5']` has string values
+        // throughout, so the loop below would have accepted it and returned
+        // `['9-5']` — the day labels silently gone, and the result non-empty,
+        // therefore a winner of BusinessEnricher's first-non-empty merge. That
+        // is the same class as truncation, which the loop already refuses: a
+        // shape this method does not understand must void the value, not get
+        // reinterpreted into a plausible-looking one. `salvage()` is where
+        // key-bearing input is coerced rather than dropped, and it PREFIXES the
+        // key instead of discarding it.
+        if (! is_array($value) || ! array_is_list($value)) {
             return null;
         }
 

@@ -112,6 +112,28 @@ type ContractOwnFields = Omit<ContractPlaceDetail, 'sources' | 'offers' | 'my_ta
 type ContractSatisfiesPlaceDetail = ContractOwnFields extends PlaceDetailOwnFields ? true : never;
 const placeDetailAcceptsContract: ContractSatisfiesPlaceDetail = true;
 
+// The direction the assert above CANNOT see (found by review, T-128).
+// `extends` permits extra properties on the contract side, so a contract field
+// the app simply never restates passes it silently — which is a slower version
+// of the same failure this file exists to stop: the app codes to its own idea
+// of the payload and nobody compares. `claimed` is exactly that today.
+//
+// So the omissions are enumerated rather than left implicit. This is not a
+// suppression list: it is a decision record that fails BOTH ways. A new
+// contract field the app ignores widens the Exclude and breaks this line, so
+// ignoring it becomes a choice someone writes down; and restating a field
+// listed here narrows it to `never` and breaks the line too, so the note cannot
+// outlive the omission it describes.
+type ContractFieldsNotRestated = Exclude<keyof ContractOwnFields, keyof PlaceDetailOwnFields>;
+/**
+ * `claimed` — whether a verified operator holds this venue (T-041). The detail
+ * screen branches on `can_edit` ("edit" vs "suggest a change"), which is about
+ * THIS viewer; `claimed` is about the venue and no screen renders it. Left off
+ * deliberately, not overlooked.
+ */
+type IntentionallyNotRestated = 'claimed';
+const omissionsAreAccountedFor: Exact<ContractFieldsNotRestated, IntentionallyNotRestated> = true;
+
 // A realistic API row must satisfy the contract type verbatim — a renamed field
 // (e.g. `country_code` → `country`) turns this into a tsc error, not a runtime one.
 const placeFixture = {
@@ -219,6 +241,7 @@ it('pins the mobile API types to @reelmap/contracts', () => {
   expect(appReviewMatchesContract).toBe(true);
   expect(placeReviewMatchesContract).toBe(true);
   expect(placeDetailAcceptsContract).toBe(true);
+  expect(omissionsAreAccountedFor).toBe(true);
 });
 
 it('keeps realistic API payloads assignable to the contract types', () => {

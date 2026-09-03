@@ -25,6 +25,13 @@ use Illuminate\Support\Collection;
  */
 class PlaceResource extends JsonResource
 {
+    /**
+     * How many cached Google review snippets a detail payload may carry —
+     * `place.json`'s `maxItems: 5` (02 §3.8), restated here because this is the
+     * boundary that has to honour it. {@see googleReviewsForResource()}.
+     */
+    private const GOOGLE_REVIEW_CAP = 5;
+
     /** @var list<string> */
     private array $includes = [];
 
@@ -233,6 +240,14 @@ class PlaceResource extends JsonResource
      * become null (the schema allows null on every one); unknown keys are
      * dropped; a non-array entry is skipped entirely.
      *
+     * AND the count is capped here, not only in the writer. `place.json` says
+     * `maxItems: 5`; `GooglePlacesGeocoder::reviews()` slices to 5 on the write
+     * — but that is the CURRENT writer, which is precisely the assumption the
+     * paragraph above exists to distrust. A six-row legacy column would serve
+     * six and break the contract on a live response, so the cap belongs at the
+     * boundary that has to keep the promise. Extra rows are dropped, not
+     * refused: the row already exists, and five real reviews beat a 500.
+     *
      * @return list<array{author: ?string, rating: float|int|null, text: ?string, relative_time: ?string, time: ?int, profile_photo_url: ?string}>
      */
     private function googleReviewsForResource(): array
@@ -256,7 +271,7 @@ class PlaceResource extends JsonResource
             ];
         }
 
-        return $out;
+        return array_slice($out, 0, self::GOOGLE_REVIEW_CAP);
     }
 
     /**

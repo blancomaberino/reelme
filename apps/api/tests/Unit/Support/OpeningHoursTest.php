@@ -24,6 +24,25 @@ it('fromProvider rejects a non-array outright', function () {
         ->toBeNull();
 });
 
+it('fromProvider VOIDS an associative map — a shape it cannot read is not reinterpreted', function () {
+    // Every VALUE here is a string, so the all-or-nothing loop was satisfied and
+    // the method returned ['9-5', '9-5', 'closed'] — a plausible-looking week
+    // with the days gone (found by review, T-128). Non-empty, therefore a winner
+    // of BusinessEnricher's first-non-empty merge, therefore a silent overwrite
+    // of good hours with meaningless ones. Same class as truncation.
+    $dayMap = ['monday' => '9-5', 'tuesday' => '9-5', 'sunday' => 'closed'];
+
+    expect(OpeningHours::fromProvider($dayMap))->toBeNull()
+        ->and(OpeningHours::fromProvider($dayMap))->not->toBe(['9-5', '9-5', 'closed']);
+
+    // A partially-keyed array is a list to nobody either.
+    expect(OpeningHours::fromProvider([0 => 'Monday: 9–17', 'tuesday' => 'Closed']))->toBeNull();
+
+    // salvage() is the half that DOES read keyed input, by keeping the key
+    // rather than dropping it — the two halves must not converge.
+    expect(OpeningHours::salvage($dayMap))->toBe(['monday: 9-5', 'tuesday: 9-5', 'sunday: closed']);
+});
+
 it('fromProvider VOIDS the whole value when one element is not a string — it never truncates', function () {
     // THE point of the strict variant. A filtered result here would be
     // `['Monday: 9–17', 'Wednesday: 9–17']` — non-empty, therefore a winner of

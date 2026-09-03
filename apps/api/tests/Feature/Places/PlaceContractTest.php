@@ -270,6 +270,36 @@ it('serves a legacy google_reviews row as the six keys place.json pins', functio
     ]]);
 });
 
+it('caps google_reviews at the 5 place.json allows, however many the column holds', function () {
+    $place = contractPlace();
+
+    // Six rows written PAST the model cast — a column from before
+    // `GooglePlacesGeocoder::reviews()` sliced to 5, or a hand edit. The WRITER
+    // caps; that is the current writer, and this resource's whole job is to
+    // distrust what is already in the column. Without a cap here the schema's
+    // `maxItems: 5` (added reviewing T-128) would be violated by a LIVE
+    // response — the tightening would have moved the bug rather than fixed it.
+    DB::table('places')->where('id', $place->id)->update([
+        'google_reviews_json' => json_encode(array_map(fn (int $i): array => [
+            'author' => "Reviewer {$i}",
+            'rating' => 5,
+            'text' => "Review number {$i}.",
+            'relative_time' => 'a week ago',
+            'time' => 1700000000 + $i,
+            'profile_photo_url' => null,
+        ], range(1, 6))),
+        'google_reviews_synced_at' => now(),
+    ]);
+
+    $data = $this->getJson("/api/v1/places/{$place->slug}")->assertOk()->json('data');
+
+    assertMatchesContract($data, 'place');
+    expect($data['google_reviews'])->toHaveCount(5);
+    // The FIRST five, not an arbitrary five — Google orders them by relevance.
+    expect(array_column($data['google_reviews'], 'author'))
+        ->toBe(['Reviewer 1', 'Reviewer 2', 'Reviewer 3', 'Reviewer 4', 'Reviewer 5']);
+});
+
 it('sources rows validate against place-source.json', function () {
     $place = contractPlace();
 

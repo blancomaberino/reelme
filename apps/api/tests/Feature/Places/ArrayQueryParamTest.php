@@ -62,3 +62,31 @@ it('still accepts a well-formed include, and still 422s an unknown member', func
         ->assertStatus(422)
         ->assertJsonPath('error.details.include.0', 'Unknown include: nope.');
 });
+
+/**
+ * `?include=0` (found reviewing T-128). `CsvList::parse()` used a bare
+ * `array_filter`, which drops "0" for being falsey — so the unknown member
+ * never reached `withValidator()` and the request was answered 200 with nothing
+ * embedded. The 422 this route promises for a typo was unreachable for exactly
+ * one spelling of a typo.
+ */
+it('answers 422 for an include of "0", which a falsey filter used to swallow', function () {
+    $place = Place::factory()->active()->create();
+
+    // The envelope is this API's own (`error.details`), not Laravel's bare
+    // `errors` — and naming the member proves the 422 is ABOUT the "0" rather
+    // than some other rule tripping on the same request.
+    $this->getJson("/api/v1/places/{$place->slug}?include=0")
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.include.0', 'Unknown include: 0.');
+
+    // And a real include beside it still fails as a set, rather than the "0"
+    // vanishing and the rest passing.
+    $this->getJson("/api/v1/places/{$place->slug}?include=sources,0")
+        ->assertStatus(422)
+        ->assertJsonPath('error.details.include.0', 'Unknown include: 0.');
+
+    // The control: the same request without the "0" is a 200, so the 422 above
+    // is the new member and not the shape of the URL.
+    $this->getJson("/api/v1/places/{$place->slug}?include=sources")->assertOk();
+});

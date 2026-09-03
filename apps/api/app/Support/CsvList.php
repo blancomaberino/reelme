@@ -36,6 +36,14 @@ final class CsvList
             return null;
         }
 
-        return array_values(array_unique(array_filter(array_map('trim', explode(',', $raw)))));
+        // `array_filter` with no callback drops every FALSEY member, and "0" is
+        // falsey: `?include=0` would have been filtered to an empty set and
+        // silently accepted instead of failing the unknown-include 422, and
+        // `?types=0` would have meant "every type" instead of "the type 0".
+        // Only the empty string is not a member.
+        return array_values(array_unique(array_filter(
+            array_map('trim', explode(',', $raw)),
+            static fn (string $member): bool => $member !== '',
+        )));
     }
 }

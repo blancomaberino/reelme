@@ -83,7 +83,7 @@ export interface PlaceDetail {
     app: RatingBlock;
   };
   /**
-   * Cached Google review snippets, at most 5 (02 §3.8). Every row is written by GooglePlacesGeocoder::reviews(), which normalizes Google's payload to exactly these six keys and guards each one — so the shape is pinned rather than left open (T-128: an items block with no `required` and no `additionalProperties` is the same 'union that pins nothing' that hid the opening_hours bug).
+   * Cached Google review snippets, at most 5 (02 §3.8), enforced by `maxItems` rather than only asserted here — GooglePlacesGeocoder::reviews() slices to 5 on the write, so a longer array means that writer was bypassed. Every row is written by GooglePlacesGeocoder::reviews(), which normalizes Google's payload to exactly these six keys and guards each one — so the shape is pinned rather than left open (T-128: an items block with no `required` and no `additionalProperties` is the same 'union that pins nothing' that hid the opening_hours bug).
    */
   google_reviews: {
     author: string | null;
