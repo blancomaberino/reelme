@@ -6,10 +6,11 @@ Guidance for any agent (or human) working in this repository. These rules are **
 
 1. **Nothing reaches `main` without a pull request.** Never commit, push, or merge directly to `main`.
 2. **Before opening any PR**, run **`/coderabbit`** — it orchestrates the full pre-PR pass (quality gates → **`/simplify`** → **`/security-review`** → a grounded line-by-line review) and records the approval the PR gate requires. Fix every 🔴/🟡 it surfaces before the PR goes up.
-3. **Any UI/frontend work uses the `/frontend-design` skill** — mobile screens, Filament customizations, any web UI.
-4. **Every change ships with meaningful tests + coverage + E2E.** No trivial or placeholder tests.
-5. **Check the wiring, not just the code** — see [Wiring & seams](#wiring--seams-enforced--this-is-where-the-real-bugs-are). A screen nobody can reach, a second copy of an existing component, an interaction that never re-queries, and a mock that hides a crash all pass their own tests. Restore the dev environment before reporting.
-6. **Finish every task with a completion summary** — see [Task completion report](#task-completion-report). Whenever you finish working on a task, end with: what task, what it's about, and how to manually test it (admin dashboard or simulator).
+3. **Before creating a PR *and before every push that updates one*, audit the diff with the `/audit-agency` panel** — independent specialist reviewers over `main...HEAD`, launched in one message so they run concurrently. **The security and architecture seats are mandatory and are never the ones you drop** when fitting lanes to the diff. Fix every 🔴/🟡, or get an explicit waiver from the owner.
+4. **Any UI/frontend work uses the `/frontend-design` skill** — mobile screens, Filament customizations, any web UI.
+5. **Every change ships with meaningful tests + coverage + E2E.** No trivial or placeholder tests.
+6. **Check the wiring, not just the code** — see [Wiring & seams](#wiring--seams-enforced--this-is-where-the-real-bugs-are). A screen nobody can reach, a second copy of an existing component, an interaction that never re-queries, and a mock that hides a crash all pass their own tests. Restore the dev environment before reporting.
+7. **Finish every task with a completion summary** — see [Task completion report](#task-completion-report). Whenever you finish working on a task, end with: what task, what it's about, and how to manually test it (admin dashboard or simulator).
 
 ## Agent orchestration (teams vs subagents)
 
@@ -35,8 +36,15 @@ Agent Teams is enabled on this machine (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
      - A grounded (gitleaks / semgrep / shellcheck) line-by-line review over every changed file.
 
      Fix every 🔴 Blocking finding (address 🟡 too, or justify), commit, and let it re-run until clean. You can still invoke `/simplify` and `/security-review` on their own, but `/coderabbit` is the one command that covers the checklist.
-  2. **The approval is enforced.** A `PreToolUse` hook (`~/.claude/skills/coderabbit/scripts/pr-gate.sh`) blocks `gh pr create|edit|ready|merge` until `/coderabbit` has approved the **current** commit; any new commit invalidates the receipt → re-review. Don't route around the hook — fix the findings.
-  3. **Open the PR** (`gh pr create`) with: summary, the `T-###` task id, and test evidence (what you tested and the results). Wait for CI green + review before merge.
+  2. **Run `/audit-agency`** over `main...HEAD` — the specialist panel, in ONE message so the agents run concurrently. It asks what the gates and the line-by-line review structurally cannot: *can a user reach this*, *is this a second implementation of something we already have*, *does this test pass whether or not the feature works* — the [Wiring & seams](#wiring--seams-enforced--this-is-where-the-real-bugs-are) questions, which is where this project's shipped bugs have actually lived.
+
+     **Two seats are non-negotiable, on every diff:**
+     - **Security** (`Senior SecOps Engineer`) — authz/IDOR, mass assignment, injection, SSRF, data exposure, secrets, and anything a test environment can reach that production shouldn't.
+     - **Architecture** (`Software Architect` / `Backend Architect`) — boundaries and contracts, a seam duplicated or bypassed, god objects, migration and rollout safety, and the change's blast radius beyond the files it touches.
+
+     The remaining lanes (mobile, UX, UI, test quality) are fitted to what the diff touches, and a diff touching payments or auth deserves a seat the table does not list. **Verify each finding against the cited lines before applying it** — agents are confidently wrong sometimes, and a finding contradicted by the code costs more to apply than to check. Then fix every 🔴/🟡 or get an explicit owner waiver, and prove each fix bites by mutating it and watching the test fail.
+  3. **Both approvals are enforced.** A `PreToolUse` hook (`~/.claude/skills/coderabbit/scripts/pr-gate.sh`) blocks the PR-mutating `gh` subcommands until `/coderabbit` has approved the **current** commit; `.claude/hooks/guard-pr-audit.py` blocks pushes and those same subcommands until an `/audit-agency` receipt matches HEAD **and** the working tree. Any new commit invalidates both → re-review. Don't route around either hook — fix the findings. Reaching for `REELMAP_SKIP_AUDIT=1` because the audit is slow is how the check becomes decoration.
+  4. **Open the PR** (`gh pr create`) with: summary, the `T-###` task id, and test evidence (what you tested and the results). Wait for CI green + review before merge.
 
   > `/coderabbit`, its scripts, and the gate hook are a **local, user-level** setup under `~/.claude` — they cover Claude Code sessions on this machine, not CI or PRs opened from the GitHub UI. (There is currently no server-side CI gate; add GitHub branch protection + a required status check when the project gains collaborators.)
 
