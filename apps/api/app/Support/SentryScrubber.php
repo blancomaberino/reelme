@@ -62,7 +62,7 @@ class SentryScrubber
      * three fractional digits each, separated by a comma or ", ". A bare
      * integer pair is not matched, so ordinary numbers in a message survive.
      */
-    private const COORD_PAIR = '/-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/';
+    private const COORD_PAIR = '/-?\d{1,3}\.\d{3,}(?:\s*,\s*|%2C)-?\d{1,3}\.\d{3,}/i';
 
     public static function scrub(Event $event, ?EventHint $hint = null): Event
     {
@@ -92,21 +92,77 @@ class SentryScrubber
         // the breadcrumb — so `before_send_transaction`, which only ever fires
         // when tracing is on and therefore only ever sees events that HAVE
         // spans, was walking straight past the carrier it was added for.
+        // SPANS are a carrier too, and the one that made the transaction hook
+        // self-defeating without this: `HttpClientIntegration` puts the SAME
+        // query string on an `http.client` span as on the breadcrumb, and
+        // `before_send_transaction` only ever fires when tracing is on, which is
+        // the only time an event HAS spans.
         foreach ($event->getSpans() as $span) {
-            $data = $span->getData();
+            $span->setData(self::scrubBag($span->getData()));
 
-            foreach ($data as $key => $value) {
-                if (is_string($value)) {
-                    $data[$key] = $key === 'http.query'
-                        ? self::scrubQueryString($value)
-                        : self::scrubUnknownMetadata($value);
-                }
+            if (($description = $span->getDescription()) !== null) {
+                $span->setDescription(self::scrubValue('description', $description));
             }
-
-            $span->setData($data);
         }
 
+        // And the app's OWN doors. `contexts` and `extra` take whatever a caller
+        // hands them — `SentryErrorReporter` passes a context array through
+        // untouched — so they are one `'near' => $near` away from being the next
+        // carrier. Walked by SHAPE rather than by name, which is the difference
+        // between this converging and it needing another round per field.
+        foreach ($event->getContexts() as $name => $context) {
+            $event->setContext($name, self::scrubBag($context));
+        }
+
+        $event->setExtra(self::scrubBag($event->getExtra()));
+
         return $event;
+    }
+
+    /**
+     * Scrub the string leaves of a key/value bag, one level of nesting deep.
+     *
+     * Not a recursive walk of arbitrary depth: the carriers this exists for are
+     * flat, and an unbounded rewrite of anything anyone ever attaches is a
+     * bigger promise than this can keep. Two levels covers `contexts`, whose
+     * shape is `['name' => ['k' => 'v']]`.
+     *
+     * @param  array<array-key, mixed>  $bag
+     * @return array<array-key, mixed>
+     */
+    private static function scrubBag(array $bag): array
+    {
+        foreach ($bag as $key => $value) {
+            if (is_string($value)) {
+                $bag[$key] = self::scrubValue((string) $key, $value);
+            } elseif (is_array($value)) {
+                foreach ($value as $innerKey => $inner) {
+                    if (is_string($inner)) {
+                        $value[$innerKey] = self::scrubValue((string) $innerKey, $inner);
+                    }
+                }
+                $bag[$key] = $value;
+            }
+        }
+
+        return $bag;
+    }
+
+    /**
+     * One string, scrubbed according to what its key says it is.
+     *
+     * The key names are an optimisation. `scrubUnknownMetadata` is the actual
+     * defence, because it matches on SHAPE — which is what closes an SDK whose
+     * field names cannot be enumerated ahead of time, and the reason a fifth
+     * carrier does not need a fifth round.
+     */
+    private static function scrubValue(string $key, string $value): string
+    {
+        return match ($key) {
+            'url' => self::scrubUrl($value),
+            'http.query', 'query_string' => self::scrubQueryString($value),
+            default => self::scrubUnknownMetadata($value),
+        };
     }
 
     /**
@@ -146,27 +202,9 @@ class SentryScrubber
         // not wrap `before_send`, so that throw propagates out of
         // `captureException()`: telemetry taking down the request it watched.
         foreach ($crumb->getMetadata() as $key => $value) {
-            if (! is_string($value)) {
-                continue;
+            if (is_string($value)) {
+                $crumb = $crumb->withMetadata((string) $key, self::scrubValue((string) $key, $value));
             }
-
-            // `http.query` is the carrier, and it took a reviewer reading the
-            // SDK to find that out: an earlier version of this special-cased
-            // `url`, which `HttpClientIntegration::getPartialUri()` rebuilds
-            // from scheme/host/port/PATH — the query is stripped out of it and
-            // put in a SIBLING key. So the branch matched no producer at all,
-            // and the test covering it invented a shape nothing emits.
-            //
-            // Both are handled now: `url` in case a future producer keeps its
-            // query, and `http.query`, which is where the parameters actually
-            // are. By NAME, because that is what catches `?location=…&key=…` on
-            // an outbound Google call — percent-encoded, so the coordinate-pair
-            // regex never matched it either.
-            $crumb = $crumb->withMetadata((string) $key, match ((string) $key) {
-                'url' => self::scrubUrl($value),
-                'http.query' => self::scrubQueryString($value),
-                default => self::scrubUnknownMetadata($value),
-            });
         }
 
         return $crumb;
@@ -188,6 +226,14 @@ class SentryScrubber
      */
     private static function scrubUnknownMetadata(string $value): string
     {
+        // A `?` means it is a URL, not a bare query string, and it has to be
+        // split before the by-name pass: otherwise the first pair's KEY is the
+        // whole `https://…/json?key`, which matches nothing in the table, and
+        // the credential ships verbatim.
+        if (str_contains($value, '?')) {
+            return self::scrubUrl($value);
+        }
+
         return preg_match('/^[^\s]*[^\s=&]=[^\s&]*(&[^\s=&]+=[^\s&]*)*$/', $value) === 1
             ? self::scrubQueryString($value)
             : self::scrubText($value);
@@ -216,37 +262,37 @@ class SentryScrubber
                 continue;
             }
             [$key, $value] = array_pad(explode('=', $pair, 2), 2, null);
+            // A bare flag stays a bare flag: `?near&sort=…` must not come back
+            // as `near=[redacted]`, which would report a value the request did
+            // not carry — the same "a scrubber must not invent fields" rule the
+            // decode round-trip was removed for.
+            if ($value === null) {
+                $pairs[] = $key;
+
+                continue;
+            }
+
             $pairs[] = in_array(strtolower(rawurldecode($key)), self::REDACTED_PARAMS, true)
                 ? $key.'='.self::REDACTED
-                : ($value === null ? $key : $key.'='.self::scrubText($value));
+                : $key.'='.self::scrubText($value);
         }
 
         return implode('&', $pairs);
     }
 
     /**
-     * Decoded before matching: a query string percent-encodes the separator, so
-     * `-34.9011%2C-56.1645` never matched a pattern written around a comma.
+     * The separator is matched in BOTH spellings — a literal comma and `%2C` —
+     * rather than by decoding first.
      *
-     * When the decoded form is what matched, the decoded form is what gets
-     * rewritten — and then RE-ENCODED, because otherwise a caller-controlled
-     * value could forge structure in the record: `?q=x%26near%3D-34.9011,…`
-     * would come back as `q=x&near=[redacted]`, and an analyst would read two
-     * parameters where the request had one. The coordinates were redacted
-     * either way; the point is that a scrubber must not invent fields.
+     * Decoding was the previous attempt and it went wrong twice. Returning the
+     * decoded form let a caller-controlled value forge structure
+     * (`?q=x%26near%3D…` came back reading as two parameters); re-encoding to
+     * fix that percent-encoded the ENTIRE message, so an exception value became
+     * `cURL%20error%2028%3A%20…` and the redaction marker itself became
+     * `%5Bredacted%5D`. Matching both spellings needs neither.
      */
     private static function scrubText(string $text): string
     {
-        $decoded = rawurldecode($text);
-
-        // Matched on the decoded form, replaced on whichever form matched. A
-        // value that arrived encoded is returned decoded only when it actually
-        // carried a coordinate — which is the case where losing the encoding is
-        // the lesser problem, since the text is already being rewritten.
-        if ($decoded !== $text && preg_match(self::COORD_PAIR, $decoded) === 1) {
-            return rawurlencode((string) preg_replace(self::COORD_PAIR, self::REDACTED, $decoded));
-        }
-
         return (string) preg_replace(self::COORD_PAIR, self::REDACTED, $text);
     }
 }

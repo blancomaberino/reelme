@@ -258,3 +258,50 @@ it('redacts a SPAN carrying the same query string the breadcrumb does', function
         // turns off, and then none of this protects anything.
         ->and($data['http.request.method'])->toBe('GET');
 });
+
+it('splits a full URL under an unknown key before matching parameter names', function () {
+    // `scrubQueryString` splits on `&` only, so handed a whole URL the FIRST
+    // pair's key is `https://…/json?key` — which matches nothing in the table,
+    // and the credential ships verbatim. The `?` split has to happen first.
+    $event = Event::createEvent();
+    $event->setBreadcrumb([
+        new Breadcrumb(Breadcrumb::LEVEL_INFO, Breadcrumb::TYPE_DEFAULT, 'log', 'x', [
+            'endpoint' => 'https://maps.googleapis.com/maps/api/place/details/json?key=AIzaSyLIVEKEY&placeid=X',
+        ]),
+    ]);
+
+    expect(SentryScrubber::scrub($event)->getBreadcrumbs()[0]->getMetadata()['endpoint'])
+        ->toBe('https://maps.googleapis.com/maps/api/place/details/json?key=[redacted]&placeid=X');
+});
+
+it('does not percent-encode the message it redacts inside', function () {
+    // A previous version decoded before matching and re-encoded after, which
+    // turned an entire exception value into `cURL%20error%2028%3A%20…` and the
+    // marker itself into `%5Bredacted%5D`. The pattern matches both spellings of
+    // the separator instead, so no round-trip happens.
+    $event = scrubbed(exceptionMessage: 'cURL error 28: timed out for /json?location=-34.9011%2C-56.1645');
+
+    $value = $event->getExceptions()[0]->getValue();
+
+    expect($value)->toStartWith('cURL error 28: timed out for /json?location=')
+        ->and($value)->toContain('[redacted]')
+        ->and($value)->not->toContain('34.9011');
+});
+
+it('leaves a bare flag bare rather than reporting a value it never had', function () {
+    $event = scrubbed(['query_string' => 'near&sort=distance']);
+
+    expect($event->getRequest()['query_string'])->toBe('near&sort=distance');
+});
+
+it('scrubs the app CONTEXTS it attaches itself, not only what the SDK attaches', function () {
+    // `SentryErrorReporter` passes a caller-supplied context array straight
+    // through, so this is the app's own door rather than the SDK's — one
+    // `'near' => $near` from being the next carrier. Walked by shape, so it is
+    // covered without anyone remembering to add a getter.
+    $event = Event::createEvent();
+    $event->setContext('reelmap', ['request_id' => 'abc', 'where' => 'near=-34.9011,-56.1645']);
+
+    expect(SentryScrubber::scrub($event)->getContexts()['reelmap'])
+        ->toBe(['request_id' => 'abc', 'where' => 'near=[redacted]']);
+});
