@@ -4332,7 +4332,7 @@
       "id": "T-157",
       "title": "Dishes become a first-class, queryable thing instead of buried JSON",
       "phase": "GROW",
-      "status": "pending",
+      "status": "done",
       "depends_on": [],
       "estimate": "M",
       "paths": [
@@ -4358,7 +4358,7 @@
         "Dish text is treated as untrusted model output -- length-capped and never rendered as markup"
       ],
       "agent": "executor",
-      "notes": "Filed 2026-09-03. Promoted from Wave 3 to a Wave 1 dependency by the owner's product model (08 section 9.1): the core retrieval query is dish-shaped, not cuisine-shaped. pgvector/embeddings are explicitly NOT in scope here -- the plain table answers 'who does pasta'; semantic search is a later task built on this one. | 2026-09-04: PR #206 open (branch feat/t-157-dishes-table, HEAD a931e79), awaiting CI + owner review. NOT merged. Decisions in ADR-157."
+      "notes": "Filed 2026-09-03. Promoted from Wave 3 to a Wave 1 dependency by the owner's product model (08 section 9.1): the core retrieval query is dish-shaped, not cuisine-shaped. pgvector/embeddings are explicitly NOT in scope here -- the plain table answers 'who does pasta'; semantic search is a later task built on this one. | DONE 2026-09-04: merged as d0f157f (PR #206). Decisions + follow-ups in ADR-157."
     },
     {
       "id": "T-158",
