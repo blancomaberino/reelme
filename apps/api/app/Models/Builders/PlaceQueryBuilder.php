@@ -198,6 +198,30 @@ class PlaceQueryBuilder extends Builder
     }
 
     /**
+     * Constrain to places within `$metres` of `$near`.
+     *
+     * Here rather than at the call sites for the reason
+     * {@see self::DISTANCE_SQL} gives: the `[lng, lat]` binding order is the
+     * dangerous half, and it was retyped in the two controllers that geofence —
+     * four lines below a comment saying not to. A mirrored point produces a
+     * plausible result set, no error, and no red test unless the fixture's
+     * coordinates are asymmetric.
+     *
+     * Uses `ST_DWithin`, not a filter on the `distance` alias: DWithin is
+     * index-assisted on the GIST index, and Postgres will not accept a select
+     * alias in a WHERE anyway.
+     *
+     * @param  array{lat: float, lng: float}  $near
+     */
+    public function withinRadiusOf(array $near, int $metres): self
+    {
+        return $this->whereRaw(
+            'ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
+            [$near['lng'], $near['lat'], $metres],
+        );
+    }
+
+    /**
      * Select metres from `$near` as `distance`.
      *
      * Call it AFTER any `select()`: `select()` REPLACES the select list while

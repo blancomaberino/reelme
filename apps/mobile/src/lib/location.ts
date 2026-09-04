@@ -191,13 +191,12 @@ function firstFixWithin(
         // refusing those would deny distances to real devices in order to guard
         // against a hypothetical. The case this bound exists for — iOS with
         // Precise Location off — reports a number, a large one.
-        const accuracy = location.coords.accuracy;
-        if (
-          requiredAccuracy !== undefined &&
-          typeof accuracy === 'number' &&
-          Number.isFinite(accuracy) &&
-          accuracy > requiredAccuracy
-        ) {
+        // No `typeof`/`isFinite` guard: `null > 500`, `undefined > 500` and
+        // `NaN > 500` are all false in JS, so the comparison alone already lets
+        // an unreported accuracy through. Spelling the checks out looked more
+        // careful and was dead code — and a test written to cover it would have
+        // been asserting JS coercion rather than this function.
+        if (requiredAccuracy !== undefined && (location.coords.accuracy ?? 0) > requiredAccuracy) {
           return;
         }
         const region = toRegion(location.coords);

@@ -198,6 +198,12 @@ describe('getUserRegion', () => {
     // providers genuinely leave it null. Refusing those would deny distances to
     // real devices to guard against a hypothetical — the case the bound exists
     // for reports a number, a large one.
+    //
+    // This is a behaviour pin, not a guard test: review pointed out that the
+    // explicit `typeof`/`isFinite` checks it was written for were unreachable
+    // (`null > 500` is already false), so they were deleted. The assertion
+    // stays, because "an unknown accuracy still yields a position" is a
+    // decision, and the next person tempted to `?? Infinity` should go red.
     lastKnown.mockResolvedValueOnce(null);
     watchPos.mockImplementationOnce(async (_o, cb) => {
       (cb as (l: unknown) => void)({ coords: { latitude: 7, longitude: 8, accuracy: null } });

@@ -37,6 +37,15 @@ export function CandidatePicker({
         {candidates.map((cand) => {
           const id = Number(cand.place_id);
           const on = selectedId === id;
+          // NO age gate here, unlike the map's pin sheet — deliberately, and
+          // this comment is the enumeration that decision needs. That sheet
+          // renders pins from `['places','map',…]`, which `query-persist.ts`
+          // keeps on disk for 24h, so its distance can outlive the viewer's
+          // position. These candidates come from the pending-share review
+          // response, whose key persists nothing (`shouldPersist` falls through
+          // to false for the `shares` head), so a rendered distance here is
+          // always from the request the user is looking at.
+          //
           // Formatted once and guarded on the FORMATTED value, not the raw one:
           // `distanceLabel` returns '' for null, NaN and negatives, which would
           // otherwise render a dangling " away". Formatting it twice — once

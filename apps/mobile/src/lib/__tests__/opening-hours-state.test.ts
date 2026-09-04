@@ -1,5 +1,6 @@
 import type { OpenState } from '@/api/places';
 import { OPEN_STATE_MAX_AGE_MS, openStateLabel } from '@/lib/opening-hours';
+import { AGE_UNKNOWN } from '@/lib/use-age-of';
 
 /**
  * Most of these cases are about the WORDING, not the staleness, so they read a
@@ -88,6 +89,15 @@ it('drops the cue once the payload is stale, rather than showing an old answer',
     .toBeNull();
 });
 
-it('treats a missing age as fresh, so a caller that cannot know is not punished', () => {
+it('shows the cue at age zero — a payload that just arrived', () => {
   expect(fresh({ open_now: true, closes_at: null, opens_at: null })).not.toBeNull();
+});
+
+it('shows NO cue when the age is UNKNOWN', () => {
+  // The title this test used to carry was "treats a missing age as fresh", from
+  // when `ageMs` defaulted to 0. It is required now, and `AGE_UNKNOWN` is how a
+  // caller says it cannot know — which must read as ancient, not as brand new.
+  // A caller that does not know how old its payload is has no business
+  // asserting a restaurant is open.
+  expect(openStateLabel({ open_now: true, closes_at: null, opens_at: null }, AGE_UNKNOWN)).toBeNull();
 });

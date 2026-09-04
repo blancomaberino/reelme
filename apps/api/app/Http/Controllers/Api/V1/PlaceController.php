@@ -55,10 +55,7 @@ class PlaceController extends Controller
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng');
 
         if ($near !== null) {
-            $query->withDistanceFrom($near)->whereRaw(
-                'ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
-                [$near['lng'], $near['lat'], $request->radiusM()],
-            );
+            $query->withDistanceFrom($near)->withinRadiusOf($near, $request->radiusM());
         }
 
         if (($q = (string) ($request->validated('q') ?? '')) !== '') {
@@ -281,8 +278,18 @@ class PlaceController extends Controller
                 break;
 
             case 'distance':
-                // Guaranteed by validation: distance requires near.
-                assert($near !== null);
+                // Guaranteed by validation (`sort=distance` requires `near`),
+                // but not with an `assert()`: assertions are compiled out under
+                // `zend.assertions=-1`, which is the production setting, so the
+                // one environment where a drift between the two would matter is
+                // the one where the check is absent. Falling back to `recent` is
+                // the honest degradation — a page in a defensible order rather
+                // than a TypeError 500 out of `distanceFrom()`.
+                if ($near === null) {
+                    $query->orderByDesc('created_at')->orderByDesc('id');
+                    break;
+                }
+
                 // SQL and bindings together, from the one place that knows the
                 // `[lng, lat]` order — retyping the pair here is how a mirrored
                 // point gets measured with no error and no red test.

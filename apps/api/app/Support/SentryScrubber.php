@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Sentry\Breadcrumb;
 use Sentry\Event;
 use Sentry\EventHint;
 
@@ -69,7 +70,45 @@ class SentryScrubber
             $exception->setValue(self::scrubText($exception->getValue()));
         }
 
+        $event->setBreadcrumb(array_map(self::scrubBreadcrumb(...), $event->getBreadcrumbs()));
+
         return $event;
+    }
+
+    /**
+     * Breadcrumbs are the third carrier, and the one that survives a scrub of
+     * the other two.
+     *
+     * `breadcrumbs.logs` is on by default, so Laravel's own log of a
+     * `QueryException` becomes a breadcrumb — bindings already interpolated,
+     * which is how `ST_MakePoint(-56.1645, -34.9011)` gets into a message that
+     * no `sql_bindings` setting governs. A TRANSACTION then inherits the scope's
+     * breadcrumbs while carrying no exceptions of its own, so scrubbing
+     * `getExceptions()` walks straight past it: raise
+     * `SENTRY_TRACES_SAMPLE_RATE` during an incident — the exact change the
+     * `before_send_transaction` hook was added for — and the position ships
+     * anyway, by a different door.
+     */
+    private static function scrubBreadcrumb(Breadcrumb $crumb): Breadcrumb
+    {
+        $message = $crumb->getMessage();
+
+        if ($message !== null) {
+            $crumb = $crumb->withMessage(self::scrubText($message));
+        }
+
+        // Metadata is where the log channel puts a message's `context`, and a
+        // route middleware puts the request. Strings only — a nested array or an
+        // object is left alone rather than walked, because the carriers this
+        // exists for are all flat text and a recursive rewrite of arbitrary
+        // metadata is a bigger promise than it can keep.
+        foreach ($crumb->getMetadata() as $key => $value) {
+            if (is_string($value)) {
+                $crumb = $crumb->withMetadata($key, self::scrubText($value));
+            }
+        }
+
+        return $crumb;
     }
 
     private static function scrubUrl(string $url): string

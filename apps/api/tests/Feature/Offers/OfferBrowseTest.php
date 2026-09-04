@@ -116,20 +116,22 @@ describe('GET /offers', function () {
         // SYSTEM. It was true of two endpoints out of three: this one took nine
         // decimals straight into the access log.
         //
-        // Placed ON the boundary so the rounding CHANGES the answer, which a
-        // gentler offset does not: 38.72239 rounds up to 38.7224, putting the
-        // caller 0.0001° (~11.1 m) from the place, while the raw value is
-        // ~10.0 m away. At a 10.5 m radius those are opposite results. An
-        // earlier version of this test used a sub-metre offset inside the
-        // radius, so it passed with the rounding deleted.
+        // Placed so the rounding CHANGES the answer, which a gentler offset does
+        // not: 38.72235 rounds up to 38.7224, putting the caller 0.0001°
+        // (~11.1 m) from the place, while the raw value is ~5.6 m away. At an
+        // 8 m radius those are opposite results, with ~2.5 m of margin on each
+        // side. Two earlier versions were worse: one used a sub-metre offset
+        // inside the radius and passed with the rounding deleted; the next left
+        // 9 mm of margin and a comment naming a radius (10.5) that `radius_m`,
+        // being an integer rule, cannot even express.
         $place = Place::factory()->active()->atPoint(38.72230, -9.13930)->create();
         Offer::factory()->active()->create(['place_id' => $place->id, 'title' => 'Lisbon']);
 
-        $rounded = $this->getJson('/api/v1/offers?near=38.72239,-9.13930&radius_m=10')
+        $rounded = $this->getJson('/api/v1/offers?near=38.72235,-9.13930&radius_m=8')
             ->assertOk()->json('data');
         // The control: at 4 dp exactly, the same request finds it. Without this,
         // deleting the offer entirely would satisfy the assertion above.
-        $inside = $this->getJson('/api/v1/offers?near=38.72230,-9.13930&radius_m=10')
+        $inside = $this->getJson('/api/v1/offers?near=38.72230,-9.13930&radius_m=8')
             ->assertOk()->json('data');
 
         expect($rounded)->toHaveCount(0)

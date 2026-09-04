@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\SentryScrubber;
+use Sentry\Breadcrumb;
 use Sentry\Event;
 use Sentry\ExceptionDataBag;
 
@@ -116,4 +117,41 @@ it('scrubs a transaction event, not just an error one', function () {
     $scrubbed = SentryScrubber::scrub($event);
 
     expect($scrubbed->getRequest()['query_string'])->toBe('zoom=15&near=[redacted]');
+});
+
+it('redacts a coordinate pair out of a BREADCRUMB, the carrier a transaction inherits', function () {
+    // `breadcrumbs.logs` is on by default, so Laravel's own log of a
+    // QueryException becomes a breadcrumb with the bindings already interpolated.
+    // A transaction inherits the scope's breadcrumbs and carries no exceptions of
+    // its own, so scrubbing `getExceptions()` walks straight past it: raising
+    // SENTRY_TRACES_SAMPLE_RATE during an incident — the change the
+    // `before_send_transaction` hook was added for — shipped the position anyway.
+    $event = Event::createTransaction();
+    $event->setBreadcrumb([
+        new Breadcrumb(
+            Breadcrumb::LEVEL_ERROR,
+            Breadcrumb::TYPE_DEFAULT,
+            'log',
+            'SQLSTATE[XX000]: ST_MakePoint(-56.1645, -34.9011)::geography',
+            ['sql' => 'ST_DWithin(location, ST_MakePoint(-56.1645, -34.9011)::geography, 2000)'],
+        ),
+    ]);
+
+    $crumb = SentryScrubber::scrub($event)->getBreadcrumbs()[0];
+
+    expect($crumb->getMessage())->toBe('SQLSTATE[XX000]: ST_MakePoint([redacted])::geography')
+        ->and($crumb->getMetadata()['sql'])
+        ->toBe('ST_DWithin(location, ST_MakePoint([redacted])::geography, 2000)');
+});
+
+it('leaves an ordinary breadcrumb alone', function () {
+    // The control. A redaction that eats every breadcrumb is one somebody turns
+    // off, and then none of the above protects anything.
+    $event = Event::createEvent();
+    $event->setBreadcrumb([
+        new Breadcrumb(Breadcrumb::LEVEL_INFO, Breadcrumb::TYPE_DEFAULT, 'log', 'Job 12, 34 finished in 1.5s'),
+    ]);
+
+    expect(SentryScrubber::scrub($event)->getBreadcrumbs()[0]->getMessage())
+        ->toBe('Job 12, 34 finished in 1.5s');
 });

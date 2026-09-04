@@ -5,7 +5,6 @@ namespace App\Models;
 use App\Enums\ClaimStatus;
 use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
-use App\Http\Resources\Concerns\ResolvesRequestInstant;
 use App\Models\Builders\PlaceQueryBuilder;
 use App\Services\Reviews\ReviewSourceRegistry;
 use App\Services\Reviews\ReviewSourceSummary;
@@ -394,8 +393,10 @@ class Place extends Model
      * row against ONE instant — a bare `now()` per row lets a 300-pin map served
      * across a minute boundary report two venues with identical hours as one
      * open and one closed — and a default is how a caller skips that rule
-     * without noticing. {@see ResolvesRequestInstant}
-     * is where a resource gets the answer.
+     * without noticing. A resource gets its answer from the
+     * `ResolvesRequestInstant` concern — named in prose, because a `{@see}` here
+     * becomes a `use` statement and the model layer must not import the HTTP
+     * layer.
      *
      * Reads only own columns — no queries, and every caller already selects
      * `places.*`.

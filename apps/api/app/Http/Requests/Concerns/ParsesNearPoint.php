@@ -4,7 +4,7 @@ namespace App\Http\Requests\Concerns;
 
 /**
  * The `?near=lat,lng` viewer position, parsed identically on every surface that
- * accepts one (T-030 `/places`, T-156 `/map/places`).
+ * accepts one: `/places` (T-030), `/offers` (T-042) and `/map/places` (T-156).
  *
  * It lives in ONE place because the two copies it replaces had already drifted
  * inside a single change: the map got an unconditional merge and server-side

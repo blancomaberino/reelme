@@ -1,6 +1,7 @@
 <?php
 
-use App\Http\Resources\Concerns\ResolvesRequestInstant;
+use App\Http\Resources\PlaceResource;
+use App\Http\Resources\PlaceSummaryResource;
 use App\Models\Place;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -169,7 +170,12 @@ it('does not grow its query count with the number of pins', function () use ($bb
 
         DB::enableQueryLog();
         DB::flushQueryLog();
-        $this->getJson("/api/v1/map/places?{$bbox}&near=-34.95,-56.16")->assertOk();
+        // `assertJsonCount` matters: without it a response that CLUSTERED both
+        // sizes would satisfy the equality below while proving nothing about
+        // per-pin work.
+        $this->getJson("/api/v1/map/places?{$bbox}&near=-34.95,-56.16")
+            ->assertOk()
+            ->assertJsonCount($places, 'data.pins');
         $queries = count(DB::getQueryLog());
         DB::disableQueryLog();
 
@@ -244,20 +250,6 @@ it('serves open_state on the LIST surface with the same never-guess rule', funct
         ->and($rows[(string) $unknown->id]['open_state'])->toBeNull();
 });
 
-/**
- * Exposes the request-scoped clock so the memo can be driven directly. The trait
- * keeps it `protected`, which is right for production and untestable from here.
- */
-class PlaceSummaryResourceInstantProbe
-{
-    use ResolvesRequestInstant;
-
-    public static function instantFor(Request $request): DateTimeInterface
-    {
-        return self::instant($request);
-    }
-}
-
 it('answers the LIST surface with the VALUE, at a known instant — not merely a boolean', function () {
     // `toBeBool()` above is a shape assertion, and shape is all it can catch.
     // Hardcode `open_now => false` in PlaceSummaryResource and it stays green,
@@ -277,20 +269,46 @@ it('answers the LIST surface with the VALUE, at a known instant — not merely a
 });
 
 it('measures every row of ONE response against ONE clock', function () {
-    // `PlaceSummaryResource::instant()` memoizes on the request, so a page served
-    // across a minute boundary cannot report two venues with identical hours as
-    // one open and one closed. Swap it for a bare `now()` per row and nothing
-    // else here goes red — the failure needs a page that straddles the boundary,
-    // which is why this drives the memo directly rather than hoping to catch it.
+    // The seam, not the helper. An earlier version of this test drove the trait
+    // through a probe class — which proved the memo memoizes and could not
+    // notice that `PlaceSummaryResource` had stopped calling it. The mutation it
+    // missed is one character wide: `openState(self::instant($request))` →
+    // `openState(now())`, which reintroduces a per-row clock and lets a page
+    // served across a minute boundary report two venues with identical hours as
+    // one open and one closed.
+    //
+    // So: run the RESOURCE, and assert it left its reading on the request. The
+    // attribute is the shared clock; a resource that does not consult it never
+    // writes one.
+    $place = placeAt(-34.90, -56.16, openAllWeek());
     $request = Request::create('/api/v1/places');
 
-    $first = PlaceSummaryResourceInstantProbe::instantFor($request);
-    $this->travelTo(now()->addMinutes(5));
-    $second = PlaceSummaryResourceInstantProbe::instantFor($request);
+    expect($request->attributes->has('reelmap.now'))->toBeFalse();
 
-    expect($second)->toBe($first)
-        // The control: a DIFFERENT request gets its own reading, or the memo
-        // would be a global and every response would share one stale clock.
-        ->and(PlaceSummaryResourceInstantProbe::instantFor(Request::create('/api/v1/places')))
-        ->not->toBe($first);
+    (new PlaceSummaryResource($place->fresh()))->toArray($request);
+
+    expect($request->attributes->get('reelmap.now'))->toBeInstanceOf(DateTimeInterface::class);
+
+    // And the SECOND row of the same response reuses it rather than re-reading
+    // the clock — which is the property the whole memo exists for.
+    $first = $request->attributes->get('reelmap.now');
+    $this->travelTo(now()->addMinutes(5));
+    (new PlaceSummaryResource($place->fresh()))->toArray($request);
+
+    expect($request->attributes->get('reelmap.now'))->toBe($first)
+        // The control: a different response gets its own reading, or the memo
+        // would be a global and every page would share one stale clock.
+        ->and((new PlaceSummaryResource($place->fresh()))->toArray(Request::create('/api/v1/places'))['open_state'])
+        ->not->toBeNull();
+});
+
+it('measures the place DETAIL against the request clock too', function () {
+    // PlaceResource was converted in the same commit and is a separate writer of
+    // the same rule — `openState()` there took no argument at all until now.
+    $place = placeAt(-34.90, -56.16, openAllWeek());
+    $request = Request::create('/api/v1/places/'.$place->slug);
+
+    (new PlaceResource($place->fresh()))->toArray($request);
+
+    expect($request->attributes->get('reelmap.now'))->toBeInstanceOf(DateTimeInterface::class);
 });
