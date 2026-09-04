@@ -87,7 +87,18 @@ $PHP artisan migrate --force --isolated
 # Idempotent by construction (each rewrites a source's whole dish set), so a
 # retried deploy is free, and they no-op once the corpus is materialized.
 echo "==> Backfilling derived projections"
-$PHP artisan reelmap:dishes:backfill
+# NOT fatal, deliberately. The command exits non-zero when it could not
+# materialize every source — which is the right answer for a human running it by
+# hand, but the wrong one here: under `set -e` it would abort the deploy AFTER
+# `migrate` and BEFORE the cache rebuild and worker restart, and the EXIT trap
+# would then lift maintenance mode onto the new schema with stale caches. A
+# handful of sources whose dishes lag by minutes is a far smaller problem, and
+# one source vanishing mid-walk is a routine race against the queue (maintenance
+# mode stops HTTP, not Horizon). Re-run the command to close the gap.
+if ! $PHP artisan reelmap:dishes:backfill; then
+  echo "==> WARNING: dish backfill did not complete. The deploy continues; those"
+  echo "    places show no menu until 'php artisan reelmap:dishes:backfill' is re-run."
+fi
 
 echo "==> Rebuilding caches"
 $PHP artisan config:cache
