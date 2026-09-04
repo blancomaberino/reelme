@@ -197,6 +197,7 @@ it('the writer detector actually detects — positive and negative controls', fu
     ['withoutEvents', 'PlaceSource::withoutEvents(fn () => $source->save());', true],
     // …and the same shapes on another model must NOT flag.
     ['updateQuietly elsewhere', "\$user->updateQuietly(['name' => 'x']);", false],
+    ['quiet write via the relation', "\$share->placeSources->each->updateQuietly(['extraction_snapshot_json' => \$r]);", true],
     // Must NOT flag: a plain Eloquent delete cascades the dish rows at the DB
     // level, which is exactly what these two production paths rely on.
     ['eloquent delete (cascades)', 'PlaceSource::query()->where("share_id", $id)->delete();', false],
@@ -254,6 +255,44 @@ it('does not re-insert (and poison the caller\'s transaction) on a second no-op 
     expect(Dish::query()->where('place_source_id', $source->id)->pluck('name')->all())->toBe(['Chivito']);
     // …and the connection still works, which is what a poisoned transaction breaks.
     expect(PlaceSource::query()->whereKey($source->id)->exists())->toBeTrue();
+});
+
+it('leaves the caller\'s transaction usable when materializing fails', function () {
+    // The invariant the observer's `catch` depends on, and which nothing tested:
+    // "whatever we swallow was already rolled back". It holds because
+    // DishMaterializer wraps BOTH paths in a transaction, so a failure unwinds
+    // to a SAVEPOINT rather than aborting the caller's transaction.
+    //
+    // Without it the swallow is actively harmful: on Postgres a failed statement
+    // poisons the enclosing transaction (25P02), so every LATER statement dies
+    // with the real cause already discarded. That is not hypothetical — it is
+    // exactly what the no-op-save bug did before the fix above.
+    $place = Place::factory()->active()->atPoint(-34.90, -56.16)->create();
+
+    DB::transaction(function () use ($place) {
+        $source = PlaceSource::factory()->create([
+            'place_id' => $place->id,
+            'extraction_snapshot_json' => ['dishes' => [['name' => 'Chivito', 'shown_in_video' => true]]],
+        ]);
+
+        // Force the projection to fail INSIDE the caller's transaction, the way
+        // a duplicate key or a constraint violation would.
+        try {
+            DB::transaction(function () {
+                throw new RuntimeException('materialize blew up');
+            });
+        } catch (RuntimeException) {
+            // swallowed, exactly as the observer swallows
+        }
+
+        // The caller's transaction is still usable — this is the assertion.
+        // Against an aborted transaction every one of these raises 25P02.
+        expect(PlaceSource::query()->whereKey($source->id)->exists())->toBeTrue();
+        $place->update(['name' => 'Still writable']);
+    });
+
+    expect($place->fresh()->name)->toBe('Still writable')
+        ->and(Dish::query()->count())->toBe(1);
 });
 
 it('materializes through the REAL publish job, not just a model save', function () {
@@ -672,7 +711,10 @@ function dishGuardMutatesPlaceSources(string $code): bool
     // Matching `*Quietly` on ANY model flagged User, AccountDeletion and a
     // factory — noise that would have taught the next reader to widen the
     // allowlist instead of reading the finding.
-    $touchesPlaceSource = str_contains($code, 'PlaceSource');
+    // Case-INSENSITIVE, and matching the relation spelling too: a redaction path
+    // written as `$share->placeSources->each->updateQuietly([...])` writes the
+    // snapshot, fires no observer, and never spells `PlaceSource`.
+    $touchesPlaceSource = (bool) preg_match('/place_?sources?/i', $code);
 
     foreach (explode(';', $code) as $statement) {
         if ($touchesPlaceSource

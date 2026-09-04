@@ -42,15 +42,51 @@ COMPOSER="${FORGE_COMPOSER:-composer}"
 
 cd "$SITE_PATH/apps/api"
 
-# Whatever happens after this point, bring the site back up. Without the trap a
-# failed migration leaves maintenance mode latched on and the outage lasts until
-# somebody notices and runs `artisan up` by hand.
+# Whatever happens after this point, bring the site back up — but ONLY when the
+# checkout and the schema still agree. Without the trap a failed migration
+# leaves maintenance mode latched on and the outage lasts until somebody
+# notices; without the gate below, the trap itself becomes the outage.
+#
+# `DEPLOY_STATE` tracks whether lifting maintenance mode is a safe assertion:
+#
+#   consistent  — code and schema agree. Either nothing has been pulled yet (old
+#                 code, old schema) or the migration finished (new code, new
+#                 schema). Lifting is correct.
+#   code-ahead  — the pull landed but the migration has not run. Lifting here
+#                 serves NEW code against an OLD schema, which is the state this
+#                 whole ordering exists to prevent: T-157's place detail
+#                 eager-loads a `dishes` relation whose table the migration
+#                 creates, so every request 500s with 42P01 — and unlike a
+#                 bounded install window, it lasts until a human intervenes.
+#
+# So a failure between the pull and the migration leaves the site DOWN and says
+# so loudly. A 503 with a Retry-After is a bad ten minutes; a 500 on every place
+# detail is a bad afternoon nobody is paged for.
+DEPLOY_STATE="consistent"
+
 cleanup() {
   local code=$?
   if [ $code -ne 0 ]; then
+    if [ "$DEPLOY_STATE" = "code-ahead" ]; then
+      echo "::error:: deploy failed (exit $code) AFTER the pull and BEFORE the migration."
+      echo "::error:: LEAVING THE SITE IN MAINTENANCE MODE ON PURPOSE — the new code cannot"
+      echo "::error:: run against this schema. Recover by finishing the deploy:"
+      echo "::error::   cd $SITE_PATH/apps/api && $PHP artisan migrate --force && $PHP artisan up"
+      echo "::error:: or by rolling the checkout back to the previous commit and running 'artisan up'."
+      exit $code
+    fi
     echo "::error:: deploy failed (exit $code) — lifting maintenance mode so the OLD code serves"
   fi
-  $PHP artisan up || true
+
+  # Not `|| true`: `artisan up` needs a bootable app, and the one place it may
+  # not have one is a half-written vendor/ from a failed install. Swallowing
+  # that leaves the site 503 with no signal and no clue that the fix is to
+  # delete the maintenance file by hand.
+  if ! $PHP artisan up; then
+    echo "::error:: could not lift maintenance mode (artisan itself will not boot)."
+    echo "::error:: The site is serving 503. Recover with:"
+    echo "::error::   rm -f $SITE_PATH/apps/api/storage/framework/maintenance.php $SITE_PATH/apps/api/storage/framework/down"
+  fi
   exit $code
 }
 trap cleanup EXIT
@@ -70,6 +106,9 @@ else
   $PHP artisan down --render="errors::503" --retry=15
 fi
 
+# From here until the migration completes, the checkout is ahead of the schema.
+DEPLOY_STATE="code-ahead"
+
 echo "==> Pulling"
 git -C "$SITE_PATH" pull origin main
 
@@ -86,6 +125,9 @@ echo "==> Migrating"
 # retried hook, a second app server) cannot run the same migration twice; it
 # needs the shared cache lock the scheduler already relies on.
 $PHP artisan migrate --force --isolated
+
+# Schema now matches the checkout: lifting maintenance mode is safe again.
+DEPLOY_STATE="consistent"
 
 # Derived-projection backfills, INSIDE the outage and immediately after the
 # schema they depend on. These are not optional repair tools: T-157's read path
