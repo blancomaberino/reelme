@@ -42,6 +42,8 @@ import subprocess
 import sys
 
 RECEIPT = ".claude/state/audit-receipt.json"
+# How this file is addressed inside a repo that carries it — the scope test.
+HOOK_REL = os.path.join(".claude", "hooks", os.path.basename(__file__))
 
 # argv[0] -> the subcommands that mutate the remote or the PR.
 GATED = {
@@ -167,12 +169,24 @@ def target_dir(cmd_segments: list[list[str]], default: str, upto: int) -> str:
     cwd = default
     for argv in cmd_segments[: upto + 1]:
         if argv and os.path.basename(argv[0]) == "cd" and len(argv) > 1:
-            cwd = argv[1] if os.path.isabs(argv[1]) else os.path.join(cwd, argv[1])
-        if argv and os.path.basename(argv[0]) == "git" and "-C" in argv:
-            i = argv.index("-C")
-            if i + 1 < len(argv):
-                d = argv[i + 1]
-                cwd = d if os.path.isabs(d) else os.path.join(cwd, d)
+            # expanduser because shlex does not: `cd ~/Sites/plans/reelmap` is the
+            # ORDINARY way that repo is reached, and without this it became
+            # `<project>/~/Sites/plans/reelmap` and denied for "directory does not
+            # exist" — the original T-149 shape, still misfiring after the first fix.
+            d = os.path.expanduser(argv[1])
+            cwd = d if os.path.isabs(d) else os.path.join(cwd, d)
+        if argv and os.path.basename(argv[0]) == "git":
+            # EVERY `-C`, in order. git applies them sequentially and relative to
+            # each other, so `git -C /tmp/plain -C /path/to/repo push` really does
+            # operate on the second — while `argv.index("-C")` saw only the first
+            # and judged the wrong directory. With the scope check that became a
+            # bypass: point the first operand at a repo that does not carry this
+            # gate and the push went through unaudited. Found in review; git's own
+            # behaviour confirmed with `git -C a -C b rev-parse --show-toplevel`.
+            for i, tok in enumerate(argv):
+                if tok == "-C" and i + 1 < len(argv):
+                    d = os.path.expanduser(argv[i + 1])
+                    cwd = d if os.path.isabs(d) else os.path.join(cwd, d)
     return cwd
 
 
@@ -298,10 +312,68 @@ def main() -> None:
     if action is None:
         return
 
-    default_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-    repo = target_dir(segs, default_dir, gated_at)
-    if not os.path.isdir(repo):
-        deny(f"The target directory ({repo}) does not exist, so no audit receipt could be checked.", action)
+    # The SHELL's cwd first. A session already sitting in another checkout runs
+    # `git push` with no `cd` in the command, and judging that against the
+    # project directory blamed the wrong repository — it reported a stale receipt
+    # for a repo the push was not touching, which is worse than a bare refusal
+    # because it is specific and plausible and sends you fixing the wrong thing.
+    # (Observed while pushing the plan repo; T-149.)
+    fallback = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    payload_cwd = payload.get("cwd")
+    default_dir = payload_cwd if isinstance(payload_cwd, str) and payload_cwd else fallback
+    # A relative `cwd` would otherwise resolve against the hook process's own
+    # working directory, which nothing defines. Anchor it to the project.
+    if not os.path.isabs(default_dir):
+        default_dir = os.path.join(fallback, default_dir)
+    where = target_dir(segs, default_dir, gated_at)
+    if not os.path.isdir(where):
+        deny(f"The target directory ({where}) does not exist, so no audit receipt could be checked.", action)
+
+    protected = os.environ.get("CLAUDE_PROJECT_DIR") or os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+
+    # SCOPE: does the target repository CARRY THIS GATE?
+    #
+    # This gate protects the project it ships with. Denying pushes in unrelated
+    # checkouts taught the only lesson a misfiring guard can teach — reach for
+    # the escape hatch — and the plan repo (task specs and a JSON queue, its own
+    # convention, no PRs) was refused for never having recorded a receipt, which
+    # it never should.
+    #
+    # Two weaker predicates were tried and both were bypasses, each found in
+    # review and reproduced against this file:
+    #   - TOPLEVEL comparison: a linked worktree reports its own toplevel, so
+    #     `git worktree add /tmp/wt` and a push from there sailed through
+    #     unaudited — same remote, same branch, same PR. Not exotic; this
+    #     project's own tooling offers `isolation: "worktree"`.
+    #   - GIT COMMON DIR: fixes worktrees, still misses a second CLONE.
+    #
+    # Presence of the hook survives all of them. A worktree has it checked out; a
+    # clone has it; the plan repo never did. It is also self-describing: a repo is
+    # in scope exactly when it carries the thing doing the gating, so there is no
+    # separate notion of identity to keep true.
+    #
+    # The remote URL is deliberately NOT the discriminator — the plan repo shares
+    # this repo's `origin`, so matching on it would put the very repository this
+    # scoping exists for straight back in scope.
+    toplevel = run(["git", "rev-parse", "--show-toplevel"], where).strip()
+    if toplevel and not os.path.isfile(os.path.join(toplevel, HOOK_REL)):
+        # Announced, not silent. A guard that allows without a word is the one
+        # nobody debugs, and both bypasses above would have been visible the day
+        # they were introduced if this line had existed.
+        json.dump(
+            {"systemMessage": f"audit gate: {toplevel} does not carry this gate — not the protected repo, skipping."},
+            sys.stdout,
+        )
+        return
+
+    # The receipt lives at the TOPLEVEL. Using the raw cwd meant a push from
+    # `apps/api` looked for `apps/api/.claude/state/…`, found nothing, and
+    # reported "no agency audit has been recorded" about a branch that had just
+    # been audited — the same confidently-wrong shape this change set out to
+    # remove, reintroduced one line lower.
+    repo = toplevel or where
 
     receipt_path = os.path.join(repo, RECEIPT)
     if not os.path.isfile(receipt_path):
