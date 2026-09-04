@@ -10,7 +10,14 @@ use Sentry\Tracing\Span;
  * T-156. The viewer's position now travels in a query string on the app's
  * busiest endpoint, and `send_default_pii => false` does NOT keep it out of
  * Sentry — that flag gates cookies, headers and the IP, while the URL is
- * attached before it is consulted. These pin the two carriers.
+ * attached before it is consulted.
+ *
+ * These pin SIX carriers, found one per review round until the scrubber stopped
+ * matching on SDK field names and started matching on shape: the request URL and
+ * query string, exception values, breadcrumbs (message and metadata), spans
+ * (data and description), `contexts`/`extra` — and the request BODY, which is
+ * not scrubbed but dropped, because there the coordinates are floats and no text
+ * pass can reach them.
  */
 function scrubbed(array $request = [], ?string $exceptionMessage = null): Event
 {
@@ -175,7 +182,7 @@ it('redacts the breadcrumb key the HTTP integration ACTUALLY carries a query str
             null,
             [
                 'url' => 'https://maps.googleapis.com/maps/api/timezone/json',
-                'http.query' => 'location=-34.9011%2C-56.1645&timestamp=1757260800&key=AIzaSyTESTKEY',
+                'http.query' => 'location=-34.9011%2C-56.1645&timestamp=1757260800&key=AIzaSyFAKE_NOT_A_REAL_KEY',
             ],
         ),
     ]);
@@ -244,7 +251,7 @@ it('redacts a SPAN carrying the same query string the breadcrumb does', function
     // coordinates and a live API key.
     $span = new Span;
     $span->setData([
-        'http.query' => 'location=-34.9011%2C-56.1645&key=AIzaSyTESTKEY',
+        'http.query' => 'location=-34.9011%2C-56.1645&key=AIzaSyFAKE_NOT_A_REAL_KEY',
         'http.request.method' => 'GET',
     ]);
 
@@ -266,7 +273,7 @@ it('splits a full URL under an unknown key before matching parameter names', fun
     $event = Event::createEvent();
     $event->setBreadcrumb([
         new Breadcrumb(Breadcrumb::LEVEL_INFO, Breadcrumb::TYPE_DEFAULT, 'log', 'x', [
-            'endpoint' => 'https://maps.googleapis.com/maps/api/place/details/json?key=AIzaSyLIVEKEY&placeid=X',
+            'endpoint' => 'https://maps.googleapis.com/maps/api/place/details/json?key=AIzaSyFAKE_NOT_A_REAL_KEY&placeid=X',
         ]),
     ]);
 
@@ -307,15 +314,32 @@ it('scrubs the app CONTEXTS it attaches itself, not only what the SDK attaches',
 });
 
 it('leaves prose containing a URL intact except for the redaction', function () {
-    // Guzzle's message shape. Without the query-shape gate, `key`'s value
-    // swallowed the rest of the sentence and everything after the credential —
-    // the status, the body — was silently deleted from the report.
-    $event = scrubbed(exceptionMessage: 'Client error: `GET https://maps.googleapis.com/json?location=1.5&key=AIzaSyLIVE` resulted in a 403');
+    // Guzzle's message shape, on a BREADCRUMB METADATA key — which is where the
+    // query-shape gate actually lives. An earlier version of this test drove an
+    // exception value instead, and exception values go straight to `scrubText`:
+    // it passed identically with the gate deleted, which is the one thing a test
+    // written to cover a gate must not do.
+    //
+    // Without the gate, `key`'s value swallows the rest of the sentence and
+    // everything after the credential — the status, the body — is deleted.
+    $event = Event::createEvent();
+    $event->setBreadcrumb([
+        new Breadcrumb(Breadcrumb::LEVEL_ERROR, Breadcrumb::TYPE_DEFAULT, 'log', 'x', [
+            'error' => 'Client error: `GET https://maps.googleapis.com/json'
+                .'?location=-34.9011,-56.1645&key=AIzaSyFAKE_NOT_A_REAL_KEY` resulted in a 403',
+        ]),
+    ]);
 
-    $value = $event->getExceptions()[0]->getValue();
+    $value = SentryScrubber::scrub($event)->getBreadcrumbs()[0]->getMetadata()['error'];
 
+    // `toEndWith` is the one that covers the GATE: without it the tail is
+    // rebuilt as `location=[redacted]&key=[redacted]` and everything after the
+    // credential is gone.
     expect($value)->toEndWith('resulted in a 403')
-        ->and($value)->toContain('Client error:');
+        ->and($value)->toStartWith('Client error:')
+        // And this is the guard against "fixing" that failure by disabling the
+        // scrub: the coordinates still go, caught by the prose fallback.
+        ->and($value)->not->toContain('34.9011');
 });
 
 it('does not collapse the PostGIS bbox operator in a span description', function () {
