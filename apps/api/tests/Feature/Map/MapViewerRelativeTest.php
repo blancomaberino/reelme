@@ -269,46 +269,47 @@ it('answers the LIST surface with the VALUE, at a known instant — not merely a
 });
 
 it('measures every row of ONE response against ONE clock', function () {
-    // The seam, not the helper. An earlier version of this test drove the trait
-    // through a probe class — which proved the memo memoizes and could not
-    // notice that `PlaceSummaryResource` had stopped calling it. The mutation it
-    // missed is one character wide: `openState(self::instant($request))` →
-    // `openState(now())`, which reintroduces a per-row clock and lets a page
-    // served across a minute boundary report two venues with identical hours as
-    // one open and one closed.
+    // The seam, not the helper. Two earlier versions of this test missed a
+    // mutation each: driving the trait through a probe class could not see
+    // `openState(now())` in the resource, and asserting only that the request
+    // attribute EXISTS could not see `instant()` returning `now()` instead of
+    // the value it memoized — the attribute is written either way.
     //
-    // So: run the RESOURCE, and assert it left its reading on the request. The
-    // attribute is the shared clock; a resource that does not consult it never
-    // writes one.
+    // So assert the EMITTED value. Row A is rendered while the venue is open;
+    // the clock is then moved past closing; row B is rendered on the SAME
+    // request and must still say open, because the response was measured once.
+    // A per-row clock reports the same venue open and closed in one payload,
+    // which is precisely the minute-boundary failure the memo exists for — made
+    // reproducible here by moving hours instead of minutes.
     $place = placeAt(-34.90, -56.16, openAllWeek());
     $request = Request::create('/api/v1/places');
 
-    expect($request->attributes->has('reelmap.now'))->toBeFalse();
+    $this->travelTo('2026-09-07 18:00:00'); // 15:00 in Montevideo — open.
+    $rowA = (new PlaceSummaryResource($place->fresh()))->toArray($request);
 
-    (new PlaceSummaryResource($place->fresh()))->toArray($request);
+    $this->travelTo('2026-09-08 05:00:00'); // 02:00 in Montevideo — shut.
+    $rowB = (new PlaceSummaryResource($place->fresh()))->toArray($request);
 
-    expect($request->attributes->get('reelmap.now'))->toBeInstanceOf(DateTimeInterface::class);
-
-    // And the SECOND row of the same response reuses it rather than re-reading
-    // the clock — which is the property the whole memo exists for.
-    $first = $request->attributes->get('reelmap.now');
-    $this->travelTo(now()->addMinutes(5));
-    (new PlaceSummaryResource($place->fresh()))->toArray($request);
-
-    expect($request->attributes->get('reelmap.now'))->toBe($first)
-        // The control: a different response gets its own reading, or the memo
-        // would be a global and every page would share one stale clock.
-        ->and((new PlaceSummaryResource($place->fresh()))->toArray(Request::create('/api/v1/places'))['open_state'])
-        ->not->toBeNull();
+    expect($rowA['open_state']['open_now'])->toBeTrue()
+        ->and($rowB['open_state'])->toBe($rowA['open_state'])
+        // The control: a DIFFERENT response reads the clock afresh, or the memo
+        // would be a global and every page would share one stale answer.
+        ->and((new PlaceSummaryResource($place->fresh()))->toArray(Request::create('/api/v1/places'))['open_state']['open_now'])
+        ->toBeFalse();
 });
 
 it('measures the place DETAIL against the request clock too', function () {
     // PlaceResource was converted in the same commit and is a separate writer of
-    // the same rule — `openState()` there took no argument at all until now.
+    // the same rule — `openState()` there took no argument at all until then.
     $place = placeAt(-34.90, -56.16, openAllWeek());
     $request = Request::create('/api/v1/places/'.$place->slug);
 
-    (new PlaceResource($place->fresh()))->toArray($request);
+    $this->travelTo('2026-09-07 18:00:00');
+    $first = (new PlaceResource($place->fresh()))->toArray($request);
 
-    expect($request->attributes->get('reelmap.now'))->toBeInstanceOf(DateTimeInterface::class);
+    $this->travelTo('2026-09-08 05:00:00');
+    $second = (new PlaceResource($place->fresh()))->toArray($request);
+
+    expect($first['open_state']['open_now'])->toBeTrue()
+        ->and($second['open_state'])->toBe($first['open_state']);
 });

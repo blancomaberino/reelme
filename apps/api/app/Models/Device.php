@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Http\Controllers\Api\V1\DeviceController;
 use App\Notifications\Channels\ExpoChannel;
 use Carbon\CarbonImmutable;
 use Database\Factories\DeviceFactory;
@@ -13,7 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * A registered Expo push target (02-data-model §3.19, T-027) — one row per
  * install. The token is unique across the table; re-registration reassigns it
- * to the current user (see {@see DeviceController}).
+ * to the current user (see `DeviceController`) — named in prose, because a
+ * `{@see}` on a class becomes a `use` statement and the model layer must not
+ * import the HTTP layer.
  * Dead tokens are pruned when Expo returns `DeviceNotRegistered` on a push
  * receipt ({@see ExpoChannel}).
  *

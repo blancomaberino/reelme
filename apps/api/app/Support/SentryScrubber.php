@@ -97,15 +97,30 @@ class SentryScrubber
             $crumb = $crumb->withMessage(self::scrubText($message));
         }
 
-        // Metadata is where the log channel puts a message's `context`, and a
-        // route middleware puts the request. Strings only — a nested array or an
-        // object is left alone rather than walked, because the carriers this
+        // Metadata is where the log channel puts a message's `context` and the
+        // HTTP integration puts a request URL. Strings only — a nested array or
+        // an object is left alone rather than walked, because the carriers this
         // exists for are all flat text and a recursive rewrite of arbitrary
-        // metadata is a bigger promise than it can keep.
+        // metadata is a bigger promise than this can keep.
+        //
+        // `(string) $key` is load-bearing: `Log::warning('x', ['a', 'b'])` is
+        // legal Laravel and yields INTEGER metadata keys, which `withMetadata`
+        // types as `string`. Under `declare(strict_types=1)` — one lint sweep
+        // away — that TypeErrors, and the SDK does not wrap `before_send`, so
+        // the throw propagates out of `captureException()`: telemetry taking
+        // down the request it was watching.
         foreach ($crumb->getMetadata() as $key => $value) {
-            if (is_string($value)) {
-                $crumb = $crumb->withMetadata($key, self::scrubText($value));
+            if (! is_string($value)) {
+                continue;
             }
+
+            // A `url` carries its parameters, so it gets the query-string pass
+            // as well — `?lat=…&lng=…` is redacted by NAME there, which the
+            // coordinate-pair regex would miss entirely.
+            $crumb = $crumb->withMetadata(
+                (string) $key,
+                $key === 'url' ? self::scrubUrl($value) : self::scrubText($value),
+            );
         }
 
         return $crumb;

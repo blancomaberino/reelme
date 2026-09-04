@@ -155,3 +155,35 @@ it('leaves an ordinary breadcrumb alone', function () {
     expect(SentryScrubber::scrub($event)->getBreadcrumbs()[0]->getMessage())
         ->toBe('Job 12, 34 finished in 1.5s');
 });
+
+it('redacts by NAME in a breadcrumb url, where the coordinate-pair regex would not', function () {
+    // An HTTP breadcrumb carries the request URL in its metadata. `?lat=…&lng=…`
+    // as separate parameters is not a coordinate PAIR, so `scrubText` alone
+    // walks past it — the query-string pass is what catches it.
+    $event = Event::createEvent();
+    $event->setBreadcrumb([
+        new Breadcrumb(
+            Breadcrumb::LEVEL_INFO,
+            Breadcrumb::TYPE_HTTP,
+            'http',
+            null,
+            ['url' => 'https://api.reelmap.app/api/v1/places?lat=-34.9011&lng=-56.1645&sort=distance'],
+        ),
+    ]);
+
+    expect(SentryScrubber::scrub($event)->getBreadcrumbs()[0]->getMetadata()['url'])
+        ->toBe('https://api.reelmap.app/api/v1/places?lat=[redacted]&lng=[redacted]&sort=distance');
+});
+
+it('survives a breadcrumb whose metadata keys are integers', function () {
+    // `Log::warning('x', ['a', 'b'])` is legal and yields a LIST as context, so
+    // the keys are ints while `withMetadata()` types its name as string. The SDK
+    // does not wrap `before_send`, so a TypeError here would propagate out of
+    // `captureException()` — telemetry taking down the request it was watching.
+    $event = Event::createEvent();
+    $event->setBreadcrumb([
+        new Breadcrumb(Breadcrumb::LEVEL_WARNING, Breadcrumb::TYPE_DEFAULT, 'log', 'x', ['a', 'b']),
+    ]);
+
+    expect(fn () => SentryScrubber::scrub($event))->not->toThrow(Throwable::class);
+});

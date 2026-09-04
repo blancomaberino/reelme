@@ -191,11 +191,14 @@ function firstFixWithin(
         // refusing those would deny distances to real devices in order to guard
         // against a hypothetical. The case this bound exists for — iOS with
         // Precise Location off — reports a number, a large one.
-        // No `typeof`/`isFinite` guard: `null > 500`, `undefined > 500` and
-        // `NaN > 500` are all false in JS, so the comparison alone already lets
-        // an unreported accuracy through. Spelling the checks out looked more
-        // careful and was dead code — and a test written to cover it would have
-        // been asserting JS coercion rather than this function.
+        // No `typeof`/`isFinite` guard: `NaN > 500` is false, so the comparison
+        // alone already lets an unusable reading through. Spelling the checks out
+        // looked more careful and was dead code — a test written to cover it
+        // would have been asserting JS coercion rather than this function.
+        //
+        // The `?? 0` is NOT redundant with that, though: `accuracy` is typed
+        // `number | null`, so it is there for the type checker, and deleting it
+        // on the reasoning above fails `tsc`.
         if (requiredAccuracy !== undefined && (location.coords.accuracy ?? 0) > requiredAccuracy) {
           return;
         }

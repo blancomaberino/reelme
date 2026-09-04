@@ -50,6 +50,23 @@ class PlaceController extends Controller
         $limit = $request->limit();
         $near = $request->nearPoint();
 
+        // Normalised ONCE, here, because FOUR things read `$sort`: the cursor
+        // decoder, `applySort`, `KeysetPage` and `cursorKeys`. An earlier fix
+        // degraded only the ORDER BY, which left the other three still believing
+        // the page was distance-sorted — so `cursorKeys` read an unselected
+        // `distance` attribute, minted `[0.0, lastId]`, and the branch it paired
+        // with had no keyset WHERE at all: page 2 came back identical to page 1,
+        // forever, with no error anywhere. That is worse than the TypeError it
+        // replaced, which at least failed loudly.
+        //
+        // Unreachable through HTTP today — `PlaceIndexRequest` 422s
+        // `sort=distance` without `near` — so this is a guard for the next
+        // caller, and it is deliberately not covered by a test: there is no way
+        // to reach it without disabling the validation that makes it moot.
+        if ($sort === 'distance' && $near === null) {
+            $sort = 'recent';
+        }
+
         $query = $this->visible()
             ->select('places.*')
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng');
@@ -278,15 +295,20 @@ class PlaceController extends Controller
                 break;
 
             case 'distance':
-                // Guaranteed by validation (`sort=distance` requires `near`),
-                // but not with an `assert()`: assertions are compiled out under
-                // `zend.assertions=-1`, which is the production setting, so the
-                // one environment where a drift between the two would matter is
-                // the one where the check is absent. Falling back to `recent` is
-                // the honest degradation — a page in a defensible order rather
-                // than a TypeError 500 out of `distanceFrom()`.
+                // `$near` is non-null here because `index()` normalised the sort
+                // away when it was not — NOT because of an `assert()`, which is
+                // compiled out under `zend.assertions=-1` (the production
+                // setting), making the one environment that matters the one with
+                // no check.
+                //
+                // FALLING THROUGH to `recent` rather than ordering by hand: a
+                // hand-written fallback gave the right ORDER BY and no keyset
+                // WHERE, so a cursor would have paged the same rows forever with
+                // no error anywhere. A degraded sort has to degrade the whole
+                // sort — ordering and cursor together — which is what the arm
+                // below already is.
                 if ($near === null) {
-                    $query->orderByDesc('created_at')->orderByDesc('id');
+                    $this->applyRecentSort($query, $cursor);
                     break;
                 }
 
@@ -301,14 +323,29 @@ class PlaceController extends Controller
                 break;
 
             default: // recent
-                $query->orderByDesc('created_at')->orderByDesc('id');
-                if ($cursor !== null) {
-                    // The key binds into a ?::timestamp cast; timestampKey() does
-                    // the strict round-trip (rejecting month-13 / year-0) so an
-                    // unparseable value 422s instead of 500-ing.
-                    $ts = KeysetCursor::timestampKey($cursor[0]);
-                    $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, KeysetCursor::intKey($cursor[1])]);
-                }
+                $this->applyRecentSort($query, $cursor);
+        }
+    }
+
+    /**
+     * Newest first, id-keyed. Its own method because the `distance` arm degrades
+     * into it, and a degraded sort has to degrade the WHOLE sort: an earlier
+     * version wrote the ORDER BY by hand and left the keyset clause out, so a
+     * cursor paged the same rows forever with no error anywhere.
+     *
+     * @param  Builder<Place>  $query
+     * @param  list<string>|null  $cursor
+     */
+    private function applyRecentSort(Builder $query, ?array $cursor): void
+    {
+        $query->orderByDesc('created_at')->orderByDesc('id');
+
+        if ($cursor !== null) {
+            // The key binds into a ?::timestamp cast; timestampKey() does the
+            // strict round-trip (rejecting month-13 / year-0) so an unparseable
+            // value 422s instead of 500-ing.
+            $ts = KeysetCursor::timestampKey($cursor[0]);
+            $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, KeysetCursor::intKey($cursor[1])]);
         }
     }
 
