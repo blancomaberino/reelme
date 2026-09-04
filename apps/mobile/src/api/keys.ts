@@ -63,8 +63,15 @@ export const queryKeys = {
   place: (slug: string) => ['places', slug] as const,
   placeSources: (slug: string) => ['places', slug, 'sources'] as const,
   // Quantized bbox + banded zoom keep tiny pans on one cache entry (T-032).
-  mapPlaces: (quantizedBbox: string, zoomBand: number, filters: MapFilters) =>
-    ['places', 'map', quantizedBbox, zoomBand, filters] as const,
+  //
+  // `near` is part of the key because the RESPONSE depends on it (T-156): the
+  // same viewport asked with and without a viewer point comes back with and
+  // without `distance_m`. Leaving it out would serve a cached, distance-less
+  // payload to a viewer whose fix has just landed, and the labels would never
+  // appear. It is pre-quantized by the caller so GPS jitter does not mint a new
+  // cache entry every metre.
+  mapPlaces: (quantizedBbox: string, zoomBand: number, filters: MapFilters, near: string | null = null) =>
+    ['places', 'map', quantizedBbox, zoomBand, filters, near] as const,
   feed: (scope: string) => ['feed', scope] as const,
   /** The personal "my places" list (T-071), keyed by its active facet filters. */
   myPlaces: (filters: MyPlacesFilters) => ['me', 'places', filters] as const,

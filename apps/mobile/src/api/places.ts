@@ -261,6 +261,23 @@ export type MapPin = {
   /** The primary reel's poster — drawn inside the map marker; null when the source has no imagery. */
   thumbnail_url: string | null;
   top_influencer: { handle: string; display_name: string | null } | null;
+  /**
+   * Metres from the viewer, straight-line, computed by PostGIS (T-156).
+   *
+   * OPTIONAL, and that is the contract: the key is ABSENT when the request
+   * carried no `near`, never 0. Zero is a real distance ("you are standing in
+   * it"), so a default would be indistinguishable from the truth. Read it with
+   * `!= null`, never as a truthy check — a place 0 m away would vanish.
+   */
+  distance_m?: number;
+  /**
+   * Open-or-closed as the server decided it, from the venue's structured periods
+   * and its OWN timezone (T-155). Absent for the same reason as `distance_m`,
+   * and null WITHIN a response when the answer is not knowable — which must
+   * render as no cue at all, never as "Closed". Rendered through
+   * `openStateLabel()`, the same helper the place detail uses.
+   */
+  open_state?: OpenState | null;
 };
 
 export type MapCluster = {

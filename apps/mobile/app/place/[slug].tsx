@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -24,6 +24,7 @@ import { Skeleton, SkeletonGroup } from '@/components/skeleton';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
 import { hourLines, openStateLabel } from '@/lib/opening-hours';
+import { useAgeOf } from '@/lib/use-age-of';
 import { directionsUrl, googleMapsUrl, googleReviewsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
 import { useSessionStore } from '@/stores/session';
@@ -84,27 +85,6 @@ function Header({
       ) : null}
     </View>
   );
-}
-
-/**
- * How old the current payload is, in ms, re-read on a timer.
- *
- * Its own hook so the impure clock read stays inside an effect. The interval is
- * coarse on purpose: this decides whether a status cue is still trustworthy, not
- * anything that needs to tick.
- */
-function useAgeOf(fetchedAt: number): number {
-  const [age, setAge] = useState(0);
-
-  useEffect(() => {
-    const tick = () => setAge(Date.now() - fetchedAt);
-    tick();
-    const id = setInterval(tick, 30_000);
-
-    return () => clearInterval(id);
-  }, [fetchedAt]);
-
-  return age;
 }
 
 function PlaceBody({

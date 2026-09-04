@@ -12,7 +12,7 @@ function placeRow(id: string, name: string) {
   return {
     id, name, slug: `p-${id}`, status: 'active', lat: -34.9 + Number(id) * 0.01, lng: -56.16, category: null,
     price_range: null, city: 'Montevideo', country_code: 'UY', thumbnail_url: null,
-    source_count: 1, rating: { google: { value: null, count: 0 } }, distance_m: null, created_at: null,
+    source_count: 1, rating: { google: { value: null, count: 0 } }, distance_m: null, open_state: null, created_at: null,
   };
 }
 

@@ -19,8 +19,14 @@ import { QuickShareModal } from '@/components/map/quick-share';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
-import { type InitialRegion, resolveInitialRegion, syncInitialRegion } from '@/lib/initial-region';
+import {
+  type InitialRegion,
+  resolveInitialRegion,
+  shouldCenterOnViewer,
+  syncInitialRegion,
+} from '@/lib/initial-region';
 import { useT } from '@/i18n';
+import { useViewerPosition } from '@/lib/use-viewer-position';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
 import { useViewportStore } from '@/stores/viewport';
@@ -169,7 +175,18 @@ function MapCanvas({
   // The pin whose "save to a list" sheet is open (T-073); authed viewers only.
   const [saveFor, setSaveFor] = useState<string | null>(null);
 
-  const { data, isFetching, isError, refetch } = useMapPlaces(queryRegion, effectiveFilters);
+  // The viewer's own position, for VIEWER-RELATIVE data (T-156) — never a
+  // prompt of its own: it reads a permission the first-launch resolve or the
+  // "locate me" button already obtained, and yields null otherwise. Null means
+  // the pins simply carry no distance and no open/closed cue, which is the
+  // honest outcome, not a degraded one.
+  const viewer = useViewerPosition();
+
+  const { data, dataUpdatedAt, isFetching, isError, refetch } = useMapPlaces(
+    queryRegion,
+    effectiveFilters,
+    viewer,
+  );
 
   // A map with no pins has three causes and the user can only act on one of
   // them (T-103). Offline is the ConnectionBanner's job — it is app-wide and
@@ -225,6 +242,33 @@ function MapCanvas({
     onInteraction: markInteraction,
   });
   const { mapRef, moveMap } = camera;
+
+  // Re-frame onto the viewer once, when they are near their own places (T-156).
+  //
+  // AFTER the first paint, not before it: the opening viewport must be known
+  // synchronously or a returning user waits on the GPS, so the map opens where
+  // they left it and this only improves the frame if a fix arrives. By
+  // construction the move is small — `shouldCenterOnViewer` allows it only
+  // inside CENTER_ON_VIEWER_RADIUS_M of the frame they left, so it reads as
+  // "here you are", never as being yanked across the world.
+  //
+  // Two guards, both load-bearing:
+  //  - `interacted.current` — the moment the user has touched the map, the
+  //    viewport is THEIRS. Moving it then is taking the map away mid-read, and
+  //    a fix can land seconds after mount.
+  //  - `centred` — once only. `moveMap` marks an interaction, which persists the
+  //    settle it produces, so a repeat would fight the user's own panning.
+  const centred = useRef(false);
+  useEffect(() => {
+    if (!viewer || centred.current || interacted.current) return;
+    if (!shouldCenterOnViewer({ viewer, anchor: initialRegion, source: initial.source })) return;
+
+    centred.current = true;
+    moveMap(
+      { latitude: viewer.latitude, longitude: viewer.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+      450,
+    );
+  }, [viewer, initialRegion, initial.source, moveMap]);
 
   const onRegionChangeComplete = useCallback(
     (region: Region) => {
@@ -524,6 +568,9 @@ function MapCanvas({
 
       <PreviewSheet
         pin={selected}
+        // When these pins were fetched — the sheet's open/closed cue ages out on
+        // it rather than repainting a stale "Abierto" from a persisted query.
+        fetchedAt={dataUpdatedAt}
         onClose={() => select(null)}
         onViewPlace={(id) => {
           select(null);
@@ -549,12 +596,14 @@ function MapCanvas({
 /** The gorhom bottom sheet, opened/closed by the selected pin. */
 function PreviewSheet({
   pin,
+  fetchedAt,
   onClose,
   onViewPlace,
   onSave,
   onRemoveFromList,
 }: {
   pin: MapPin | null;
+  fetchedAt: number;
   onClose: () => void;
   onViewPlace: (id: string) => void;
   onSave?: (id: string) => void;
@@ -567,7 +616,13 @@ function PreviewSheet({
     <BottomSheet ref={sheetRef} index={pin ? 0 : -1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose}>
       <BottomSheetView>
         {pin ? (
-          <PlaceSheet pin={pin} onViewPlace={onViewPlace} onSave={onSave} onRemoveFromList={onRemoveFromList} />
+          <PlaceSheet
+            pin={pin}
+            fetchedAt={fetchedAt}
+            onViewPlace={onViewPlace}
+            onSave={onSave}
+            onRemoveFromList={onRemoveFromList}
+          />
         ) : null}
       </BottomSheetView>
     </BottomSheet>

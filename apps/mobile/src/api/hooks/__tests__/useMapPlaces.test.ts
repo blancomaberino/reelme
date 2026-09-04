@@ -75,3 +75,74 @@ it('does not fetch when region is null', async () => {
   await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
   expect(mock.history.get.length).toBe(0);
 });
+
+// --- T-156: the viewer point, and the loop it has to survive ---
+
+// Deliberately NOT on a 4-decimal rounding boundary: the drift case below is
+// about the quantization step, not about which way `toFixed` breaks a tie.
+const VIEWER = { latitude: -34.90112, longitude: -56.16452 };
+
+it('sends near=lat,lng when the viewer shared a position, and omits it otherwise', async () => {
+  const { result } = renderHook(() => useMapPlaces(REGION, {}, VIEWER), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  // Quantized to ~11 m — asserted as the exact string, because a change in
+  // precision changes the cache key and therefore how often the map refetches.
+  expect(mock.history.get[0].params.near).toBe('-34.9011,-56.1645');
+
+  const without = renderHook(() => useMapPlaces(REGION, {}, null), { wrapper });
+  await waitFor(() => expect(without.result.current.isSuccess).toBe(true));
+  // ABSENT, not empty: the API 422s a malformed `near` rather than ignoring it,
+  // so an empty string would fail the whole request.
+  expect('near' in mock.history.get[1].params).toBe(false);
+});
+
+it('does not refetch when the fix drifts within the quantization step', async () => {
+  const { result, rerender } = renderHook<ReturnType<typeof useMapPlaces>, { v: typeof VIEWER }>(
+    ({ v }) => useMapPlaces(REGION, {}, v),
+    { wrapper, initialProps: { v: VIEWER } },
+  );
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  const first = mock.history.get.length;
+
+  // A phone sitting still on a table: the fix wanders a couple of metres.
+  rerender({ v: { latitude: VIEWER.latitude + 0.000004, longitude: VIEWER.longitude } });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(mock.history.get.length).toBe(first);
+});
+
+it('refetches WITH the viewer point when the map is panned (the loop, not the first paint)', async () => {
+  // The regression this guards: `near` left out of the query key. The first
+  // paint looks perfect — distances render — and then every pan replays a
+  // cached, distance-less page for the new cell, or (worse) serves the OLD
+  // cell's distances under the new pins. A first-paint assertion cannot see it.
+  const { result, rerender } = renderHook<ReturnType<typeof useMapPlaces>, { r: Region }>(
+    ({ r }) => useMapPlaces(r, {}, VIEWER),
+    { wrapper, initialProps: { r: REGION } },
+  );
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  const first = mock.history.get.length;
+
+  // A real pan — far enough to leave the quantization cell.
+  rerender({ r: { ...REGION, latitude: REGION.latitude + 0.2 } });
+  await waitFor(() => expect(mock.history.get.length).toBe(first + 1));
+
+  const panned = mock.history.get[first];
+  expect(panned.params.near).toBe('-34.9011,-56.1645');
+  expect(panned.params.bbox).not.toBe(mock.history.get[0].params.bbox);
+});
+
+it('re-asks the same viewport when the fix arrives, instead of replaying the distance-less page', async () => {
+  // The other half of the key: a map that opened before the GPS answered has a
+  // cached page with no distances in it. If `near` were not part of the key,
+  // that page would be served forever and the labels would never appear.
+  const { result, rerender } = renderHook<
+    ReturnType<typeof useMapPlaces>,
+    { v: typeof VIEWER | null }
+  >(({ v }) => useMapPlaces(REGION, {}, v), { wrapper, initialProps: { v: null } });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  const first = mock.history.get.length;
+
+  rerender({ v: VIEWER });
+  await waitFor(() => expect(mock.history.get.length).toBe(first + 1));
+  expect(mock.history.get[first].params.near).toBe('-34.9011,-56.1645');
+});

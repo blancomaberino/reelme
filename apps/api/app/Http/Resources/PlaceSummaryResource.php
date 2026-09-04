@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Place;
+use App\Support\OpeningSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -78,6 +79,17 @@ class PlaceSummaryResource extends JsonResource
             'distance_m' => $this->getAttribute('distance') !== null
                 ? round((float) $this->getAttribute('distance'), 1)
                 : null,
+            // The other half of the "can I go there, now" pair (T-156), in the
+            // same shape the place detail serves so the client renders both with
+            // one tested helper. Computed, never stored: nothing rewrites a
+            // column when a window closes overnight. Null when the answer is not
+            // KNOWABLE — no structured periods or no timezone — and NEVER a
+            // fabricated "closed", which is T-155's rule.
+            'open_state' => OpeningSchedule::stateAt(
+                $this->opening_hours_periods_json,
+                $this->timezone,
+                now(),
+            ),
             'created_at' => $this->created_at?->toIso8601ZuluString(),
         ];
     }

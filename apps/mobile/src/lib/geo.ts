@@ -125,3 +125,30 @@ export function regionRadiusM(region: Region): number {
 
   return Math.round(Math.hypot(latM, lngM) / 2);
 }
+
+/** Mean Earth radius, metres — the WGS84 authalic radius the haversine assumes. */
+const EARTH_RADIUS_M = 6_371_008.8;
+
+/**
+ * Great-circle distance in metres between two points.
+ *
+ * Haversine rather than the flat approximation `regionRadiusM` uses above: that
+ * one measures a viewport, where a few percent either way changes nothing, while
+ * this one decides whether the map yanks the user somewhere. It is also the
+ * client's ONLY distance function — the metres a pin shows are computed by
+ * PostGIS server-side (T-156), never re-derived here, because the two would
+ * disagree and the server's answer is the one the sort ordering used.
+ */
+export function distanceM(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const rad = Math.PI / 180;
+  const dLat = (b.latitude - a.latitude) * rad;
+  const dLng = (b.longitude - a.longitude) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(dLng / 2) ** 2;
+
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
+}

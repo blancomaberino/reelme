@@ -493,7 +493,7 @@ export const es: Record<MessageKey, string> = {
   'review.candidates.title': '¿Es el mismo lugar?',
   'review.candidates.hint': 'Elegí una coincidencia para vincularlo, o dejalo como lugar nuevo.',
   'review.candidates.newPlace': 'Ninguno — agregar como nuevo',
-  'review.candidate.distance': 'a {{meters}} m',
+  'review.candidate.distance': 'a {{distance}}',
   'review.evidence.caption': 'De la descripción',
   'review.evidence.transcript': 'Del audio',
   'review.evidence.none': 'No se capturaron citas de respaldo.',

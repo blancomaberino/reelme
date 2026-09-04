@@ -6,31 +6,101 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "id", "name", "slug", "status", "lat", "lng", "category", "price_range",
-    "city", "country_code", "source_count", "rating", "distance_m", "created_at"
+    "id",
+    "name",
+    "slug",
+    "status",
+    "lat",
+    "lng",
+    "category",
+    "price_range",
+    "city",
+    "country_code",
+    "source_count",
+    "rating",
+    "distance_m",
+    "open_state",
+    "created_at"
   ],
   "properties": {
-    "id": { "type": "string" },
-    "name": { "type": "string" },
-    "slug": { "type": "string" },
-    "status": { "type": "string", "enum": ["pending", "active"] },
-    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
-    "lng": { "type": "number", "minimum": -180, "maximum": 180 },
-    "category": { "type": ["string", "null"] },
-    "price_range": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
-    "city": { "type": ["string", "null"] },
-    "country_code": { "type": "string" },
-    "thumbnail_url": { "type": ["string", "null"] },
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active"
+      ]
+    },
+    "lat": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "lng": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "category": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "price_range": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 4
+    },
+    "city": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "country_code": {
+      "type": "string"
+    },
+    "thumbnail_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "mine": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["share_id", "saved"],
+      "required": [
+        "share_id",
+        "saved"
+      ],
       "properties": {
-        "share_id": { "type": ["string", "null"] },
-        "saved": { "type": "boolean" }
+        "share_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "saved": {
+          "type": "boolean"
+        }
       }
     },
-    "source_count": { "type": "integer", "minimum": 0 },
+    "source_count": {
+      "type": "integer",
+      "minimum": 0
+    },
     "has_active_offer": {
       "type": "boolean",
       "description": "Whether the place has an offer redeemable RIGHT NOW (T-047). Present only on listings that selected it (my-places, map pins); absent — not false — elsewhere, since a listing that never looked must not claim there is nothing. Gated on the active() scope, never the status column, which nothing rewrites when a window closes."
@@ -38,22 +108,85 @@
     "rating": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["google"],
+      "required": [
+        "google"
+      ],
       "properties": {
-        "google": { "$ref": "#/definitions/ratingBlock" }
+        "google": {
+          "$ref": "#/definitions/ratingBlock"
+        }
       }
     },
-    "distance_m": { "type": ["number", "null"], "minimum": 0 },
-    "created_at": { "type": ["string", "null"], "format": "date-time" }
+    "distance_m": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "open_state": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "open_now",
+        "closes_at",
+        "opens_at"
+      ],
+      "description": "Whether the venue is open RIGHT NOW, computed server-side from structured periods and the venue's IANA timezone (T-155). NULL means the answer is not knowable — no structured periods, or no timezone — and the client must then show the `opening_hours` lines with NO status cue. Null is never to be rendered as \"Closed\": a confidently wrong \"Closed\" sends someone away from a restaurant that is open. The periods and the timezone themselves are deliberately NOT served: one implementation decides this (App\\Support\\OpeningSchedule) and the client renders its answer, because shipping a second parseable copy of the week is how the client came to invent its own reading in T-128. Google's own `open_now` is never forwarded — it is true at fetch time and a lie for the 30 days the response is cached.",
+      "properties": {
+        "open_now": {
+          "type": "boolean"
+        },
+        "closes_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Venue-local wall clock at which the current opening period ends. Null while closed, and also null for a venue that never closes."
+        },
+        "opens_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Venue-local wall clock of the next opening, and ONLY when it falls on the same local day. Null while open, and null when the next opening is tomorrow — \"opens 11:00\" without a weekday would read as \"in an hour\", and rendering the weekday belongs to the client's locale."
+        }
+      }
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
   },
   "definitions": {
     "ratingBlock": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["value", "count"],
+      "required": [
+        "value",
+        "count"
+      ],
       "properties": {
-        "value": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
-        "count": { "type": "integer", "minimum": 0 }
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 5
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     }
   }

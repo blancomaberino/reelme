@@ -7,6 +7,7 @@ use App\Http\Requests\MapPlacesRequest;
 use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Place;
+use App\Support\OpeningSchedule;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -105,13 +106,14 @@ class MapViewport
      */
     private function pinsResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total): JsonResponse
     {
-        $places = $this->selectPinFields($this->baseQuery($request, $bbox, $constrain))
+        $near = $request->nearPoint();
+        $places = $this->selectPinFields($this->baseQuery($request, $bbox, $constrain), $near)
             ->orderByDesc('shares_count')
             ->limit(self::PIN_CAP + 1)
             ->get();
 
         $truncated = $places->count() > self::PIN_CAP;
-        $pins = $places->take(self::PIN_CAP)->map(fn (Place $p) => $this->pin($p))->all();
+        $pins = $places->take(self::PIN_CAP)->map(fn (Place $p) => $this->pin($p, $near))->all();
 
         return ApiResponse::item(['pins' => $pins, 'clusters' => []], array_filter([
             'zoom' => $zoom,
@@ -186,9 +188,13 @@ class MapViewport
 
         $pins = [];
         if ($singletonIds !== []) {
-            $pins = $this->selectPinFields(Place::query()->whereIn('id', $singletonIds))
+            // The SAME viewer point as the unclustered path. A pin that carries a
+            // distance at zoom 15 and loses it at zoom 13 is a bug the user finds
+            // by pinching, and one nothing but a test at both zooms would catch.
+            $near = $request->nearPoint();
+            $pins = $this->selectPinFields(Place::query()->whereIn('id', $singletonIds), $near)
                 ->get()
-                ->map(fn (Place $p) => $this->pin($p))
+                ->map(fn (Place $p) => $this->pin($p, $near))
                 ->all();
         }
 
@@ -207,12 +213,33 @@ class MapViewport
      * clustered response promotes to pins — because they render the SAME shape.
      * When they each spelled it out, a field added to `pin()` was one edit away
      * from being null on half the map.
+     *
+     * @param  array{lat: float, lng: float}|null  $near  the viewer's position,
+     *                                                    or null when they gave none
      */
-    private function selectPinFields(PlaceQueryBuilder $query): PlaceQueryBuilder
+    private function selectPinFields(PlaceQueryBuilder $query, ?array $near = null): PlaceQueryBuilder
     {
-        return $query
+        // Distance is computed by POSTGIS, once per row in the same query — not
+        // in PHP per pin. At the pin cap that is the difference between one
+        // query and 300 haversines, and it is what lets a caller sort on it
+        // without a second pass.
+        //
+        // It is added AFTER `select('*')`, and that ordering is not cosmetic:
+        // `select()` REPLACES the select list while `selectRaw()` appends, so
+        // adding the distance first silently drops it and every pin reports 0 —
+        // which is not null, so a `not->toBeNull()` test would have passed.
+        $query = $query
             ->select('*')
-            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
+            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng');
+
+        if ($near !== null) {
+            $query->selectRaw(
+                'ST_Distance(location, ST_MakePoint(?, ?)::geography) AS distance',
+                [$near['lng'], $near['lat']],
+            );
+        }
+
+        return $query
             ->with([
                 'primarySource.sourcePost.influencer',
                 'primarySource.sourcePost.mediaAssets',
@@ -224,12 +251,46 @@ class MapViewport
     }
 
     /**
+     * @param  array{lat: float, lng: float}|null  $near  the viewer's position
      * @return array<string, mixed>
      */
-    private function pin(Place $place): array
+    private function pin(Place $place, ?array $near = null): array
     {
         $sourcePost = $place->primarySource?->sourcePost;
         $influencer = $sourcePost?->influencer;
+
+        // The viewer-relative pair (T-156). Both keys are ABSENT without a
+        // position — not 0, not false. A zero distance reads as "you are here"
+        // and a false `open_now` reads as "closed", and a client cannot tell
+        // either from the real thing.
+        //
+        // Within that, `open_now` is null when the answer is not KNOWABLE — no
+        // structured periods, or no timezone. That is T-155's rule and it is the
+        // whole reason this is a nullable boolean rather than a boolean: the one
+        // thing a diner must never be told is that a place is shut when nobody
+        // knows.
+        $viewerRelative = [];
+        if ($near !== null) {
+            $viewerRelative = [
+                'distance_m' => (int) round((float) $place->getAttribute('distance')),
+                // The SAME `open_state` object the place detail serves, not a bare
+                // boolean. T-155 already built and tested `openStateLabel()` on the
+                // client against this shape, and it needs the whole object: to say
+                // "open until 23:30" it needs `closes_at`, and to AGE THE CUE OUT
+                // after five minutes it needs something to age. A bare boolean
+                // cannot do either — a persisted query would repaint an
+                // 11-hour-old "open" on a cold start, which is the confidently
+                // wrong answer this whole feature exists to prevent.
+                //
+                // Null whenever the answer is not knowable (no periods, or no
+                // timezone), and never a fabricated "closed".
+                'open_state' => OpeningSchedule::stateAt(
+                    $place->opening_hours_periods_json,
+                    $place->timezone,
+                    now(),
+                ),
+            ];
+        }
 
         return [
             'type' => 'place',
@@ -253,6 +314,9 @@ class MapViewport
                 'handle' => $influencer->handle,
                 'display_name' => $influencer->display_name,
             ],
+            // Appended, so the identity fields stay first and a reader sees the
+            // viewer-relative pair as the addition it is.
+            ...$viewerRelative,
         ];
     }
 }

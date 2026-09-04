@@ -1,6 +1,6 @@
 // Where the map opens (T-100). One ordered fallback chain, in one place, so the
 // "which viewport wins?" question has a single answer that tests can pin.
-import type { Region } from './geo';
+import { distanceM, type Region } from './geo';
 import { getLocationPermission, getUserRegion, requestLocationPermission } from './location';
 
 /**
@@ -126,4 +126,52 @@ export async function locateUser(): Promise<
 
   const region = await getUserRegion();
   return region ? { ok: true, region } : { ok: false, reason: 'unavailable' };
+}
+
+/**
+ * How far from their own places a viewer may be and still have the map open on
+ * THEM rather than on where they left it (T-156).
+ *
+ * 30 km is "the same city, or the next town over" — someone who moved across
+ * Montevideo since last night wants the map on where they are standing, because
+ * the whole point of distance and open-now is deciding where to walk. Someone
+ * who is in Buenos Aires does not: their pins are all 200 km away, so centring
+ * on them shows an empty map, and the viewport they left is the more useful
+ * answer.
+ */
+export const CENTER_ON_VIEWER_RADIUS_M = 30_000;
+
+/**
+ * Whether the map should re-frame onto the viewer's own position after opening.
+ *
+ * This runs AFTER the first paint, on purpose. The opening viewport must be
+ * known synchronously ({@link syncInitialRegion}) or a returning user stares at
+ * a spinner while the GPS thinks; a fix that lands a moment later can still
+ * improve the frame, and by construction the move is small — it only happens
+ * when the viewer is already inside {@link CENTER_ON_VIEWER_RADIUS_M} of the
+ * frame they left.
+ *
+ * `anchor` is the LAST SETTLED VIEWPORT, used as the stand-in for "where the
+ * viewer's own pins are". It is a proxy and worth naming as one: the pins
+ * themselves are not known until the first query answers, and re-framing after
+ * that would move the map out from under a user who had already started reading
+ * it. The proxy is a good one because the home map is scoped to the viewer's own
+ * places (`filter=mine`), so the frame they left IS the frame their pins are in.
+ *
+ * False in every case where the app already has a better answer than the fix:
+ *
+ *  - **no fix** — nothing to centre on;
+ *  - **`param`** — an explicit "show me *this*" push, which always wins;
+ *  - **`user`** — the resolve chain already centred on them;
+ *  - **`default`** — no saved frame and no fix, so there is no anchor to be
+ *    near; the fallback city is not evidence of anything.
+ */
+export function shouldCenterOnViewer(input: {
+  viewer: { latitude: number; longitude: number } | null;
+  anchor: Region | null;
+  source: RegionSource;
+}): boolean {
+  if (!input.viewer || input.source !== 'saved' || !input.anchor) return false;
+
+  return distanceM(input.viewer, input.anchor) <= CENTER_ON_VIEWER_RADIUS_M;
 }

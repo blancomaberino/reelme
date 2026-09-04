@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PendingCandidate } from '@/api/shares';
 import { useT } from '@/i18n';
+import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 /**
@@ -23,6 +24,7 @@ export function CandidatePicker({
 }) {
   const c = useColors();
   const t = useT();
+  const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
 
   if (candidates.length === 0) return null;
@@ -42,7 +44,7 @@ export function CandidatePicker({
               title={cand.name ?? t('share.pending.unnamed')}
               sub={
                 cand.address ??
-                (cand.distance_m != null ? t('review.candidate.distance', { meters: Math.round(cand.distance_m) }) : null)
+                (cand.distance_m != null ? t('review.candidate.distance', { distance: fmt.distance(cand.distance_m) }) : null)
               }
               onPress={() => onSelect(on ? null : id)}
               styles={styles}

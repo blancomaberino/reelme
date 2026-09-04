@@ -8,6 +8,7 @@ use App\Models\SourcePost;
 use App\Models\Tag;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
@@ -174,6 +175,45 @@ it('sorts by distance nearest-first and paginates stably', function () {
     $page2 = $this->getJson('/api/v1/places?near=38.7169,-9.1355&sort=distance&limit=2&cursor='.urlencode($cursor))->assertOk();
     expect(collect($page2->json('data'))->pluck('name')->all())->toBe(['C'])
         ->and($page2->json('meta.pagination.next_cursor'))->toBeNull();
+});
+
+it('computes distance in SQL across a MULTI-PAGE result, not in PHP per row', function () {
+    // The listing's counterpart to the map's one-query assertion (T-156). It is
+    // paginated, which is where a per-row computation hides best: a page of two
+    // rows looks fine under any implementation, and the cost only appears on a
+    // corpus nobody runs in a test.
+    for ($i = 0; $i < 12; $i++) {
+        Place::factory()->active()->atPoint(38.7169 + ($i / 2000), -9.1355)->create();
+    }
+
+    $distanceStatements = function (string $url): int {
+        DB::enableQueryLog();
+        // FLUSHED, not merely enabled. The log ACCUMULATES across enable/disable
+        // pairs, so a second measurement in the same test silently counts the
+        // first one's statements too — which is exactly how this helper first
+        // "proved" that a larger page issues more queries than a smaller one.
+        DB::flushQueryLog();
+        $this->getJson($url)->assertOk();
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        return collect($queries)->filter(fn ($q) => str_contains($q['query'], 'ST_Distance'))->count();
+    };
+
+    $near = 'near=38.7169,-9.1355&radius_m=5000&sort=distance';
+
+    // ONE statement mentions ST_Distance, at either page size: distance is a
+    // column of the page query, not a value computed per row. A PHP haversine
+    // would show zero such statements; an N+1 would scale with the page.
+    expect($distanceStatements("/api/v1/places?{$near}&limit=2"))->toBe(1)
+        ->and($distanceStatements("/api/v1/places?{$near}&limit=10"))->toBe(1);
+
+    // And the cursor page is served the same way — the second page must not
+    // quietly take a different route to the same column.
+    $page1 = $this->getJson("/api/v1/places?{$near}&limit=5")->assertOk();
+    $cursor = $page1->json('meta.pagination.next_cursor');
+    expect($cursor)->not->toBeNull()
+        ->and($distanceStatements("/api/v1/places?{$near}&limit=5&cursor=".urlencode($cursor)))->toBe(1);
 });
 
 it('422s sort=distance without near', function () {

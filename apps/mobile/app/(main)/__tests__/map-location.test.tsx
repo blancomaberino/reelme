@@ -40,6 +40,16 @@ jest.mock('@/api/hooks/useLists', () => ({
   useListMembership: () => ({ remove: { mutate: jest.fn() }, add: { mutate: jest.fn() } }),
 }));
 jest.mock('@/components/map/quick-share', () => ({ QuickShareModal: () => null }));
+// The viewer point (T-156) is a SECOND, silent reader of the location
+// permission, for distances rather than for the viewport. Mocked here so this
+// file keeps testing what it says it does — where the map OPENS, and the locate
+// control — instead of counting GPS calls it did not make. Its own contract
+// (never prompts; null unless already granted) is pinned in
+// src/lib/__tests__/use-viewer-position.test.ts.
+const mockViewer: { current: { latitude: number; longitude: number } | null } = { current: null };
+jest.mock('@/lib/use-viewer-position', () => ({
+  useViewerPosition: () => mockViewer.current,
+}));
 
 const perms = jest.mocked(Location.getForegroundPermissionsAsync);
 const requestPerms = jest.mocked(Location.requestForegroundPermissionsAsync);
@@ -77,6 +87,7 @@ beforeEach(() => {
   useViewportStore.setState({ saved: null, hydrated: true });
   mockRouter.params = {};
   animateToRegion.mockClear();
+  mockViewer.current = null;
   perms.mockResolvedValue(granted);
   requestPerms.mockResolvedValue(granted);
   lastKnown.mockResolvedValue(null);
@@ -157,6 +168,63 @@ describe('opening viewport', () => {
       longitudeDelta: 0.02,
     });
     expect(perms).not.toHaveBeenCalled();
+  });
+
+  // T-156: the opening viewport is resolved synchronously (above), and a fix
+  // that lands afterwards can still improve the frame. Both branches, because
+  // the failure modes are opposite: never re-framing strands a user who moved
+  // across town on last night's viewport, and always re-framing yanks a
+  // traveller onto an empty map hundreds of kilometres from every pin.
+  describe('re-framing on the viewer', () => {
+    /** A point `metres` due north of the saved viewport's centre. */
+    const northOfSaved = (metres: number) => ({
+      latitude: SAVED.latitude + metres / 111_320,
+      longitude: SAVED.longitude,
+    });
+
+    it('moves onto a viewer who is near their own places', async () => {
+      useViewportStore.setState({ saved: SAVED, hydrated: true });
+      mockViewer.current = northOfSaved(3_000);
+
+      render(<MapScreen />);
+      await waitFor(() => expect(animateToRegion).toHaveBeenCalled());
+
+      // The saved viewport still framed the FIRST paint — the move is an
+      // improvement on it, not a replacement for resolving it.
+      expect(screen.getByTestId('MapView').props.initialRegion).toEqual(SAVED);
+      expect(animateToRegion).toHaveBeenCalledWith(
+        { ...mockViewer.current, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+        450,
+      );
+    });
+
+    it('leaves a distant viewer on the viewport they left', async () => {
+      useViewportStore.setState({ saved: SAVED, hydrated: true });
+      // London saved, viewer in Madrid — every pin they own is ~1,200 km away,
+      // so centring on them would show an empty map.
+      mockViewer.current = FIX;
+
+      render(<MapScreen />);
+      // Nothing to wait FOR, so drain the effects and assert the absence.
+      await act(async () => {});
+
+      expect(screen.getByTestId('MapView').props.initialRegion).toEqual(SAVED);
+      expect(animateToRegion).not.toHaveBeenCalled();
+    });
+
+    it('does not re-frame a deep link, even from right next door', async () => {
+      // `?lat=&lng=` is an explicit "show me THIS". A viewer standing beside it
+      // is exactly the case where a well-meaning re-frame would quietly discard
+      // the thing the user asked to see.
+      useViewportStore.setState({ saved: SAVED, hydrated: true });
+      mockRouter.params = { lat: '51.5', lng: '-0.12' };
+      mockViewer.current = northOfSaved(500);
+
+      render(<MapScreen />);
+      await act(async () => {});
+
+      expect(animateToRegion).not.toHaveBeenCalled();
+    });
   });
 });
 

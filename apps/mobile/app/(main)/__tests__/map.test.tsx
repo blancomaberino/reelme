@@ -31,18 +31,31 @@ const mockFiltersSeen: { current: MapFilters | undefined } = { current: undefine
 // keepPreviousData — so tests exercise the marker-memoization invariant under
 // real reference churn (the handlers must stay stable across "refetches").
 jest.mock('@/api/hooks/useMapPlaces', () => ({
-  useMapPlaces: (_region: unknown, filters: MapFilters) => {
+  useMapPlaces: (_region: unknown, filters: MapFilters, viewer: unknown) => {
     mockFiltersSeen.current = filters;
+    mockViewerSeen.current = viewer;
     return {
       data: {
         pins: [...mapData.current.pins],
         clusters: [...mapData.current.clusters],
         truncated: mapData.current.truncated,
       },
+      // Fresh, so the sheet's open/closed cue is inside its trust window
+      // (see openStateLabel). Read at call time, not module load, or a long
+      // suite would age past the window mid-run.
+      dataUpdatedAt: Date.now(),
       isFetching: false,
       isSuccess: true,
     };
   },
+}));
+// The viewer point the screen hands the fetch (T-156) — the seam a screen-level
+// test can check and a hook-level one cannot: the hook sends whatever it is
+// given, and the bug worth catching is the screen never giving it anything.
+const mockViewerSeen: { current: unknown } = { current: undefined };
+const mockViewer: { current: { latitude: number; longitude: number } | null } = { current: null };
+jest.mock('@/lib/use-viewer-position', () => ({
+  useViewerPosition: () => mockViewer.current,
 }));
 jest.mock('@/api/hooks/useTags', () => ({
   useTagCatalog: () => ({ data: [] }),
@@ -128,6 +141,8 @@ function pin(id: string, over: Partial<MapPin> = {}): MapPin {
 beforeEach(() => {
   markerRenders.length = 0;
   mockFiltersSeen.current = undefined;
+  mockViewerSeen.current = undefined;
+  mockViewer.current = null;
   mockRemoveMutate.mockClear();
   mapData.current = { pins: [pin('1'), pin('2'), pin('3')], clusters: [], truncated: false };
   useMapStore.setState({ selected: null, filters: { cuisine: null, price_range: null, tags: [], list: null, filter: null } });
@@ -206,6 +221,45 @@ it('opens the preview sheet with the tapped place and navigates to detail', () =
   expect(screen.getByText('View place')).toBeOnTheScreen();
   fireEvent.press(screen.getByText('View place'));
   expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '2' } });
+});
+
+// --- T-156: the viewer point, from the screen to the sheet ---
+
+it('hands the viewer point to the fetch, and nothing when there is none', () => {
+  render(<MapScreen />);
+  // No permission / no fix: the request goes out WITHOUT a point, and every
+  // viewer-relative field is then absent rather than faked.
+  expect(mockViewerSeen.current).toBeNull();
+
+  mockViewer.current = { latitude: -34.9011, longitude: -56.1645 };
+  render(<MapScreen />);
+  expect(mockViewerSeen.current).toEqual({ latitude: -34.9011, longitude: -56.1645 });
+});
+
+it('shows distance and the open cue on a tapped pin — reached by pressing the marker', () => {
+  // The seam, walked end to end: a pin the API answered with, a real press on
+  // the control a user can see, and the sheet it opens. Rendering PlaceSheet
+  // directly (as its own test file does) proves the component; only this proves
+  // the payload actually reaches it.
+  mapData.current = {
+    pins: [pin('2', { distance_m: 450, open_state: { open_now: true, closes_at: '23:30', opens_at: null } })],
+    clusters: [],
+    truncated: false,
+  };
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('marker-2'));
+
+  expect(screen.getByText('450 m')).toBeOnTheScreen();
+  expect(screen.getByText('Open · closes 23:30')).toBeOnTheScreen();
+});
+
+it('shows neither on a pin the API answered without a viewer point', () => {
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('marker-2'));
+
+  expect(screen.queryByTestId('place-sheet-status')).toBeNull();
+  // The sheet is otherwise intact — this is an omission, not a broken card.
+  expect(screen.getByText('View place')).toBeOnTheScreen();
 });
 
 it('shows the "zoom in for more" chip when the response is truncated', () => {
