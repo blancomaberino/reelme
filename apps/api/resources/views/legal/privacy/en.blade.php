@@ -187,10 +187,11 @@
     <li>
       <strong>Location.</strong> Only while you are using the app, never in the background: to centre the map
       where you are, to power the "locate me" button, and to work out how far away each place is. Distances
-      are calculated on our servers, so a rounded version of your position (to about 10&nbsp;metres) is sent
-      with the request. <strong>It is never saved to your account and never shared</strong>; like every other
-      request, it may appear briefly in our server logs before they are discarded. If you decline, the map
-      opens on a default region and no distances are shown.
+      are calculated on our servers, so we round your position to roughly 10&nbsp;metres and send that with
+      the request. <strong>It is never saved to your account, and never shared with anyone else for their
+      own purposes</strong>; like every other request it passes through our hosting provider and may appear
+      in our server logs for a limited time before they are discarded. If you decline, the map opens on a
+      default region and no distances are shown.
     </li>
     <li>
       <strong>Camera.</strong> Solely to scan a redemption QR code at the venue. We do not request photo

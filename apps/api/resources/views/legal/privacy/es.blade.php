@@ -135,7 +135,7 @@
         <td>Consentimiento (permiso del sistema)</td>
       </tr>
       <tr>
-        <td>Mostrarte a qué distancia queda cada lugar</td>
+        <td>Mostrar a qué distancia queda cada lugar</td>
         <td>Ubicación aproximada del dispositivo</td>
         <td>Consentimiento (permiso del sistema)</td>
       </tr>
@@ -189,11 +189,11 @@
     <li>
       <strong>Ubicación.</strong> Solo mientras usás la aplicación (nunca en segundo plano): para centrar el
       mapa donde estás, para el botón de «ubicarme» y para calcular a qué distancia queda cada lugar. Las
-      distancias se calculan en nuestros servidores, así que se envía con el pedido una versión redondeada
-      de tu posición (a unos 10&nbsp;metros). <strong>Nunca se guarda asociada a tu cuenta ni se
-      comparte</strong>; como todo pedido, puede quedar un rato en los registros del servidor antes de que
-      se descarten. Si rechazás el permiso, el mapa arranca en una región por defecto y no se muestran
-      distancias.
+      distancias se calculan en nuestros servidores: redondeamos tu posición a unos 10&nbsp;metros y enviamos
+      eso con el pedido. <strong>Nunca se guarda asociada a tu cuenta ni se comparte con terceros para sus
+      propios fines</strong>; como todo pedido, pasa por nuestro proveedor de hosting y puede quedar un
+      tiempo acotado en los registros del servidor antes de que se descarten. Si rechazás el permiso, el
+      mapa arranca en una región por defecto y no se muestran distancias.
     </li>
     <li>
       <strong>Cámara.</strong> Únicamente para escanear el código QR de un canje en el local. No pedimos
