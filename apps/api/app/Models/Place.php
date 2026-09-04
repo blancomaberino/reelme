@@ -376,15 +376,19 @@ class Place extends Model
      * When the dish/menu list was last refreshed — the most recent source that
      * contributed any dishes (its snapshot is frozen at publish, so its
      * `created_at` is when those dishes landed on the place). Null if no source
-     * carries dishes. Reads the already-loaded `sources` relation (no queries).
+     * carries dishes. Reads the already-loaded `sources.dishes` relation (no
+     * queries) — callers MUST eager-load it.
      */
     public function dishesUpdatedAt(): ?string
     {
         $latest = null;
         foreach ($this->sources as $source) {
-            $snapshot = $source->extraction_snapshot_json;
-            $dishes = $snapshot['dishes'] ?? null;
-            if (! is_array($dishes) || $dishes === []) {
+            // The `dishes` ROWS, not `$snapshot['dishes']` (T-157). These three
+            // fields — `dishes`, `dishes_updated_at`, `dishes_language` — land in
+            // one payload, so reading two different answers to "does this source
+            // carry dishes?" is how a response comes to say "menu updated
+            // Tuesday" above an empty menu.
+            if ($source->dishes->isEmpty()) {
                 continue;
             }
             if ($source->created_at !== null && ($latest === null || $source->created_at->gt($latest))) {
@@ -405,9 +409,11 @@ class Place extends Model
     {
         foreach ($this->sources->sortByDesc('is_primary') as $source) {
             $snapshot = $source->extraction_snapshot_json;
-            $hasDishes = is_array($snapshot['dishes'] ?? null) && $snapshot['dishes'] !== [];
+            // Same rule as dishesUpdatedAt(): "has dishes" is answered by the
+            // rows. The LANGUAGE still comes from the snapshot — it describes the
+            // post, not the dish, and there is no language column.
             $language = $snapshot['language'] ?? null;
-            if ($hasDishes && is_string($language) && $language !== '') {
+            if ($source->dishes->isNotEmpty() && is_string($language) && $language !== '') {
                 return $language;
             }
         }

@@ -65,7 +65,10 @@ class PlaceSourceResource extends JsonResource
      */
     private function dishNames(): array
     {
-        return $this->dishes->pluck('name')->unique()->values()->all();
+        // No `unique()`: `unique(place_source_id, name)` already makes a
+        // duplicate impossible, and keeping the call would imply a case that
+        // cannot occur.
+        return $this->dishes->pluck('name')->all();
     }
 
     /**

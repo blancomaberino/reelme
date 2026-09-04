@@ -2,10 +2,13 @@
 
 use App\Models\Dish;
 use App\Models\Place;
+use App\Models\PlaceSource;
+use App\Services\Places\DishMaterializer;
 use App\Services\Places\PlaceMerger;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -55,6 +58,21 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
+    /**
+     * Opted OUT of the migration-wide transaction, because of the backfill at
+     * the end of `up()`: Laravel wraps a whole migration in one transaction on
+     * Postgres, and `DishMaterializer::materialize()` opens its own — so the
+     * corpus would run as one SAVEPOINT per source. Past ~64 subtransactions in
+     * a single transaction Postgres spills to the `pg_subtrans` SLRU and every
+     * concurrent backend pays for it on visibility checks, and the whole run
+     * would sit under one long-lived xmin blocking autovacuum.
+     *
+     * Losing atomicity is safe here precisely because the projection is a
+     * replace-per-source: a partial run leaves correct rows for the sources it
+     * reached, and `reelmap:dishes:backfill` finishes the job.
+     */
+    public $withinTransaction = false;
+
     public function up(): void
     {
         Schema::create('dishes', function (Blueprint $table): void {
@@ -77,6 +95,69 @@ return new class extends Migration
         });
 
         DB::statement('CREATE INDEX dishes_name_normalized_trgm ON dishes USING GIN (name_normalized gin_trgm_ops)');
+
+        // The backfill is part of SHIPPING this, not a repair tool — which is why
+        // it runs here rather than being left to `reelmap:dishes:backfill`.
+        //
+        // `PlaceAggregations` and `PlaceSourceResource` read this table from the
+        // moment this migration lands. An empty table is therefore not a cold
+        // start, it is a live regression: every existing place detail loses its
+        // menu (the mobile sheet gates on `dishes.length > 0`) while the payload
+        // still reports a `dishes_updated_at`. `scripts/deploy.sh` runs
+        // `artisan migrate` inside maintenance mode and nothing else, so a step
+        // someone has to remember is a step that happens after the outage.
+        //
+        // This is the difference from T-031's `reelmap:tags:backfill`, which is
+        // also absent from the deploy: tags were ADDITIVE — an unbackfilled place
+        // simply lacked a facet it never had — whereas here the read side was
+        // switched over in the same commit.
+        //
+        // Three things make an in-migration backfill safe enough to prefer over
+        // a remembered deploy step, and each is load-bearing:
+        //
+        // 1. `$withinTransaction = false` above. The DDL is already committed by
+        //    the time this runs, so a failure here leaves the TABLE and the
+        //    INDEX in place and the projection merely partial. That matters more
+        //    than it sounds: `scripts/deploy.sh` pulls and installs the new code
+        //    BEFORE entering maintenance mode, and its trap runs `artisan up` on
+        //    failure — so a migration that rolled the table back would put the
+        //    new code in front of users against a schema with no `dishes`,
+        //    turning every place detail into a 42P01. Partial beats absent.
+        // 2. The per-source `catch`. Maintenance mode stops HTTP, not Horizon:
+        //    the queue keeps publishing and force-reprocessing while this walks
+        //    the table, so a source can vanish between the chunk's SELECT and
+        //    its INSERT. That is a routine race, not a corrupt deploy, and it
+        //    must not abort a run that is minutes long.
+        // 3. The container lookup is INSIDE the loop. A fresh database — CI, a
+        //    new machine, a DR rebuild — has no sources, so nothing is resolved
+        //    and this migration keeps replaying years from now even if
+        //    DishMaterializer is renamed or deleted. That is the usual objection
+        //    to touching app code from a migration, and this is what answers it.
+        //
+        // It goes through DishMaterializer rather than re-deriving the projection
+        // in SQL because `Dish::normalizeName()` is PHP (`Str::ascii()`), and a
+        // hand-written SQL twin of it is exactly the second implementation this
+        // whole design exists to avoid.
+        $failed = [];
+        PlaceSource::query()->chunkById(200, function ($chunk) use (&$failed): void {
+            foreach ($chunk as $source) {
+                try {
+                    app(DishMaterializer::class)->materialize($source);
+                } catch (Throwable $e) {
+                    $failed[] = $source->id;
+                    report($e);
+                }
+            }
+        });
+
+        if ($failed !== []) {
+            // Never silent: these sources have a snapshot and no rows, so their
+            // places show no menu until someone re-runs the command.
+            Log::warning('dishes.backfill_incomplete', [
+                'place_source_ids' => $failed,
+                'repair' => 'php artisan reelmap:dishes:backfill',
+            ]);
+        }
     }
 
     public function down(): void

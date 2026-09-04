@@ -78,30 +78,67 @@ class PlaceQueryBuilder extends Builder
      * "Pasta al pesto", "Pastas caseras" and "Lasagna de pasta". That favours
      * recall over precision on purpose — a discovery filter that misses the
      * plural of the word someone typed is worse than one that occasionally
-     * offers a near neighbour — and the request's `min:2` is what keeps a
-     * one-letter query from matching the whole corpus. The trigram GIN index on
-     * `name_normalized` is what keeps the leading `%` off a sequential scan.
+     * offers a near neighbour.
      *
      * Case- and accent-insensitivity comes from both sides reducing through
      * {@see Dish::normalizeName()}; because that leaves only `[a-z0-9 ]`, the
-     * needle cannot smuggle a LIKE wildcard into the pattern.
+     * needle cannot smuggle a LIKE wildcard into the pattern, and it reaches
+     * Postgres as a bound parameter regardless.
      *
-     * A non-empty term that normalizes to nothing (`?dish=!!!`) matches NOTHING
-     * rather than falling through. A filter that silently becomes "every place"
-     * when it cannot understand its input is worse than an empty result: the
-     * caller believes they filtered.
+     * Two floors, both of which must be here rather than only in the request —
+     * this builder is callable from anywhere, and a guard that lives only in a
+     * FormRequest protects only the callers that happen to use one:
+     *
+     * - **{@see Dish::MIN_QUERY}**, applied to the NORMALIZED needle. Below three
+     *   characters pg_trgm extracts no trigram, `dishes_name_normalized_trgm`
+     *   goes unused, and the filter becomes a sequential scan of every dish we
+     *   know on a public route. `?dish=p.` clears a raw-string `min:` and reduces
+     *   to one character, which is exactly why the check is on the needle.
+     * - **A term that normalizes away entirely** (`?dish=!!!`) matches NOTHING
+     *   rather than falling through. A filter that silently becomes "every place"
+     *   when it cannot understand its input is worse than an empty result: the
+     *   caller believes they filtered.
+     *
+     * Only PUBLISHED sources count. `ShareModerator::takeDown()` nulls
+     * `published_at` without deleting the source, so without this predicate a
+     * contribution moderation pulled — a DMCA removal included — would stay
+     * SEARCHABLE, and `?dish=` would be a corpus-wide oracle for finding it.
+     *
+     * Search is the half this closes, and the distinction is worth stating
+     * precisely rather than implying the stronger claim: `PlaceController::show()`
+     * loads a place's sources WITHOUT a `published()` filter, so a taken-down
+     * source's dish names still render for someone who already has the place's
+     * id. That is unchanged, pre-existing behaviour — it was equally true when
+     * these dishes were read out of the snapshot — and closing it means gating
+     * the whole source load, which also moves attribution and tags. That belongs
+     * in its own task, not smuggled in behind a filter.
+     * The publish gate is also what keeps this filter agreeing with its older
+     * twin: dish names are ALSO materialized as `TagKind::Dish` tags, and that
+     * path runs only at the publish seam, so an ungated `?dish=` would answer
+     * differently from `?tags[]=<dish-slug>` over the same field.
+     *
+     * A BLOCKED account's source is deliberately NOT excluded here, though it is
+     * excluded from the place detail's source load. Review proposed adding it;
+     * {@see App\Services\Moderation\BlockUsers} forbids it in as many words —
+     * "WHAT IS DELIBERATELY NOT AFFECTED: places … dropping a whole restaurant
+     * off the map because one blocked account also shared it would punish the
+     * blocker. Their ATTRIBUTION is hidden from the blocker's view; the pin
+     * stays." A dish-derived match is the pin, not the attribution. So a blocker
+     * can match a place on a dish whose claim they will not see credited, and
+     * that is the policy working, not a leak.
      */
     public function servingDish(string $dish): self
     {
         $needle = Dish::normalizeName($dish);
 
-        if ($needle === '') {
+        if (mb_strlen($needle) < Dish::MIN_QUERY) {
             return $this->whereRaw('false');
         }
 
         $this->whereExists(fn ($sub) => $sub->from('dishes')
             ->join('place_sources', 'place_sources.id', '=', 'dishes.place_source_id')
             ->whereColumn('place_sources.place_id', 'places.id')
+            ->whereNotNull('place_sources.published_at')
             ->where('dishes.name_normalized', 'like', '%'.$needle.'%'));
 
         return $this;

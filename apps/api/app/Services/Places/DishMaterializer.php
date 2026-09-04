@@ -37,7 +37,21 @@ class DishMaterializer
     {
         $rows = $this->rows($source);
 
+        // A source that was just INSERTed cannot have rows to replace, so the
+        // common case (most sources carry no dishes) costs nothing.
+        if ($rows === [] && $source->wasRecentlyCreated) {
+            return;
+        }
+
         DB::transaction(function () use ($source, $rows): void {
+            // Serialize concurrent materializations of the SAME source. Without
+            // this, two delete-then-insert passes under READ COMMITTED both find
+            // nothing to delete and both insert, and the loser hits
+            // `dishes_place_source_id_name_unique` — failing whatever write is
+            // hosting the hook, which is a user's publish or a backfill running
+            // against live traffic.
+            PlaceSource::query()->whereKey($source->id)->lockForUpdate()->first();
+
             Dish::query()->where('place_source_id', $source->id)->delete();
 
             if ($rows !== []) {
@@ -73,7 +87,22 @@ class DishMaterializer
                 continue;
             }
 
-            $name = mb_substr(trim((string) ($dish['name'] ?? '')), 0, Dish::MAX_NAME);
+            // `is_string` before the cast, not after: a snapshot hand-edited in
+            // Filament or tinker is not schema-validated, and casting an array to
+            // string throws — which on THIS path fails the publish that produced
+            // the snapshot, where the same shape used to only spoil one GET.
+            if (! is_string($dish['name'] ?? null)) {
+                continue;
+            }
+
+            // Truncation happens BEFORE the dedupe key is taken, deliberately:
+            // two names differing only past character 120 then collapse to one
+            // row instead of colliding on `unique(place_source_id, name)` and
+            // failing the publish. The collapse loses a dish the raw snapshot
+            // distinguishes — a real, accepted trade, and only reachable from a
+            // hand-corrected snapshot, since the extraction contract caps a name
+            // at 120 itself.
+            $name = mb_substr(trim($dish['name']), 0, Dish::MAX_NAME);
             if ($name === '' || isset($rows[$name])) {
                 continue;
             }
@@ -86,11 +115,13 @@ class DishMaterializer
             $rows[$name] = [
                 'place_source_id' => $source->id,
                 'name' => $name,
-                // May be '' for a name that is entirely punctuation or emoji.
-                // The row is still kept: it is a dish the place detail lists, and
-                // dropping it here would make this table disagree with the
-                // snapshot it projects. An empty needle never reaches the filter,
-                // so such a row simply matches nothing.
+                // May be '' — for punctuation or emoji, and (the larger
+                // category) for any script `Str::ascii()` cannot transliterate:
+                // Cyrillic, Greek and Arabic do fold, CJK does not. The row is
+                // still kept: it is a dish the place detail lists, and dropping
+                // it would make this table disagree with the snapshot it
+                // projects. It is simply unsearchable — see the KNOWN LIMIT on
+                // {@see Dish::normalizeName()}.
                 'name_normalized' => Dish::normalizeName($name),
                 'price' => $price,
                 'shown_in_video' => (bool) ($dish['shown_in_video'] ?? false),

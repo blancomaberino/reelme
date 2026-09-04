@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Dish;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -9,8 +10,8 @@ use Illuminate\Validation\Rule;
  * Validates the personal + per-user place listings (T-071, ADR-071): the "my
  * places" listing (`GET /me/places`) and a user's public places listing
  * (`GET /users/{username}/places`). Both take the same faceted filters —
- * country, type (cuisine), tags — over the same dataset as the corresponding
- * map, plus keyset pagination. (Distinct from {@see PlaceListRequest}, which
+ * country, type (cuisine), tags, dish — over the same dataset as the
+ * corresponding map, plus keyset pagination. (Distinct from {@see PlaceListRequest}, which
  * creates/edits a saved place *list* — this filters a *listing* of places.)
  * Auth is enforced by route middleware, not here.
  */
@@ -40,8 +41,8 @@ class PlaceListingRequest extends FormRequest
             'country' => ['nullable', 'string', 'size:2', 'alpha'],
             'type' => ['nullable', 'string', 'max:64'],
             // "…of my places that do pasta" (T-157). See PlaceIndexRequest for
-            // why the minimum is two characters.
-            'dish' => ['nullable', 'string', 'min:2', 'max:120'],
+            // why this minimum is the friendly half and not the real floor.
+            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:120'],
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'sort' => ['nullable', Rule::in(['recent', 'popular'])],

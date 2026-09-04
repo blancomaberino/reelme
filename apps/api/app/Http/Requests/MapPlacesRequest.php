@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Dish;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -51,6 +52,13 @@ class MapPlacesRequest extends FormRequest
             'cuisine' => ['nullable', 'string', 'max:64'],
             'price_range' => ['nullable', 'integer', 'between:1,4'],
             'card' => ['nullable', 'string', 'max:64'],
+            // "…that do pasta", on the surface where that question is actually
+            // asked (T-157). A FormRequest ignores unknown parameters, so
+            // omitting this rule would not 422 `?dish=` on the map — it would
+            // return the whole viewport with a 200, which is precisely the
+            // "the caller believes they filtered" failure servingDish() guards
+            // against, relocated to the surface that forgot the filter.
+            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:120'],
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'filter' => ['nullable', Rule::in(['all', 'following', 'mine'])],

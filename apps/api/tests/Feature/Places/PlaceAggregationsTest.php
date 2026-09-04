@@ -177,3 +177,53 @@ it('leaves a moderated source\'s dishes out of the aggregate, exactly as it leav
 
     expect(collect(PlaceAggregations::tags($narrowed)['dishes'])->pluck('name')->all())->toBe(['Visible']);
 });
+
+it('diverges from the old JSONB parse ONLY at the write-path caps, and says how', function () {
+    // The equivalence table above deliberately stays inside the extraction
+    // contract's bounds, because that is where equivalence actually holds. This
+    // test is the other half: it names the two places the projection is NOT a
+    // faithful copy, so "identical output" is never read as a stronger claim
+    // than it is. Both are only reachable from a hand-corrected snapshot — the
+    // contract caps a dish list at 32 and a name at 120 itself.
+    $dishes = [['name' => str_repeat('a', 200), 'shown_in_video' => false]];
+    for ($i = 0; $i < 40; $i++) {
+        $dishes[] = ['name' => "Plato {$i}", 'shown_in_video' => false];
+    }
+
+    $place = placeWithSnapshots([['dishes' => $dishes]]);
+    $new = PlaceAggregations::tags($place)['dishes'];
+    $old = legacyDishes($place);
+
+    expect($old)->toHaveCount(41)      // the parse took everything…
+        ->and($new)->toHaveCount(32);  // …the projection bounds it (MAX_DISHES_PER_SOURCE)
+    expect(mb_strlen($old[0]['name']))->toBe(200)
+        ->and(mb_strlen($new[0]['name']))->toBe(120);  // Dish::MAX_NAME
+});
+
+it('never reports a menu timestamp for a menu it will not show', function () {
+    // `dishes`, `dishes_updated_at` and `dishes_language` land in one payload.
+    // They used to be answered from one place (the snapshot) and now `dishes`
+    // comes from the table — so if the other two kept reading the snapshot the
+    // response would say "menu updated Tuesday" above an empty menu, and the
+    // mobile sheet (which gates on `dishes.length > 0`) would render exactly
+    // that contradiction.
+    $place = Place::factory()->active()->atPoint(-34.90, -56.16)->create();
+    PlaceSource::factory()->create([
+        'place_id' => $place->id,
+        'extraction_snapshot_json' => ['language' => 'es', 'dishes' => [['name' => 'Chivito', 'shown_in_video' => true]]],
+    ]);
+
+    $withDishes = $this->getJson("/api/v1/places/{$place->slug}")->assertOk();
+    expect($withDishes->json('data.dishes'))->toHaveCount(1)
+        ->and($withDishes->json('data.dishes_updated_at'))->not->toBeNull()
+        ->and($withDishes->json('data.dishes_language'))->toBe('es');
+
+    // Now the projection disagrees with the snapshot — the pre-backfill corpus,
+    // and any source the caps trimmed to nothing.
+    DB::table('dishes')->delete();
+
+    $without = $this->getJson("/api/v1/places/{$place->slug}")->assertOk();
+    expect($without->json('data.dishes'))->toBe([])
+        ->and($without->json('data.dishes_updated_at'))->toBeNull()
+        ->and($without->json('data.dishes_language'))->toBeNull();
+});

@@ -3,10 +3,13 @@
 use App\Enums\ShareStatus;
 use App\Models\Dish;
 use App\Models\Place;
+use App\Models\PlaceMerge;
 use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Models\User;
+use App\Services\Moderation\ShareModerator;
+use App\Services\Places\PlaceMerger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -16,11 +19,15 @@ uses(RefreshDatabase::class);
  * T-157 — dishes as first-class rows: the projection (who writes it, and from
  * which of the several snapshot writers), and the `?dish=` filter it exists for.
  */
-function sourceWithDishes(array $dishes, ?Place $place = null): PlaceSource
+function sourceWithDishes(array $dishes, ?Place $place = null, bool $published = true): PlaceSource
 {
     return PlaceSource::factory()->create([
         'place_id' => ($place ?? Place::factory()->active()->atPoint(-34.90, -56.16)->create())->id,
         'extraction_snapshot_json' => ['dishes' => $dishes],
+        // `?dish=` only matches PUBLISHED evidence, and the factory leaves
+        // `published_at` null — so a fixture that forgets this would prove the
+        // filter works by proving nothing matches.
+        'published_at' => $published ? now() : null,
     ]);
 }
 
@@ -55,7 +62,14 @@ it('produces NO rows for a place whose extraction carried no dishes', function (
         'extraction_snapshot_json' => ['cuisines' => ['italian']], // key absent entirely
     ]);
 
-    expect(Dish::query()->count())->toBe(0);
+    // The control is the whole test: counting to zero from an empty table
+    // proves nothing — it passes just as well when the projection is dead.
+    // One dish-bearing source in the same table says the writer is alive AND
+    // that these two produced nothing.
+    $control = sourceWithDishes([['name' => 'Chivito', 'shown_in_video' => true]]);
+
+    expect(Dish::query()->count())->toBe(1)
+        ->and(Dish::query()->sole()->place_source_id)->toBe($control->id);
 });
 
 /**
@@ -96,28 +110,45 @@ it('keeps the rows in step through EVERY writer of extraction_snapshot_json', fu
     }],
 ]);
 
-it('has no query-builder write to the snapshot column, which would bypass the model hook', function () {
-    // The hook fires on Eloquent events only. A `DB::table('place_sources')
-    // ->update(['extraction_snapshot_json' => …])` anywhere in the app would
-    // leave the dish rows describing a snapshot that no longer exists — and no
-    // behavioural test could see it, because the rows would still be *a* valid
-    // projection of *an* older truth. So the guard is structural.
+/**
+ * The set of query-builder writers of `place_sources`, each with a reason.
+ *
+ * The observer fires on Eloquent events, so ANY query-builder write to that
+ * table is a potential bypass — and the previous version of this guard grepped
+ * for statements that spelled `extraction_snapshot_json` literally, which missed
+ * the one writer that already violated the invariant: `PlaceMerger::unmerge()`
+ * passes a whole row array, so the column name never appears in its source text.
+ *
+ * So the guard asserts over the SET OF WRITERS instead of over one call's
+ * spelling. A new query-builder write to this table fails here until someone
+ * adds it to this list, which forces the question "does this touch the snapshot,
+ * and if so who re-projects the dishes?" to be answered deliberately.
+ *
+ * @return array<string, string>
+ */
+function knownPlaceSourceQueryBuilderWriters(): array
+{
+    return [
+        // Merge: rehomes place_id / demotes is_primary. Never touches the
+        // snapshot, and dishes key on place_source_id, so they follow the row.
+        'PlaceMerger.php' => 'merge/unmerge row surgery — unmerge re-materializes explicitly',
+        // Un-publish + orphan cleanup. Deletes rows (dishes cascade) or writes
+        // published_at; never the snapshot.
+        'MePlacesController.php' => 'removes my sources — deletes cascade to dishes',
+    ];
+}
+
+it('has no UNKNOWN query-builder writer of place_sources, which would bypass the observer', function () {
     $offenders = [];
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
-    foreach ($files as $file) {
+
+    /** @var SplFileInfo $file */
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path())) as $file) {
         if ($file->isDir() || $file->getExtension() !== 'php') {
             continue;
         }
-        // Comments are stripped first: the concern that documents this rule
-        // spells the forbidden call out in its own docblock.
-        $code = '';
-        foreach (token_get_all((string) file_get_contents($file->getPathname())) as $token) {
-            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
-                continue;
-            }
-            $code .= is_array($token) ? $token[1] : $token;
-        }
-        if (preg_match("/DB::table\(\s*'place_sources'\s*\)[^;]*extraction_snapshot_json/s", $code)) {
+
+        if (dishGuardMutatesPlaceSources(stripPhpComments((string) file_get_contents($file->getPathname())))
+            && ! array_key_exists($file->getFilename(), knownPlaceSourceQueryBuilderWriters())) {
             $offenders[] = $file->getPathname();
         }
     }
@@ -125,19 +156,47 @@ it('has no query-builder write to the snapshot column, which would bypass the mo
     expect($offenders)->toBe([]);
 });
 
+it('the writer detector actually detects — positive and negative controls', function (string $_label, string $code, bool $shouldFlag) {
+    expect(dishGuardMutatesPlaceSources(stripPhpComments($code)))->toBe($shouldFlag);
+})->with([
+    // Every shape a previous version of this guard let through. Without these
+    // the detector is never shown to detect, and a typo in the pattern would
+    // make the test above pass over a codebase full of bypasses.
+    ['single quotes update', "DB::table('place_sources')->update(['extraction_snapshot_json' => \$x]);", true],
+    ['double quotes', 'DB::table("place_sources")->update(["extraction_snapshot_json" => $x]);', true],
+    ['insertOrIgnore of a row array', "DB::table('place_sources')->insertOrIgnore(\$row);", true],
+    ['upsert', "DB::table('place_sources')->upsert(\$rows, ['id']);", true],
+    ['aliased table', "DB::table('place_sources as ps')->update(['x' => 1]);", true],
+    ['explicit connection', "DB::connection('pgsql')->table('place_sources')->update(['x' => 1]);", true],
+    ['eloquent mass update', 'PlaceSource::query()->whereKey($id)->update([$x]);', true],
+    ['eloquent toBase update', 'PlaceSource::query()->toBase()->update([$x]);', true],
+    ['raw statement', "DB::statement('UPDATE place_sources SET extraction_snapshot_json = ?', [\$j]);", true],
+    ['a comment describing one', "// DB::table('place_sources')->update(['extraction_snapshot_json' => 1]);", false],
+    ['a read, not a write', "DB::table('place_sources')->where('id', 1)->get();", false],
+    ['a different table', "DB::table('places')->update(['name' => 'x']);", false],
+    ['a model save', '$source->save();', false],
+]);
+
 it('replaces rather than appends, so the backfill is idempotent', function () {
     $source = sourceWithDishes([
         ['name' => 'Chivito', 'shown_in_video' => true],
         ['name' => 'Fainá', 'shown_in_video' => false],
     ]);
 
-    $before = Dish::query()->count();
-    expect($before)->toBe(2);
+    expect(Dish::query()->count())->toBe(2);
+
+    // Start from EMPTY, not from the rows the observer already wrote: running
+    // the command twice over an already-correct table also passes when the
+    // command is a complete no-op. From empty, the first run has to build the
+    // rows and the second has to not duplicate them.
+    Dish::query()->delete();
 
     $this->artisan('reelmap:dishes:backfill')->assertSuccessful();
+    expect(Dish::query()->count())->toBe(2);
+
     $this->artisan('reelmap:dishes:backfill')->assertSuccessful();
 
-    expect(Dish::query()->count())->toBe($before)
+    expect(Dish::query()->count())->toBe(2)
         ->and(Dish::query()->where('place_source_id', $source->id)->pluck('name')->all())
         ->toBe(['Chivito', 'Fainá']);
 });
@@ -154,6 +213,11 @@ it('backfills a source whose rows were never written (a pre-T-157 row)', functio
 
 it('drops a source\'s dishes with the source', function () {
     $source = sourceWithDishes([['name' => 'Chivito', 'shown_in_video' => true]]);
+
+    // Prove the row EXISTED. Without this the test passes when the projection
+    // never wrote anything at all — 0 before, 0 after — and so tests neither
+    // the cascade nor the observer.
+    expect(Dish::query()->where('place_source_id', $source->id)->count())->toBe(1);
 
     $source->delete();
 
@@ -175,9 +239,12 @@ it('treats dish text as untrusted model output: capped, deduped, bounded per sou
     $source = sourceWithDishes($dishes);
     $rows = Dish::query()->where('place_source_id', $source->id)->orderBy('id')->get();
 
-    expect($rows)->toHaveCount(32)                                   // MAX_DISHES_PER_SOURCE
-        ->and(mb_strlen($rows[0]->name))->toBe(Dish::MAX_NAME)
-        ->and(mb_strlen((string) $rows[0]->price))->toBe(Dish::MAX_PRICE)
+    // LITERALS, not the constants: `mb_strlen($name) === Dish::MAX_NAME` passes
+    // for any value of MAX_NAME, including one that drifted away from the
+    // column width and the extraction contract.
+    expect($rows)->toHaveCount(32)
+        ->and(mb_strlen($rows[0]->name))->toBe(120)
+        ->and(mb_strlen((string) $rows[0]->price))->toBe(40)
         ->and($rows->where('name', 'Chivito'))->toHaveCount(1)
         ->and($rows->firstWhere('name', 'Chivito')->shown_in_video)->toBeFalse();
 });
@@ -273,29 +340,198 @@ it('filters my places by dish too', function () {
         ]);
     }
 
+    // Unfiltered control: both places are mine and visible, so the filtered
+    // result below is the filter working rather than a fixture that never showed.
+    expect($this->actingAs($user)->getJson('/api/v1/me/places')->assertOk()->json('data'))->toHaveCount(2);
+
     $names = collect($this->actingAs($user)->getJson('/api/v1/me/places?dish=pasta')->assertOk()->json('data'))
         ->pluck('name')->all();
 
     expect($names)->toBe(['Mine With Pasta']);
 });
 
-it('rides the trigram index rather than scanning every dish', function () {
-    sourceWithDishes([['name' => 'Pasta al pesto', 'shown_in_video' => true]]);
+it('refuses a needle too short for the trigram index instead of scanning the corpus', function (string $raw) {
+    // The floor is a PERFORMANCE boundary, not a taste one: pg_trgm extracts no
+    // trigram from a wildcard-free segment under three characters, so `%ab%`
+    // cannot use dishes_name_normalized_trgm and reads every dish we have — on a
+    // public, unauthenticated route.
+    //
+    // Each of these clears a raw-string `min:3` and still reduces below it,
+    // which is exactly why the guard lives on the NORMALIZED needle.
+    $sql = Place::query()->publiclyVisible()->servingDish($raw)->toSql();
 
-    $plan = collect(DB::select(
-        "EXPLAIN SELECT 1 FROM dishes WHERE name_normalized LIKE '%pasta%'"
-    ))->pluck('QUERY PLAN')->implode(' ');
+    // The needle never reaches a LIKE: the query is short-circuited to a
+    // contradiction, so the corpus is not touched at all.
+    expect($sql)->toEndWith('and false')
+        ->and($sql)->not->toContain('name_normalized');
+})->with(['a.', 'p!', '!!a!!', '-e-', 'ñ.', '!!!']);
 
-    // Postgres will still prefer a seq scan on a table this small, so force its
-    // hand: what matters is that the index is USABLE for this predicate — an
-    // unusable one is silently a full scan on a corpus of every dish we know.
-    DB::statement('SET LOCAL enable_seqscan = off');
-    $forced = collect(DB::select(
-        "EXPLAIN SELECT 1 FROM dishes WHERE name_normalized LIKE '%pasta%'"
-    ))->pluck('QUERY PLAN')->implode(' ');
+it('keeps the write-path caps equal to the column widths they must fit', function () {
+    // The constants are checked against the extraction CONTRACT in
+    // ExtractionSchemaTest; this is the other end of the same mirror — the
+    // columns. A constant that drifts above its column is a Postgres rejection
+    // mid-publish, which is a user-visible failure produced by a number nobody
+    // thought was load-bearing.
+    $columns = collect(DB::select(
+        "SELECT column_name, character_maximum_length AS len FROM information_schema.columns WHERE table_name = 'dishes'"
+    ))->keyBy('column_name');
 
-    expect($forced)->toContain('dishes_name_normalized_trgm');
-    // The unforced plan is only reported for context — on a table this small
-    // Postgres is right to prefer a sequential scan.
-    expect($plan)->toBeString();
+    expect((int) $columns['name']->len)->toBe(Dish::MAX_NAME)
+        ->and((int) $columns['price']->len)->toBe(Dish::MAX_PRICE)
+        ->and((int) $columns['name_normalized']->len)->toBe(Dish::MAX_NAME);
 });
+
+it('backs the dish match with a trigram index on the column the query actually filters', function () {
+    // Deliberately NOT an assertion about the planner's choice. On a test-sized
+    // table Postgres correctly prefers a sequential scan, and forcing its hand
+    // with `enable_seqscan = off` proves only that the index is *usable* — which
+    // is true of any pattern, including a 2-char needle that then rechecks every
+    // row. Both shapes are theatre.
+    //
+    // What is worth pinning is deterministic: the index exists, it is a trigram
+    // GIN, and it is on the column `servingDish()` filters. Those are the three
+    // facts the docblock's performance claim rests on, and each of them is one
+    // careless migration away from being false.
+    $index = DB::selectOne(
+        "SELECT indexdef FROM pg_indexes WHERE tablename = 'dishes' AND indexname = 'dishes_name_normalized_trgm'"
+    );
+
+    expect($index)->not->toBeNull()
+        ->and($index->indexdef)->toContain('USING gin')
+        ->and($index->indexdef)->toContain('gin_trgm_ops')
+        ->and($index->indexdef)->toContain('name_normalized');
+
+    // …and that the filter really does target that column, so renaming the match
+    // column without the index would fail here rather than silently degrade.
+    expect(Place::query()->publiclyVisible()->servingDish('pasta')->toSql())
+        ->toContain('"dishes"."name_normalized"');
+});
+
+it('keeps a moderated contribution out of search when its share is taken down', function () {
+    $place = Place::factory()->active()->atPoint(-34.90, -56.16)->create();
+    $keep = sourceWithDishes([['name' => 'Asado', 'shown_in_video' => true]], $place);
+    $pulled = sourceWithDishes([['name' => 'Milanesa secreta', 'shown_in_video' => true]], $place);
+
+    // Both searchable while both are live — so the assertion below is about the
+    // take-down, not about the fixture never having matched.
+    expect($this->getJson('/api/v1/places?dish=milanesa')->json('data'))->toHaveCount(1);
+
+    app(ShareModerator::class)->takeDown($pulled->share, 'dmca');
+
+    // The place survives (another share still evidences it) but the pulled
+    // contribution stops steering discovery. A DMCA removal that leaves the text
+    // findable corpus-wide has not removed anything.
+    expect($this->getJson('/api/v1/places?dish=milanesa')->json('data'))->toBe([])
+        ->and(collect($this->getJson('/api/v1/places?dish=asado')->json('data'))->pluck('id')->all())
+        ->toBe([(string) $keep->place_id]);
+});
+
+it('restores a dropped duplicate source WITH its dishes when a merge is undone', function () {
+    // The gap this covers: merge() hard-deletes a dropped duplicate (its dishes
+    // cascade away) and unmerge() re-inserts the row through the query builder,
+    // which fires no model events. Without an explicit re-projection the source
+    // comes back carrying a snapshot full of dishes and zero dish rows —
+    // permanently, and invisibly, because both tables stay internally consistent.
+    $winner = Place::factory()->active()->atPoint(-34.90, -56.16)->create();
+    $loser = Place::factory()->active()->atPoint(-34.91, -56.17)->create();
+
+    $share = Share::factory()->create(['status' => ShareStatus::Published]);
+    // The same share on both places is what makes the loser's source a "dropped
+    // duplicate" on merge (unique(place_id, share_id) survives; unique(share_id)
+    // was dropped by the multi-place migration, so this is reachable).
+    PlaceSource::factory()->create([
+        'place_id' => $winner->id, 'share_id' => $share->id, 'published_at' => now(),
+        'extraction_snapshot_json' => ['dishes' => [['name' => 'Chivito', 'shown_in_video' => true]]],
+    ]);
+    $dropped = PlaceSource::factory()->create([
+        'place_id' => $loser->id, 'share_id' => $share->id, 'published_at' => now(),
+        'extraction_snapshot_json' => ['dishes' => [['name' => 'Fainá', 'shown_in_video' => true]]],
+    ]);
+
+    expect(Dish::query()->where('place_source_id', $dropped->id)->count())->toBe(1);
+
+    $merger = app(PlaceMerger::class);
+    $merger->merge($winner, $loser);
+    $merge = PlaceMerge::query()->latest('id')->sole();
+    $merger->unmerge($merge);
+
+    expect(PlaceSource::query()->whereKey($dropped->id)->exists())->toBeTrue()
+        ->and(Dish::query()->where('place_source_id', $dropped->id)->pluck('name')->all())
+        ->toBe(['Fainá']);
+});
+
+it('shows no dishes for a pre-T-157 source until the backfill runs, then shows them', function () {
+    $place = Place::factory()->active()->atPoint(-34.90, -56.16)->create();
+    sourceWithDishes([['name' => 'Chivito', 'shown_in_video' => true]], $place);
+
+    // The corpus as it exists the moment the table is created: snapshots, no rows.
+    Dish::query()->delete();
+
+    // This is the regression the migration's inline backfill exists to prevent —
+    // asserted at the RESPONSE, because "the table is empty" is not the problem,
+    // "every place detail lost its menu" is.
+    expect($this->getJson("/api/v1/places/{$place->slug}")->json('data.dishes'))->toBe([]);
+
+    $this->artisan('reelmap:dishes:backfill')->assertSuccessful();
+
+    expect($this->getJson("/api/v1/places/{$place->slug}")->json('data.dishes.0.name'))->toBe('Chivito');
+});
+
+it('filters the map by dish too, rather than silently ignoring the parameter', function () {
+    $pasta = Place::factory()->active()->atPoint(-34.9011, -56.1645)->create(['name' => 'Pasta Map']);
+    sourceWithDishes([['name' => 'Pasta al pesto', 'shown_in_video' => true]], $pasta);
+    $other = Place::factory()->active()->atPoint(-34.9012, -56.1646)->create(['name' => 'Parrilla Map']);
+    sourceWithDishes([['name' => 'Asado', 'shown_in_video' => true]], $other);
+
+    $bbox = 'bbox=-56.20,-34.95,-56.10,-34.85&zoom=15';
+
+    // Unfiltered control first: a filter that returns one pin is only meaningful
+    // if two were reachable.
+    expect($this->getJson("/api/v1/map/places?{$bbox}")->assertOk()->json('data.pins'))->toHaveCount(2);
+
+    $pins = $this->getJson("/api/v1/map/places?{$bbox}&dish=pasta")->assertOk()->json('data.pins');
+
+    expect(collect($pins)->pluck('name')->all())->toBe(['Pasta Map']);
+});
+
+/**
+ * Source text with comments and docblocks removed — the prose in this repo
+ * quotes the forbidden calls when explaining them, and a guard that matched
+ * those would flag its own documentation.
+ */
+function stripPhpComments(string $code): string
+{
+    // `token_get_all` treats anything before an opening tag as inline HTML, so a
+    // bare code fragment (what the control fixtures pass) would come back
+    // untouched — comments included — and the negative controls would flag.
+    $prefixed = str_contains($code, '<?php') ? $code : "<?php\n".$code;
+
+    $out = '';
+    foreach (@token_get_all($prefixed) as $token) {
+        if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+            continue;
+        }
+        $out .= is_array($token) ? $token[1] : $token;
+    }
+
+    return $out;
+}
+
+/** Does this (comment-stripped) source mutate `place_sources` outside Eloquent events? */
+function dishGuardMutatesPlaceSources(string $code): bool
+{
+    $verbs = 'update|insert|insertOrIgnore|insertGetId|upsert|delete';
+
+    return (bool) preg_match(
+        '/(?:DB::(?:connection\([^)]*\)->)?table\(\s*["\']place_sources(?:\s+as\s+\w+)?["\']\s*\)'
+        .'|PlaceSource::query\(\)(?:(?!;).)*?->toBase\(\))'
+        .'(?:(?!;).)*?->\s*(?:'.$verbs.')\s*\(/s',
+        $code,
+    ) || (bool) preg_match(
+        '/PlaceSource::query\(\)(?:(?!;).)*?->\s*(?:update|upsert)\s*\(/s',
+        $code,
+    ) || (bool) preg_match(
+        '/DB::statement\(\s*["\'][^"\']*\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+place_sources\b/is',
+        $code,
+    );
+}

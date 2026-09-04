@@ -31,7 +31,18 @@ use Illuminate\Support\Str;
  */
 class Dish extends Model
 {
-    protected $fillable = ['place_source_id', 'name', 'name_normalized', 'price', 'shown_in_video'];
+    /**
+     * Nothing mass-assigns a Dish — {@see App\Services\Places\DishMaterializer} is
+     * the only writer and it goes through `insert()`, which bypasses `$fillable`
+     * entirely. The list is deliberately EMPTY rather than decorative: a
+     * populated one reads as a write-path control that enforces nothing, and it
+     * would invite a `Dish::create($input)` that sets `name_normalized`
+     * independently of `name` — a row that displays as "Salad" and answers
+     * `?dish=pizza`.
+     *
+     * @var list<string>
+     */
+    protected $fillable = [];
 
     /**
      * The column's own limit, restated so the write path caps the value rather
@@ -43,6 +54,20 @@ class Dish extends Model
 
     /** As above, for the verbatim price string ("$450", "12€", "UYU 320"). */
     public const MAX_PRICE = 40;
+
+    /**
+     * The shortest NORMALIZED term `?dish=` will match on, and it is a
+     * performance boundary rather than a taste one: pg_trgm extracts no trigram
+     * from a wildcard-free segment shorter than three characters, so
+     * `LIKE '%ab%'` cannot use `dishes_name_normalized_trgm` and degrades to a
+     * sequential scan of every dish in the corpus — on a public, unauthenticated
+     * route. Measured on 600k rows: 6 ms indexed at 6 chars, 443 ms scanning at 2.
+     *
+     * It is enforced on the NORMALIZED needle, never the raw input: `?dish=p.`
+     * and `?dish=ño` both clear a `min:2` on the raw string and both reduce to
+     * fewer than three characters of match text.
+     */
+    public const MIN_QUERY = 3;
 
     /**
      * @return array<string, string>
@@ -66,7 +91,17 @@ class Dish extends Model
      *
      * Because the result contains only `[a-z0-9 ]`, a LIKE wildcard (`%`, `_`)
      * cannot survive normalization — which is why the query side can interpolate
-     * the needle into a LIKE pattern without escaping it.
+     * the needle into a LIKE pattern without escaping it. (The `preg_replace`
+     * carries no `/u` on purpose: it makes the pass byte-safe on invalid UTF-8,
+     * which would otherwise return null.)
+     *
+     * KNOWN LIMIT — scripts `Str::ascii()` cannot transliterate normalize to the
+     * empty string, and a dish stored that way can never match `?dish=`. Cyrillic,
+     * Greek and Arabic DO transliterate ("Борщ" → "borshh"); CJK does not
+     * ("とんこつラーメン" → ""). The row is still written — it is a dish the place
+     * detail lists — it is simply unsearchable. Irrelevant for a Montevideo
+     * corpus and stated here rather than left to be discovered; a multilingual
+     * corpus needs a different match column, not a wider regex.
      */
     public static function normalizeName(string $name): string
     {
