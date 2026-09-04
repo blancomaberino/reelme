@@ -107,7 +107,7 @@ jest.mock('@/components/map/place-marker', () => {
     markerRenders.push(pin.id);
     return React.createElement(
       Pressable,
-      { accessibilityLabel: `marker-${pin.id}`, onPress: () => onPress(pin.id) },
+      { accessibilityLabel: pin.name, onPress: () => onPress(pin.id) },
       React.createElement(Text, null, pin.name),
     );
   };
@@ -186,8 +186,8 @@ it('drops the personal scope while a saved list is the active view', () => {
 
 it('renders a marker per pin', () => {
   render(<MapScreen />);
-  expect(screen.getByLabelText('marker-1')).toBeOnTheScreen();
-  expect(screen.getByLabelText('marker-3')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Place 1')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Place 3')).toBeOnTheScreen();
 });
 
 it('does not re-render unrelated markers when one pin is selected (memoization)', () => {
@@ -198,7 +198,7 @@ it('does not re-render unrelated markers when one pin is selected (memoization)'
   // With a stable onPress and immutable pin data, memo skips pins 1 and 3 —
   // exactly one additional render (pin 2). If the screen churned props (inline
   // closures / new region state) all three would re-render and this would fail.
-  fireEvent.press(screen.getByLabelText('marker-2'));
+  fireEvent.press(screen.getByLabelText('Place 2'));
 
   expect(useMapStore.getState().selected?.id).toBe('2');
   const rerendered = markerRenders.slice(3);
@@ -220,7 +220,7 @@ it('does not re-render markers across a refetch (stable onPress despite new data
 
 it('opens the preview sheet with the tapped place and navigates to detail', () => {
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-2'));
+  fireEvent.press(screen.getByLabelText('Place 2'));
 
   // The sheet renders the place name + "View place" CTA.
   expect(screen.getByText('View place')).toBeOnTheScreen();
@@ -246,23 +246,28 @@ it('shows distance and the open cue on a tapped pin — reached by pressing the 
   // it opens. Rendering PlaceSheet directly (as its own test file does) proves
   // the component; only this proves the payload reaches it.
   //
-  // Honest about what the press is NOT: `marker-2` is a label this file's own
-  // PlaceMarker mock defines, so the marker's real press surface
-  // (`accessibilityLabel={pin.name}`) is not what is being pressed. The
-  // screen→sheet wiring is real; the tap target is a stand-in.
+  // The mock presses by the SAME label the real marker exposes
+  // (`accessibilityLabel={pin.name}`, place-marker.tsx). It used to invent
+  // `marker-2`, which made the real component's press surface untested by
+  // construction — a mock inventing an identity the real thing lacks is how a
+  // screen gets proven reachable through a door that does not exist.
+  //
+  // Still not an end-to-end proof: `PlaceMarker` is mocked, so react-native-maps
+  // and the native annotation are out of the picture. What this covers is the
+  // screen→sheet wiring and the payload reaching it.
   mockMapData.current = {
     pins: [pin('2', { distance_m: 450, open_state: { open_now: true, closes_at: '23:30', opens_at: null } })],
     clusters: [],
     truncated: false, fetchedAt: Date.now(),
   };
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-2'));
+  fireEvent.press(screen.getByLabelText('Place 2'));
 
   expect(screen.getByText('450 m')).toBeOnTheScreen();
   expect(screen.getByText('Open · closes 23:30')).toBeOnTheScreen();
 });
 
-it('drops the open cue — but keeps the distance — when the map data is stale', () => {
+it('drops BOTH the open cue and the distance when the map data is stale', () => {
   // The seam a component test cannot reach: `place-sheet.test.tsx` is handed
   // `fetchedAt` directly, so it proves the sheet obeys an age it is given. Only
   // here can the SCREEN be caught handing over a fabricated freshness — mutate
@@ -275,16 +280,17 @@ it('drops the open cue — but keeps the distance — when the map data is stale
     truncated: false, fetchedAt: Date.now(),
   };
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-2'));
+  fireEvent.press(screen.getByLabelText('Place 2'));
 
   expect(screen.queryByText('Open · closes 23:30')).toBeNull();
-  // A place does not move, so the distance is still true.
-  expect(screen.getByText('450 m')).toBeOnTheScreen();
+  // The distance goes with it. The place has not moved; the VIEWER has, and
+  // they are the other end of the measurement — see place-sheet.tsx.
+  expect(screen.queryByText('450 m')).toBeNull();
 });
 
 it('shows neither on a pin the API answered without a viewer point', () => {
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-2'));
+  fireEvent.press(screen.getByLabelText('Place 2'));
 
   expect(screen.queryByTestId('place-sheet-status')).toBeNull();
   // The sheet is otherwise intact — this is an omission, not a broken card.
@@ -340,7 +346,7 @@ it('removes a list-scoped pin from that list via the membership mutation', () =>
   const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-1'));
+  fireEvent.press(screen.getByLabelText('Place 1'));
 
   // The sheet offers remove-from-list (not save) while a list is active.
   expect(screen.queryByLabelText('Save to a list')).toBeNull();
@@ -364,7 +370,7 @@ it('removes a list-scoped pin from that list via the membership mutation', () =>
 it('offers save (not remove-from-list) on the personal map with no active list', () => {
   useSessionStore.setState({ user: null, status: 'authed' });
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-1'));
+  fireEvent.press(screen.getByLabelText('Place 1'));
 
   expect(screen.getByLabelText('Save to a list')).toBeOnTheScreen();
   expect(screen.queryByLabelText('Remove from list')).toBeNull();

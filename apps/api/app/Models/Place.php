@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ClaimStatus;
 use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
+use App\Http\Resources\Concerns\ResolvesRequestInstant;
 use App\Models\Builders\PlaceQueryBuilder;
 use App\Services\Reviews\ReviewSourceRegistry;
 use App\Services\Reviews\ReviewSourceSummary;
@@ -389,18 +390,21 @@ class Place extends Model
      * someone a place is shut when nobody knows sends them away from a
      * restaurant that is open and wanted their business.
      *
-     * `$at` exists so a response can measure every row against ONE instant. A
-     * bare `now()` per row means a 300-pin map served across a minute boundary
-     * can report two venues with identical hours as one open and one closed.
+     * `$at` is REQUIRED, not defaulted to `now()`. A response must measure every
+     * row against ONE instant — a bare `now()` per row lets a 300-pin map served
+     * across a minute boundary report two venues with identical hours as one
+     * open and one closed — and a default is how a caller skips that rule
+     * without noticing. {@see ResolvesRequestInstant}
+     * is where a resource gets the answer.
      *
      * Reads only own columns — no queries, and every caller already selects
      * `places.*`.
      *
      * @return array{open_now: bool, closes_at: string|null, opens_at: string|null}|null
      */
-    public function openState(?\DateTimeInterface $at = null): ?array
+    public function openState(\DateTimeInterface $at): ?array
     {
-        return OpeningSchedule::stateAt($this->opening_hours_periods_json, $this->timezone, $at ?? now());
+        return OpeningSchedule::stateAt($this->opening_hours_periods_json, $this->timezone, $at);
     }
 
     /**

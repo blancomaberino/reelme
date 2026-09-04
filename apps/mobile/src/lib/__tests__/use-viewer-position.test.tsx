@@ -132,6 +132,30 @@ it('does NOT spin the radio on a foreground when the fix it holds is still fresh
   expect(result.current).toEqual(FIX);
 });
 
+it('DOES re-ask on a foreground once the fix it holds has aged out', async () => {
+  // The other branch of the same guard, and the one the hook's docblock says it
+  // exists for: "a viewer who walked two kilometres had every pin measured from
+  // where they started". Backgrounding the app is exactly how that happens — the
+  // fix stops being re-taken while nothing is on screen, so the resume is the
+  // moment to ask again. Without this case, `const stale = false` passes.
+  const { result } = renderHook(() => useViewerPosition(), { wrapper });
+  await waitFor(() => expect(result.current).toEqual(FIX));
+  const callsBefore = lastKnown.mock.calls.length;
+
+  // Ten minutes pass with the app backgrounded. Only `Date.now` moves; the query
+  // cache's own timestamp stays where it was, which is what makes it stale.
+  const realNow = Date.now();
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(realNow + 10 * 60 * 1000);
+  try {
+    const handler = jest.mocked(AppState.addEventListener).mock.calls.at(-1)?.[1] as (s: string) => void;
+    handler('active');
+
+    await waitFor(() => expect(lastKnown.mock.calls.length).toBeGreaterThan(callsBefore));
+  } finally {
+    clock.mockRestore();
+  }
+});
+
 it('re-asks when a control that owns its prompt reports a grant', async () => {
   // "Locate me" prompts; granting there is a new answer to the question this
   // hook asked at mount and was told "not allowed" to. Without the refresh the

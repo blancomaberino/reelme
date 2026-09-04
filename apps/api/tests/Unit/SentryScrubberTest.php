@@ -89,3 +89,31 @@ it('redacts the position under any of its spellings, and case-insensitively', fu
 
     expect($query)->toBe('Near=[redacted]&lat=[redacted]&LNG=[redacted]&latitude=[redacted]&longitude=[redacted]');
 });
+
+it('is registered for TRANSACTIONS as well as errors — the type gate is in the SDK, not in us', function () {
+    // `Client::prepareEvent()` dispatches by event type: `before_send` fires for
+    // errors, `before_send_transaction` for transactions. `RequestIntegration`
+    // attaches `request.url`/`request.query_string` through a global processor
+    // with NO type gate, so a transaction carries the same query string. With
+    // only the error hook registered, turning `SENTRY_TRACES_SAMPLE_RATE` above
+    // 0 during an incident silently began exporting the coordinates.
+    //
+    // Asserted at the CONFIG, because the defect was never in the method — it
+    // was in which of the SDK's hooks the method was wired to, and no test of
+    // `scrub()` itself could see that.
+    // Read from the file rather than the container: this is a Unit test with no
+    // application booted, and the file is the artifact that ships.
+    $config = require dirname(__DIR__, 2).'/config/sentry.php';
+
+    expect($config['before_send'])->toBe([SentryScrubber::class, 'scrub'])
+        ->and($config['before_send_transaction'])->toBe([SentryScrubber::class, 'scrub']);
+});
+
+it('scrubs a transaction event, not just an error one', function () {
+    $event = Event::createTransaction();
+    $event->setRequest(['query_string' => 'zoom=15&near=-34.9011,-56.1645']);
+
+    $scrubbed = SentryScrubber::scrub($event);
+
+    expect($scrubbed->getRequest()['query_string'])->toBe('zoom=15&near=[redacted]');
+});

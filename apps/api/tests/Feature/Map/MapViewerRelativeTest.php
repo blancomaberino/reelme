@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Resources\Concerns\ResolvesRequestInstant;
 use App\Models\Place;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
@@ -146,7 +148,35 @@ it('computes distance in SQL — one query for the pins however many come back',
     $withDistance = collect($queries)->filter(fn ($q) => str_contains($q['query'], 'ST_Distance'))->count();
 
     expect($pins)->toHaveCount(25)
-        ->and($withDistance)->toBe(1);
+        ->and($withDistance)->toBe(1)
+        // And the TOTAL is bounded, which the ST_Distance count alone is not:
+        // deleting the `tags` or `primarySource.sourcePost.mediaAssets` eager
+        // load leaves the assertion above green while adding 25 lazy loads here
+        // and up to 300 per response in production. The number is a ceiling with
+        // headroom, not a pin — it is the growth with row count that matters.
+        ->and(count($queries))->toBeLessThan(12);
+});
+
+it('does not grow its query count with the number of pins', function () use ($bbox) {
+    // The bound above catches a lazy load only while the fixture is big enough.
+    // This catches the shape directly: five pins and twenty-five must cost the
+    // same number of statements, because none of them may be per-row.
+    $count = function (int $places) use ($bbox) {
+        Place::query()->delete();
+        for ($i = 0; $i < $places; $i++) {
+            placeAt(-34.90 - ($i / 1000), -56.16, openAllWeek());
+        }
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+        $this->getJson("/api/v1/map/places?{$bbox}&near=-34.95,-56.16")->assertOk();
+        $queries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $queries;
+    };
+
+    expect($count(25))->toBe($count(5));
 });
 
 it('keeps the pair on a singleton pin in the CLUSTERED response too', function () {
@@ -212,4 +242,55 @@ it('serves open_state on the LIST surface with the same never-guess rule', funct
 
     expect($rows[(string) $known->id]['open_state']['open_now'])->toBeBool()
         ->and($rows[(string) $unknown->id]['open_state'])->toBeNull();
+});
+
+/**
+ * Exposes the request-scoped clock so the memo can be driven directly. The trait
+ * keeps it `protected`, which is right for production and untestable from here.
+ */
+class PlaceSummaryResourceInstantProbe
+{
+    use ResolvesRequestInstant;
+
+    public static function instantFor(Request $request): DateTimeInterface
+    {
+        return self::instant($request);
+    }
+}
+
+it('answers the LIST surface with the VALUE, at a known instant — not merely a boolean', function () {
+    // `toBeBool()` above is a shape assertion, and shape is all it can catch.
+    // Hardcode `open_now => false` in PlaceSummaryResource and it stays green,
+    // while `/places`, `/search`, `/me/places`, the feed and every list tell a
+    // user that an open restaurant is shut — the exact T-155 failure, on five
+    // surfaces at once. This is the value, both ways, on a frozen clock.
+    $place = placeAt(-34.90, -56.16, openAllWeek());
+
+    $this->travelTo('2026-09-07 18:00:00'); // 15:00 in Montevideo — open.
+    $open = collect($this->getJson('/api/v1/places')->assertOk()->json('data'))->firstWhere('id', (string) $place->id);
+
+    $this->travelTo('2026-09-07 07:00:00'); // 04:00 in Montevideo — closed.
+    $closed = collect($this->getJson('/api/v1/places')->assertOk()->json('data'))->firstWhere('id', (string) $place->id);
+
+    expect($open['open_state'])->toBe(['open_now' => true, 'closes_at' => '23:00', 'opens_at' => null])
+        ->and($closed['open_state']['open_now'])->toBeFalse();
+});
+
+it('measures every row of ONE response against ONE clock', function () {
+    // `PlaceSummaryResource::instant()` memoizes on the request, so a page served
+    // across a minute boundary cannot report two venues with identical hours as
+    // one open and one closed. Swap it for a bare `now()` per row and nothing
+    // else here goes red — the failure needs a page that straddles the boundary,
+    // which is why this drives the memo directly rather than hoping to catch it.
+    $request = Request::create('/api/v1/places');
+
+    $first = PlaceSummaryResourceInstantProbe::instantFor($request);
+    $this->travelTo(now()->addMinutes(5));
+    $second = PlaceSummaryResourceInstantProbe::instantFor($request);
+
+    expect($second)->toBe($first)
+        // The control: a DIFFERENT request gets its own reading, or the memo
+        // would be a global and every response would share one stale clock.
+        ->and(PlaceSummaryResourceInstantProbe::instantFor(Request::create('/api/v1/places')))
+        ->not->toBe($first);
 });

@@ -277,7 +277,20 @@ function MapCanvas({
   //  - `centred` — once only.
   const centred = useRef(false);
   useEffect(() => {
-    if (!viewer || centred.current || interacted.current || selected) return;
+    if (centred.current) return;
+
+    // ABANDONED, not deferred, the moment the user touches anything. The guards
+    // used to merely skip, and `selected` is a dependency — so a viewer who
+    // opened a pin before the fix landed got the re-frame when they DISMISSED
+    // the sheet: the effect re-ran, the guards now passed, and the map slid 450
+    // ms in response to a gesture whose meaning was "close this". Once the map
+    // is theirs it stays theirs.
+    if (interacted.current || selected) {
+      centred.current = true;
+      return;
+    }
+
+    if (!viewer) return;
     if (!shouldCenterOnViewer({ viewer, anchor: initialRegion, source: initial.source })) return;
 
     centred.current = true;

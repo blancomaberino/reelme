@@ -60,11 +60,16 @@ trait ParsesNearPoint
     {
         return [
             'near' => ['nullable', 'string'],
-            // `nullable` BEFORE the type rules, because the merge above always
-            // writes these two keys — so on a request with no `near` at all they
-            // are PRESENT and null, and `numeric` would 422 every ordinary
-            // request. `required_with` still fires first when `near` IS present,
-            // which is the 422 a malformed position earns.
+            // `nullable` is what is load-bearing here — NOT its position in the
+            // list. The merge above always writes these two keys, so on a
+            // request with no `near` at all they are PRESENT and null, and
+            // `numeric` alone would 422 every ordinary request.
+            //
+            // Ordering is inert, and a comment claiming otherwise stood here
+            // until review checked it: `RequiredWith` is in `Validator::
+            // $implicitRules`, and `isNotNullIfMarkedAsNullable()` short-circuits
+            // for any implicit rule, so `required_with` fires on a null value
+            // wherever `nullable` sits.
             'nearLat' => ['nullable', 'required_with:near', 'numeric', 'between:-90,90'],
             'nearLng' => ['nullable', 'required_with:near', 'numeric', 'between:-180,180'],
         ];

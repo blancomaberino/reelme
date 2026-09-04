@@ -283,8 +283,10 @@ class PlaceController extends Controller
             case 'distance':
                 // Guaranteed by validation: distance requires near.
                 assert($near !== null);
-                $dist = PlaceQueryBuilder::DISTANCE_SQL;
-                $point = [$near['lng'], $near['lat']];
+                // SQL and bindings together, from the one place that knows the
+                // `[lng, lat]` order — retyping the pair here is how a mirrored
+                // point gets measured with no error and no red test.
+                [$dist, $point] = PlaceQueryBuilder::distanceFrom($near);
                 $query->orderByRaw("{$dist} ASC, id ASC", $point);
                 if ($cursor !== null) {
                     $query->whereRaw("({$dist}, id) > (?, ?)", [...$point, (float) $cursor[0], KeysetCursor::intKey($cursor[1])]);

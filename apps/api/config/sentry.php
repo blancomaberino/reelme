@@ -105,8 +105,20 @@ return [
      *
      * Redacting rather than dropping the event: the stack trace is the whole
      * point of the report, and the position is never what makes it debuggable.
+     *
+     * BOTH hooks, and that is not belt-and-braces. `Client::prepareEvent()`
+     * dispatches by event TYPE — `before_send` fires for errors only, and a
+     * transaction goes to `before_send_transaction`. But `RequestIntegration`
+     * attaches `request.url` and `request.query_string` through a global
+     * processor with no type gate, so a transaction carries the same query
+     * string. Registering only the error hook meant that setting
+     * `SENTRY_TRACES_SAMPLE_RATE` above 0 — an ordinary thing to do during an
+     * incident — silently began exporting the coordinates this exists to keep
+     * in. The callable ignores its type, so one method serves both.
      */
     'before_send' => [SentryScrubber::class, 'scrub'],
+
+    'before_send_transaction' => [SentryScrubber::class, 'scrub'],
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#ignore_exceptions
     // 'ignore_exceptions' => [],

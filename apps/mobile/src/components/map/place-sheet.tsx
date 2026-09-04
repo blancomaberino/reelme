@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { MapPin } from '@/api/places';
 import { useT } from '@/i18n';
-import { openStateLabel } from '@/lib/opening-hours';
+import { OPEN_STATE_MAX_AGE_MS, openStateLabel } from '@/lib/opening-hours';
 import { useAgeOf } from '@/lib/use-age-of';
 import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
@@ -53,12 +53,24 @@ export function PlaceSheet({ pin, onViewPlace, onSave, onRemoveFromList, fetched
   // sends them away from a restaurant that is open and wanted them, and that is
   // exactly the wrong answer T-128 deleted and T-155 refused to reinstate.
   //
-  // The age is the payload's, not the app's: past five minutes the cue drops
-  // itself, because the map query is persisted for a day and a cold start would
-  // otherwise repaint last night's "Abierto".
-  const openState = openStateLabel(pin.open_state, useAgeOf(fetchedAt));
+  // The age is the payload's, not the app's: past five minutes BOTH halves drop
+  // themselves, because the map query is persisted for a day and a cold start
+  // would otherwise repaint last night's answers.
+  //
+  // The distance ages out for the same reason the cue does, and it took three
+  // reviewers to see it because the comment that used to sit here had a true
+  // sentence defending the wrong half: "a place does not move". It doesn't — but
+  // a distance has TWO endpoints, and the viewer is the one that moves. The
+  // failure is the concrete one: pins fetched in Montevideo last night, opened
+  // this morning in Buenos Aires with no signal. The cue correctly withdraws,
+  // and beside the gap it leaves, "450 m" for a restaurant 200 km away — with no
+  // refetch coming to correct it, since `near` is deliberately not in the cache
+  // key. `VIEWER_FIX_MAX_AGE_MS` refuses a two-minute-old fix for exactly this
+  // reason; a rehydrated one must not walk in through the back door.
+  const age = useAgeOf(fetchedAt);
+  const openState = openStateLabel(pin.open_state, age);
   const openText = openState ? t(openState.key, openState.vars) : null;
-  const distance = fmt.distance(pin.distance_m);
+  const distance = age > OPEN_STATE_MAX_AGE_MS ? '' : fmt.distance(pin.distance_m);
 
   return (
     <View style={styles.container}>

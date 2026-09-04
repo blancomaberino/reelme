@@ -103,11 +103,17 @@ it('says "Closed" honestly when the server actually decided it is closed', () =>
   expect(screen.getByText('Closed · opens 19:00')).toBeTruthy();
 });
 
-it('drops the cue — but not the distance — once the payload is stale', () => {
+it('drops the cue AND the distance once the payload is stale', () => {
   // The map query is persisted for 24h, so a cold start with no network can
-  // repaint an 11-hour-old "Open · closes 23:30" at nine the next morning. Past
-  // the window the claim disappears; the distance does not, because a place does
-  // not move.
+  // repaint an 11-hour-old "Open · closes 23:30" at nine the next morning.
+  //
+  // This test used to assert the distance SURVIVED, and defended it with "a
+  // place does not move". The place doesn't; a distance has two endpoints and
+  // the viewer is the one that moves. Pins fetched in Montevideo last night,
+  // opened this morning in Buenos Aires with no signal: the cue withdrew and
+  // "450 m" stayed on screen for a restaurant 200 km away, with no refetch
+  // coming — `near` is deliberately not in the cache key, so nothing
+  // invalidates it offline.
   render(
     <PlaceSheet
       pin={pin({ distance_m: 450, open_state: OPEN })}
@@ -117,15 +123,32 @@ it('drops the cue — but not the distance — once the payload is stale', () =>
   );
 
   expect(screen.queryByText('Open · closes 23:30')).toBeNull();
-  expect(screen.getByText('450 m')).toBeTruthy();
+  expect(screen.queryByText('450 m')).toBeNull();
+  // The whole row goes, rather than leaving an empty band under the name.
+  expect(screen.queryByTestId('place-sheet-status')).toBeNull();
 });
 
-it('shows no cue when the caller does not say how old the data is', () => {
+it('shows neither half when the caller does not say how old the data is', () => {
   // `fetchedAt` defaults to 0 — the epoch, i.e. an enormous age. That is the
   // honest default: a caller that forgot to pass it has no idea how stale its
   // payload is either, so it must not be allowed to assert freshness by omission.
   render(<PlaceSheet pin={pin({ distance_m: 450, open_state: OPEN })} onViewPlace={noop} />);
 
   expect(screen.queryByText('Open · closes 23:30')).toBeNull();
+  expect(screen.queryByText('450 m')).toBeNull();
+});
+
+it('still shows the distance on a FRESH payload — the gate is staleness, not the field', () => {
+  // The positive control for the two above. Without it, deleting the distance
+  // entirely would pass them both.
+  render(
+    <PlaceSheet
+      pin={pin({ distance_m: 450, open_state: OPEN })}
+      fetchedAt={Date.now()}
+      onViewPlace={noop}
+    />,
+  );
+
   expect(screen.getByText('450 m')).toBeTruthy();
+  expect(screen.getByText('Open · closes 23:30')).toBeTruthy();
 });

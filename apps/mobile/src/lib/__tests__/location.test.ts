@@ -156,6 +156,58 @@ describe('getUserRegion', () => {
     expect(await getUserRegion()).toMatchObject({ latitude: 7, longitude: 8 });
   });
 
+  it('refuses a FRESH fix coarser than the caller asked for, and keeps watching for a good one', async () => {
+    // `requiredAccuracy` was passed only to `getLastKnownPositionAsync`, which
+    // is the one place Expo enforces it. So on iOS with Precise Location off —
+    // the exact case the bound exists for — the coarse CACHED reading was
+    // refused, an equally coarse FRESH one was fetched at radio cost, and the
+    // caller rendered "713 m" off a ±2 km guess anyway. The guard cost battery
+    // and prevented nothing.
+    lastKnown.mockResolvedValueOnce(null);
+    const remove = jest.fn();
+    watchPos.mockImplementationOnce(async (_o, cb) => {
+      const emit = cb as (l: unknown) => void;
+      emit({ coords: { latitude: 1, longitude: 2, accuracy: 2_000 } }); // Precise Location off.
+      emit({ coords: { latitude: 7, longitude: 8, accuracy: 15 } }); // The watch narrows.
+      return { remove } as never;
+    });
+
+    expect(await getUserRegion(5_000, { requiredAccuracy: 500 }))
+      .toMatchObject({ latitude: 7, longitude: 8 });
+  });
+
+  it('reports no position at all when the fix never gets precise enough', async () => {
+    // Null, not the coarse reading. A distance the caller cannot stand behind is
+    // worse than no distance: the sheet renders nothing rather than a number.
+    jest.useFakeTimers();
+    lastKnown.mockResolvedValueOnce(null);
+    watchPos.mockImplementationOnce(async (_o, cb) => {
+      (cb as (l: unknown) => void)({ coords: { latitude: 1, longitude: 2, accuracy: 3_000 } });
+      return { remove: jest.fn() } as never;
+    });
+
+    const pending = getUserRegion(5_000, { requiredAccuracy: 500 });
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toBeNull();
+    jest.useRealTimers();
+  });
+
+  it('accepts a fix whose accuracy the provider does not report', async () => {
+    // `LocationObjectCoords.accuracy` is `number | null`, and some Android
+    // providers genuinely leave it null. Refusing those would deny distances to
+    // real devices to guard against a hypothetical — the case the bound exists
+    // for reports a number, a large one.
+    lastKnown.mockResolvedValueOnce(null);
+    watchPos.mockImplementationOnce(async (_o, cb) => {
+      (cb as (l: unknown) => void)({ coords: { latitude: 7, longitude: 8, accuracy: null } });
+      return { remove: jest.fn() } as never;
+    });
+
+    expect(await getUserRegion(5_000, { requiredAccuracy: 500 }))
+      .toMatchObject({ latitude: 7, longitude: 8 });
+  });
+
   it('rejects a non-finite fix rather than centring the map on nowhere', async () => {
     jest.useFakeTimers();
     lastKnown.mockResolvedValueOnce({ coords: { latitude: NaN, longitude: 20 } } as never);

@@ -311,6 +311,45 @@ it('accepts a backward-compatibility zone id, not only the canonical list', func
     expect(OpeningSchedule::stateAt($week, 'UTC', scheduleAt('2026-09-07 18:00')))->not->toBeNull();
 });
 
+it('answers two DIFFERENT timezones at ONE instant differently — the memo is keyed, not global', function () {
+    // `stateAt` memoizes the local minute-of-week, because `open_state` became
+    // unconditional and a 300-pin viewport was constructing the same DateTimeZone
+    // 300 times. A memo keyed on the INSTANT alone is the obvious wrong version
+    // of that, and it is invisible to every other test here: they use one zone.
+    //
+    // A listing is not always one zone — a search, a saved list, or a user's own
+    // places can span continents. At this instant Montevideo is 15:00 and Tokyo
+    // is 03:00 the next day, so a venue open 11:00–23:00 local is OPEN in one and
+    // CLOSED in the other. Drop the zone from the memo key and the second row
+    // inherits the first's clock: the Tokyo restaurant is reported open at 3am.
+    $week = [
+        ['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00'],
+        ['open_day' => 2, 'open_time' => '11:00', 'close_day' => 2, 'close_time' => '23:00'],
+    ];
+    $instant = scheduleAt('2026-09-07 18:00'); // Monday 18:00 UTC
+
+    $montevideo = OpeningSchedule::stateAt($week, 'America/Montevideo', $instant);
+    $tokyo = OpeningSchedule::stateAt($week, 'Asia/Tokyo', $instant);
+
+    expect($montevideo['open_now'])->toBeTrue()
+        ->and($tokyo['open_now'])->toBeFalse()
+        // And in the other order, so a memo that merely lags by one row is caught
+        // too rather than passing on the second call.
+        ->and(OpeningSchedule::stateAt($week, 'Asia/Tokyo', $instant)['open_now'])->toBeFalse()
+        ->and(OpeningSchedule::stateAt($week, 'America/Montevideo', $instant)['open_now'])->toBeTrue();
+});
+
+it('answers ONE timezone at two instants differently — the memo is not stuck on the first clock', function () {
+    // The other half of the key. A long-lived worker (Horizon, Octane) calls this
+    // across minutes and hours; a memo keyed on the zone alone would answer every
+    // later request with the first request's time of day.
+    $week = [['open_day' => 1, 'open_time' => '11:00', 'close_day' => 1, 'close_time' => '23:00']];
+
+    expect(OpeningSchedule::stateAt($week, 'UTC', scheduleAt('2026-09-07 18:00'))['open_now'])->toBeTrue()
+        ->and(OpeningSchedule::stateAt($week, 'UTC', scheduleAt('2026-09-07 07:00'))['open_now'])->toBeFalse()
+        ->and(OpeningSchedule::stateAt($week, 'UTC', scheduleAt('2026-09-07 18:00'))['open_now'])->toBeTrue();
+});
+
 it('voids a period list longer than a real week', function () {
     // A week is at most two services a day. Anything longer is a malformed
     // payload, and storing it would mean re-validating an unbounded list on every

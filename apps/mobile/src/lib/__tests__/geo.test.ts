@@ -1,5 +1,6 @@
 import {
   bboxToRegion,
+  distanceM,
   mapQueryFor,
   padBbox,
   quantizeBbox,
@@ -121,5 +122,46 @@ describe('regionRadiusM', () => {
     const wide = regionRadiusM({ latitude: -34.9, longitude: -56.16, latitudeDelta: 0.5, longitudeDelta: 0.5 });
 
     expect(wide).toBeGreaterThan(close * 20);
+  });
+});
+
+describe('distanceM', () => {
+  // Montevideo, where the app actually runs. At -34.9° a degree of longitude is
+  // ~82% of a degree of latitude, and that factor is the whole reason the
+  // haversine carries its `cos(lat)` term.
+  const HOME = { latitude: -34.9011, longitude: -56.1645 };
+  const M_PER_DEG_LAT = 111_320;
+
+  it('measures a north-south step', () => {
+    const north = { latitude: HOME.latitude + 10_000 / M_PER_DEG_LAT, longitude: HOME.longitude };
+
+    expect(distanceM(HOME, north)).toBeGreaterThan(9_900);
+    expect(distanceM(HOME, north)).toBeLessThan(10_100);
+  });
+
+  it('SHRINKS an east-west step by cos(latitude) — the term every other test misses', () => {
+    // Every caller-side test steps due north, so the longitude half of the
+    // formula is never exercised: delete `cos(a.lat) * cos(b.lat)` and the whole
+    // suite stays green while east-west distances over-read by ~22% here.
+    //
+    // What that costs: `shouldCenterOnViewer` compares against a 30 km radius,
+    // so a viewer 27 km EAST of the frame they left measures as ~33 km, lands
+    // outside the bound, and the map silently never re-frames onto them.
+    const sameDegrees = 0.1;
+    const north = { latitude: HOME.latitude + sameDegrees, longitude: HOME.longitude };
+    const east = { latitude: HOME.latitude, longitude: HOME.longitude + sameDegrees };
+
+    const ratio = distanceM(HOME, east) / distanceM(HOME, north);
+
+    // cos(34.9°) ≈ 0.820.
+    expect(ratio).toBeGreaterThan(0.80);
+    expect(ratio).toBeLessThan(0.84);
+  });
+
+  it('is zero for a point against itself, and symmetric', () => {
+    const other = { latitude: -34.88, longitude: -56.19 };
+
+    expect(distanceM(HOME, HOME)).toBe(0);
+    expect(distanceM(HOME, other)).toBeCloseTo(distanceM(other, HOME), 6);
   });
 });

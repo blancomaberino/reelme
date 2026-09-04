@@ -131,8 +131,15 @@ jest.mock('expo-location', () => ({
   // Default: deliver one fix immediately, and hand back a subscription whose
   // `remove` is a spy so tests can assert the watch is always torn down.
   watchPositionAsync: jest.fn(
-    async (_options: unknown, callback: (l: { coords: { latitude: number; longitude: number } }) => void) => {
-      callback({ coords: { latitude: 40.4168, longitude: -3.7038 } });
+    async (
+      _options: unknown,
+      callback: (l: { coords: { latitude: number; longitude: number; accuracy: number | null } }) => void,
+    ) => {
+      // `accuracy` is part of the real payload and is now READ (location.ts
+      // refuses a fix coarser than a caller's bound), so the default fix carries
+      // a plausible good one. Without it every distance-measuring caller was
+      // silently exercising the "accuracy unknown" branch.
+      callback({ coords: { latitude: 40.4168, longitude: -3.7038, accuracy: 12 } });
       return { remove: jest.fn() };
     },
   ),

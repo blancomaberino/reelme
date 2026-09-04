@@ -36,12 +36,17 @@ final class OpeningSchedule
     private static int $weekMinute = 0;
 
     /**
-     * Constructed `DateTimeZone`s, by the id they were built from. Bounded by
-     * the tz database (~500 ids) and immutable, so it is a lookup table rather
-     * than a cache: a viewport of 300 pins in one city built the same object 300
-     * times once `open_state` stopped being conditional.
+     * Constructed `DateTimeZone`s, by the id they were built from. A lookup
+     * table rather than a cache: a viewport of 300 pins in one city built the
+     * same object 300 times once `open_state` stopped being conditional.
      *
-     * @var array<string, DateTimeZone|false>
+     * SUCCESSES ONLY. Caching the failures would key on a string that comes from
+     * the `places.timezone` column, so every distinct piece of junk containing a
+     * slash would add a permanent entry — unbounded growth in a long-lived
+     * Octane or Horizon process. Successes cannot: a key only lands here if
+     * `DateTimeZone` accepted it, which bounds the table by the tz database.
+     *
+     * @var array<string, DateTimeZone>
      */
     private static array $zones = [];
 
@@ -444,15 +449,13 @@ final class OpeningSchedule
             return null;
         }
 
-        if (array_key_exists($timezone, self::$zones)) {
-            return self::$zones[$timezone] ?: null;
+        if (isset(self::$zones[$timezone])) {
+            return self::$zones[$timezone];
         }
 
         try {
             return self::$zones[$timezone] = new DateTimeZone($timezone);
         } catch (Exception) {
-            self::$zones[$timezone] = false;
-
             return null;
         }
     }

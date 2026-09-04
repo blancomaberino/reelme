@@ -277,6 +277,33 @@ describe('opening viewport', () => {
       expect(animateToRegion).not.toHaveBeenCalled();
     });
 
+    it('does not re-frame when the sheet is CLOSED either — the chance is spent, not queued', async () => {
+      // The guard above only skipped; `selected` is an effect dependency, so
+      // dismissing the sheet re-ran the effect with the guards now passing and
+      // the map slid 450 ms in answer to a tap that meant "close this". The
+      // user's last action was a dismissal; the map's response was to move.
+      useViewportStore.setState({ saved: SAVED, hydrated: true });
+      useMapStore.setState({
+        selected: {
+          type: 'place', id: '1', name: 'Open sheet', lat: SAVED.latitude, lng: SAVED.longitude,
+          category: null, city: null, price_range: null, status: 'active', tags: [],
+          source_count: 1, has_active_offer: false, thumbnail_url: null, top_influencer: null,
+        },
+      });
+      mockViewer.current = northOfSaved(3_000);
+
+      render(<MapScreen />);
+      await act(async () => {});
+      expect(animateToRegion).not.toHaveBeenCalled();
+
+      // They close the sheet.
+      await act(async () => {
+        useMapStore.setState({ selected: null });
+      });
+
+      expect(animateToRegion).not.toHaveBeenCalled();
+    });
+
     it('leaves a distant viewer on the viewport they left', async () => {
       useViewportStore.setState({ saved: SAVED, hydrated: true });
       // London saved, viewer in Madrid — every pin they own is ~1,200 km away,

@@ -111,19 +111,19 @@ export async function requestLocationPermission(): Promise<PermissionOutcome> {
  */
 export async function getUserRegion(
   timeoutMs: number = FIX_TIMEOUT_MS,
-  lastKnown?: { maxAge?: number; requiredAccuracy?: number },
+  bounds?: { maxAge?: number; requiredAccuracy?: number },
 ): Promise<Region | null> {
   const m = locationModule();
   if (!m) return null;
 
   try {
-    // `lastKnown` bounds the CACHED fix, and callers that measure distances
+    // `bounds` constrains the CACHED fix, and callers that measure distances
     // must pass it. Unbounded, `getLastKnownPositionAsync` will happily hand
     // back a reading from another city hours ago — free when the answer only
     // has to frame a viewport (what this function was written for), and wrong
     // once the answer is rendered as "713 m" (T-156). Default stays unbounded
     // so the viewport path keeps its instant, good-enough answer.
-    const last = await m.getLastKnownPositionAsync(lastKnown);
+    const last = await m.getLastKnownPositionAsync(bounds);
     // Only RETURN a usable cached region. A bogus one (`toRegion` → null) must
     // fall through to the fresh fix, not short-circuit it into "no location".
     const cached = last ? toRegion(last.coords) : null;
@@ -133,7 +133,13 @@ export async function getUserRegion(
   }
 
   try {
-    return await firstFixWithin(m, timeoutMs);
+    // `requiredAccuracy` has to be applied HERE too, not only to the cached
+    // read. Expo enforces it on `getLastKnownPositionAsync` and nowhere else, so
+    // on iOS with Precise Location off — the exact case the constant exists for
+    // — the coarse cached fix was refused, a fresh, equally coarse one was
+    // fetched at radio cost, and the sheet rendered "713 m" off a ±2 km reading
+    // anyway. The guard cost battery and prevented nothing.
+    return await firstFixWithin(m, timeoutMs, bounds?.requiredAccuracy);
   } catch {
     return null;
   }
@@ -150,7 +156,11 @@ export async function getUserRegion(
  * Beyond the leak, a still-pending Expo async call is destroyed against a dead
  * JS runtime on teardown, which is a native crash rather than an exception.
  */
-function firstFixWithin(m: LocationModule, timeoutMs: number): Promise<Region | null> {
+function firstFixWithin(
+  m: LocationModule,
+  timeoutMs: number,
+  requiredAccuracy?: number,
+): Promise<Region | null> {
   return new Promise((resolve) => {
     let subscription: { remove: () => void } | null = null;
     let settled = false;
@@ -170,7 +180,26 @@ function firstFixWithin(m: LocationModule, timeoutMs: number): Promise<Region | 
       (location) => {
         // One bogus reading does not end the watch — keep listening for a good
         // fix until the timeout, rather than reporting "no location" because a
-        // flaky provider emitted a single NaN.
+        // flaky provider emitted a single NaN. A reading COARSER than the caller
+        // asked for is the same kind of unusable: keep watching, because a watch
+        // typically narrows as it runs, and report null if it never does. Null
+        // is the honest answer — the caller renders no distance rather than one
+        // measured from a ±2 km guess.
+        //
+        // An UNREPORTED accuracy passes. `LocationObjectCoords.accuracy` is
+        // `number | null` and some Android providers genuinely leave it null;
+        // refusing those would deny distances to real devices in order to guard
+        // against a hypothetical. The case this bound exists for — iOS with
+        // Precise Location off — reports a number, a large one.
+        const accuracy = location.coords.accuracy;
+        if (
+          requiredAccuracy !== undefined &&
+          typeof accuracy === 'number' &&
+          Number.isFinite(accuracy) &&
+          accuracy > requiredAccuracy
+        ) {
+          return;
+        }
         const region = toRegion(location.coords);
         if (region) finish(region);
       },

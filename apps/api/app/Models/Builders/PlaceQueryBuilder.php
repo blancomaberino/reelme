@@ -171,17 +171,31 @@ class PlaceQueryBuilder extends Builder
     /**
      * Metres from a point, as PostGIS measures it on the `geography` column.
      *
-     * The expression is a constant because it is used TWICE in two different
-     * grammatical positions — aliased into the select list here, and unaliased
-     * in the ORDER BY / keyset predicate of `sort=distance` (Postgres will not
-     * accept a select alias in a WHERE). It was previously spelled out at three
-     * call sites, all of which have to agree on the same two things: the alias
-     * `distance`, which every resource reads, and the binding order, which is
-     * `[lng, lat]` — the reverse of how every other line in this codebase says a
-     * coordinate, because that is the argument order `ST_MakePoint` takes.
-     * Getting that pair backwards silently measures from the wrong hemisphere.
+     * PRIVATE, and paired with its bindings by {@see self::distanceFrom()}. The
+     * expression is needed in two grammatical positions — aliased into a select
+     * list, and unaliased in the ORDER BY and keyset predicate of
+     * `sort=distance`, since Postgres will not accept a select alias in a WHERE
+     * — so it cannot simply be hidden inside one method. But exposing the SQL
+     * without the bindings shares the harmless half and leaves the dangerous
+     * half to be retyped: the order is `[lng, lat]`, the reverse of how every
+     * other line in this codebase says a coordinate, because that is the
+     * argument order `ST_MakePoint` takes. Getting it backwards measures from a
+     * mirrored point — a plausible ordering, no error, and no red test unless
+     * the fixture's coordinates are asymmetric.
      */
-    public const DISTANCE_SQL = 'ST_Distance(location, ST_MakePoint(?, ?)::geography)';
+    private const DISTANCE_SQL = 'ST_Distance(location, ST_MakePoint(?, ?)::geography)';
+
+    /**
+     * The distance expression and its bindings, together, for a caller that
+     * needs to place it itself (an ORDER BY, a keyset comparison).
+     *
+     * @param  array{lat: float, lng: float}  $near
+     * @return array{string, array{float, float}}
+     */
+    public static function distanceFrom(array $near): array
+    {
+        return [self::DISTANCE_SQL, [$near['lng'], $near['lat']]];
+    }
 
     /**
      * Select metres from `$near` as `distance`.
@@ -195,7 +209,9 @@ class PlaceQueryBuilder extends Builder
      */
     public function withDistanceFrom(array $near): self
     {
-        return $this->selectRaw(self::DISTANCE_SQL.' AS distance', [$near['lng'], $near['lat']]);
+        [$sql, $bindings] = self::distanceFrom($near);
+
+        return $this->selectRaw($sql.' AS distance', $bindings);
     }
 
     public function withActiveOfferFlag(): self

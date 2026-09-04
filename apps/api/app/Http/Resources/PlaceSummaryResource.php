@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\ResolvesRequestInstant;
 use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Place;
 use Illuminate\Http\Request;
@@ -19,25 +20,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class PlaceSummaryResource extends JsonResource
 {
+    use ResolvesRequestInstant;
     use ResolvesThumbnail;
-
-    /**
-     * One clock reading per REQUEST, shared by every row of the response.
-     *
-     * `$request->attributes` is Symfony's per-request bag, so this is memoized
-     * for exactly the lifetime that matters and needs no static, no singleton
-     * and no reset between tests.
-     */
-    private static function instant(Request $request): \DateTimeInterface
-    {
-        $at = $request->attributes->get('reelmap.now');
-        if (! $at instanceof \DateTimeInterface) {
-            $at = now();
-            $request->attributes->set('reelmap.now', $at);
-        }
-
-        return $at;
-    }
 
     /**
      * @return array<string, mixed>

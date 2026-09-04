@@ -129,11 +129,11 @@ export function distanceLabel(meters: number | null | undefined, decimal = '.'):
   // Grouped past a thousand kilometres: "1500 km" reads as a typo where
   // "1.500 km" reads as a distance. Reachable from a wide map.
   //
-  // Grouped BY HAND, not with `toLocaleString`: Hermes ships only a partial
-  // Intl (the reason the month names at the top of this file are a literal
-  // table), so a locale argument there is silently ignored on device and
-  // correct in jest — green tests over a wrong screen. The group separator is
-  // whichever of `.`/`,` the decimal separator is not.
+  // Grouped BY HAND, not with `toLocaleString`: Hermes ships only a partial Intl
+  // (the reason `use-format.ts` carries a literal table of month names rather
+  // than asking Intl for them), so a locale argument here is silently ignored on
+  // device and correct in jest — green tests over a wrong screen. The group
+  // separator is whichever of `.`/`,` the decimal separator is not.
   const wholeKm = Math.round(meters / 1000);
   if (wholeKm >= 1000) {
     return `${group(wholeKm, decimal === ',' ? '.' : ',')} km`;
