@@ -9,7 +9,9 @@ use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\SourcePost;
 use App\Models\User;
+use App\Observers\PlaceSourceObserver;
 use App\Services\Moderation\ShareModerator;
+use App\Services\Places\DishMaterializer;
 use App\Services\Places\PlaceMerger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -257,42 +259,78 @@ it('does not re-insert (and poison the caller\'s transaction) on a second no-op 
     expect(PlaceSource::query()->whereKey($source->id)->exists())->toBeTrue();
 });
 
-it('leaves the caller\'s transaction usable when materializing fails', function () {
-    // The invariant the observer's `catch` depends on, and which nothing tested:
-    // "whatever we swallow was already rolled back". It holds because
-    // DishMaterializer wraps BOTH paths in a transaction, so a failure unwinds
-    // to a SAVEPOINT rather than aborting the caller's transaction.
+it('leaves the caller\'s transaction usable when materializing REALLY fails', function () {
+    // The invariant the observer's `catch` depends on: "whatever we swallow was
+    // already rolled back". It holds because DishMaterializer wraps both paths
+    // in a transaction, so a failure unwinds to a SAVEPOINT instead of aborting
+    // the caller's.
     //
-    // Without it the swallow is actively harmful: on Postgres a failed statement
-    // poisons the enclosing transaction (25P02), so every LATER statement dies
-    // with the real cause already discarded. That is not hypothetical — it is
-    // exactly what the no-op-save bug did before the fix above.
+    // The first version of this test threw a RuntimeException inside a bare
+    // `DB::transaction`, which tested LARAVEL'S savepoint handling and would
+    // have passed identically with no transaction in DishMaterializer at all —
+    // a PHP exception does not poison a Postgres transaction; only a database
+    // error does. So this drives the real thing: a PlaceSource id with no row
+    // behind it makes the real materializer's INSERT violate the foreign key,
+    // inside the real savepoint, through the real observer.
     $place = Place::factory()->active()->atPoint(-34.90, -56.16)->create();
 
     DB::transaction(function () use ($place) {
-        $source = PlaceSource::factory()->create([
+        $survivor = PlaceSource::factory()->create([
             'place_id' => $place->id,
             'extraction_snapshot_json' => ['dishes' => [['name' => 'Chivito', 'shown_in_video' => true]]],
         ]);
 
-        // Force the projection to fail INSIDE the caller's transaction, the way
-        // a duplicate key or a constraint violation would.
-        try {
-            DB::transaction(function () {
-                throw new RuntimeException('materialize blew up');
-            });
-        } catch (RuntimeException) {
-            // swallowed, exactly as the observer swallows
-        }
+        // A source object whose id exists nowhere: `dishes.place_source_id`'s FK
+        // rejects the insert.
+        $phantom = new PlaceSource;
+        $phantom->id = 999_999;
+        $phantom->extraction_snapshot_json = ['dishes' => [['name' => 'Fantasma', 'shown_in_video' => true]]];
 
-        // The caller's transaction is still usable — this is the assertion.
+        Log::spy();
+        app(PlaceSourceObserver::class)->created($phantom);
+
+        // It failed, it said so, and it did not rethrow…
+        Log::shouldHaveReceived('warning')->with('dishes.materialize_failed', Mockery::any())->once();
+        expect(Dish::query()->where('place_source_id', 999_999)->count())->toBe(0);
+
+        // …and the CALLER's transaction is still usable, which is the assertion.
         // Against an aborted transaction every one of these raises 25P02.
-        expect(PlaceSource::query()->whereKey($source->id)->exists())->toBeTrue();
+        expect(PlaceSource::query()->whereKey($survivor->id)->exists())->toBeTrue();
         $place->update(['name' => 'Still writable']);
     });
 
     expect($place->fresh()->name)->toBe('Still writable')
-        ->and(Dish::query()->count())->toBe(1);
+        ->and(Dish::query()->pluck('name')->all())->toBe(['Chivito']);
+});
+
+it('re-reads the snapshot under the lock, so a stale in-memory copy cannot overwrite newer dishes', function () {
+    // The regression for a check-then-act race. `materialize()` used to parse
+    // the `$source` it was handed BEFORE opening the transaction and taking the
+    // lock — so the lock protected the write and left the read unprotected, and
+    // a lock in front of a value nobody re-reads is decoration.
+    //
+    // The real interleaving: `reelmap:dishes:backfill` hydrates 200 sources per
+    // chunk; while it works through them a user republishes source #7 with a
+    // corrected menu; the backfill reaches #7 holding the OLD snapshot, deletes
+    // the corrected rows and reinstates the menu the user just fixed.
+    //
+    // Simulated deterministically: hydrate, let someone else commit a newer
+    // snapshot behind our back, then materialize from the stale object.
+    $source = sourceWithDishes([['name' => 'Wrong menu', 'shown_in_video' => true]]);
+
+    // The concurrent writer. `DB::table` on purpose — it fires no observer, so
+    // the ONLY thing that can pick this up is the re-read under the lock.
+    DB::table('place_sources')->where('id', $source->id)->update([
+        'extraction_snapshot_json' => json_encode(['dishes' => [['name' => 'Corrected menu', 'shown_in_video' => true]]]),
+    ]);
+
+    // `$source` still holds the OLD snapshot in memory.
+    expect($source->extraction_snapshot_json['dishes'][0]['name'])->toBe('Wrong menu');
+
+    app(DishMaterializer::class)->materialize($source);
+
+    // The committed snapshot wins, not the stale copy in the caller's hand.
+    expect(Dish::query()->pluck('name')->all())->toBe(['Corrected menu']);
 });
 
 it('materializes through the REAL publish job, not just a model save', function () {

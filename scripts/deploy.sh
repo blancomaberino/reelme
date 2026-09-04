@@ -106,11 +106,18 @@ else
   $PHP artisan down --render="errors::503" --retry=15
 fi
 
-# From here until the migration completes, the checkout is ahead of the schema.
-DEPLOY_STATE="code-ahead"
-
 echo "==> Pulling"
-git -C "$SITE_PATH" pull origin main
+# --ff-only: a deploy must never produce a merge commit or, worse, stop half-way
+# through a conflicted merge with the working tree in neither state.
+git -C "$SITE_PATH" pull --ff-only origin main
+
+# ONLY NOW is the checkout ahead of the schema — after the pull actually moved
+# it. Setting this before the pull meant a pull that failed WITHOUT changing
+# anything (no network, a non-fast-forward) still latched the site into
+# maintenance mode, even though the old code and the old schema were a perfectly
+# consistent pair that could have kept serving. A flag that describes a state
+# has to be set by the thing that reaches it.
+DEPLOY_STATE="code-ahead"
 
 echo "==> Clearing compiled caches (before install — see the header)"
 $PHP artisan config:clear

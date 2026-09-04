@@ -45,9 +45,9 @@ class DishMaterializer
      */
     public function materialize(PlaceSource $source, bool $isInsert = false): void
     {
-        $rows = $this->rows($source);
-
         if ($isInsert) {
+            $rows = $this->rows($source);
+
             if ($rows === []) {
                 return;
             }
@@ -64,7 +64,7 @@ class DishMaterializer
             return;
         }
 
-        DB::transaction(function () use ($source, $rows): void {
+        DB::transaction(function () use ($source): void {
             // Serialize concurrent materializations of the SAME source. Without
             // this, two delete-then-insert passes under READ COMMITTED both find
             // nothing to delete and both insert, and the loser hits
@@ -72,12 +72,30 @@ class DishMaterializer
             // hosting the hook, which is a user's publish or a backfill running
             // against live traffic.
             //
-            // Through the query builder, not Eloquent: the lock is all we want,
-            // and hydrating the model drags its jsonb snapshot across the wire
-            // and through json_decode to be discarded (measured: 0.86ms → 0.52ms).
-            DB::table('place_sources')->where('id', $source->id)->lockForUpdate()->value('id');
+            // The snapshot is re-read HERE, under the lock, and NOT taken from
+            // the `$source` the caller handed us. That ordering is the whole
+            // point of the lock: parsing first and locking second means the rows
+            // are built from a snapshot that may already be stale, and the
+            // delete-then-insert below then overwrites a concurrent writer's
+            // newer dishes with older ones. The lock protected the WRITE and left
+            // the READ unprotected — a lock in front of a value nobody re-read is
+            // decoration.
+            //
+            // Concretely: the backfill hydrates 200 sources per chunk, a publish
+            // republishes source #7 with a corrected menu, and the backfill then
+            // reaches #7 and reinstates the menu the user just fixed.
+            $locked = PlaceSource::query()->whereKey($source->id)->lockForUpdate()->first();
 
-            Dish::query()->where('place_source_id', $source->id)->delete();
+            if ($locked === null) {
+                // Deleted between hydration and the lock — a routine race with
+                // ForceReprocessShare or a take-down. The FK cascade already took
+                // its dishes; writing rows now would resurrect them as orphans.
+                return;
+            }
+
+            $rows = $this->rows($locked);
+
+            Dish::query()->where('place_source_id', $locked->id)->delete();
 
             if ($rows !== []) {
                 Dish::query()->insert($rows);
