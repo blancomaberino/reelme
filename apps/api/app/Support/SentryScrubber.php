@@ -111,7 +111,7 @@ class SentryScrubber
         // carrier. Walked by SHAPE rather than by name, which is the difference
         // between this converging and it needing another round per field.
         foreach ($event->getContexts() as $name => $context) {
-            $event->setContext($name, self::scrubBag($context));
+            $event->setContext((string) $name, self::scrubBag($context));
         }
 
         $event->setExtra(self::scrubBag($event->getExtra()));
@@ -226,17 +226,41 @@ class SentryScrubber
      */
     private static function scrubUnknownMetadata(string $value): string
     {
-        // A `?` means it is a URL, not a bare query string, and it has to be
-        // split before the by-name pass: otherwise the first pair's KEY is the
-        // whole `https://…/json?key`, which matches nothing in the table, and
-        // the credential ships verbatim.
+        // A `?` means a URL, and the query has to be split off before the
+        // by-name pass — otherwise the first pair's KEY is the whole
+        // `https://…/json?key`, which matches nothing in the table, and the
+        // credential ships verbatim.
+        //
+        // But the TAIL still has to look like a query string, and that gate is
+        // load-bearing rather than tidy. Without it, prose containing a `?` took
+        // this path: ``Client error: `GET …?location=…&key=AIza…` resulted in a
+        // 403`` had everything after the credential DELETED, because `key`'s
+        // value swallowed the rest of the sentence. And a span description
+        // carrying PostGIS SQL lost a `&` from the `&&` bbox operator.
         if (str_contains($value, '?')) {
-            return self::scrubUrl($value);
+            [$path, $query] = array_pad(explode('?', $value, 2), 2, '');
+
+            return self::looksLikeQueryString($query)
+                ? $path.'?'.self::scrubQueryString($query)
+                : self::scrubText($value);
         }
 
-        return preg_match('/^[^\s]*[^\s=&]=[^\s&]*(&[^\s=&]+=[^\s&]*)*$/', $value) === 1
+        return self::looksLikeQueryString($value)
             ? self::scrubQueryString($value)
             : self::scrubText($value);
+    }
+
+    /**
+     * At least one `k=v`, and no whitespace anywhere.
+     *
+     * The whitespace rule is what keeps prose out. `scrubQueryString` splits on
+     * `&` and `=` and re-joins, so anything handed to it that is not actually a
+     * query string comes back rearranged — text after a redacted key vanishes,
+     * and a doubled `&&` collapses.
+     */
+    private static function looksLikeQueryString(string $value): bool
+    {
+        return preg_match('/^[^\s=&]+=[^\s&]*(&[^\s=&]+=[^\s&]*)*$/', $value) === 1;
     }
 
     private static function scrubUrl(string $url): string
@@ -293,6 +317,9 @@ class SentryScrubber
      */
     private static function scrubText(string $text): string
     {
-        return (string) preg_replace(self::COORD_PAIR, self::REDACTED, $text);
+        // `?? $text` and not a cast: a PCRE failure returns null, and casting
+        // that to a string blanks the field instead of leaving it — erasing the
+        // message an operator needed, quietly, in the failure case.
+        return preg_replace(self::COORD_PAIR, self::REDACTED, $text) ?? $text;
     }
 }

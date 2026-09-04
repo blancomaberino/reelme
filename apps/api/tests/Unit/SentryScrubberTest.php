@@ -305,3 +305,43 @@ it('scrubs the app CONTEXTS it attaches itself, not only what the SDK attaches',
     expect(SentryScrubber::scrub($event)->getContexts()['reelmap'])
         ->toBe(['request_id' => 'abc', 'where' => 'near=[redacted]']);
 });
+
+it('leaves prose containing a URL intact except for the redaction', function () {
+    // Guzzle's message shape. Without the query-shape gate, `key`'s value
+    // swallowed the rest of the sentence and everything after the credential —
+    // the status, the body — was silently deleted from the report.
+    $event = scrubbed(exceptionMessage: 'Client error: `GET https://maps.googleapis.com/json?location=1.5&key=AIzaSyLIVE` resulted in a 403');
+
+    $value = $event->getExceptions()[0]->getValue();
+
+    expect($value)->toEndWith('resulted in a 403')
+        ->and($value)->toContain('Client error:');
+});
+
+it('does not collapse the PostGIS bbox operator in a span description', function () {
+    // Span descriptions carry SQL, and `&&` is this app's bbox operator.
+    // `scrubQueryString` drops empty `&` segments, so an ungated `?` branch —
+    // SQL is full of `?` placeholders — turned `&&` into `&`.
+    $sql = 'select * from "places" where "id" = ? and location && ST_MakeEnvelope(?, ?, ?, ?)';
+    $span = new Span;
+    $span->setDescription($sql);
+
+    $event = Event::createTransaction();
+    $event->setSpans([$span]);
+
+    expect(SentryScrubber::scrub($event)->getSpans()[0]->getDescription())->toBe($sql);
+});
+
+it('keeps the request BODY out of Sentry entirely, where a float coordinate lives', function () {
+    // The one carrier a text scrubber structurally cannot cover:
+    // `POST /redemptions/verify` and `PATCH /shares/{share}` take `lat`/`lng` in
+    // the body as NUMBERS, and `RequestIntegration` attaches the decoded body
+    // whenever `max_request_body_size` is not `none` — outside the
+    // `send_default_pii` branch, so that flag does not govern it.
+    //
+    // Asserted at the config, because the defect is not in any method: it is in
+    // an option the vendor file defaults to `medium`.
+    $config = require dirname(__DIR__, 2).'/config/sentry.php';
+
+    expect($config['max_request_body_size'])->toBe('none');
+});
