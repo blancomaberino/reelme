@@ -216,17 +216,23 @@ def deny(reason: str, action: str) -> None:
     msg = (
         f"Blocked: {reason}\n\n"
         f"Before you {action}, audit it with the agency agents — run the `audit-agency` skill. "
-        "It fans six read-only reviewers over `main...HEAD` (mobile, backend, security, UX, UI, "
-        "test quality) in ONE message so they run concurrently.\n\n"
+        "It fans read-only reviewers over `main...HEAD` in ONE message so they run concurrently.\n\n"
+        "TWO SEATS ARE MANDATORY on every diff (CLAUDE.md golden rule #3):\n"
+        "  - Security      — `Senior SecOps Engineer`\n"
+        "  - Architecture  — `Software Architect` (NOT `Backend Architect`; that is a different, "
+        "narrower reading — correctness and N+1, not boundaries and blast radius)\n"
+        "Fit the OTHER lanes to the diff: mobile, UX, UI, test quality.\n\n"
+        "The receipt cannot tell which seats you filled — it hashes HEAD and the tree, nothing "
+        "else. Skipping one is therefore a decision only you will ever know you made.\n\n"
         "Fix every 🔴 and 🟡 it surfaces, or get the owner to waive one explicitly, then record "
         "the receipt:\n"
         '  .claude/skills/audit-agency/record-receipt.sh findings-fixed "<one-line summary>"\n\n'
         "The receipt is keyed to HEAD AND the working tree's content, so commit your fixes BEFORE "
         "recording it — a receipt taken over a dirty tree certifies code the audit never saw.\n\n"
         "This is a separate question from the line-by-line diff review. The agency panel reads the "
-        "same change as six specialists, and that is what caught the unreachable screen, the "
-        "contract guard that could not fail, and the schema change that would have broken a live "
-        "response.\n\n"
+        "same change as independent specialists, and that is what caught the unreachable screen, "
+        "the contract guard that could not fail, the schema change that would have broken a live "
+        "response, and a feature whose only write path silently discarded it.\n\n"
         "Escape hatch, for a push this genuinely does not apply to: REELMAP_SKIP_AUDIT=1."
     )
     json.dump(

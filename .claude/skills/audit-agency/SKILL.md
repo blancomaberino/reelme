@@ -1,11 +1,11 @@
 ---
 name: audit-agency
-description: Fan the project's agency agents over the branch as six independent specialist reviewers (mobile, backend, security, UX, UI, test quality) before a PR is opened or updated. Use before `gh pr create`, before any push that updates an open PR, and whenever asked to "audit the branch / run the agency / review this like a team".
+description: Fan the project's agency agents over the branch as independent specialist reviewers before a PR is opened or updated — security and architecture always seated, plus the lanes the diff touches (mobile, backend, UX, UI, test quality). Use before creating a PR, before any push that updates an open one, and whenever asked to "audit the branch / run the agency / review this like a team".
 ---
 
 # Agency audit
 
-Six read-only reviewers over `main...HEAD`, each reading the same diff as a
+Read-only reviewers over `main...HEAD`, each reading the same diff as a
 different specialist. Enforced: `.claude/hooks/guard-pr-audit.py` blocks a push
 and the PR-mutating commands until a receipt matching HEAD **and** the working
 tree's content exists.
@@ -16,6 +16,11 @@ panel drove through the first version of this gate within minutes of it being
 written, two needing nothing more exotic than a flag that takes a value
 (`git -C <dir> push`); they are kept as regressions rather than as a paragraph
 claiming the hole is closed.
+
+**Authority:** CLAUDE.md states the *rule* (Golden Rule #3, pre-PR checklist
+step 2) — when the panel runs and which seats are mandatory. This file is the
+*procedure* — lanes, prompt discipline, receipts. If the two ever disagree about
+the rule, CLAUDE.md wins and this file is the one to correct.
 
 ## Why this exists alongside the other gates
 
@@ -34,14 +39,17 @@ started requiring. Both were green under every other gate.
 
 ## Running it
 
-**One message, six `Agent` calls, so they run concurrently.** Six sequential
-calls is a different and much slower thing.
+**One message, one `Agent` call per seat, so they run concurrently.** Sequential
+calls are a different and much slower thing. How many seats is a judgement about
+the diff — a two-file docs change does not want the mobile and UI lanes — but
+Security and Architecture are always two of them.
 
 | Dimension | Agent type | Reads for |
 | --- | --- | --- |
 | Mobile | `Mobile App Builder` | crash/undefined risk on device, contract drift, i18n parity, native rebuild needed |
 | Backend | `Backend Architect` | correctness and edge cases, N+1, validation reachability, CI gates that cannot fail |
-| Security | `Senior SecOps Engineer` | authz/IDOR, mass assignment, injection, SSRF, data exposure, secrets |
+| **Security** (mandatory) | `Senior SecOps Engineer` | authz/IDOR, mass assignment, injection, SSRF, data exposure, secrets, and anything a test environment can reach that production shouldn't |
+| **Architecture** (mandatory) | `Software Architect` | boundaries and contracts, a seam duplicated or bypassed, god objects, migration and rollout safety, blast radius beyond the files the diff touches |
 | UX | `UX Architect` | states (loading/empty/partial/error), truthfulness of claims, reachability, a11y |
 | UI | `UI Designer` | design-token adherence, component duplication, dark mode, overflow |
 | Tests | `Code Reviewer` | tests that pass regardless, missing failure paths, mocks that hide crashes |
@@ -60,6 +68,15 @@ Give every one of them the same frame:
 
 Adjust the lanes to the diff: a backend-only branch does not need the UI seat,
 and a diff touching payments or auth deserves a seat this table does not list.
+
+**The Security and Architecture seats are the exception — they are filled on
+every diff, without exception** (owner instruction, 2026-09-03). They are the
+two lanes whose findings are least likely to be visible in the diff itself: a
+security hole is usually an absence, and an architecture problem is usually
+somewhere the diff does not touch. Fitting lanes to the diff means dropping
+*mobile* from a backend branch, never dropping these two because the change
+"looks small". On a mobile-only diff the architecture seat reads the mobile
+architecture; on a docs-only diff, say so in one line and move on.
 
 ## After they report
 
