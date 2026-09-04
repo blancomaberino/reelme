@@ -5,6 +5,7 @@ namespace App\Services\Places;
 use App\Enums\PlaceStatus;
 use App\Models\Place;
 use App\Models\PlaceMerge;
+use App\Models\PlaceSource;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -245,6 +246,24 @@ class PlaceMerger
             foreach ($merge->dropped_duplicate_place_sources as $row) {
                 DB::table('place_sources')->insertOrIgnore($row);
             }
+
+            // Those rows were HARD-DELETED by merge(), which took their `dishes`
+            // with them through the FK cascade — and this re-insert is a
+            // query-builder write, so it fires no model events and
+            // {@see App\Observers\PlaceSourceObserver} never re-projects them.
+            // Without this the source comes back carrying a snapshot full of
+            // dishes and zero dish rows, permanently: the place then lists fewer
+            // dishes than its own sources claim, and nothing would ever notice.
+            //
+            // This is the ONE place the merge machinery has to be dish-aware.
+            // Everywhere else a source moves (the rehome above, take-down,
+            // force-reprocess, "remove this place") the rows follow it or
+            // cascade with it, because they key on `place_source_id` alone.
+            $materializer = app(DishMaterializer::class);
+            PlaceSource::query()
+                ->whereIn('id', array_column($merge->dropped_duplicate_place_sources, 'id'))
+                ->get()
+                ->each(fn (PlaceSource $source) => $materializer->materialize($source));
 
             $this->restoreTagPivots($winner->id, $merge->target_tag_pivots, (array) ($snapshot['tag_pivots'] ?? []));
             DB::table('place_tag')->where('place_id', $loser->id)->delete();

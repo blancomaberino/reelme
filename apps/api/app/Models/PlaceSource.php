@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Observers\PlaceSourceObserver;
 use Database\Factories\PlaceSourceFactory;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -24,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property bool $is_primary
  * @property Carbon|null $published_at
  */
+#[ObservedBy(PlaceSourceObserver::class)]
 class PlaceSource extends Model
 {
     /** @use HasFactory<PlaceSourceFactory> */
@@ -56,6 +60,26 @@ class PlaceSource extends Model
     public function scopePublished(Builder $query): Builder
     {
         return $query->whereNotNull('published_at');
+    }
+
+    /**
+     * The dishes this source claims, in snapshot order (T-157).
+     *
+     * `id` ASC reproduces snapshot order because
+     * {@see App\Services\Places\DishMaterializer} re-inserts the whole set in
+     * one statement, walking the snapshot in order, and nothing else writes the
+     * table.
+     *
+     * Eager-load it (`->with('dishes')`) anywhere the aggregation or a resource
+     * reads dishes: `Model::preventLazyLoading()` is opted into per test file
+     * here, not enabled suite-wide, so a missed load is a silent N+1 in
+     * production rather than a failing test.
+     *
+     * @return HasMany<Dish, $this>
+     */
+    public function dishes(): HasMany
+    {
+        return $this->hasMany(Dish::class)->orderBy('id');
     }
 
     /** @return BelongsTo<Place, $this> */

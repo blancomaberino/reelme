@@ -88,6 +88,10 @@ class MapViewport
             $query->withPaymentCard($card);
         }
 
+        if (($dish = (string) ($request->validated('dish') ?? '')) !== '') {
+            $query->servingDish($dish);
+        }
+
         if ($constrain !== null) {
             $constrain($query);
         }

@@ -49,31 +49,26 @@ class PlaceSourceResource extends JsonResource
                 ? null
                 : new UserSummaryResource($sharer),
             'highlights' => [
-                'dishes' => $this->dishNames($snapshot),
+                'dishes' => $this->dishNames(),
                 'tags' => $this->snapshotTags($snapshot),
             ],
         ];
     }
 
     /**
-     * @param  array<string, mixed>  $snapshot
+     * The source's dish names, from the first-class `dishes` rows rather than a
+     * second parse of the snapshot (T-157). One dish corpus: what this lists,
+     * what the place aggregate lists, and what `?dish=` matches are the same
+     * rows, so they cannot answer differently.
+     *
      * @return list<string>
      */
-    private function dishNames(array $snapshot): array
+    private function dishNames(): array
     {
-        if (! is_array($snapshot['dishes'] ?? null)) {
-            return [];
-        }
-
-        $names = [];
-        foreach ($snapshot['dishes'] as $dish) {
-            $name = is_array($dish) ? trim((string) ($dish['name'] ?? '')) : '';
-            if ($name !== '') {
-                $names[$name] = $name;
-            }
-        }
-
-        return array_values($names);
+        // No `unique()`: `unique(place_source_id, name)` already makes a
+        // duplicate impossible, and keeping the call would imply a case that
+        // cannot occur.
+        return $this->dishes->pluck('name')->all();
     }
 
     /**

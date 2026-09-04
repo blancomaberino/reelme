@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Dish;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -45,6 +46,12 @@ class PlaceIndexRequest extends FormRequest
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'card' => ['nullable', 'string', 'max:64'],
+            // "…that do pasta" (T-157). The minimum gives the caller a 422
+            // instead of a silently empty page; the REAL floor is
+            // `Dish::MIN_QUERY` on the normalized needle in
+            // {@see PlaceQueryBuilder::servingDish()}, because this rule counts
+            // raw characters and `?dish=p.` would clear it.
+            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:'.Dish::MAX_NAME],
             'near' => ['nullable', 'string'],
             'nearLat' => ['required_with:near', 'numeric', 'between:-90,90'],
             'nearLng' => ['required_with:near', 'numeric', 'between:-180,180'],
