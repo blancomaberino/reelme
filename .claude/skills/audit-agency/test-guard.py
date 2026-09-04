@@ -297,11 +297,22 @@ def main():
         subprocess.run(["git", "-C", sub, "add", "-A"], check=True)
         subprocess.run(["git", "-C", sub, "commit", "-qm", "x"], check=True)
 
-        head = subprocess.run(["git", "-C", sub, "rev-parse", "HEAD"],
-                              capture_output=True, text=True).stdout.strip()
         spec = importlib.util.spec_from_file_location("guard", HOOK)
         guard = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(guard)
+
+        # The fixture must CARRY THE GATE, or the scope check skips it and this
+        # case returns ALLOW without ever reaching the receipt lookup it exists to
+        # test — which is exactly what it did until review caught it. Copied
+        # before the tree is hashed, so the receipt covers the file.
+        gate = pathlib.Path(sub) / guard.HOOK_REL
+        gate.parent.mkdir(parents=True, exist_ok=True)
+        gate.write_bytes(pathlib.Path(HOOK).read_bytes())
+        subprocess.run(["git", "-C", sub, "add", "-A"], check=True)
+        subprocess.run(["git", "-C", sub, "commit", "-qm", "gate"], check=True)
+
+        head = subprocess.run(["git", "-C", sub, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
         _, tree = guard.state(sub)
         receipt = pathlib.Path(sub) / guard.RECEIPT
         receipt.parent.mkdir(parents=True, exist_ok=True)
@@ -363,6 +374,20 @@ def main():
             print(f"{'PASS' if ok else 'FAIL'}  {'[audit6] cd ~/elsewhere is expanded':38s} got={got_dir}")
             if not ok:
                 failures.append("tilde in cd operand")
+
+    # [audit7] CHAINED `-C` — git applies every one, in order.
+    #
+    # `argv.index("-C")` saw only the first, so `git -C /tmp/plain -C <this repo>
+    # push` was judged against the throwaway directory, found no gate there, and
+    # skipped — a bypass of exactly the kind the scope check was added to avoid.
+    # Verified against real git: `git -C a -C b rev-parse --show-toplevel` is b.
+    with tempfile.TemporaryDirectory() as decoy:
+        subprocess.run(["git", "init", "-q", decoy], check=True)
+        got = decision(f"git -C {decoy} -C {ROOT} push", cwd=ROOT)
+        ok = got == "DENY"
+        print(f"{'PASS' if ok else 'FAIL'}  {'[audit7] chained -C targets the last':38s} want=DENY  got={got}")
+        if not ok:
+            failures.append("chained -C bypass")
 
     # ...while THIS repo is still gated from anywhere. The scope check must not
     # have become a way out: a push aimed here is judged here, whatever the cwd.

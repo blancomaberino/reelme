@@ -175,11 +175,18 @@ def target_dir(cmd_segments: list[list[str]], default: str, upto: int) -> str:
             # exist" — the original T-149 shape, still misfiring after the first fix.
             d = os.path.expanduser(argv[1])
             cwd = d if os.path.isabs(d) else os.path.join(cwd, d)
-        if argv and os.path.basename(argv[0]) == "git" and "-C" in argv:
-            i = argv.index("-C")
-            if i + 1 < len(argv):
-                d = os.path.expanduser(argv[i + 1])
-                cwd = d if os.path.isabs(d) else os.path.join(cwd, d)
+        if argv and os.path.basename(argv[0]) == "git":
+            # EVERY `-C`, in order. git applies them sequentially and relative to
+            # each other, so `git -C /tmp/plain -C /path/to/repo push` really does
+            # operate on the second — while `argv.index("-C")` saw only the first
+            # and judged the wrong directory. With the scope check that became a
+            # bypass: point the first operand at a repo that does not carry this
+            # gate and the push went through unaudited. Found in review; git's own
+            # behaviour confirmed with `git -C a -C b rev-parse --show-toplevel`.
+            for i, tok in enumerate(argv):
+                if tok == "-C" and i + 1 < len(argv):
+                    d = os.path.expanduser(argv[i + 1])
+                    cwd = d if os.path.isabs(d) else os.path.join(cwd, d)
     return cwd
 
 
