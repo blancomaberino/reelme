@@ -13,8 +13,10 @@ use App\Observers\PlaceSourceObserver;
 use App\Services\Moderation\ShareModerator;
 use App\Services\Places\DishMaterializer;
 use App\Services\Places\PlaceMerger;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 
@@ -287,10 +289,22 @@ it('leaves the caller\'s transaction usable when materializing REALLY fails', fu
         $phantom->extraction_snapshot_json = ['dishes' => [['name' => 'Fantasma', 'shown_in_video' => true]]];
 
         Log::spy();
+        Exceptions::fake();
+
         app(PlaceSourceObserver::class)->created($phantom);
 
-        // It failed, it said so, and it did not rethrow…
-        Log::shouldHaveReceived('warning')->with('dishes.materialize_failed', Mockery::any())->once();
+        // It failed for the RIGHT REASON — a real foreign-key violation (23503)
+        // from the real INSERT. Asserting only "a warning was logged" would hold
+        // for ANY throwable, so `throw new RuntimeException` as the first line of
+        // materialize() would keep this green: the same fake-failure defect as
+        // the version this replaced, moved out of the test's own `throw` and into
+        // an unasserted one.
+        Exceptions::assertReported(
+            fn (QueryException $e) => $e->getCode() === '23503',
+        );
+        Log::shouldHaveReceived('warning')
+            ->with('dishes.materialize_failed', ['place_source_id' => 999_999])
+            ->once();
         expect(Dish::query()->where('place_source_id', 999_999)->count())->toBe(0);
 
         // …and the CALLER's transaction is still usable, which is the assertion.
@@ -327,10 +341,25 @@ it('re-reads the snapshot under the lock, so a stale in-memory copy cannot overw
     // `$source` still holds the OLD snapshot in memory.
     expect($source->extraction_snapshot_json['dishes'][0]['name'])->toBe('Wrong menu');
 
+    $statements = [];
+    DB::listen(function ($q) use (&$statements) {
+        $statements[] = $q->sql;
+    });
+
     app(DishMaterializer::class)->materialize($source);
 
     // The committed snapshot wins, not the stale copy in the caller's hand.
     expect(Dish::query()->pluck('name')->all())->toBe(['Corrected menu']);
+
+    // …and the re-read is UNDER THE LOCK, not merely fresher. Asserting only the
+    // outcome above leaves the fix half-provable: hoisting the re-read out of
+    // the transaction, without `lockForUpdate`, also returns the newer snapshot
+    // and stays green — while reopening the race, because two callers would
+    // again read before either writes. That is the same "above or below the
+    // lock" question this whole finding turned on, so it gets its own assertion.
+    $select = collect($statements)->first(fn (string $sql) => str_contains($sql, 'place_sources'));
+
+    expect($select)->toContain('for update');
 });
 
 it('materializes through the REAL publish job, not just a model save', function () {

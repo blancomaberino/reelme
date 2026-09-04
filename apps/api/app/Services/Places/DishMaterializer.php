@@ -36,7 +36,19 @@ class DishMaterializer
     /**
      * @param  bool  $isInsert  the source was just INSERTed, so nothing can already
      *                          own its dish rows and no other session has seen its
-     *                          id. Passed by {@see App\Observers\PlaceSourceObserver},
+     *                          id.
+     *
+     *                          It also decides WHICH SNAPSHOT IS AUTHORITATIVE,
+     *                          and that is load-bearing: on this path the rows
+     *                          come from the `$source` object, everywhere else
+     *                          from a re-read under the lock. It is only sound
+     *                          because `created()` fires one statement after the
+     *                          INSERT, inside the caller's transaction, so the
+     *                          object IS the row. Pass `isInsert: true` with an
+     *                          in-memory snapshot that differs from the row and
+     *                          you reinstate the stale-write bug this guards.
+     *
+     *                          Passed by {@see App\Observers\PlaceSourceObserver},
      *                          which has already decided this — recomputing it here
      *                          from `wasRecentlyCreated` is wrong, because that flag
      *                          stays true for the model instance's whole lifetime,
@@ -84,7 +96,24 @@ class DishMaterializer
             // Concretely: the backfill hydrates 200 sources per chunk, a publish
             // republishes source #7 with a corrected menu, and the backfill then
             // reaches #7 and reinstates the menu the user just fixed.
-            $locked = PlaceSource::query()->whereKey($source->id)->lockForUpdate()->first();
+            //
+            // This deliberately gives back an optimisation an earlier pass made
+            // here — the lock used to run through the query builder to avoid
+            // hydrating the row's jsonb (measured 0.86ms → 0.52ms). That
+            // measurement was right and its conclusion was wrong: the hydrate is
+            // the entire point, because the snapshot is what we came for. It is
+            // ~0.34ms per dish-carrying source of the backfill's maintenance
+            // window. Do not re-optimise it back.
+            // `withoutGlobalScopes()`: there are none on PlaceSource today, but a
+            // future one (a tenant filter, a `published` scope promoted to global)
+            // would make this null and turn the whole replace path into a silent
+            // no-op through the early return below — no error, no log, dishes
+            // quietly frozen. This projection must see the row as it is.
+            $locked = PlaceSource::query()
+                ->withoutGlobalScopes()
+                ->whereKey($source->id)
+                ->lockForUpdate()
+                ->first();
 
             if ($locked === null) {
                 // Deleted between hydration and the lock — a routine race with

@@ -49,9 +49,10 @@ cd "$SITE_PATH/apps/api"
 #
 # `DEPLOY_STATE` tracks whether lifting maintenance mode is a safe assertion:
 #
-#   consistent  — code and schema agree. Either nothing has been pulled yet (old
-#                 code, old schema) or the migration finished (new code, new
-#                 schema). Lifting is correct.
+#   consistent  — code and schema agree. Either the tree has not been touched yet
+#                 (old code, old schema — note the pull is split into fetch and
+#                 merge precisely so this covers the fetch) or the migration
+#                 finished (new code, new schema). Lifting is correct.
 #   code-ahead  — the pull landed but the migration has not run. Lifting here
 #                 serves NEW code against an OLD schema, which is the state this
 #                 whole ordering exists to prevent: T-157's place detail
@@ -76,6 +77,14 @@ cleanup() {
       exit $code
     fi
     echo "::error:: deploy failed (exit $code) — lifting maintenance mode so the OLD code serves"
+    # The likeliest cause now that the merge is --ff-only: a box an older,
+    # plain-`git pull` version of this script left with a local merge commit on
+    # main. That box fails here on EVERY future deploy, permanently, while the
+    # site happily serves old code — deploys just silently stop landing.
+    if ! git -C "$SITE_PATH" merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+      echo "::error:: This checkout has DIVERGED from origin/main, so --ff-only cannot advance it."
+      echo "::error:: Recover with:  git -C $SITE_PATH fetch origin && git -C $SITE_PATH reset --hard origin/main"
+    fi
   fi
 
   # Not `|| true`: `artisan up` needs a bootable app, and the one place it may
@@ -107,17 +116,28 @@ else
 fi
 
 echo "==> Pulling"
-# --ff-only: a deploy must never produce a merge commit or, worse, stop half-way
-# through a conflicted merge with the working tree in neither state.
-git -C "$SITE_PATH" pull --ff-only origin main
+# Split deliberately into fetch + merge, because `git pull` is both and the flag
+# below has to sit exactly between them.
+#
+# A fetch cannot move the working tree — it only writes objects and refs — so
+# everything up to here can fail with the checkout still matching the schema,
+# and the trap can safely lift maintenance mode.
+git -C "$SITE_PATH" fetch origin main
 
-# ONLY NOW is the checkout ahead of the schema — after the pull actually moved
-# it. Setting this before the pull meant a pull that failed WITHOUT changing
-# anything (no network, a non-fast-forward) still latched the site into
-# maintenance mode, even though the old code and the old schema were a perfectly
-# consistent pair that could have kept serving. A flag that describes a state
-# has to be set by the thing that reaches it.
+# The merge is the step that can move the tree, so the flag goes on BEFORE it
+# and not before the fetch. Two orderings were wrong before this one: setting it
+# before the whole pull latched the site down for a failed FETCH that changed
+# nothing, and setting it after the whole pull left a window where a merge that
+# died PART-WAY (disk full, EACCES, an OOM kill mid-checkout — git exits
+# non-zero with some files already on the new commit) still looked consistent,
+# so the trap lifted maintenance onto a half-updated checkout.
 DEPLOY_STATE="code-ahead"
+
+# --ff-only: a deploy must never produce a merge commit, or stop half-way
+# through a conflicted merge with the tree in neither state. A server whose
+# checkout has drifted now fails loudly here, on the OLD code, instead of
+# deploying an untested merge.
+git -C "$SITE_PATH" merge --ff-only FETCH_HEAD
 
 echo "==> Clearing compiled caches (before install — see the header)"
 $PHP artisan config:clear
