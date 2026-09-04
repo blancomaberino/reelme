@@ -42,7 +42,7 @@ class PlaceListingRequest extends FormRequest
             'type' => ['nullable', 'string', 'max:64'],
             // "…of my places that do pasta" (T-157). See PlaceIndexRequest for
             // why this minimum is the friendly half and not the real floor.
-            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:120'],
+            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:'.Dish::MAX_NAME],
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'sort' => ['nullable', Rule::in(['recent', 'popular'])],

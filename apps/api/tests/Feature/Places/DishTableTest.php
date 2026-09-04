@@ -170,6 +170,10 @@ it('the writer detector actually detects — positive and negative controls', fu
     ['explicit connection', "DB::connection('pgsql')->table('place_sources')->update(['x' => 1]);", true],
     ['eloquent mass update', 'PlaceSource::query()->whereKey($id)->update([$x]);', true],
     ['eloquent toBase update', 'PlaceSource::query()->toBase()->update([$x]);', true],
+    ['eloquent toBase insert', 'PlaceSource::query()->toBase()->insert($rows);', true],
+    // Must NOT flag: a plain Eloquent delete cascades the dish rows at the DB
+    // level, which is exactly what these two production paths rely on.
+    ['eloquent delete (cascades)', 'PlaceSource::query()->where("share_id", $id)->delete();', false],
     ['raw statement', "DB::statement('UPDATE place_sources SET extraction_snapshot_json = ?', [\$j]);", true],
     ['a comment describing one', "// DB::table('place_sources')->update(['extraction_snapshot_json' => 1]);", false],
     ['a read, not a write', "DB::table('place_sources')->where('id', 1)->get();", false],
@@ -517,21 +521,40 @@ function stripPhpComments(string $code): string
     return $out;
 }
 
-/** Does this (comment-stripped) source mutate `place_sources` outside Eloquent events? */
+/**
+ * Does this (comment-stripped) source mutate `place_sources` outside Eloquent
+ * model events?
+ *
+ * Split on `;` first so each check only has to look inside ONE statement — that
+ * is what the tempered-greedy `(?:(?!;).)*?` groups an earlier version used were
+ * doing the hard way.
+ *
+ * Note the asymmetry, which is deliberate rather than an accident of which
+ * pattern fires: a RAW builder write (or an Eloquent query dropped to the base
+ * builder) counts for any verb, because it bypasses events entirely; a plain
+ * Eloquent query counts only for `update`/`upsert`, because its `delete()` still
+ * cascades the dish rows correctly at the database level — which is what
+ * `ForceReprocessShare` and `ProcessTakedown` rely on, and neither should flag.
+ */
 function dishGuardMutatesPlaceSources(string $code): bool
 {
-    $verbs = 'update|insert|insertOrIgnore|insertGetId|upsert|delete';
+    $table = '/DB::(?:connection\([^)]*\)->)?table\(\s*["\']place_sources(?:\s+as\s+\w+)?["\']\s*\)/';
 
-    return (bool) preg_match(
-        '/(?:DB::(?:connection\([^)]*\)->)?table\(\s*["\']place_sources(?:\s+as\s+\w+)?["\']\s*\)'
-        .'|PlaceSource::query\(\)(?:(?!;).)*?->toBase\(\))'
-        .'(?:(?!;).)*?->\s*(?:'.$verbs.')\s*\(/s',
-        $code,
-    ) || (bool) preg_match(
-        '/PlaceSource::query\(\)(?:(?!;).)*?->\s*(?:update|upsert)\s*\(/s',
-        $code,
-    ) || (bool) preg_match(
-        '/DB::statement\(\s*["\'][^"\']*\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+place_sources\b/is',
-        $code,
-    );
+    foreach (explode(';', $code) as $statement) {
+        $eloquent = str_contains($statement, 'PlaceSource::query()');
+        $raw = (bool) preg_match($table, $statement)
+            || ($eloquent && str_contains($statement, '->toBase()'));
+
+        $verbs = $raw ? 'update|insert\w*|upsert|delete' : 'update|upsert';
+
+        if (($raw || $eloquent) && preg_match('/->\s*(?:'.$verbs.')\s*\(/', $statement)) {
+            return true;
+        }
+
+        if (preg_match('/DB::statement\(\s*["\'][^"\']*\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+place_sources\b/i', $statement)) {
+            return true;
+        }
+    }
+
+    return false;
 }

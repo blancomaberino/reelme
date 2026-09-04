@@ -259,12 +259,11 @@ class PlaceMerger
             // Everywhere else a source moves (the rehome above, take-down,
             // force-reprocess, "remove this place") the rows follow it or
             // cascade with it, because they key on `place_source_id` alone.
-            $restored = PlaceSource::query()
+            $materializer = app(DishMaterializer::class);
+            PlaceSource::query()
                 ->whereIn('id', array_column($merge->dropped_duplicate_place_sources, 'id'))
-                ->get();
-            foreach ($restored as $source) {
-                app(DishMaterializer::class)->materialize($source);
-            }
+                ->get()
+                ->each(fn (PlaceSource $source) => $materializer->materialize($source));
 
             $this->restoreTagPivots($winner->id, $merge->target_tag_pivots, (array) ($snapshot['tag_pivots'] ?? []));
             DB::table('place_tag')->where('place_id', $loser->id)->delete();

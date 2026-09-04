@@ -51,7 +51,7 @@ class PlaceIndexRequest extends FormRequest
             // `Dish::MIN_QUERY` on the normalized needle in
             // {@see PlaceQueryBuilder::servingDish()}, because this rule counts
             // raw characters and `?dish=p.` would clear it.
-            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:120'],
+            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:'.Dish::MAX_NAME],
             'near' => ['nullable', 'string'],
             'nearLat' => ['required_with:near', 'numeric', 'between:-90,90'],
             'nearLng' => ['required_with:near', 'numeric', 'between:-180,180'],

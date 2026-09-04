@@ -78,6 +78,17 @@ echo "==> Migrating"
 # needs the shared cache lock the scheduler already relies on.
 $PHP artisan migrate --force --isolated
 
+# Derived-projection backfills, INSIDE the outage and immediately after the
+# schema they depend on. These are not optional repair tools: T-157's read path
+# (place detail `dishes[]`, `?dish=`) switched to the `dishes` table in the same
+# release that created it, so an unpopulated table is a live regression — every
+# place loses its menu — not a feature waiting to be enabled.
+#
+# Idempotent by construction (each rewrites a source's whole dish set), so a
+# retried deploy is free, and they no-op once the corpus is materialized.
+echo "==> Backfilling derived projections"
+$PHP artisan reelmap:dishes:backfill
+
 echo "==> Rebuilding caches"
 $PHP artisan config:cache
 $PHP artisan route:cache

@@ -37,16 +37,18 @@ use Throwable;
  */
 class PlaceSourceObserver
 {
-    public function __construct(private readonly DishMaterializer $materializer) {}
-
     public function saved(PlaceSource $source): void
     {
-        if (! $this->dishEvidenceMoved($source)) {
+        if (! $this->justInserted($source) && ! $source->wasChanged('extraction_snapshot_json')) {
             return;
         }
 
         try {
-            $this->materializer->materialize($source);
+            // Resolved HERE rather than constructor-injected: Laravel re-resolves
+            // an observer on every event dispatch (there is no listener instance
+            // cache), so autowiring the dependency would build a DishMaterializer
+            // on every PlaceSource save and discard it at the line above.
+            app(DishMaterializer::class)->materialize($source, $this->justInserted($source));
         } catch (Throwable $e) {
             // Derived data with a rebuild path (`reelmap:dishes:backfill`) must
             // never fail the publish or resolve that produced the snapshot —
@@ -67,27 +69,19 @@ class PlaceSourceObserver
     }
 
     /**
-     * Did the dish evidence actually move? A source is also saved on publish
-     * (`published_at`) and on demotion (`is_primary`), and rewriting the rows
-     * there would churn ids for nothing.
+     * Was THIS save the INSERT? `wasRecentlyCreated` alone will not do: it stays
+     * true for the model instance's whole lifetime, so a later
+     * `$source->update(['published_at' => now()])` on the same object still sees
+     * it. Pairing it with "this save changed nothing" pins it to the insert
+     * itself — on an insert there are no changes yet, on any later save there are.
      *
-     * `wasRecentlyCreated` is scoped to the INSERT itself rather than trusted on
-     * its own: it stays true for the instance's whole lifetime, so a later
-     * `$source->update(['published_at' => now()])` on the same object would
-     * otherwise rewrite the rows from the in-memory snapshot — discarding a
-     * concurrent update. On an insert there are no changes yet; on an update
-     * only a real snapshot change qualifies, and it rewrites from the value that
-     * was just persisted.
+     * `getChanges()`, not `wasChanged()` — the latter returns a BOOL, so
+     * `wasChanged() === []` is always false and this would never fire on an
+     * insert. (It didn't, for one run: every "rows are written" test went red at
+     * once, which is the only reason this is a comment and not a shipped bug.)
      */
-    private function dishEvidenceMoved(PlaceSource $source): bool
+    private function justInserted(PlaceSource $source): bool
     {
-        // `getChanges()`, not `wasChanged()` — the latter returns a BOOL, so
-        // `wasChanged() === []` is always false and this branch would never fire
-        // on an insert. (It didn't, for one run: every "rows are written" test
-        // went red at once, which is the only reason this is a comment and not a
-        // shipped bug.)
-        $justInserted = $source->wasRecentlyCreated && $source->getChanges() === [];
-
-        return $justInserted || $source->wasChanged('extraction_snapshot_json');
+        return $source->wasRecentlyCreated && $source->getChanges() === [];
     }
 }

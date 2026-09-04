@@ -58,7 +58,7 @@ class MapPlacesRequest extends FormRequest
             // return the whole viewport with a 200, which is precisely the
             // "the caller believes they filtered" failure servingDish() guards
             // against, relocated to the surface that forgot the filter.
-            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:120'],
+            'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:'.Dish::MAX_NAME],
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'filter' => ['nullable', Rule::in(['all', 'following', 'mine'])],

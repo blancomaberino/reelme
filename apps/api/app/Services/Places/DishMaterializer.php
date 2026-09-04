@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
  * (T-157) — the ONLY writer of the `dishes` table.
  *
  * It is not called from the publish path. It is called from
- * {@see App\Models\Concerns\MaterializesDishes}, a model hook on `PlaceSource`,
+ * {@see App\Observers\PlaceSourceObserver}, a model observer on `PlaceSource`,
  * so that EVERY way a snapshot comes to exist or change is covered by
  * construction rather than by remembering: the resolver's `firstOrCreate`, the
  * pending-venue resolve, PublishShare's corrected-snapshot overwrite, a Filament
@@ -31,15 +31,32 @@ class DishMaterializer
      * through a human reviewer's edits, and this table is queried on a public
      * route: the bound belongs on the write path too, not only in the contract.
      */
-    private const MAX_DISHES_PER_SOURCE = 32;
+    public const MAX_DISHES_PER_SOURCE = 32;
 
-    public function materialize(PlaceSource $source): void
+    /**
+     * @param  bool  $isInsert  the source was just INSERTed, so nothing can already
+     *                          own its dish rows and no other session has seen its
+     *                          id. Passed by {@see App\Observers\PlaceSourceObserver},
+     *                          which has already decided this — recomputing it here
+     *                          from `wasRecentlyCreated` is wrong, because that flag
+     *                          stays true for the model instance's whole lifetime,
+     *                          so emptying a snapshot on a just-created instance
+     *                          would skip the DELETE and strand the old rows.
+     */
+    public function materialize(PlaceSource $source, bool $isInsert = false): void
     {
         $rows = $this->rows($source);
 
-        // A source that was just INSERTed cannot have rows to replace, so the
-        // common case (most sources carry no dishes) costs nothing.
-        if ($rows === [] && $source->wasRecentlyCreated) {
+        if ($isInsert) {
+            // Nothing to replace and nothing to race: a fresh bigserial id cannot
+            // already own dish rows, and no other session can reference it yet.
+            // Skipping the transaction, the row lock and the DELETE takes the
+            // common path from 5 round-trips to 1 — and this runs on every
+            // PlaceSource ever created, in production and in ~2100 tests.
+            if ($rows !== []) {
+                Dish::query()->insert($rows);
+            }
+
             return;
         }
 
@@ -50,7 +67,11 @@ class DishMaterializer
             // `dishes_place_source_id_name_unique` — failing whatever write is
             // hosting the hook, which is a user's publish or a backfill running
             // against live traffic.
-            PlaceSource::query()->whereKey($source->id)->lockForUpdate()->first();
+            //
+            // Through the query builder, not Eloquent: the lock is all we want,
+            // and hydrating the model drags its jsonb snapshot across the wire
+            // and through json_decode to be discarded (measured: 0.86ms → 0.52ms).
+            DB::table('place_sources')->where('id', $source->id)->lockForUpdate()->value('id');
 
             Dish::query()->where('place_source_id', $source->id)->delete();
 
@@ -61,8 +82,8 @@ class DishMaterializer
     }
 
     /**
-     * The rows a snapshot's `dishes[]` becomes: trimmed, capped, deduped by the
-     * EXACT name (first occurrence wins), in snapshot order.
+     * The rows a snapshot's `dishes[]` becomes — {@see parse()} decorated with the
+     * owning source and timestamps for a bulk `insert()`.
      *
      * The dedupe rule is not incidental — it is the one
      * {@see PlaceAggregations::tags()} applied when it read the JSON directly,
@@ -73,14 +94,46 @@ class DishMaterializer
      */
     private function rows(PlaceSource $source): array
     {
-        $snapshot = $source->extraction_snapshot_json;
+        $now = now();
+
+        return array_map(fn (array $dish): array => [
+            'place_source_id' => $source->id,
+            'name' => $dish['name'],
+            'name_normalized' => $dish['name_normalized'],
+            'price' => $dish['price'],
+            'shown_in_video' => $dish['shown_in_video'],
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], self::parse($source->extraction_snapshot_json));
+    }
+
+    /**
+     * THE parser for a snapshot's `dishes[]`, and deliberately the only one.
+     *
+     * Trimmed, capped, deduped by the EXACT name (first occurrence wins), in
+     * snapshot order. The dedupe rule is not incidental — it is the one
+     * {@see PlaceAggregations::tags()} applied when it read the JSON directly,
+     * and keeping it identical is what let that method switch to reading these
+     * rows without changing a single response.
+     *
+     * It is public and static because {@see TagMaterializer} needs the same
+     * answer. This field used to have four readers, each with its own parse;
+     * three were collapsed into this table, and the fourth (dish TAGS) was left
+     * standing with subtly different rules — no `is_string` guard, dedupe before
+     * truncation, a different cap — so one hand-edited snapshot could produce a
+     * dish row and a dish tag with different text. One parser, one answer.
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @return list<array{name: string, name_normalized: string, price: string|null, shown_in_video: bool}>
+     */
+    public static function parse(array $snapshot): array
+    {
         if (! is_array($snapshot['dishes'] ?? null)) {
             return [];
         }
 
-        $now = now();
-        /** @var array<string, array<string, mixed>> $rows */
-        $rows = [];
+        /** @var array<string, array{name: string, name_normalized: string, price: string|null, shown_in_video: bool}> $parsed */
+        $parsed = [];
 
         foreach ($snapshot['dishes'] as $dish) {
             if (! is_array($dish)) {
@@ -89,8 +142,8 @@ class DishMaterializer
 
             // `is_string` before the cast, not after: a snapshot hand-edited in
             // Filament or tinker is not schema-validated, and casting an array to
-            // string throws — which on THIS path fails the publish that produced
-            // the snapshot, where the same shape used to only spoil one GET.
+            // string throws — which on the WRITE path fails the publish that
+            // produced the snapshot, where the same shape used to only spoil one GET.
             if (! is_string($dish['name'] ?? null)) {
                 continue;
             }
@@ -103,7 +156,7 @@ class DishMaterializer
             // hand-corrected snapshot, since the extraction contract caps a name
             // at 120 itself.
             $name = mb_substr(trim($dish['name']), 0, Dish::MAX_NAME);
-            if ($name === '' || isset($rows[$name])) {
+            if ($name === '' || isset($parsed[$name])) {
                 continue;
             }
 
@@ -112,8 +165,7 @@ class DishMaterializer
                 ? mb_substr(trim($price), 0, Dish::MAX_PRICE)
                 : null;
 
-            $rows[$name] = [
-                'place_source_id' => $source->id,
+            $parsed[$name] = [
                 'name' => $name,
                 // May be '' — for punctuation or emoji, and (the larger
                 // category) for any script `Str::ascii()` cannot transliterate:
@@ -125,15 +177,13 @@ class DishMaterializer
                 'name_normalized' => Dish::normalizeName($name),
                 'price' => $price,
                 'shown_in_video' => (bool) ($dish['shown_in_video'] ?? false),
-                'created_at' => $now,
-                'updated_at' => $now,
             ];
 
-            if (count($rows) >= self::MAX_DISHES_PER_SOURCE) {
+            if (count($parsed) >= self::MAX_DISHES_PER_SOURCE) {
                 break;
             }
         }
 
-        return array_values($rows);
+        return array_values($parsed);
     }
 }

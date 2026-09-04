@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
  * One dish claimed by one source (T-157, 08 §3.2) — the queryable form of what
  * used to live only inside `place_sources.extraction_snapshot_json`.
  *
- * The rows are DERIVED, never authored: {@see App\Models\Concerns\MaterializesDishes}
+ * The rows are DERIVED, never authored: {@see App\Observers\PlaceSourceObserver}
  * rewrites a source's whole dish set whenever its snapshot is written, so the
  * table is a projection of the snapshots and can always be rebuilt from them
  * (`php artisan reelmap:dishes:backfill`). Nothing else may write here — a
@@ -59,9 +59,23 @@ class Dish extends Model
      * The shortest NORMALIZED term `?dish=` will match on, and it is a
      * performance boundary rather than a taste one: pg_trgm extracts no trigram
      * from a wildcard-free segment shorter than three characters, so
-     * `LIKE '%ab%'` cannot use `dishes_name_normalized_trgm` and degrades to a
-     * sequential scan of every dish in the corpus — on a public, unauthenticated
-     * route. Measured on 600k rows: 6 ms indexed at 6 chars, 443 ms scanning at 2.
+     * `LIKE '%ab%'` cannot use `dishes_name_normalized_trgm` at all and degrades
+     * to a sequential scan of every dish in the corpus — on a public,
+     * unauthenticated route.
+     *
+     * Measured on a 600k-dish / 60k-place corpus, EXPLAIN (ANALYZE): a 2-char
+     * needle seq-scans; `pasta` runs 281 ms and `pastas caseras` 27 ms. Note what
+     * those numbers are NOT: an earlier version of this comment quoted "6 ms
+     * indexed", which was the bare index probe rather than the query the builder
+     * emits. Worth stating precisely, because a floor justified by a number
+     * nobody re-measured is a floor nobody will revisit.
+     *
+     * Also measured, and NOT fixable by an obvious index: with a viewport (the
+     * map path) the planner drives from `places` and applies the dish match as a
+     * heap filter, so the trigram index goes unused there. That is right while a
+     * viewport holds tens of places and wrong when it holds thousands — a real
+     * ceiling on this design, and the reason semantic search is a later task
+     * rather than a bigger LIKE.
      *
      * It is enforced on the NORMALIZED needle, never the raw input: `?dish=p.`
      * and `?dish=ño` both clear a `min:2` on the raw string and both reduce to

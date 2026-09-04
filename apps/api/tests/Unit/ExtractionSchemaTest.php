@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Dish;
+use App\Services\Places\DishMaterializer;
 use App\Support\Contracts\ExtractionSchema;
 use Tests\TestCase;
 
@@ -70,6 +71,9 @@ it('pins the dish write-path caps to the extraction contract', function () {
         ->and($dish['items']['properties']['price']['maxLength'])->toBe(40);
 
     expect(Dish::MAX_NAME)->toBe($dish['items']['properties']['name']['maxLength'])
-        ->and(Dish::MAX_PRICE)->toBe($dish['items']['properties']['price']['maxLength']);
+        ->and(Dish::MAX_PRICE)->toBe($dish['items']['properties']['price']['maxLength'])
+        // The per-source cap the comment above claims is mirrored — it was named
+        // and then not asserted, so changing it to 16 failed nothing.
+        ->and(DishMaterializer::MAX_DISHES_PER_SOURCE)->toBe($dish['maxItems']);
 
 });

@@ -34,7 +34,7 @@ class TagMaterializer
             TagKind::Cuisine->value => $this->stringList($snapshot['cuisines'] ?? null),
             TagKind::Vibe->value => $this->stringList($snapshot['vibe_tags'] ?? null),
             TagKind::Diet->value => $this->stringList($snapshot['dietary_tags'] ?? null),
-            TagKind::Dish->value => $this->dishNames($snapshot['dishes'] ?? null),
+            TagKind::Dish->value => $this->dishNames($snapshot),
         ];
 
         $attach = [];
@@ -117,22 +117,21 @@ class TagMaterializer
     }
 
     /**
+     * Dish labels for `TagKind::Dish`, read through the SAME parser that writes
+     * the `dishes` rows ({@see DishMaterializer::parse()}) rather than a second
+     * walk of the same JSON.
+     *
+     * This used to be its own parse, and it carried the bug that one was written
+     * to fix: no `is_string` guard, so a hand-edited snapshot whose `name` is an
+     * array threw here. Two derivations of one field, disagreeing on the edges,
+     * is how the tag vocabulary and the `?dish=` corpus come to answer
+     * differently about the same menu.
+     *
+     * @param  array<string, mixed>  $snapshot
      * @return list<string>
      */
-    private function dishNames(mixed $dishes): array
+    private function dishNames(array $snapshot): array
     {
-        if (! is_array($dishes)) {
-            return [];
-        }
-
-        $names = [];
-        foreach ($dishes as $dish) {
-            $name = is_array($dish) ? trim((string) ($dish['name'] ?? '')) : '';
-            if ($name !== '') {
-                $names[] = $name;
-            }
-        }
-
-        return array_values(array_unique($names));
+        return array_column(DishMaterializer::parse($snapshot), 'name');
     }
 }
