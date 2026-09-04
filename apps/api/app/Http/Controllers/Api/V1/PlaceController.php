@@ -55,10 +55,7 @@ class PlaceController extends Controller
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng');
 
         if ($near !== null) {
-            $query->selectRaw(
-                'ST_Distance(location, ST_MakePoint(?, ?)::geography) AS distance',
-                [$near['lng'], $near['lat']],
-            )->whereRaw(
+            $query->withDistanceFrom($near)->whereRaw(
                 'ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
                 [$near['lng'], $near['lat'], $request->radiusM()],
             );
@@ -286,7 +283,7 @@ class PlaceController extends Controller
             case 'distance':
                 // Guaranteed by validation: distance requires near.
                 assert($near !== null);
-                $dist = 'ST_Distance(location, ST_MakePoint(?, ?)::geography)';
+                $dist = PlaceQueryBuilder::DISTANCE_SQL;
                 $point = [$near['lng'], $near['lat']];
                 $query->orderByRaw("{$dist} ASC, id ASC", $point);
                 if ($cursor !== null) {

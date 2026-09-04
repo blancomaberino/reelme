@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ParsesNearPoint;
 use App\Models\Dish;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -15,6 +16,8 @@ use Illuminate\Validation\Validator;
  */
 class MapPlacesRequest extends FormRequest
 {
+    use ParsesNearPoint;
+
     public function authorize(): bool
     {
         return true;
@@ -22,9 +25,9 @@ class MapPlacesRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        // Same guard as `near` above: an array `?bbox[]=…` would be cast to
-        // string here, before the `string` rule can reject it, and the warning
-        // surfaces as a 500 rather than a 422.
+        // Same guard as {@see ParsesNearPoint::mergeNearPoint()}: an array
+        // `?bbox[]=…` would be cast to string here, before the `string` rule can
+        // reject it, and the warning surfaces as a 500 rather than a 422.
         $bbox = $this->query('bbox');
         $parts = is_string($bbox) ? array_map('trim', explode(',', $bbox)) : [];
         if (count($parts) === 4) {
@@ -36,37 +39,7 @@ class MapPlacesRequest extends FormRequest
             ]);
         }
 
-        // The viewer point, split exactly as PlaceIndexRequest splits it — same
-        // spelling, same `is_string` guard against `?near[]=1&near[]=2` becoming
-        // a 500 before the rules can 422 it.
-        $near = $this->query('near');
-        if (is_string($near)) {
-            $nearParts = array_map('trim', explode(',', $near));
-            if (count($nearParts) === 2) {
-                $this->merge(['nearLat' => $nearParts[0], 'nearLng' => $nearParts[1]]);
-            }
-        }
-    }
-
-    /**
-     * The viewer's position, or null when they did not share one.
-     *
-     * Null is the load-bearing case: every field derived from it is omitted from
-     * the pin rather than defaulted, because a distance of 0 and a "Closed" badge
-     * are both lies that look like data.
-     *
-     * @return array{lat: float, lng: float}|null
-     */
-    public function nearPoint(): ?array
-    {
-        if (! is_string($this->query('near')) || $this->validated('nearLat') === null) {
-            return null;
-        }
-
-        return [
-            'lat' => (float) $this->validated('nearLat'),
-            'lng' => (float) $this->validated('nearLng'),
-        ];
+        $this->mergeNearPoint();
     }
 
     /**
@@ -87,9 +60,7 @@ class MapPlacesRequest extends FormRequest
             // The viewer's own position (T-156). Optional: the map works without
             // it, and every viewer-relative field on a pin is ABSENT rather than
             // faked when it is missing.
-            'near' => ['nullable', 'string'],
-            'nearLat' => ['required_with:near', 'numeric', 'between:-90,90'],
-            'nearLng' => ['required_with:near', 'numeric', 'between:-180,180'],
+            ...$this->nearRules(),
             // "…that do pasta", on the surface where that question is actually
             // asked (T-157). A FormRequest ignores unknown parameters, so
             // omitting this rule would not 422 `?dish=` on the map — it would
@@ -113,6 +84,13 @@ class MapPlacesRequest extends FormRequest
         return [
             'maxLng.gt' => 'A bbox crossing the antimeridian is not supported.',
             'minLat.lt' => 'minLat must be south of maxLat.',
+            // Shared with `/places`, because the parse is. Without them the map
+            // answers `?near=-34.90` with "The near lat field is required when
+            // near is present." — naming `nearLat`, a field the caller never sent
+            // and will not find in any documentation — while the sibling endpoint
+            // answers the same input with `near must be "lat,lng"`. One parameter,
+            // two endpoints, two stories about it.
+            ...$this->nearMessages(),
         ];
     }
 
@@ -129,14 +107,6 @@ class MapPlacesRequest extends FormRequest
             $latSpan = abs((float) $this->input('maxLat') - (float) $this->input('minLat'));
             if ($lngSpan > 90 || $latSpan > 90) {
                 $v->errors()->add('bbox', 'The viewport is too large; zoom in.');
-            }
-
-            // A malformed `near` is a 422, never a silently ignored parameter.
-            // The alternative is a map that answers 200 with no distances while
-            // the caller believes it sent a position — the same "you think you
-            // filtered" failure the dish filter guards against.
-            if (is_string($this->query('near')) && ! $this->has('nearLat')) {
-                $v->errors()->add('near', 'near must be "lat,lng".');
             }
         });
     }

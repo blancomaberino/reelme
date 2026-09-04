@@ -6,6 +6,8 @@ import { createElement, type ReactNode } from 'react';
 import { api } from '@/api/client';
 import type { Region } from '@/lib/geo';
 
+import { queryKeys } from '@/api/keys';
+
 import { useMapPlaces } from '../useMapPlaces';
 
 let mock: AxiosMockAdapter;
@@ -89,11 +91,26 @@ it('sends near=lat,lng when the viewer shared a position, and omits it otherwise
   // precision changes the cache key and therefore how often the map refetches.
   expect(mock.history.get[0].params.near).toBe('-34.9011,-56.1645');
 
-  const without = renderHook(() => useMapPlaces(REGION, {}, null), { wrapper });
+  // A DIFFERENT viewport, deliberately: `near` is no longer part of the cache
+  // key, so asking the same one again would be served from cache and issue no
+  // request at all — a green test that measured nothing.
+  const elsewhere = { ...REGION, latitude: REGION.latitude + 0.5 };
+  const without = renderHook(() => useMapPlaces(elsewhere, {}, null), { wrapper });
   await waitFor(() => expect(without.result.current.isSuccess).toBe(true));
   // ABSENT, not empty: the API 422s a malformed `near` rather than ignoring it,
   // so an empty string would fail the whole request.
   expect('near' in mock.history.get[1].params).toBe(false);
+});
+
+it('keeps the viewer point OUT of the cache key, so an offline cold start still hits', async () => {
+  // The regression this pins (T-103 × T-156): the personal map is persisted to
+  // disk under this key. With `near` in it, a cold start asks with null and then
+  // with a fresh fix ~11 m off yesterday's — two misses, and airplane mode
+  // renders an empty map. The key must be addressable by a device that does not
+  // know where it is yet.
+  const withPoint = queryKeys.mapPlaces('bbox', 12, {});
+  expect(withPoint).toEqual(['places', 'map', 'bbox', 12, {}]);
+  expect(JSON.stringify(withPoint)).not.toContain('-34.9');
 });
 
 it('does not refetch when the fix drifts within the quantization step', async () => {
@@ -131,10 +148,11 @@ it('refetches WITH the viewer point when the map is panned (the loop, not the fi
   expect(panned.params.bbox).not.toBe(mock.history.get[0].params.bbox);
 });
 
-it('re-asks the same viewport when the fix arrives, instead of replaying the distance-less page', async () => {
-  // The other half of the key: a map that opened before the GPS answered has a
-  // cached page with no distances in it. If `near` were not part of the key,
-  // that page would be served forever and the labels would never appear.
+it('re-asks the same viewport when the fix arrives, instead of serving the distance-less page', async () => {
+  // The other half of taking `near` out of the key: a map that opened before the
+  // GPS answered has a cached page with no distances in it, and react-query
+  // would serve that forever. Freshness moves to an explicit refetch — same
+  // outcome, without breaking the persisted cache.
   const { result, rerender } = renderHook<
     ReturnType<typeof useMapPlaces>,
     { v: typeof VIEWER | null }
@@ -145,4 +163,36 @@ it('re-asks the same viewport when the fix arrives, instead of replaying the dis
   rerender({ v: VIEWER });
   await waitFor(() => expect(mock.history.get.length).toBe(first + 1));
   expect(mock.history.get[first].params.near).toBe('-34.9011,-56.1645');
+});
+
+it('does not double-fetch on mount just because the point was there from the start', async () => {
+  // The refetch effect has to skip its first run: the query is already fetching,
+  // and re-asking immediately would double every map open — on the app's most
+  // expensive endpoint.
+  const { result } = renderHook(() => useMapPlaces(REGION, {}, VIEWER), { wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  await new Promise((r) => setTimeout(r, 50));
+
+  expect(mock.history.get.length).toBe(1);
+});
+
+it('reports the age of the rows ON SCREEN, not 0, while a new viewport loads', async () => {
+  // With keepPreviousData the previous key's rows are what the user is looking
+  // at, but react-query reports `dataUpdatedAt: 0` for a key that has never
+  // resolved. Handing 0 to the sheet reads as "the epoch", so the open/closed
+  // cue silently disappears for the length of every pan.
+  const { result, rerender } = renderHook<ReturnType<typeof useMapPlaces>, { r: Region }>(
+    ({ r }) => useMapPlaces(r, {}, null),
+    { wrapper, initialProps: { r: REGION } },
+  );
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  const settled = result.current.fetchedAt;
+  expect(settled).toBeGreaterThan(0);
+
+  // Never-resolved key: the placeholder rows are on screen, and their age is
+  // the one the cue must be judged against.
+  mock.onGet('/map/places').reply(() => new Promise(() => {}));
+  rerender({ r: { ...REGION, latitude: REGION.latitude + 0.5 } });
+
+  expect(result.current.fetchedAt).toBe(settled);
 });

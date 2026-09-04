@@ -6,6 +6,7 @@ import type { MapData } from '@/api/hooks/useMapPlaces';
 import type { MapFilters } from '@/api/keys';
 import type { MapPin } from '@/api/places';
 import { DEFAULT_REGION } from '@/lib/initial-region';
+import { OPEN_STATE_MAX_AGE_MS } from '@/lib/opening-hours';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
@@ -22,7 +23,7 @@ const { __animateToRegion: animateToRegion } = jest.requireMock('react-native-ma
 };
 
 // --- Mocks: feed the screen fixture data, and count PlaceMarker renders. ---
-const mapData: { current: MapData } = { current: { pins: [], clusters: [], truncated: false } };
+const mockMapData: { current: MapData } = { current: { pins: [], clusters: [], truncated: false, fetchedAt: Date.now() } };
 // Captures the (derived) filters the screen hands the fetch — for the T-071
 // personal-scope derivation tests. `mock`-prefixed so jest allows it in the
 // hoisted factory.
@@ -36,14 +37,15 @@ jest.mock('@/api/hooks/useMapPlaces', () => ({
     mockViewerSeen.current = viewer;
     return {
       data: {
-        pins: [...mapData.current.pins],
-        clusters: [...mapData.current.clusters],
-        truncated: mapData.current.truncated,
+        pins: [...mockMapData.current.pins],
+        clusters: [...mockMapData.current.clusters],
+        truncated: mockMapData.current.truncated,
       },
-      // Fresh, so the sheet's open/closed cue is inside its trust window
-      // (see openStateLabel). Read at call time, not module load, or a long
-      // suite would age past the window mid-run.
-      dataUpdatedAt: Date.now(),
+      // The age of the rows on screen. Controllable, because "the cue is dropped
+      // once the payload is stale" is a SCREEN-level claim: place-sheet.test.tsx
+      // passes `fetchedAt` in by hand, so only this seam proves the map actually
+      // hands the sheet the payload's own timestamp rather than `Date.now()`.
+      fetchedAt: mockFetchedAt.current,
       isFetching: false,
       isSuccess: true,
     };
@@ -53,9 +55,11 @@ jest.mock('@/api/hooks/useMapPlaces', () => ({
 // test can check and a hook-level one cannot: the hook sends whatever it is
 // given, and the bug worth catching is the screen never giving it anything.
 const mockViewerSeen: { current: unknown } = { current: undefined };
+const mockFetchedAt = { current: 0 };
 const mockViewer: { current: { latitude: number; longitude: number } | null } = { current: null };
 jest.mock('@/lib/use-viewer-position', () => ({
   useViewerPosition: () => mockViewer.current,
+  useRefreshViewerPosition: () => () => {},
 }));
 jest.mock('@/api/hooks/useTags', () => ({
   useTagCatalog: () => ({ data: [] }),
@@ -143,8 +147,9 @@ beforeEach(() => {
   mockFiltersSeen.current = undefined;
   mockViewerSeen.current = undefined;
   mockViewer.current = null;
+  mockFetchedAt.current = Date.now();
   mockRemoveMutate.mockClear();
-  mapData.current = { pins: [pin('1'), pin('2'), pin('3')], clusters: [], truncated: false };
+  mockMapData.current = { pins: [pin('1'), pin('2'), pin('3')], clusters: [], truncated: false, fetchedAt: Date.now() };
   useMapStore.setState({ selected: null, filters: { cuisine: null, price_range: null, tags: [], list: null, filter: null } });
   useSessionStore.setState({ user: null, status: 'guest' });
   useSettingsStore.setState({ locale: 'en' }); // match jest.setup's default
@@ -237,20 +242,44 @@ it('hands the viewer point to the fetch, and nothing when there is none', () => 
 });
 
 it('shows distance and the open cue on a tapped pin — reached by pressing the marker', () => {
-  // The seam, walked end to end: a pin the API answered with, a real press on
-  // the control a user can see, and the sheet it opens. Rendering PlaceSheet
-  // directly (as its own test file does) proves the component; only this proves
-  // the payload actually reaches it.
-  mapData.current = {
+  // The seam: a pin the API answered with, a press on the marker, and the sheet
+  // it opens. Rendering PlaceSheet directly (as its own test file does) proves
+  // the component; only this proves the payload reaches it.
+  //
+  // Honest about what the press is NOT: `marker-2` is a label this file's own
+  // PlaceMarker mock defines, so the marker's real press surface
+  // (`accessibilityLabel={pin.name}`) is not what is being pressed. The
+  // screen→sheet wiring is real; the tap target is a stand-in.
+  mockMapData.current = {
     pins: [pin('2', { distance_m: 450, open_state: { open_now: true, closes_at: '23:30', opens_at: null } })],
     clusters: [],
-    truncated: false,
+    truncated: false, fetchedAt: Date.now(),
   };
   render(<MapScreen />);
   fireEvent.press(screen.getByLabelText('marker-2'));
 
   expect(screen.getByText('450 m')).toBeOnTheScreen();
   expect(screen.getByText('Open · closes 23:30')).toBeOnTheScreen();
+});
+
+it('drops the open cue — but keeps the distance — when the map data is stale', () => {
+  // The seam a component test cannot reach: `place-sheet.test.tsx` is handed
+  // `fetchedAt` directly, so it proves the sheet obeys an age it is given. Only
+  // here can the SCREEN be caught handing over a fabricated freshness — mutate
+  // `fetchedAt={fetchedAt}` to `Date.now()` in map.tsx and last night's
+  // "Abierto" comes back on a cold start with every other test still green.
+  mockFetchedAt.current = Date.now() - (OPEN_STATE_MAX_AGE_MS + 60_000);
+  mockMapData.current = {
+    pins: [pin('2', { distance_m: 450, open_state: { open_now: true, closes_at: '23:30', opens_at: null } })],
+    clusters: [],
+    truncated: false, fetchedAt: Date.now(),
+  };
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('marker-2'));
+
+  expect(screen.queryByText('Open · closes 23:30')).toBeNull();
+  // A place does not move, so the distance is still true.
+  expect(screen.getByText('450 m')).toBeOnTheScreen();
 });
 
 it('shows neither on a pin the API answered without a viewer point', () => {
@@ -263,7 +292,7 @@ it('shows neither on a pin the API answered without a viewer point', () => {
 });
 
 it('shows the "zoom in for more" chip when the response is truncated', () => {
-  mapData.current = { pins: [pin('1')], clusters: [], truncated: true };
+  mockMapData.current = { pins: [pin('1')], clusters: [], truncated: true, fetchedAt: Date.now() };
   render(<MapScreen />);
   expect(screen.getByText(/Zoom in for more/)).toBeOnTheScreen();
 });

@@ -64,14 +64,20 @@ export const queryKeys = {
   placeSources: (slug: string) => ['places', slug, 'sources'] as const,
   // Quantized bbox + banded zoom keep tiny pans on one cache entry (T-032).
   //
-  // `near` is part of the key because the RESPONSE depends on it (T-156): the
-  // same viewport asked with and without a viewer point comes back with and
-  // without `distance_m`. Leaving it out would serve a cached, distance-less
-  // payload to a viewer whose fix has just landed, and the labels would never
-  // appear. It is pre-quantized by the caller so GPS jitter does not mint a new
-  // cache entry every metre.
-  mapPlaces: (quantizedBbox: string, zoomBand: number, filters: MapFilters, near: string | null = null) =>
-    ['places', 'map', quantizedBbox, zoomBand, filters, near] as const,
+  // The viewer's position (T-156) is deliberately NOT part of this key, and that
+  // is a correction rather than an omission. It was, briefly — the response does
+  // depend on it, so it looked right — and it broke T-103's offline map: this
+  // key is PERSISTED for the viewer's own scope, so a cold start asks with
+  // `near: null` while last session's entry sits on disk under a coordinate, and
+  // the fix that then arrives is quantized to ~11 m, which a new GPS reading
+  // essentially never reproduces. Two misses, and the airplane-mode cold start
+  // that persistence exists for renders an empty map.
+  //
+  // Freshness is handled where it belongs instead: `useMapPlaces` refetches when
+  // the viewer point changes. Same result, and the cache entry stays addressable
+  // by a device that does not know where it is yet.
+  mapPlaces: (quantizedBbox: string, zoomBand: number, filters: MapFilters) =>
+    ['places', 'map', quantizedBbox, zoomBand, filters] as const,
   feed: (scope: string) => ['feed', scope] as const,
   /** The personal "my places" list (T-071), keyed by its active facet filters. */
   myPlaces: (filters: MyPlacesFilters) => ['me', 'places', filters] as const,
@@ -131,6 +137,13 @@ export const queryKeys = {
    * refusal is a refetch rather than a second code path.
    */
   deviceLocation: () => ['device', 'location'] as const,
+  /**
+   * The viewer's position for DISTANCES (T-156). Separate from
+   * `deviceLocation` on purpose: that one is fetched by `locateUser`, which
+   * PROMPTS, and this one must never prompt. One key with two query functions
+   * is a race over which of them a screen happens to mount first.
+   */
+  viewerPosition: () => ['device', 'viewer-position'] as const,
   /** Nearby active offers for the diner browse (T-047). */
   nearbyOffers: (near: string, radiusM: number) => ['offers', 'nearby', near, radiusM] as const,
   /** Balance, Connect state and recent entries (T-046). Never cached — money. */

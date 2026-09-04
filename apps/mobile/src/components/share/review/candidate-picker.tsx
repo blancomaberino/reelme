@@ -37,6 +37,12 @@ export function CandidatePicker({
         {candidates.map((cand) => {
           const id = Number(cand.place_id);
           const on = selectedId === id;
+          // Formatted once and guarded on the FORMATTED value, not the raw one:
+          // `distanceLabel` returns '' for null, NaN and negatives, which would
+          // otherwise render a dangling " away". Formatting it twice — once
+          // unlocalized to test emptiness, once through `fmt` to show — was two
+          // answers to "is there a distance", in two different locales.
+          const distance = fmt.distance(cand.distance_m);
           return (
             <Row
               key={cand.place_id}
@@ -44,7 +50,7 @@ export function CandidatePicker({
               title={cand.name ?? t('share.pending.unnamed')}
               sub={
                 cand.address ??
-                (cand.distance_m != null ? t('review.candidate.distance', { distance: fmt.distance(cand.distance_m) }) : null)
+                (distance !== '' ? t('review.candidate.distance', { distance }) : null)
               }
               onPress={() => onSelect(on ? null : id)}
               styles={styles}

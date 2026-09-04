@@ -109,12 +109,21 @@ export async function requestLocationPermission(): Promise<PermissionOutcome> {
  *
  * Assumes permission is already granted — callers own the prompt.
  */
-export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise<Region | null> {
+export async function getUserRegion(
+  timeoutMs: number = FIX_TIMEOUT_MS,
+  lastKnown?: { maxAge?: number; requiredAccuracy?: number },
+): Promise<Region | null> {
   const m = locationModule();
   if (!m) return null;
 
   try {
-    const last = await m.getLastKnownPositionAsync();
+    // `lastKnown` bounds the CACHED fix, and callers that measure distances
+    // must pass it. Unbounded, `getLastKnownPositionAsync` will happily hand
+    // back a reading from another city hours ago — free when the answer only
+    // has to frame a viewport (what this function was written for), and wrong
+    // once the answer is rendered as "713 m" (T-156). Default stays unbounded
+    // so the viewport path keeps its instant, good-enough answer.
+    const last = await m.getLastKnownPositionAsync(lastKnown);
     // Only RETURN a usable cached region. A bogus one (`toRegion` → null) must
     // fall through to the fresh fix, not short-circuit it into "no location".
     const cached = last ? toRegion(last.coords) : null;
@@ -204,4 +213,38 @@ export async function openLocationSettings(): Promise<void> {
   } catch {
     // Nothing actionable for the user beyond the tap doing nothing.
   }
+}
+
+/**
+ * How stale a cached fix may be before a DISTANCE is measured from it. Two
+ * minutes: long enough that reopening the map is instant, short enough that a
+ * walk across town cannot be reported as "50 m".
+ */
+export const VIEWER_FIX_MAX_AGE_MS = 2 * 60 * 1000;
+
+/**
+ * How coarse a cached fix may be, in metres, for the same purpose. iOS with
+ * Precise Location OFF returns a ~1–3 km reading, and rendering "713 m" from
+ * one is a fabricated precision — the same class of wrong as a fabricated
+ * "Closed". Past this, wait for a fresh fix instead.
+ */
+export const VIEWER_FIX_MAX_ACCURACY_M = 500;
+
+/**
+ * The viewer's position WITHOUT ever prompting, or null.
+ *
+ * Extracted because it existed twice: the redemption screen reads the fix this
+ * way so that a customer at the counter is never blocked by a permission
+ * dialog, and the map needs the identical rule so that a distance label never
+ * costs the app its one location prompt. Two copies of "the position, if we may
+ * already have it" is two places for the next change — coarse location, a
+ * cached-fix fallback — to land in only one of.
+ */
+export async function positionIfGranted(timeoutMs: number = FIX_TIMEOUT_MS): Promise<Region | null> {
+  if ((await getLocationPermission()).state !== 'granted') return null;
+
+  return getUserRegion(timeoutMs, {
+    maxAge: VIEWER_FIX_MAX_AGE_MS,
+    requiredAccuracy: VIEWER_FIX_MAX_ACCURACY_M,
+  });
 }

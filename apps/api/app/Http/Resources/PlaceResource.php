@@ -8,7 +8,6 @@ use App\Models\UserPlaceTag;
 use App\Services\Places\PlaceAggregations;
 use App\Support\CachedReviews;
 use App\Support\OpeningHours;
-use App\Support\OpeningSchedule;
 use App\Support\RequestLocale;
 use App\Support\WeeklyHours;
 use Illuminate\Http\Request;
@@ -111,7 +110,7 @@ class PlaceResource extends JsonResource
             // client came to invent its own reading last time (T-128). One
             // implementation decides open/closed — this one — and the client
             // renders its answer.
-            'open_state' => OpeningSchedule::stateAt($this->opening_hours_periods_json, $this->timezone, now()),
+            'open_state' => $this->resource->openState(),
             'phone' => $this->phone,
             'website' => $this->website,
             // Curated business picture (T-084): the main image drives the detail

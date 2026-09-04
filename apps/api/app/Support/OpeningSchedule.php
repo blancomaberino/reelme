@@ -30,6 +30,21 @@ use Exception;
  */
 final class OpeningSchedule
 {
+    /** One-entry memo for {@see self::minuteOfWeek()} — "<zone>@<unix ts>". */
+    private static ?string $weekMinuteKey = null;
+
+    private static int $weekMinute = 0;
+
+    /**
+     * Constructed `DateTimeZone`s, by the id they were built from. Bounded by
+     * the tz database (~500 ids) and immutable, so it is a lookup table rather
+     * than a cache: a viewport of 300 pins in one city built the same object 300
+     * times once `open_state` stopped being conditional.
+     *
+     * @var array<string, DateTimeZone|false>
+     */
+    private static array $zones = [];
+
     /** Minutes in a day and in a week — the arithmetic below is minute-of-week throughout. */
     private const DAY = 1440;
 
@@ -250,11 +265,7 @@ final class OpeningSchedule
             return null;
         }
 
-        $local = DateTimeImmutable::createFromInterface($now)->setTimezone($zone);
-        // `N` is 1 (Monday) … 7 (Sunday); Google's day 0 is Sunday, so 7 maps to 0.
-        $minuteOfWeek = ((int) $local->format('N') % 7) * self::DAY
-            + (int) $local->format('G') * 60
-            + (int) $local->format('i');
+        $minuteOfWeek = self::minuteOfWeek($zone, $now);
 
         $nextOpen = null;
 
@@ -306,6 +317,35 @@ final class OpeningSchedule
             'closes_at' => null,
             'opens_at' => $nextOpen === null ? null : self::clock($nextOpen % self::WEEK),
         ];
+    }
+
+    /**
+     * The instant's position in the local week, in minutes from Sunday 00:00.
+     *
+     * Memoized on (zone, instant) because it is now computed PER ROW: a map
+     * viewport serves up to 300 pins and a listing 100, `open_state` is emitted
+     * for every one of them, and a viewport is — essentially always — a single
+     * timezone read at a single instant. So the second row onward is answering a
+     * question already answered. One entry, not a growing map: the value is only
+     * ever reused within one response, and an unbounded cache in a long-lived
+     * Octane or queue process would be a leak for no extra hit rate.
+     */
+    private static function minuteOfWeek(DateTimeZone $zone, DateTimeInterface $now): int
+    {
+        $key = $zone->getName().'@'.$now->getTimestamp();
+
+        if (self::$weekMinuteKey === $key) {
+            return self::$weekMinute;
+        }
+
+        $local = DateTimeImmutable::createFromInterface($now)->setTimezone($zone);
+        // `N` is 1 (Monday) … 7 (Sunday); Google's day 0 is Sunday, so 7 maps to 0.
+        self::$weekMinute = ((int) $local->format('N') % 7) * self::DAY
+            + (int) $local->format('G') * 60
+            + (int) $local->format('i');
+        self::$weekMinuteKey = $key;
+
+        return self::$weekMinute;
     }
 
     /**
@@ -404,9 +444,15 @@ final class OpeningSchedule
             return null;
         }
 
+        if (array_key_exists($timezone, self::$zones)) {
+            return self::$zones[$timezone] ?: null;
+        }
+
         try {
-            return new DateTimeZone($timezone);
+            return self::$zones[$timezone] = new DateTimeZone($timezone);
         } catch (Exception) {
+            self::$zones[$timezone] = false;
+
             return null;
         }
     }

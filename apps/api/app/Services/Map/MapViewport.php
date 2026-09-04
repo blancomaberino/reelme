@@ -7,7 +7,6 @@ use App\Http\Requests\MapPlacesRequest;
 use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Place;
-use App\Support\OpeningSchedule;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -113,7 +112,8 @@ class MapViewport
             ->get();
 
         $truncated = $places->count() > self::PIN_CAP;
-        $pins = $places->take(self::PIN_CAP)->map(fn (Place $p) => $this->pin($p, $near))->all();
+        $at = now();
+        $pins = $places->take(self::PIN_CAP)->map(fn (Place $p) => $this->pin($p, $near, $at))->all();
 
         return ApiResponse::item(['pins' => $pins, 'clusters' => []], array_filter([
             'zoom' => $zoom,
@@ -192,9 +192,10 @@ class MapViewport
             // distance at zoom 15 and loses it at zoom 13 is a bug the user finds
             // by pinching, and one nothing but a test at both zooms would catch.
             $near = $request->nearPoint();
+            $at = now();
             $pins = $this->selectPinFields(Place::query()->whereIn('id', $singletonIds), $near)
                 ->get()
-                ->map(fn (Place $p) => $this->pin($p, $near))
+                ->map(fn (Place $p) => $this->pin($p, $near, $at))
                 ->all();
         }
 
@@ -224,19 +225,15 @@ class MapViewport
         // query and 300 haversines, and it is what lets a caller sort on it
         // without a second pass.
         //
-        // It is added AFTER `select('*')`, and that ordering is not cosmetic:
-        // `select()` REPLACES the select list while `selectRaw()` appends, so
-        // adding the distance first silently drops it and every pin reports 0 —
-        // which is not null, so a `not->toBeNull()` test would have passed.
+        // It is added AFTER `select('*')`, and that ordering is not cosmetic —
+        // see {@see PlaceQueryBuilder::withDistanceFrom()}, which is also the one
+        // place the alias and the `[lng, lat]` binding order are spelled.
         $query = $query
             ->select('*')
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng');
 
         if ($near !== null) {
-            $query->selectRaw(
-                'ST_Distance(location, ST_MakePoint(?, ?)::geography) AS distance',
-                [$near['lng'], $near['lat']],
-            );
+            $query->withDistanceFrom($near);
         }
 
         return $query
@@ -252,45 +249,19 @@ class MapViewport
 
     /**
      * @param  array{lat: float, lng: float}|null  $near  the viewer's position
+     * @param  \DateTimeInterface  $at  ONE clock reading for the whole response,
+     *                                  required rather than defaulted so the
+     *                                  invariant is the signature's rather than a
+     *                                  comment's. A bare `now()` per pin lets a
+     *                                  300-pin map served across a minute
+     *                                  boundary report two venues with identical
+     *                                  hours as one open and one closed.
      * @return array<string, mixed>
      */
-    private function pin(Place $place, ?array $near = null): array
+    private function pin(Place $place, ?array $near, \DateTimeInterface $at): array
     {
         $sourcePost = $place->primarySource?->sourcePost;
         $influencer = $sourcePost?->influencer;
-
-        // The viewer-relative pair (T-156). Both keys are ABSENT without a
-        // position — not 0, not false. A zero distance reads as "you are here"
-        // and a false `open_now` reads as "closed", and a client cannot tell
-        // either from the real thing.
-        //
-        // Within that, `open_now` is null when the answer is not KNOWABLE — no
-        // structured periods, or no timezone. That is T-155's rule and it is the
-        // whole reason this is a nullable boolean rather than a boolean: the one
-        // thing a diner must never be told is that a place is shut when nobody
-        // knows.
-        $viewerRelative = [];
-        if ($near !== null) {
-            $viewerRelative = [
-                'distance_m' => (int) round((float) $place->getAttribute('distance')),
-                // The SAME `open_state` object the place detail serves, not a bare
-                // boolean. T-155 already built and tested `openStateLabel()` on the
-                // client against this shape, and it needs the whole object: to say
-                // "open until 23:30" it needs `closes_at`, and to AGE THE CUE OUT
-                // after five minutes it needs something to age. A bare boolean
-                // cannot do either — a persisted query would repaint an
-                // 11-hour-old "open" on a cold start, which is the confidently
-                // wrong answer this whole feature exists to prevent.
-                //
-                // Null whenever the answer is not knowable (no periods, or no
-                // timezone), and never a fabricated "closed".
-                'open_state' => OpeningSchedule::stateAt(
-                    $place->opening_hours_periods_json,
-                    $place->timezone,
-                    now(),
-                ),
-            ];
-        }
 
         return [
             'type' => 'place',
@@ -314,9 +285,29 @@ class MapViewport
                 'handle' => $influencer->handle,
                 'display_name' => $influencer->display_name,
             ],
+            // UNCONDITIONAL, unlike `distance_m`, and the asymmetry is the point:
+            // open-or-closed is a fact about the VENUE — its periods, its own
+            // timezone, the clock — and nothing about the viewer. Gating it on
+            // `near` (as this first did) meant a user who declined location saw
+            // no open/closed cue on any pin, while `/places`, `/search`, the feed
+            // and every list showed one for the same restaurants. Two surfaces
+            // disagreeing about a fact neither viewer influences.
+            //
+            // Null whenever the answer is not KNOWABLE — no structured periods,
+            // or no timezone — and never a fabricated "closed" (T-155).
+            'open_state' => $place->openState($at),
             // Appended, so the identity fields stay first and a reader sees the
-            // viewer-relative pair as the addition it is.
-            ...$viewerRelative,
+            // viewer-relative field as the addition it is.
+            //
+            // ABSENT without a viewer position — not 0. Zero is a real distance
+            // ("you are standing in it"), so a default is indistinguishable from
+            // the truth. Same 1-decimal precision as {@see PlaceSummaryResource}:
+            // one key name must not mean two shapes, and the client re-rounds by
+            // magnitude, so an int here and a float there put the same restaurant
+            // in two different kilometre buckets.
+            ...($near === null ? [] : [
+                'distance_m' => round((float) $place->getAttribute('distance'), 1),
+            ]),
         ];
     }
 }

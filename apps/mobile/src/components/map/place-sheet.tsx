@@ -20,8 +20,9 @@ type Props = {
    */
   onRemoveFromList?: (pinId: string) => void;
   /**
-   * When the pins on screen were fetched (react-query's `dataUpdatedAt`). Ages
-   * the open/closed cue out — see {@link openStateLabel}. Zero means "unknown",
+   * When the pins on screen were fetched — stamped into the payload by
+   * `useMapPlaces`, so it describes the ROWS rather than the cache key. Ages the
+   * open/closed cue out — see {@link openStateLabel}. Zero means "unknown",
    * which reads as a huge age and therefore no cue: the honest default, since a
    * caller that forgot to pass it has no idea how old its data is either.
    */
@@ -56,6 +57,7 @@ export function PlaceSheet({ pin, onViewPlace, onSave, onRemoveFromList, fetched
   // itself, because the map query is persisted for a day and a cold start would
   // otherwise repaint last night's "Abierto".
   const openState = openStateLabel(pin.open_state, useAgeOf(fetchedAt));
+  const openText = openState ? t(openState.key, openState.vars) : null;
   const distance = fmt.distance(pin.distance_m);
 
   return (
@@ -64,11 +66,23 @@ export function PlaceSheet({ pin, onViewPlace, onSave, onRemoveFromList, fetched
         {pin.name}
       </Text>
       {openState || distance ? (
-        <View style={styles.metaRow} testID="place-sheet-status">
+        // One accessibility element for the pair, because they answer ONE
+        // question — "can I go there, now" — and two separate stops make a
+        // screen-reader user assemble it themselves.
+        //
+        // The middle dot is swapped for a comma in the ANNOUNCED name only.
+        // VoiceOver reads `·` aloud as "middle dot", so the raw string is heard
+        // as "Abierto middle dot cierra 23:00": the right information, delivered
+        // badly. The place detail solved this exact problem the same way; doing
+        // it differently here would be two answers to one question.
+        <View
+          style={styles.metaRow}
+          testID="place-sheet-status"
+          accessible
+          accessibilityLabel={[openText?.replace(' · ', ', '), distance].filter(Boolean).join(', ')}
+        >
           {openState ? (
-            <Text style={openState.open ? styles.openCue : styles.closedCue}>
-              {t(openState.key, openState.vars)}
-            </Text>
+            <Text style={openState.open ? styles.openCue : styles.closedCue}>{openText}</Text>
           ) : null}
           {distance ? (
             <Text style={styles.muted} testID="place-sheet-distance">

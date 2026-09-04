@@ -9,6 +9,7 @@ use App\Models\Builders\PlaceQueryBuilder;
 use App\Services\Reviews\ReviewSourceRegistry;
 use App\Services\Reviews\ReviewSourceSummary;
 use App\Support\OpeningHours;
+use App\Support\OpeningSchedule;
 use Database\Factories\PlaceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -370,6 +371,36 @@ class Place extends Model
     public function userPlaceTags(): HasMany
     {
         return $this->hasMany(UserPlaceTag::class);
+    }
+
+    /**
+     * Whether this venue is open RIGHT NOW, or null when nobody can say (T-155).
+     *
+     * THE one place that question is answered, and deliberately so. It had three
+     * call sites within one release — the place detail, the summary resource and
+     * the map pin — each spelling out the same three arguments. That is the
+     * shape CLAUDE.md warns about: the next rule ("a temporarily-closed place is
+     * never open", an injectable clock, a holiday calendar) lands on whichever
+     * site is being edited, the other two keep answering the old way, and
+     * nothing goes red because each still passes its own test.
+     *
+     * Null means NOT KNOWABLE — no structured periods, or no timezone — and must
+     * render as no cue at all. It is never a fabricated "closed": telling
+     * someone a place is shut when nobody knows sends them away from a
+     * restaurant that is open and wanted their business.
+     *
+     * `$at` exists so a response can measure every row against ONE instant. A
+     * bare `now()` per row means a 300-pin map served across a minute boundary
+     * can report two venues with identical hours as one open and one closed.
+     *
+     * Reads only own columns — no queries, and every caller already selects
+     * `places.*`.
+     *
+     * @return array{open_now: bool, closes_at: string|null, opens_at: string|null}|null
+     */
+    public function openState(?\DateTimeInterface $at = null): ?array
+    {
+        return OpeningSchedule::stateAt($this->opening_hours_periods_json, $this->timezone, $at ?? now());
     }
 
     /**

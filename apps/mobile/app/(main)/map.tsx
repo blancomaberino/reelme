@@ -26,7 +26,7 @@ import {
   syncInitialRegion,
 } from '@/lib/initial-region';
 import { useT } from '@/i18n';
-import { useViewerPosition } from '@/lib/use-viewer-position';
+import { useRefreshViewerPosition, useViewerPosition } from '@/lib/use-viewer-position';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
 import { useViewportStore } from '@/stores/viewport';
@@ -181,8 +181,11 @@ function MapCanvas({
   // the pins simply carry no distance and no open/closed cue, which is the
   // honest outcome, not a degraded one.
   const viewer = useViewerPosition();
+  // "Locate me" owns a permission prompt; a grant there is a new answer to the
+  // question `useViewerPosition` asked at mount and got "not allowed" to.
+  const refreshViewer = useRefreshViewerPosition();
 
-  const { data, dataUpdatedAt, isFetching, isError, refetch } = useMapPlaces(
+  const { data, fetchedAt, isFetching, isError, refetch } = useMapPlaces(
     queryRegion,
     effectiveFilters,
     viewer,
@@ -240,6 +243,7 @@ function MapCanvas({
     initialRegion,
     initialUserRegion: initial.source === 'user' ? initial.region : null,
     onInteraction: markInteraction,
+    onLocated: refreshViewer,
   });
   const { mapRef, moveMap } = camera;
 
@@ -252,23 +256,42 @@ function MapCanvas({
   // inside CENTER_ON_VIEWER_RADIUS_M of the frame they left, so it reads as
   // "here you are", never as being yanked across the world.
   //
-  // Two guards, both load-bearing:
+  // It moves with `persist: false`, and that flag is the whole point. A plain
+  // `moveMap` marks an interaction, and an interaction is what makes the
+  // resulting settle PERSIST — so re-framing through it saved a viewport the
+  // user never chose. Worse, it was self-perpetuating: next launch the saved
+  // frame is that box, the viewer is 0 m from it, so it re-framed and re-saved
+  // again, and a user could never keep a wide city frame. That is the
+  // "fallback-poisoning" bug T-100 fixed, re-entering through the one path that
+  // bypasses its guard.
+  //
+  // The camera still records the region, because the zoom buttons step from its
+  // idea of where the map is; only the PERSISTENCE is withheld.
+  //
+  // Three guards, all load-bearing:
   //  - `interacted.current` — the moment the user has touched the map, the
-  //    viewport is THEIRS. Moving it then is taking the map away mid-read, and
-  //    a fix can land seconds after mount.
-  //  - `centred` — once only. `moveMap` marks an interaction, which persists the
-  //    settle it produces, so a repeat would fight the user's own panning.
+  //    viewport is THEIRS. A fix can land seconds after mount.
+  //  - `selected` — a pin sheet is open, so the user is reading. Moving the map
+  //    under it (and refetching a different viewport) is the same theft, and a
+  //    marker tap does not set `interacted`.
+  //  - `centred` — once only.
   const centred = useRef(false);
   useEffect(() => {
-    if (!viewer || centred.current || interacted.current) return;
+    if (!viewer || centred.current || interacted.current || selected) return;
     if (!shouldCenterOnViewer({ viewer, anchor: initialRegion, source: initial.source })) return;
 
     centred.current = true;
-    moveMap(
-      { latitude: viewer.latitude, longitude: viewer.longitude, latitudeDelta: 0.02, longitudeDelta: 0.02 },
-      450,
-    );
-  }, [viewer, initialRegion, initial.source, moveMap]);
+    // The viewer's position at the CURRENT zoom, not a hard-coded 0.02 box.
+    // Someone who left the map showing all of Montevideo asked for that scale;
+    // re-centring is an improvement, silently zooming them to two streets is not.
+    const next = {
+      latitude: viewer.latitude,
+      longitude: viewer.longitude,
+      latitudeDelta: initialRegion.latitudeDelta,
+      longitudeDelta: initialRegion.longitudeDelta,
+    };
+    moveMap(next, 450, { persist: false });
+  }, [viewer, initialRegion, initial.source, selected, moveMap]);
 
   const onRegionChangeComplete = useCallback(
     (region: Region) => {
@@ -570,7 +593,7 @@ function MapCanvas({
         pin={selected}
         // When these pins were fetched — the sheet's open/closed cue ages out on
         // it rather than repainting a stale "Abierto" from a persisted query.
-        fetchedAt={dataUpdatedAt}
+        fetchedAt={fetchedAt}
         onClose={() => select(null)}
         onViewPlace={(id) => {
           select(null);

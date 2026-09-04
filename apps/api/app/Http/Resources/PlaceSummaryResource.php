@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Place;
-use App\Support\OpeningSchedule;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,6 +20,24 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class PlaceSummaryResource extends JsonResource
 {
     use ResolvesThumbnail;
+
+    /**
+     * One clock reading per REQUEST, shared by every row of the response.
+     *
+     * `$request->attributes` is Symfony's per-request bag, so this is memoized
+     * for exactly the lifetime that matters and needs no static, no singleton
+     * and no reset between tests.
+     */
+    private static function instant(Request $request): \DateTimeInterface
+    {
+        $at = $request->attributes->get('reelmap.now');
+        if (! $at instanceof \DateTimeInterface) {
+            $at = now();
+            $request->attributes->set('reelmap.now', $at);
+        }
+
+        return $at;
+    }
 
     /**
      * @return array<string, mixed>
@@ -79,17 +96,15 @@ class PlaceSummaryResource extends JsonResource
             'distance_m' => $this->getAttribute('distance') !== null
                 ? round((float) $this->getAttribute('distance'), 1)
                 : null,
-            // The other half of the "can I go there, now" pair (T-156), in the
-            // same shape the place detail serves so the client renders both with
-            // one tested helper. Computed, never stored: nothing rewrites a
-            // column when a window closes overnight. Null when the answer is not
-            // KNOWABLE — no structured periods or no timezone — and NEVER a
-            // fabricated "closed", which is T-155's rule.
-            'open_state' => OpeningSchedule::stateAt(
-                $this->opening_hours_periods_json,
-                $this->timezone,
-                now(),
-            ),
+            // The other half of the "can I go there, now" pair (T-156), through
+            // the one accessor that answers it — see {@see Place::openState()}
+            // for why this is not three inline calls.
+            //
+            // The instant is memoized ON THE REQUEST, so every row of a listing
+            // is measured against the same clock. A bare `now()` per row lets a
+            // page served across a minute boundary report two venues with
+            // identical hours as one open and one closed.
+            'open_state' => $this->resource->openState(self::instant($request)),
             'created_at' => $this->created_at?->toIso8601ZuluString(),
         ];
     }

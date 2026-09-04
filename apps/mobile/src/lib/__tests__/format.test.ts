@@ -114,6 +114,17 @@ describe('distanceLabel', () => {
     expect(distanceLabel(12_400)).toBe('12 km');
   });
 
+  it('groups thousands of kilometres, with the separator the locale is not using', () => {
+    // Reachable from a zoomed-out map. "1500 km" reads as a typo; and the group
+    // separator must be the OTHER character, or Spanish would render "1,500 km"
+    // where a comma means a decimal point.
+    expect(distanceLabel(1_500_000)).toBe('1,500 km');
+    expect(distanceLabel(1_500_000, ',')).toBe('1.500 km');
+    // Just below the threshold it stays ungrouped, in both locales.
+    expect(distanceLabel(999_400)).toBe('999 km');
+    expect(distanceLabel(999_400, ',')).toBe('999 km');
+  });
+
   it('uses the locale decimal separator', () => {
     expect(distanceLabel(1240, ',')).toBe('1,2 km');
     // Metres carry no separator, so the locale must not change them.

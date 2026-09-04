@@ -1,33 +1,31 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 
-import { bboxParam, mapQueryFor, type Region } from '@/lib/geo';
+import { bboxParam, mapQueryFor, nearParam, type Region } from '@/lib/geo';
 import type { ViewerPoint } from '@/lib/use-viewer-position';
 
 import { api } from '../client';
 import { type MapFilters, queryKeys } from '../keys';
 import type { MapResponse } from '../places';
 
-/**
- * Decimal places kept on the `near` the map sends and keys its cache by.
- *
- * Four is ~11 m at this latitude — finer than any distance label the sheet
- * renders, and coarse enough that a phone sitting still on a table (whose fix
- * wanders a few metres) does not mint a fresh cache entry, and a fresh request,
- * every time it twitches.
- */
-const NEAR_PRECISION = 4;
-
-/** The `near=lat,lng` a request carries, or null when the viewer shared none. */
-export function nearParam(viewer: ViewerPoint | null): string | null {
-  if (!viewer) return null;
-
-  return `${viewer.latitude.toFixed(NEAR_PRECISION)},${viewer.longitude.toFixed(NEAR_PRECISION)}`;
-}
-
 export type MapData = {
   pins: MapResponse['data']['pins'];
   clusters: MapResponse['data']['clusters'];
   truncated: boolean;
+  /**
+   * When these rows were fetched. Stamped INTO the payload rather than read from
+   * react-query's `dataUpdatedAt`, because the age has to describe the rows on
+   * screen and `dataUpdatedAt` describes the KEY: it is 0 for a key that has
+   * never resolved, which is exactly the window `keepPreviousData` is showing
+   * the previous viewport's pins in. Handing that 0 to the pin sheet reads as
+   * "the epoch", so the open/closed cue vanished for the length of every pan —
+   * and, offline or on a hanging refetch, did not come back.
+   *
+   * Travelling with the data also survives persistence: a payload rehydrated
+   * from disk carries the moment it was really fetched, which is the question
+   * the staleness gate is asking.
+   */
+  fetchedAt: number;
 };
 
 async function fetchMapPlaces(region: Region, filters: MapFilters, near: string | null): Promise<MapData> {
@@ -45,7 +43,13 @@ async function fetchMapPlaces(region: Region, filters: MapFilters, near: string 
   if (filters.filter) params.filter = filters.filter;
 
   const { data } = await api.get<MapResponse>('/map/places', { params });
-  return { pins: data.data.pins, clusters: data.data.clusters, truncated: data.meta.truncated ?? false };
+
+  return {
+    pins: data.data.pins,
+    clusters: data.data.clusters,
+    truncated: data.meta.truncated ?? false,
+    fetchedAt: Date.now(),
+  };
 }
 
 /**
@@ -56,19 +60,38 @@ async function fetchMapPlaces(region: Region, filters: MapFilters, near: string 
  * while a new region loads. The public map works logged-out.
  *
  * `viewer` is the viewer's own position (T-156). It is sent as `near`, which is
- * what makes the pins carry `distance_m` and `open_state` — and it is part of
- * the cache key, so a pan re-asks WITH it rather than replaying a distance-less
- * page. Null (no permission, no fix) simply omits the parameter and every
- * viewer-relative field with it.
+ * what makes the pins carry `distance_m`. It is deliberately NOT part of the
+ * cache key — see `queryKeys.mapPlaces`, where a persisted key under a
+ * coordinate broke the offline cold start — so a fix arriving after the first
+ * fetch refetches explicitly, in the effect below. Null (no permission, no fix)
+ * omits the parameter, and `distance_m` with it.
  */
 export function useMapPlaces(region: Region | null, filters: MapFilters, viewer: ViewerPoint | null = null) {
   const meta = region ? mapQueryFor(region) : null;
   const near = nearParam(viewer);
-  return useQuery({
-    queryKey: meta ? queryKeys.mapPlaces(meta.quantized, meta.band, filters, near) : ['places', 'map', 'idle'],
+  const query = useQuery({
+    queryKey: meta ? queryKeys.mapPlaces(meta.quantized, meta.band, filters) : ['places', 'map', 'idle'],
     queryFn: () => fetchMapPlaces(region!, filters, near),
     enabled: region !== null,
     staleTime: 120_000,
     placeholderData: keepPreviousData,
   });
+
+  // `near` is not in the key (see queryKeys.mapPlaces for why), so a fix that
+  // arrives after the first fetch has to ask for itself. Skipped on the first
+  // run: the query is already fetching, and refetching it immediately would
+  // double every map open.
+  const { refetch } = query;
+  const previousNear = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const first = previousNear.current === undefined;
+    const changed = previousNear.current !== near;
+    previousNear.current = near;
+    if (!first && changed) void refetch();
+  }, [near, refetch]);
+
+  // The age of the rows ON SCREEN — see `MapData.fetchedAt` for why this is not
+  // `dataUpdatedAt`. Zero when there is nothing yet, which the sheet reads as
+  // "age unknown" and therefore shows no cue: the honest direction.
+  return { ...query, fetchedAt: query.data?.fetchedAt ?? 0 };
 }

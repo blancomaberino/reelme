@@ -168,6 +168,36 @@ class PlaceQueryBuilder extends Builder
      * nothing rewrites that column when a window closes overnight — a badge
      * built on the column alone promises an offer the till would refuse.
      */
+    /**
+     * Metres from a point, as PostGIS measures it on the `geography` column.
+     *
+     * The expression is a constant because it is used TWICE in two different
+     * grammatical positions — aliased into the select list here, and unaliased
+     * in the ORDER BY / keyset predicate of `sort=distance` (Postgres will not
+     * accept a select alias in a WHERE). It was previously spelled out at three
+     * call sites, all of which have to agree on the same two things: the alias
+     * `distance`, which every resource reads, and the binding order, which is
+     * `[lng, lat]` — the reverse of how every other line in this codebase says a
+     * coordinate, because that is the argument order `ST_MakePoint` takes.
+     * Getting that pair backwards silently measures from the wrong hemisphere.
+     */
+    public const DISTANCE_SQL = 'ST_Distance(location, ST_MakePoint(?, ?)::geography)';
+
+    /**
+     * Select metres from `$near` as `distance`.
+     *
+     * Call it AFTER any `select()`: `select()` REPLACES the select list while
+     * `selectRaw()` appends, so adding the distance first silently drops it and
+     * every row reports 0 — which is not null, so a `not->toBeNull()` test would
+     * have passed.
+     *
+     * @param  array{lat: float, lng: float}  $near
+     */
+    public function withDistanceFrom(array $near): self
+    {
+        return $this->selectRaw(self::DISTANCE_SQL.' AS distance', [$near['lng'], $near['lat']]);
+    }
+
     public function withActiveOfferFlag(): self
     {
         return $this->withExists(['offers as has_active_offer' => self::onlyActiveOffers(...)]);

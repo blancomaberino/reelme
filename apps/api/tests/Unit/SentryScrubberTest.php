@@ -1,0 +1,91 @@
+<?php
+
+use App\Support\SentryScrubber;
+use Sentry\Event;
+use Sentry\ExceptionDataBag;
+
+/**
+ * T-156. The viewer's position now travels in a query string on the app's
+ * busiest endpoint, and `send_default_pii => false` does NOT keep it out of
+ * Sentry — that flag gates cookies, headers and the IP, while the URL is
+ * attached before it is consulted. These pin the two carriers.
+ */
+function scrubbed(array $request = [], ?string $exceptionMessage = null): Event
+{
+    $event = Event::createEvent();
+    if ($request !== []) {
+        $event->setRequest($request);
+    }
+    if ($exceptionMessage !== null) {
+        $event->setExceptions([new ExceptionDataBag(new RuntimeException($exceptionMessage))]);
+    }
+
+    return SentryScrubber::scrub($event);
+}
+
+it('redacts the viewer position from the query string, keeping every other parameter', function () {
+    $event = scrubbed(['query_string' => 'bbox=-56.3,-35.0,-56.0,-34.8&zoom=15&near=-34.9011,-56.1645&dish=pasta']);
+
+    $query = $event->getRequest()['query_string'];
+
+    // The position is gone...
+    expect($query)->not->toContain('-34.9011')
+        ->and($query)->not->toContain('-56.1645')
+        // ...and everything a triager actually needs survives. A scrub that
+        // takes the bbox with it would make every map report undebuggable,
+        // which is how a redaction gets switched off.
+        ->and($query)->toContain('bbox=-56.3,-35.0,-56.0,-34.8')
+        ->and($query)->toContain('zoom=15')
+        ->and($query)->toContain('dish=pasta')
+        ->and($query)->toContain('near=[redacted]');
+});
+
+it('redacts the position from the full URL, not only the query_string field', function () {
+    // RequestIntegration sets BOTH, and they are independent strings. Scrubbing
+    // one and not the other exports the coordinate anyway — which is the whole
+    // failure this guards, arriving through the second door.
+    $event = scrubbed(['url' => 'https://api.reelmap.app/api/v1/map/places?zoom=15&near=-34.9011,-56.1645']);
+
+    expect($event->getRequest()['url'])
+        ->toBe('https://api.reelmap.app/api/v1/map/places?zoom=15&near=[redacted]');
+});
+
+it('redacts a coordinate pair out of an exception MESSAGE', function () {
+    // The carrier a query-string scrub cannot reach: a QueryException formats
+    // its bindings into the message, and the coordinates are bound into
+    // ST_MakePoint(?, ?). No `sql_bindings` setting governs the message text.
+    $event = scrubbed(exceptionMessage: 'SQLSTATE[XX000]: ST_Distance(location, ST_MakePoint(-56.1645, -34.9011)::geography)');
+
+    $value = $event->getExceptions()[0]->getValue();
+
+    expect($value)->not->toContain('-34.9011')
+        ->and($value)->toContain('[redacted]')
+        // The SQL around it still reads, or the report is worthless.
+        ->and($value)->toContain('ST_Distance');
+});
+
+it('leaves an ordinary message alone — a redaction that eats everything gets turned off', function () {
+    // The positive control for the regex's narrowness. Integers and single
+    // decimals are not coordinates; a pattern that ate them would redact ids,
+    // counts and version numbers out of every report in the project.
+    $event = scrubbed(exceptionMessage: 'Job 12, 34 failed after 1.5 seconds (attempt 2 of 3)');
+
+    expect($event->getExceptions()[0]->getValue())->toBe('Job 12, 34 failed after 1.5 seconds (attempt 2 of 3)');
+});
+
+it('survives an event with no request and no exceptions', function () {
+    // Most events are not HTTP. A scrubber that throws on one drops the report
+    // entirely, which is strictly worse than the leak it was written to stop.
+    expect(fn () => SentryScrubber::scrub(Event::createEvent()))->not->toThrow(Throwable::class);
+});
+
+it('redacts the position under any of its spellings, and case-insensitively', function () {
+    // `near` is this route's; the others are the shapes a future endpoint most
+    // plausibly reaches for. Covered here so adopting one is safe by
+    // construction rather than by someone remembering this file exists.
+    $event = scrubbed(['query_string' => 'Near=1.5,2.5&lat=-34.90111&LNG=-56.16455&latitude=1.1&longitude=2.2']);
+
+    $query = $event->getRequest()['query_string'];
+
+    expect($query)->toBe('Near=[redacted]&lat=[redacted]&LNG=[redacted]&latitude=[redacted]&longitude=[redacted]');
+});

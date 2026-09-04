@@ -94,6 +94,25 @@ export function bboxParam(bbox: Bbox): string {
   return bbox.map((v) => v.toFixed(6)).join(',');
 }
 
+/**
+ * Decimal places kept on a `near=lat,lng` the API is asked with.
+ *
+ * Four is ~11 m at this latitude — finer than any distance label we render, and
+ * coarse enough that a phone sitting still on a table (whose fix wanders a few
+ * metres) does not mint a fresh cache entry, and a fresh request, every time it
+ * twitches. Mirrored server-side by `ParsesNearPoint::NEAR_PRECISION`, which
+ * rounds again on arrival — the client's rounding is a courtesy, the server's is
+ * the control.
+ */
+export const NEAR_PRECISION = 4;
+
+/** The `near=lat,lng` a request carries, or null for a viewer with no position. */
+export function nearParam(at: Pick<Region, 'latitude' | 'longitude'> | null | undefined): string | null {
+  if (!at) return null;
+
+  return `${at.latitude.toFixed(NEAR_PRECISION)},${at.longitude.toFixed(NEAR_PRECISION)}`;
+}
+
 /** Center a region on an expansion bbox (cluster tap → animateToRegion). */
 export function bboxToRegion(bbox: Bbox, pad = 1.3): Region {
   const [minLng, minLat, maxLng, maxLat] = bbox;

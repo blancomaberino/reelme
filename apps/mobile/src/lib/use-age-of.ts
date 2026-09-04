@@ -16,8 +16,24 @@ import { useEffect, useState } from 'react';
  * The interval is coarse on purpose: this decides whether a status cue is still
  * trustworthy (see `OPEN_STATE_MAX_AGE_MS`), not anything that needs to tick.
  */
+/**
+ * The age before the clock has been read: "unknowable", not "brand new".
+ *
+ * Infinity rather than 0, and this is the whole correctness of the hook. The
+ * first render happens BEFORE the effect below runs, so a 0 seed made every
+ * consumer treat its payload as fresh for exactly one frame — and the one
+ * consumer that matters renders an open/closed cue. Cold start, offline, a
+ * 24h-persisted map query: tapping a pin painted last night's green "Abierto"
+ * once, then removed it. That is the confidently-wrong claim the age gate exists
+ * to prevent, arriving through the gate itself.
+ *
+ * Infinity fails in the honest direction: no cue until the clock has actually
+ * been read, then the truth.
+ */
+export const AGE_UNKNOWN = Number.POSITIVE_INFINITY;
+
 export function useAgeOf(fetchedAt: number): number {
-  const [age, setAge] = useState(0);
+  const [age, setAge] = useState(AGE_UNKNOWN);
 
   useEffect(() => {
     const tick = () => setAge(Date.now() - fetchedAt);

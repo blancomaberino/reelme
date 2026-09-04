@@ -1,0 +1,110 @@
+<?php
+
+namespace App\Support;
+
+use Sentry\Event;
+use Sentry\EventHint;
+
+/**
+ * Keeps the viewer's coordinates out of Sentry (T-156).
+ *
+ * `send_default_pii => false` does not do this. Sentry's RequestIntegration
+ * sets `request.url` and `request.query_string` BEFORE its PII branch, so the
+ * flag governs cookies, headers and REMOTE_ADDR while the URL passes through
+ * untouched. T-156 puts `?near=lat,lng` on the map endpoint — sent on every map
+ * open and every pan, automatically, with no user action — so a single 500 on
+ * that route would export a ~11 m fix on a real person to a processor that
+ * `DELETE /me` cannot reach.
+ *
+ * A STATIC method rather than a closure because `config/sentry.php` is passed
+ * through `artisan config:cache` on every deploy, and a closure in a cached
+ * config file is a fatal serialization error. An array callable is a pair of
+ * strings and caches fine.
+ *
+ * It redacts rather than drops: the stack trace is the reason the event exists,
+ * and the coordinates are never the thing that makes it debuggable.
+ */
+class SentryScrubber
+{
+    /**
+     * Query parameters whose VALUES are a position, wherever they appear.
+     *
+     * `near` is the map's and the listing's; add here rather than at a call
+     * site, so a new endpoint that adopts the same spelling is covered by
+     * construction rather than by someone remembering.
+     */
+    private const REDACTED_PARAMS = ['near', 'lat', 'lng', 'latitude', 'longitude'];
+
+    private const REDACTED = '[redacted]';
+
+    /**
+     * A bare coordinate pair, for the one carrier a query-string scrub misses.
+     *
+     * A `QueryException` formats its BINDINGS into the message, and the
+     * coordinates are bound into `ST_MakePoint(?, ?)` — so a database failure on
+     * the map route puts them in the exception text, which no `sql_bindings`
+     * setting governs. Deliberately narrow: two signed decimals with at least
+     * three fractional digits each, separated by a comma or ", ". A bare
+     * integer pair is not matched, so ordinary numbers in a message survive.
+     */
+    private const COORD_PAIR = '/-?\d{1,3}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/';
+
+    public static function scrub(Event $event, ?EventHint $hint = null): Event
+    {
+        $request = $event->getRequest();
+
+        if (isset($request['query_string']) && is_string($request['query_string'])) {
+            $request['query_string'] = self::scrubQueryString($request['query_string']);
+        }
+
+        if (isset($request['url']) && is_string($request['url'])) {
+            $request['url'] = self::scrubUrl($request['url']);
+        }
+
+        if ($request !== []) {
+            $event->setRequest($request);
+        }
+
+        foreach ($event->getExceptions() as $exception) {
+            $exception->setValue(self::scrubText($exception->getValue()));
+        }
+
+        return $event;
+    }
+
+    private static function scrubUrl(string $url): string
+    {
+        $parts = explode('?', $url, 2);
+
+        return count($parts) === 2
+            ? $parts[0].'?'.self::scrubQueryString($parts[1])
+            : self::scrubText($parts[0]);
+    }
+
+    /**
+     * Rewrites the query string field by field rather than by regex over the
+     * whole thing, so a value that merely CONTAINS a comma-separated pair (a
+     * search term, a slug) keeps its meaning while `near` loses its.
+     */
+    private static function scrubQueryString(string $query): string
+    {
+        $pairs = [];
+
+        foreach (explode('&', $query) as $pair) {
+            if ($pair === '') {
+                continue;
+            }
+            [$key, $value] = array_pad(explode('=', $pair, 2), 2, null);
+            $pairs[] = in_array(strtolower(rawurldecode($key)), self::REDACTED_PARAMS, true)
+                ? $key.'='.self::REDACTED
+                : ($value === null ? $key : $key.'='.self::scrubText($value));
+        }
+
+        return implode('&', $pairs);
+    }
+
+    private static function scrubText(string $text): string
+    {
+        return (string) preg_replace(self::COORD_PAIR, self::REDACTED, $text);
+    }
+}

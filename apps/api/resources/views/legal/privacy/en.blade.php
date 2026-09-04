@@ -136,6 +136,11 @@
         <td>Consent (system permission)</td>
       </tr>
       <tr>
+        <td>Showing how far away each place is</td>
+        <td>Approximate device location</td>
+        <td>Consent (system permission)</td>
+      </tr>
+      <tr>
         <td>Telling you about things that concern you</td>
         <td>Push token</td>
         <td>Consent (system permission)</td>
@@ -180,10 +185,12 @@
   <p>All three permissions are optional, and the app works without them.</p>
   <ul>
     <li>
-      <strong>Location.</strong> Only while you are using the app, never in the background, to centre the map
-      where you are and to power the "locate me" button. <strong>Your location is not stored against your
-      account</strong> — it is used in the moment and not recorded. If you decline, the map opens on a
-      default region.
+      <strong>Location.</strong> Only while you are using the app, never in the background: to centre the map
+      where you are, to power the "locate me" button, and to work out how far away each place is. Distances
+      are calculated on our servers, so a rounded version of your position (to about 10&nbsp;metres) is sent
+      with the request. <strong>It is never saved to your account and never shared</strong>; like every other
+      request, it may appear briefly in our server logs before they are discarded. If you decline, the map
+      opens on a default region and no distances are shown.
     </li>
     <li>
       <strong>Camera.</strong> Solely to scan a redemption QR code at the venue. We do not request photo

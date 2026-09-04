@@ -272,10 +272,14 @@ export type MapPin = {
   distance_m?: number;
   /**
    * Open-or-closed as the server decided it, from the venue's structured periods
-   * and its OWN timezone (T-155). Absent for the same reason as `distance_m`,
-   * and null WITHIN a response when the answer is not knowable — which must
-   * render as no cue at all, never as "Closed". Rendered through
-   * `openStateLabel()`, the same helper the place detail uses.
+   * and its OWN timezone (T-155). Unlike `distance_m` it is present WHETHER OR
+   * NOT the viewer shared a position — open-or-closed is a fact about the venue,
+   * not about the viewer — and null within a response when the answer is not
+   * knowable, which must render as no cue at all, never as "Closed". Rendered
+   * through `openStateLabel()`, the same helper the place detail uses.
+   *
+   * Optional only because a cache persisted before T-156 can be replayed without
+   * it; a live response from a current server always carries the key.
    */
   open_state?: OpenState | null;
 };

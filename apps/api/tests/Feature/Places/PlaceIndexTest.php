@@ -200,13 +200,25 @@ it('computes distance in SQL across a MULTI-PAGE result, not in PHP per row', fu
         return collect($queries)->filter(fn ($q) => str_contains($q['query'], 'ST_Distance'))->count();
     };
 
-    $near = 'near=38.7169,-9.1355&radius_m=5000&sort=distance';
+    // NO `sort=distance`, deliberately. With it, `applySort()` puts ST_Distance
+    // in the ORDER BY (and in the keyset WHERE on a cursor page) of the SAME
+    // statement — so "one statement mentions ST_Distance" is true whether or not
+    // the SELECT column exists, and deleting the column entirely leaves this
+    // green. Without the sort, the select list is the only place the expression
+    // can come from, which is what the assertion claims to be measuring.
+    $near = 'near=38.7169,-9.1355&radius_m=5000';
 
-    // ONE statement mentions ST_Distance, at either page size: distance is a
-    // column of the page query, not a value computed per row. A PHP haversine
-    // would show zero such statements; an N+1 would scale with the page.
+    // ONE statement, at either page size: distance is a column of the page
+    // query, not a value computed per row. A PHP haversine would show zero such
+    // statements; an N+1 would scale with the page.
     expect($distanceStatements("/api/v1/places?{$near}&limit=2"))->toBe(1)
         ->and($distanceStatements("/api/v1/places?{$near}&limit=10"))->toBe(1);
+
+    // And the column actually reaches the body. Without this the test measures
+    // the query and never checks that the value survives to the caller — the
+    // two halves fail independently.
+    $body = $this->getJson("/api/v1/places?{$near}&limit=10")->assertOk()->json('data');
+    expect(collect($body)->pluck('distance_m')->filter(fn ($d) => $d !== null))->not->toBeEmpty();
 
     // And the cursor page is served the same way — the second page must not
     // quietly take a different route to the same column.
@@ -227,6 +239,49 @@ it('422s a malformed near and an out-of-range limit', function () {
     $this->getJson('/api/v1/places?near=91,0')->assertStatus(422);
     $this->getJson('/api/v1/places?limit=200')->assertStatus(422);
     $this->getJson('/api/v1/places?limit=0')->assertStatus(422);
+});
+
+it('ignores caller-supplied nearLat/nearLng on the LISTING too — same rule, both surfaces', function () {
+    // The map hardened this first, and for a while only the map had it: the two
+    // requests were copies, so the fix landed on the one being edited. Same
+    // input, same column, two answers — a 422 from `/map/places` and a confident
+    // 200 measured from (10, 20) here. Both now parse through
+    // {@see App\Http\Requests\Concerns\ParsesNearPoint}, and this test exists
+    // on the surface that did NOT get the fix, because that is the one a
+    // diff-scoped review cannot see.
+    Place::factory()->active()->atPoint(38.7169, -9.1355)->create(['name' => 'Near']);
+
+    $this->getJson('/api/v1/places?near=38.7,-9.1,0&nearLat=10&nearLng=20')
+        ->assertStatus(422)
+        ->assertJsonPath('error.code', 'validation_failed');
+});
+
+it('measures from a position it has ROUNDED, not the nine decimals it was sent', function () {
+    // The privacy policy says the position is kept to about ten metres. That is
+    // a claim about the SERVER — a client-side rounding is a promise, and any
+    // other caller of this public endpoint can send full precision. So the
+    // rounding has to bite here, where it is enforced, and the test has to be
+    // able to tell the two apart: 0.00004° of latitude is ~4.4 m, which
+    // `NEAR_PRECISION` truncates away entirely.
+    $place = Place::factory()->active()->atPoint(38.71690, -9.13550)->create(['name' => 'Near']);
+
+    $rounded = $this->getJson('/api/v1/places?near=38.71690,-9.13550')
+        ->assertOk()->json('data.0.distance_m');
+    $precise = $this->getJson('/api/v1/places?near=38.716904444,-9.135504444')
+        ->assertOk()->json('data.0.distance_m');
+
+    // The control: `distance_m` is not simply always 0 — 0.001° of latitude is
+    // ~111 m, well clear of the rounding, and it shows up.
+    $moved = $this->getJson('/api/v1/places?near=38.71790,-9.13550')
+        ->assertOk()->json('data.0.distance_m');
+
+    expect($place)->not->toBeNull()
+        ->and((float) $rounded)->toBe(0.0)
+        // Identical, because the extra decimals never reached PostGIS. Without
+        // the round they differ by ~0.6 m, which `distance_m`'s one decimal
+        // place shows.
+        ->and((float) $precise)->toBe((float) $rounded)
+        ->and((float) $moved)->toBeGreaterThan(100.0);
 });
 
 it('filters by influencer_id via source attribution', function () {
