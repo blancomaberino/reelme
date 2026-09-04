@@ -329,10 +329,14 @@ class PlaceController extends Controller
     }
 
     /**
-     * Newest first, id-keyed. Its own method because the `distance` arm degrades
-     * into it, and a degraded sort has to degrade the WHOLE sort: an earlier
-     * version wrote the ORDER BY by hand and left the keyset clause out, so a
-     * cursor paged the same rows forever with no error anywhere.
+     * Newest first, id-keyed.
+     *
+     * Its own method so that ordering and keyset clause travel together. They
+     * did not once: a `distance` request with no point degraded by writing the
+     * ORDER BY inline and leaving the keyset clause out, so a cursor paged the
+     * same rows forever with no error anywhere. The degradation itself now
+     * happens in `index()` — ONE place, before all four readers of `$sort` — and
+     * `applySort` throws rather than carrying a second copy of that policy.
      *
      * @param  Builder<Place>  $query
      * @param  list<string>|null  $cursor

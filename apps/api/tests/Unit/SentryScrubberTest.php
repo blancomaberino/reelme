@@ -4,6 +4,7 @@ use App\Support\SentryScrubber;
 use Sentry\Breadcrumb;
 use Sentry\Event;
 use Sentry\ExceptionDataBag;
+use Sentry\Tracing\Span;
 
 /**
  * T-156. The viewer's position now travels in a query string on the app's
@@ -230,4 +231,30 @@ it('survives a breadcrumb whose metadata keys are integers', function () {
     $metadata = SentryScrubber::scrub($event)->getBreadcrumbs()[0]->getMetadata();
 
     expect(array_values($metadata))->toBe(['a', 'b']);
+});
+
+it('redacts a SPAN carrying the same query string the breadcrumb does', function () {
+    // The carrier that made the transaction hook self-defeating.
+    // `HttpClientIntegration` puts the SAME unmodified query on an `http.client`
+    // SPAN as on the breadcrumb — and `before_send_transaction` only ever fires
+    // when tracing is on, which is the only time spans exist. So the hook added
+    // to catch this walked straight past it.
+    //
+    // The concrete leak: a failed Google timezone lookup ships the place's
+    // coordinates and a live API key.
+    $span = new Span;
+    $span->setData([
+        'http.query' => 'location=-34.9011%2C-56.1645&key=AIzaSyTESTKEY',
+        'http.request.method' => 'GET',
+    ]);
+
+    $event = Event::createTransaction();
+    $event->setSpans([$span]);
+
+    $data = SentryScrubber::scrub($event)->getSpans()[0]->getData();
+
+    expect($data['http.query'])->toBe('location=[redacted]&key=[redacted]')
+        // Untouched: a scrub that eats the rest of the span is one somebody
+        // turns off, and then none of this protects anything.
+        ->and($data['http.request.method'])->toBe('GET');
 });

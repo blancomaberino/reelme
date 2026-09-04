@@ -9,7 +9,8 @@ use Sentry\Event;
 use Sentry\EventHint;
 
 /**
- * Keeps the viewer's coordinates out of Sentry (T-156).
+ * Keeps the viewer's coordinates — and, since they travel in the same query
+ * strings, this app's outbound API keys — out of Sentry (T-156).
  *
  * `send_default_pii => false` does not do this. Sentry's RequestIntegration
  * sets `request.url` and `request.query_string` BEFORE its PII branch, so the
@@ -30,14 +31,11 @@ use Sentry\EventHint;
 class SentryScrubber
 {
     /**
-     * Query parameters whose VALUES are a position, wherever they appear.
+     * Query parameters redacted by NAME, whatever their value.
      *
      * `near` is the map's and the listing's; add here rather than at a call
      * site, so a new endpoint that adopts the same spelling is covered by
      * construction rather than by someone remembering.
-     */
-    /**
-     * Query parameters redacted by NAME, whatever their value.
      *
      * `location` and `lon` are here because the OUTBOUND calls this app makes
      * spell a coordinate that way — Google's timezone and places endpoints take
@@ -87,6 +85,26 @@ class SentryScrubber
         }
 
         $event->setBreadcrumb(array_map(self::scrubBreadcrumb(...), $event->getBreadcrumbs()));
+
+        // SPANS are the fourth carrier, and the one that makes the transaction
+        // hook self-defeating without this. `HttpClientIntegration` puts the
+        // SAME unmodified query string on an `http.client` span as it puts on
+        // the breadcrumb — so `before_send_transaction`, which only ever fires
+        // when tracing is on and therefore only ever sees events that HAVE
+        // spans, was walking straight past the carrier it was added for.
+        foreach ($event->getSpans() as $span) {
+            $data = $span->getData();
+
+            foreach ($data as $key => $value) {
+                if (is_string($value)) {
+                    $data[$key] = $key === 'http.query'
+                        ? self::scrubQueryString($value)
+                        : self::scrubUnknownMetadata($value);
+                }
+            }
+
+            $span->setData($data);
+        }
 
         return $event;
     }
@@ -147,11 +165,32 @@ class SentryScrubber
             $crumb = $crumb->withMetadata((string) $key, match ((string) $key) {
                 'url' => self::scrubUrl($value),
                 'http.query' => self::scrubQueryString($value),
-                default => self::scrubText($value),
+                default => self::scrubUnknownMetadata($value),
             });
         }
 
         return $crumb;
+    }
+
+    /**
+     * Metadata under a key this class does not know.
+     *
+     * The name table above is an optimisation, not the defence, and it must not
+     * be the only thing standing between an API key and an error report. The
+     * asymmetry is why: if a future SDK version renames `http.query`, a
+     * coordinate still degrades safely — `scrubText` decodes and the pair regex
+     * catches it — but a credential has no value shape to match, so it would
+     * ship silently. So anything that PARSES as a query string gets the by-name
+     * pass too, whatever it is called.
+     *
+     * Gated on looking like one: at least one `k=v`, no whitespace. Running
+     * `scrubQueryString` over ordinary prose would collapse it on `&`.
+     */
+    private static function scrubUnknownMetadata(string $value): string
+    {
+        return preg_match('/^[^\s]*[^\s=&]=[^\s&]*(&[^\s=&]+=[^\s&]*)*$/', $value) === 1
+            ? self::scrubQueryString($value)
+            : self::scrubText($value);
     }
 
     private static function scrubUrl(string $url): string
@@ -187,9 +226,14 @@ class SentryScrubber
 
     /**
      * Decoded before matching: a query string percent-encodes the separator, so
-     * `-34.9011%2C-56.1645` never matched a pattern written around a comma. The
-     * decode is for MATCHING only — the returned string is the original with
-     * matches replaced, so a value that was encoded stays encoded.
+     * `-34.9011%2C-56.1645` never matched a pattern written around a comma.
+     *
+     * When the decoded form is what matched, the decoded form is what gets
+     * rewritten — and then RE-ENCODED, because otherwise a caller-controlled
+     * value could forge structure in the record: `?q=x%26near%3D-34.9011,…`
+     * would come back as `q=x&near=[redacted]`, and an analyst would read two
+     * parameters where the request had one. The coordinates were redacted
+     * either way; the point is that a scrubber must not invent fields.
      */
     private static function scrubText(string $text): string
     {
@@ -200,7 +244,7 @@ class SentryScrubber
         // carried a coordinate — which is the case where losing the encoding is
         // the lesser problem, since the text is already being rewritten.
         if ($decoded !== $text && preg_match(self::COORD_PAIR, $decoded) === 1) {
-            return (string) preg_replace(self::COORD_PAIR, self::REDACTED, $decoded);
+            return rawurlencode((string) preg_replace(self::COORD_PAIR, self::REDACTED, $decoded));
         }
 
         return (string) preg_replace(self::COORD_PAIR, self::REDACTED, $text);
