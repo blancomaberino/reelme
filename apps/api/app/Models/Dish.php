@@ -80,6 +80,11 @@ class Dish extends Model
      * It is enforced on the NORMALIZED needle, never the raw input: `?dish=p.`
      * and `?dish=ño` both clear a `min:2` on the raw string and both reduce to
      * fewer than three characters of match text.
+     *
+     * The floor has one honest Spanish casualty: `té` normalizes to `te`, so a
+     * menu line that really exists is unqueryable. Low commercial intent, and a
+     * beverage rather than a dish — not worth lowering the floor and giving up
+     * the index for, but a known trade rather than an oversight.
      */
     public const MIN_QUERY = 3;
 
@@ -116,6 +121,10 @@ class Dish extends Model
      * detail lists — it is simply unsearchable. Irrelevant for a Montevideo
      * corpus and stated here rather than left to be discovered; a multilingual
      * corpus needs a different match column, not a wider regex.
+     *
+     * Anything building an inventory of dish TERMS off this column (the long-tail
+     * SEO surface of 08 §2.1 is the obvious future one) must filter
+     * `name_normalized <> ''`, or the empty bucket becomes a page.
      */
     public static function normalizeName(string $name): string
     {
