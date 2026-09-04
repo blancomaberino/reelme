@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,7 +23,7 @@ import { Thumbnail } from '@/components/place/thumbnail';
 import { Skeleton, SkeletonGroup } from '@/components/skeleton';
 import { useT } from '@/i18n';
 import { useFormat } from '@/lib/use-format';
-import { hourLines } from '@/lib/opening-hours';
+import { hourLines, openStateLabel } from '@/lib/opening-hours';
 import { directionsUrl, googleMapsUrl, googleReviewsUrl, placeShareUrl } from '@/lib/directions';
 import { openExternal, openWebUrl } from '@/lib/linking';
 import { useSessionStore } from '@/stores/session';
@@ -35,7 +35,7 @@ export default function PlaceDetailScreen() {
   const styles = useMemo(() => makeStyles(c), [c]);
   // usePlace polls while the gallery is empty (a just-shared place enriches
   // async), so the carousel fills in on its own — no route flag needed.
-  const { data: place, isLoading, isError, refetch } = usePlace(slug ?? '');
+  const { data: place, isLoading, isError, refetch, dataUpdatedAt } = usePlace(slug ?? '');
   const authed = useSessionStore((s) => s.status === 'authed');
   const [saveOpen, setSaveOpen] = useState(false);
 
@@ -53,7 +53,7 @@ export default function PlaceDetailScreen() {
       ) : isError || !place ? (
         <ErrorState styles={styles} c={c} onRetry={() => void refetch()} />
       ) : (
-        <PlaceBody place={place} authed={authed} styles={styles} c={c} />
+        <PlaceBody place={place} authed={authed} styles={styles} c={c} fetchedAt={dataUpdatedAt} />
       )}
       {place ? <SaveToListSheet placeId={place.id} visible={saveOpen} onClose={() => setSaveOpen(false)} /> : null}
     </SafeAreaView>
@@ -86,7 +86,41 @@ function Header({
   );
 }
 
-function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: boolean; styles: Styles; c: Palette }) {
+/**
+ * How old the current payload is, in ms, re-read on a timer.
+ *
+ * Its own hook so the impure clock read stays inside an effect. The interval is
+ * coarse on purpose: this decides whether a status cue is still trustworthy, not
+ * anything that needs to tick.
+ */
+function useAgeOf(fetchedAt: number): number {
+  const [age, setAge] = useState(0);
+
+  useEffect(() => {
+    const tick = () => setAge(Date.now() - fetchedAt);
+    tick();
+    const id = setInterval(tick, 30_000);
+
+    return () => clearInterval(id);
+  }, [fetchedAt]);
+
+  return age;
+}
+
+function PlaceBody({
+  place,
+  authed,
+  styles,
+  c,
+  fetchedAt,
+}: {
+  place: PlaceDetail;
+  authed: boolean;
+  styles: Styles;
+  c: Palette;
+  /** When this payload was fetched (react-query `dataUpdatedAt`). See `openState`. */
+  fetchedAt: number;
+}) {
   const t = useT();
   const fmt = useFormat();
   const [hoursOpen, setHoursOpen] = useState(false);
@@ -98,6 +132,13 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
   // back is that nobody reports the wrong row.
   const [reportReview, setReportReview] = useState<{ id: string; subject: string } | null>(null);
   const hours = useMemo(() => hourLines(place.opening_hours), [place.opening_hours]);
+  // The second argument is the payload's AGE: past a few minutes the cue is
+  // dropped rather than shown stale (see `openStateLabel`). The clock is read in
+  // an effect, not during render — `Date.now()` in a render body is impure, and
+  // the React Compiler rejects it. Reading it on a timer is also better
+  // behaviour: a screen left open past the window loses the claim on its own
+  // instead of holding a verdict that quietly went out of date.
+  const openState = openStateLabel(place.open_state, useAgeOf(fetchedAt));
   const tags = useMemo(
     () => Array.from(new Set([...place.cuisines, ...place.vibe_tags, ...place.dietary_tags])),
     [place.cuisines, place.vibe_tags, place.dietary_tags],
@@ -233,19 +274,51 @@ function PlaceBody({ place, authed, styles, c }: { place: PlaceDetail; authed: b
             because "today's line" cannot be identified (weekday_text is
             ordered by the SOURCE locale's first day of week, so no index is a
             fixed weekday). One tap to seven correct lines beats a permanent
-            seven-row block or a summary that would be a guess. Revisit if the
-            API ever serves structured periods with a timezone. */}
+            seven-row block or a summary that would be a guess.
+
+            T-155 met that condition: the API now serves `open_state`, computed
+            from structured periods and the venue's own timezone, so the
+            collapsed row CAN carry an honest status. It is still not parsed
+            from these lines — the cue is the server's answer, rendered. When
+            `open_state` is null the row reads exactly as it did before: the
+            label alone, and no claim. */}
         {hours.length > 0 ? (
           <>
             <Pressable
               onPress={() => setHoursOpen((v) => !v)}
               accessibilityRole="button"
-              accessibilityLabel={hoursOpen ? t('place.hoursHide') : t('place.hoursShow')}
+              // The status cue must be IN this label, not merely rendered inside
+              // the row. A Pressable with an accessibilityRole + label collapses
+              // into ONE accessibility element on iOS and its children vanish
+              // from the tree — so a cue left as a child is invisible to
+              // VoiceOver (and to Maestro, which reads the same tree). Someone
+              // using a screen reader to decide whether to go now would hear
+              // only "show weekly hours" and never the answer.
+              //
+              // The middle dot is swapped for a comma HERE ONLY. VoiceOver reads
+              // `·` aloud as "middle dot", so the announced name would be
+              // "Abierto middle dot cierra 23:00" — the right information,
+              // delivered badly. The visual string keeps the dot.
+              accessibilityLabel={[
+                openState ? t(openState.key, openState.vars).replace(' · ', ', ') : null,
+                hoursOpen ? t('place.hoursHide') : t('place.hoursShow'),
+              ]
+                .filter(Boolean)
+                .join(', ')}
               accessibilityState={{ expanded: hoursOpen }}
               testID="place-hours"
             >
               <Row icon="time-outline" c={c} styles={styles}>
                 <Text style={styles.rowText}>{t('place.hours')}</Text>
+                {/* A SIBLING of the label, not nested inside it: nested text
+                    collapses into one node, which would fold the neutral label
+                    and the status claim into a single string for a screen
+                    reader and for any test reading the row. */}
+                {openState ? (
+                  <Text style={openState.open ? styles.openCue : styles.closedCue}>
+                    {t(openState.key, openState.vars)}
+                  </Text>
+                ) : null}
                 <Ionicons
                   name={hoursOpen ? 'chevron-up' : 'chevron-down'}
                   size={16}
@@ -683,6 +756,10 @@ const makeStyles = (c: Palette) =>
     rowIcon: { marginTop: 1 },
     rowBody: { flex: 1, flexDirection: 'row', alignItems: 'center' },
     rowText: { flex: 1, fontSize: 15, color: c.text, lineHeight: 21 },
+    // Semantic, not decorative: the two states must be distinguishable without
+    // reading, and without relying on colour alone — the words differ too.
+    openCue: { color: c.green, fontWeight: '600' },
+    closedCue: { color: c.muted, fontWeight: '600' },
     chevron: { marginLeft: 8 },
     weekly: { paddingLeft: 30, gap: 4, paddingBottom: 4 },
     weeklyLine: { fontSize: 14, color: c.muted },

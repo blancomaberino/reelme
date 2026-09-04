@@ -7,6 +7,7 @@ use App\Services\Places\Enrichment\BusinessEnrichmentSource;
 use App\Services\Places\Enrichment\GalleryBuilder;
 use App\Services\Places\Enrichment\Sources\GoogleBusinessSource;
 use App\Services\Places\Enrichment\Sources\ReviewsBusinessSource;
+use App\Services\Places\Enrichment\Sources\TimezoneBusinessSource;
 use App\Services\Places\Enrichment\Sources\WebsiteBusinessSource;
 use App\Services\Places\PlaceEditor;
 use Illuminate\Support\ServiceProvider;
@@ -29,6 +30,9 @@ class PlacesServiceProvider extends ServiceProvider
                     $this->app->make(GoogleBusinessSource::class),
                     $this->app->make(WebsiteBusinessSource::class),
                     $this->app->make(ReviewsBusinessSource::class),
+                    // Contributes only `timezone`, so its order among the others is
+                    // immaterial — no field it writes is contested (T-155).
+                    $this->app->make(TimezoneBusinessSource::class),
                 ],
                 editor: $this->app->make(PlaceEditor::class),
                 gallery: $this->app->make(GalleryBuilder::class),

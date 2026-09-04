@@ -6,6 +6,7 @@ use App\Enums\ContactFieldSource;
 use App\Models\Place;
 use App\Models\PlaceEdit;
 use App\Support\OpeningHours;
+use App\Support\OpeningSchedule;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -204,6 +205,13 @@ class PlaceEditor
     {
         if (array_key_exists('opening_hours_json', $patch)) {
             $patch['opening_hours_json'] = OpeningHours::salvage($patch['opening_hours_json']);
+        }
+
+        // Same rule for the structured week (T-155): whatever reaches the column
+        // through the one write path is the contract shape or null, never a
+        // provider's raw payload.
+        if (array_key_exists('opening_hours_periods_json', $patch)) {
+            $patch['opening_hours_periods_json'] = OpeningSchedule::salvage($patch['opening_hours_periods_json']);
         }
 
         return $patch;

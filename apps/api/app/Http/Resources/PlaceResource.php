@@ -8,6 +8,9 @@ use App\Models\UserPlaceTag;
 use App\Services\Places\PlaceAggregations;
 use App\Support\CachedReviews;
 use App\Support\OpeningHours;
+use App\Support\OpeningSchedule;
+use App\Support\RequestLocale;
+use App\Support\WeeklyHours;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -101,7 +104,14 @@ class PlaceResource extends JsonResource
             // treated as true.
             'can_edit' => $this->viewerOwnsPlace($request),
             'google_place_id' => $this->google_place_id,
-            'opening_hours' => $this->openingHoursForResource(),
+            'opening_hours' => $this->openingHoursForResource($request),
+            // The computed status, or null when it is not knowable (T-155). The
+            // structured periods and the timezone behind it are deliberately NOT
+            // served: shipping a second, parseable copy of the week is how the
+            // client came to invent its own reading last time (T-128). One
+            // implementation decides open/closed — this one — and the client
+            // renders its answer.
+            'open_state' => OpeningSchedule::stateAt($this->opening_hours_periods_json, $this->timezone, now()),
             'phone' => $this->phone,
             'website' => $this->website,
             // Curated business picture (T-084): the main image drives the detail
@@ -214,9 +224,28 @@ class PlaceResource extends JsonResource
      *
      * @return list<string>|null
      */
-    private function openingHoursForResource(): ?array
+    private function openingHoursForResource(Request $request): ?array
     {
-        return OpeningHours::salvage($this->opening_hours_json);
+        // Generated in the READER's language when the place has structured
+        // periods (T-168), falling back to the source's verbatim prose when it
+        // does not. Not a translation of that prose — see {@see WeeklyHours}.
+        //
+        // A HUMAN-LOCKED value wins outright, and this branch is the whole
+        // reason the lock means anything here. Nothing curated can write
+        // `opening_hours_periods_json` — Filament edits the LINES, the
+        // suggest-an-edit request allows only the lines, and enrichment is the
+        // sole writer of periods. So without this, a curator correcting "closes
+        // 22:00, not 23:00" would save, lock the column, and watch the screen go
+        // on showing the generated line from the stale periods — a correction
+        // that is invisible and, because the lock then stops enrichment
+        // refreshing anything, permanent. The lock says a person owns this
+        // field; generating over it would say otherwise.
+        if ($this->isFieldLocked('opening_hours_json')) {
+            return OpeningHours::salvage($this->opening_hours_json);
+        }
+
+        return WeeklyHours::lines($this->opening_hours_periods_json, RequestLocale::resolve($request))
+            ?? OpeningHours::salvage($this->opening_hours_json);
     }
 
     /**

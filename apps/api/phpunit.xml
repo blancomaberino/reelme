@@ -64,5 +64,11 @@
              hits the network via the real adapter chain; the video-pipeline
              suite opts in explicitly with a faked Process. -->
         <env name="INGESTION_YTDLP_ENABLED" value="false"/>
+        <!-- No test may reach a billed Google API (NFR-15), and CI has no network.
+             Blanking the key here covers EVERY provider at once — the geocoder,
+             the timezone resolver, the photo resolver — because each one gates on
+             it. Without this the container reads a developer's own .env, and a
+             pipeline test that forgets bindGeocoder() spends real money. -->
+        <env name="GOOGLE_PLACES_API_KEY" value="" force="true"/>
     </php>
 </phpunit>

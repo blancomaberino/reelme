@@ -25,6 +25,34 @@ export type MapFilters = {
   filter?: 'following' | 'mine' | null;
 };
 
+/**
+ * The key prefixes whose payloads the SERVER localizes — everything that must be
+ * re-asked for when the app's language changes.
+ *
+ * It lives here, beside the factory, because that is where someone adding a
+ * localized endpoint is already looking. The alternative — a literal in the
+ * settings store — was wrong within one review: it invalidated `['places']`
+ * alone, and missed tag labels (`TagResource.label` resolves `name_i18n` per
+ * request) served under `['tags','catalog']`, `['me','places','tags']` and
+ * `['search',…]`, plus `country_name` under `['me']` and the profile keys. The
+ * visible result was a Spanish tag filter beside English hours — surviving cold
+ * starts, because `['me','places','tags']` is persisted for 24h.
+ *
+ * Note `['me','places',…]` is NOT under the `places` prefix: the key layout and
+ * the concept have already diverged once, which is exactly why this is a list
+ * rather than a prefix match someone has to keep true in their head.
+ *
+ * Add an entry here when you add an endpoint that varies by `Accept-Language`.
+ */
+export const LOCALIZED_KEY_PREFIXES: readonly (readonly string[])[] = [
+  ['places'],   // place detail: opening_hours lines are generated per locale (T-168)
+  ['me'],       // my-places tags + facets, and country_name on the viewer
+  ['tags'],     // the tag catalog's labels
+  ['search'],   // search results carry tag labels
+  ['profile'],  // another user's country_name
+  ['influencer'],
+] as const;
+
 export const queryKeys = {
   me: ['me'] as const,
   /** Daily allowance from GET /me meta (T-051). Separate key: it goes stale on

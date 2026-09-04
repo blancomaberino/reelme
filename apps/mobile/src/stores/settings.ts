@@ -1,6 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
+import { LOCALIZED_KEY_PREFIXES } from '@/api/keys';
+import { queryClient } from '@/api/query-client';
+
 export type Locale = 'es' | 'en';
 export type Currency = '$' | '€' | '£';
 
@@ -46,3 +49,39 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     if (savedCurrency === '$' || savedCurrency === '€' || savedCurrency === '£') set({ currency: savedCurrency });
   },
 }));
+
+/**
+ * Anything the SERVER localizes is re-asked for whenever the language changes.
+ *
+ * Switching language only changes `Accept-Language` on the NEXT request, so a
+ * cached payload is still the one the API rendered for the old one. Opening
+ * hours are the visible case (T-168): the API writes those lines itself, so a
+ * cached place shows an English week under a Spanish UI until something
+ * refetches it.
+ *
+ * **A subscription, not a call inside each setter, and that is the whole
+ * lesson.** The first version put the rule in `setLocale`; `hydrate()` — the
+ * cold start of every user who ever switched, and so the path most likely to
+ * change the language — wrote the field directly and skipped it. Moving it to
+ * both writers only moved the problem: a third writer, including a bare
+ * `useSettingsStore.setState({ locale })` from anywhere, would skip it again,
+ * and the test enumerating the store's own methods could not see that either.
+ *
+ * Subscribing puts the rule where the STATE changes rather than where a caller
+ * happens to be, so it holds for every writer that exists and every writer that
+ * will. See CLAUDE.md, Wiring & seams #5.
+ *
+ * Scoped to the keys the server actually localizes ({@link LOCALIZED_KEY_PREFIXES},
+ * which lives beside the key factory so it is under the nose of whoever adds the
+ * next localized endpoint) — not to everything, since clearing the whole cache
+ * would also discard the payload that restores a session offline.
+ */
+useSettingsStore.subscribe((state, previous) => {
+  if (state.locale === previous.locale) {
+    return;
+  }
+
+  for (const queryKey of LOCALIZED_KEY_PREFIXES) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
+});

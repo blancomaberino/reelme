@@ -5,6 +5,8 @@ namespace App\Services\Geo;
 use App\Services\Geo\Exceptions\GeocodeFailed;
 use App\Support\CachedReviews;
 use App\Support\OpeningHours;
+use App\Support\OpeningSchedule;
+use App\Support\RequestLocale;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -61,12 +63,24 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
             return null;
         }
 
-        $key = 'geocode:business:'.sha1($googlePlaceId);
+        // The app's own locale, not the requester's. This response is CACHED for
+        // 30 days and its prose lands in a single `opening_hours_json` column, so
+        // it can only ever hold one language — asking per request would just mean
+        // whoever missed the cache first decides for everyone. Per-reader hours
+        // come from the structured periods instead (T-168, {@see WeeklyHours});
+        // this prose is the fallback for places that have none.
+        //
+        // The language is IN THE CACHE KEY regardless: without it, changing
+        // APP_LOCALE would silently keep serving the previous language for a
+        // month, from a key that claims to identify only the place.
+        $language = self::language();
+        $key = 'geocode:business:'.sha1($googlePlaceId.'|'.$language);
 
-        $payload = Cache::remember($key, now()->addDays(self::CACHE_DAYS), function () use ($googlePlaceId): array {
+        $payload = Cache::remember($key, now()->addDays(self::CACHE_DAYS), function () use ($googlePlaceId, $language): array {
             $json = $this->get('/details/json', [
                 'place_id' => $googlePlaceId,
                 'fields' => self::BUSINESS_FIELDS,
+                'language' => $language,
                 'key' => $this->apiKey(),
             ]);
             $status = (string) ($json['status'] ?? '');
@@ -105,6 +119,11 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
             phone: is_string($phone) && trim($phone) !== '' ? trim($phone) : null,
             website: is_string($result['website'] ?? null) && trim($result['website']) !== '' ? trim($result['website']) : null,
             openingHours: OpeningHours::fromProvider($result['opening_hours']['weekday_text'] ?? null),
+            // The same week Google already sent and this class used to throw away
+            // (T-155). `periods` is in the response BUSINESS_FIELDS already pays
+            // for, so reading it costs nothing; it is stored beside the lines, never
+            // merged into them.
+            openingHoursPeriods: OpeningSchedule::fromProvider($result['opening_hours']['periods'] ?? null),
             rating: isset($result['rating']) ? (float) $result['rating'] : null,
             ratingCount: isset($result['user_ratings_total']) ? (int) $result['user_ratings_total'] : null,
             images: $this->photos($result['photos'] ?? null),
@@ -463,6 +482,19 @@ class GooglePlacesGeocoder implements BusinessDetailProvider, Geocoder
         $collapsed = preg_replace('/\s+/', ' ', $ascii) ?? $ascii;
 
         return trim(mb_strtolower($collapsed));
+    }
+
+    /**
+     * The language Google is asked to answer in for the business fields. The
+     * app's configured locale, narrowed to the tags this product actually
+     * supports so a stray APP_LOCALE cannot send an unrelated one.
+     */
+    private static function language(): string
+    {
+        $locale = (string) config('app.locale', 'en');
+        $tag = strtolower(substr($locale, 0, 2));
+
+        return in_array($tag, RequestLocale::SUPPORTED, true) ? $tag : 'en';
     }
 
     private function apiKey(): string

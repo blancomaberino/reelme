@@ -1,4 +1,4 @@
-# Opening hours on the place detail (E2E, iOS simulator) — T-128.
+# Opening hours on the place detail (E2E, iOS simulator) — T-128, extended by T-155 and T-168.
 #
 # WHY THIS FLOW EXISTS. The hours row had never rendered for a single user, and
 # every test in the suite agreed it was fine. `summarizeHours` read `.periods`
@@ -14,11 +14,19 @@
 #
 # PRECONDITIONS
 #   - API stack + Metro up via `./scripts/dev.sh start`.
-#   - The dev database holds `la-diecisiete-brasas-y-afines-ekaubv` with its
-#     Google `weekday_text` lines. The assertions below are deliberately loose
-#     about the CONTENT of those lines (see the note further down) — this flow
-#     proves the row is reachable and renders live API text; the exact bytes are
-#     pinned in Jest, where the fixture cannot be changed by a re-enrichment.
+#   - The dev database holds `la-diecisiete-brasas-y-afines-ekaubv` WITH
+#     structured periods and a timezone, so the API generates its hours (T-168)
+#     and can answer open/closed (T-155). Restore them if a wipe loses them:
+#
+#       docker exec -i api-laravel.test-1 php artisan tinker --execute='
+#         App\Models\Place::where("slug","la-diecisiete-brasas-y-afines-ekaubv")
+#           ->first()->forceFill(["timezone" => "America/Montevideo",
+#           "opening_hours_periods_json" => [["open_day"=>2,"open_time"=>"12:00",
+#             "close_day"=>2,"close_time"=>"16:00"]]])->save();'
+#
+#     The assertions below are deliberately loose about WHICH hours the venue
+#     keeps — that is Google's answer and it changes — and strict about the
+#     LANGUAGE and the shape, which are ours.
 #   - App runs in Spanish (default locale), so the chrome below is the es
 #     strings. The HOUR LINES are English, because they carry the SOURCE's
 #     language, not the reader's — the single clearest reason this screen must
@@ -62,58 +70,69 @@ appId: pet.one.reelmap
 # accessibility element and its children vanish from the tree Maestro reads.
 # The label IS the row's accessible name, so that is what to assert — and it
 # doubles as a check that the collapsed/expanded label swap is wired.
-- assertVisible: "Ver horario semanal"
+#
+# T-155 made this a PREFIX match, and both halves of that are deliberate.
+#
+# The status cue lives IN this accessible name, not merely inside the row: iOS
+# collapses a Pressable carrying a role + label into ONE accessibility element
+# and drops its children, so a cue rendered as a child is invisible to
+# VoiceOver — a screen-reader user deciding whether to go now would hear "ver
+# horario semanal" and never the answer. The name is therefore
+# "Abierto · cierra 23:30, Ver horario semanal" when the API can decide, and
+# bare when it cannot.
+#
+# So the assertion must tolerate both, because WHICH ONE this place shows is a
+# fact about the dev database, not about the screen — the same reason the hour
+# lines below are asserted day-agnostically. Pinning the bare label here would
+# make this flow go red the day someone enriches this venue, for a reason that
+# has nothing to do with the code.
+- assertVisible: ".*Ver horario semanal"
 
 # Collapsed, the lines are NOT on screen. This is the positive control for the
 # assertion below: without it, "the lines appeared" could just mean they were
 # always there.
-- assertNotVisible: "Monday: Closed"
+- assertNotVisible: "Lunes:.*"
+
+# The status cue IS on screen, because this row has both halves (T-155). Loose
+# about which state — that depends on the wall clock when the flow runs, and an
+# assertion that only passes before 20:00 is an assertion that fails at night.
+- assertVisible: ".*(Abierto|Cerrado).*"
 - takeScreenshot: build/maestro/t128-hours-1-collapsed
 
 # --- Pressing it reveals the source's own lines, verbatim -------------------
 - tapOn:
     id: "place-hours"
 - extendedWaitUntil:
-    visible: "Monday: Closed"
+    visible: "Lunes:.*"
     timeout: 10000
 # Expanded, the row's accessible name flips — an expanded control that still
 # says "show" is a screen-reader lie, and nothing else on screen would catch it.
-- assertVisible: "Ocultar horario semanal"
-# A day with TWO windows, the second crossing midnight — the shape a naive
-# parser mangles, and the reason the screen renders text instead of parsing it.
-#
-# The `.` wildcards are NOT laziness. Google's weekday_text separates the times
-# with THIN SPACE (U+2009) around the en dash and NARROW NO-BREAK SPACE (U+202F)
-# before AM/PM — six characters in this one line that look like a space and are
-# not one. Typing the line as it APPEARS makes the assertion fail against a
-# screen that is rendering it perfectly (it did, once). Maestro compiles text
-# selectors as Java regexes, where `\s` is ASCII-only and matches neither
-# codepoint, so `.` is the honest way to write "whatever space this really is".
-# That the exact bytes are this surprising is itself the argument for rendering
-# these lines rather than parsing them.
-#
-# DAY-AGNOSTIC on purpose. Naming Friday would tie this flow to the dev
-# database's current Google answer: re-enrich the place, or let Google reword a
-# row, and the flow fails for a reason that has nothing to do with the screen —
-# which is how a suite stops being trusted. The exact seven lines ARE pinned,
-# byte-for-byte including the U+2009/U+202F, in the Jest test where the fixture
-# is ours to control (place-detail.test.tsx). Here we prove only that a
-# real two-window row reached the screen intact.
-- assertVisible: ".+: 12:00.–.4:00.PM, 8:00.PM.–.\\d+:00.AM"
+- assertVisible: ".*Ocultar horario semanal"
 
-# NOT `assertNotVisible: "Open now"`. That was here and it was decoration: the
-# string exists nowhere in the app (only inside a source comment), so it can
-# never fail and it read as coverage of "this screen must not claim open/closed"
-# while providing none. The falsifiable version of that guarantee lives in
-# place-detail.test.tsx, which asserts the collapsed row renders EXACTLY the
-# neutral label — reintroduce a badge and it goes red.
+# THE T-168 ASSERTION. The app runs in Spanish, and before T-168 this block read
+# "Monday: Closed" — Google's English prose, rendered verbatim because prose was
+# all we had. It is now GENERATED from the structured periods in the reader's
+# locale, so the day names are Spanish and the week starts on Monday.
+#
+# Deliberately not pinning the times: they are the venue's real hours and will
+# change when someone re-enriches. What is pinned is that a Spanish reader gets
+# Spanish, which is the bug this closed.
+- assertVisible: "Lunes:.*"
+- assertVisible: "Domingo:.*"
+- assertNotVisible: ".*Monday.*"
+- assertNotVisible: ".*Closed.*"
+
+# A place with NO structured periods still shows the source's prose verbatim,
+# untranslated — the T-128 rule, which T-168 does not repeal. That path has no
+# row here to stand on, so it is pinned in Jest and in PlaceOpenStateTest where
+# the fixture is ours to control.
 - takeScreenshot: build/maestro/t128-hours-2-expanded
 
 # --- It collapses again -----------------------------------------------------
 - tapOn:
     id: "place-hours"
-- assertNotVisible: "Monday: Closed"
-- assertVisible: "Ver horario semanal"
+- assertNotVisible: "Lunes:.*"
+- assertVisible: ".*Ver horario semanal"
 
 # --- Leave the app where we found it ----------------------------------------
 - stopApp

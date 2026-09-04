@@ -26,6 +26,18 @@ trait LocksFields
         'name', 'address_line1', 'address_line2', 'city', 'region', 'postal_code',
         'country_code', 'cuisine_primary', 'price_range', 'phone', 'website',
         'image_url', 'thumbnail_url', 'gallery_json', 'opening_hours_json',
+        // T-155. Not curated in the sense of "a human types these" — nobody
+        // hand-writes an IANA zone or a period list; they edit the
+        // `opening_hours_json` LINES. They are here because this list is what
+        // `PlaceEditor::apply()` will write AT ALL, and the enricher is the only
+        // thing that fills them. Omitting them made both columns unwritable in
+        // production while every test passed, because the tests wrote them
+        // through the factory and never through the editor.
+        //
+        // They stay out of `PlaceEditSuggestion::FIELDS` deliberately: that list
+        // is what a member of the public may propose, and a proposed timezone is
+        // a proposed change to whether a venue looks open.
+        'opening_hours_periods_json', 'timezone',
     ];
 
     /**

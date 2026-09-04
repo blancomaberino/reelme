@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import AxiosMockAdapter from 'axios-mock-adapter';
 import type { ReactNode } from 'react';
-import { Linking, Share } from 'react-native';
+import { Linking, Share, StyleSheet } from 'react-native';
 
 import PlaceDetailScreen from '../[slug]';
 
@@ -10,6 +10,7 @@ import { LA_DIECISIETE, SCHEMA_ORG, SPANISH } from '@/test/opening-hours-fixture
 import { api } from '@/api/client';
 import type { PlaceDetail } from '@/api/places';
 import { useSessionStore } from '@/stores/session';
+import { schemes } from '@/theme/colors';
 
 import { mockRouter } from '../../../jest.setup';
 
@@ -30,6 +31,7 @@ const PLACE: PlaceDetail = {
   address: 'Rbla. República de México, Montevideo, UY',
   google_place_id: 'ChIJn-slTW6Gn5URoY55e-CgaHY',
   opening_hours: null,
+  open_state: null,
   phone: '+59829021621',
   website: 'https://sofitel.com',
   image_url: null,
@@ -757,5 +759,102 @@ describe('suggesting an edit', function () {
 
     expect(screen.getByLabelText('Something wrong? Suggest a change')).toBeOnTheScreen();
     expect(screen.getByText('Something wrong? Suggest a change')).toBeOnTheScreen();
+  });
+});
+
+describe('open/closed cue (T-155)', () => {
+  // Annotated for the same reason as the hours fixtures above: an unannotated
+  // literal would let a wrong `open_state` shape in through its own guard.
+  const withState = (open_state: PlaceDetail['open_state']): PlaceDetail => ({
+    ...PLACE,
+    opening_hours: LA_DIECISIETE,
+    open_state,
+  });
+
+  it('carries the server’s answer in the collapsed row, beside the label', async () => {
+    mock
+      .onGet(`/places/${PLACE.slug}`)
+      .reply(200, { data: withState({ open_now: true, closes_at: '23:00', opens_at: null }) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    const row = await screen.findByTestId('place-hours');
+    // The whole point of the collapsed row now: someone deciding whether to go
+    // NOW gets the answer without tapping, and without the seven-row block.
+    expect(visibleText(row).join(' ')).toContain('Open · closes 23:00');
+    // Still collapsed — the cue replaces the tap for the status, not for the week.
+    expect(screen.queryByTestId('place-hours-weekly')).toBeNull();
+
+    // And it is in the row's ACCESSIBLE NAME, not only its rendered text. iOS
+    // collapses a Pressable that has a role + label into one element and drops
+    // its children from the accessibility tree, so a cue left as a child is
+    // invisible to VoiceOver — a screen-reader user deciding whether to go now
+    // would hear "show weekly hours" and never the answer. Caught on a device,
+    // where the row rendered the cue perfectly and announced nothing.
+    // The middle dot becomes a comma in the ANNOUNCED name only: VoiceOver says
+    // "middle dot" aloud. The visual string above keeps it.
+    expect(row.props.accessibilityLabel).toBe('Open, closes 23:00, Show weekly hours');
+  });
+
+  // The cue's COLOUR, asserted in two separate tests on purpose: one `it` shares
+  // a QueryClient and an axios mock across both renders, so the second render
+  // replays the first response and the assertion silently tests nothing.
+  const cueColorFor = async (state: PlaceDetail['open_state'], text: string) => {
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withState(state) });
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    return StyleSheet.flatten((await screen.findByText(text)).props.style).color as string | undefined;
+  };
+
+  // Flip the open/closed ternary on the cue's style and every text assertion in
+  // this block still passes — only the colour lies, and someone scanning the row
+  // rather than reading it would misjudge the venue. These two pin the pair.
+  it('paints the open cue in the positive colour', async () => {
+    expect(await cueColorFor({ open_now: true, closes_at: '23:00', opens_at: null }, 'Open · closes 23:00'))
+      .toBe(schemes.light.green);
+  });
+
+  it('paints the closed cue in the muted colour, not the positive one', async () => {
+    expect(await cueColorFor({ open_now: false, closes_at: null, opens_at: '19:00' }, 'Closed · opens 19:00'))
+      .toBe(schemes.light.muted);
+  });
+
+  it('says closed with the next opening when the API supplies one', async () => {
+    mock
+      .onGet(`/places/${PLACE.slug}`)
+      .reply(200, { data: withState({ open_now: false, closes_at: null, opens_at: '19:00' }) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    expect(visibleText(await screen.findByTestId('place-hours')).join(' ')).toContain(
+      'Closed · opens 19:00',
+    );
+  });
+
+  it('renders the label ALONE when the API could not decide', async () => {
+    // The rule the whole task is built around: unknowable must not become
+    // "Closed". This is the assertion that fails if anyone ever defaults it.
+    mock.onGet(`/places/${PLACE.slug}`).reply(200, { data: withState(null) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    const row = await screen.findByTestId('place-hours');
+    expect(visibleText(row)).toEqual(['Opening hours']);
+    // No claim in the accessible name either — the null path must be silent in
+    // both channels, not just the visual one.
+    expect(row.props.accessibilityLabel).toBe('Show weekly hours');
+  });
+
+  it('still expands to the source lines, unchanged, with a cue present', async () => {
+    // The cue must not have cost the hours: T-128's lines still render verbatim.
+    mock
+      .onGet(`/places/${PLACE.slug}`)
+      .reply(200, { data: withState({ open_now: true, closes_at: '23:00', opens_at: null }) });
+
+    render(<PlaceDetailScreen />, { wrapper: Providers });
+
+    fireEvent.press(await screen.findByTestId('place-hours'));
+
+    expect(visibleText(screen.getByTestId('place-hours-weekly'))).toEqual(LA_DIECISIETE);
   });
 });
