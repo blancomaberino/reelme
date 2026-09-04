@@ -39,7 +39,22 @@ class BackfillDishes extends Command
         // carry no dishes, so a 71k-source corpus spent ~170k round-trips on the
         // empty majority. This command runs inside the deploy's maintenance
         // window, so that time is downtime.
-        $carriesDishes = "jsonb_array_length(coalesce(extraction_snapshot_json->'dishes', '[]'::jsonb)) > 0";
+        // `jsonb_typeof(...) = 'array'`, not just `coalesce(..., '[]')`: coalesce
+        // covers a MISSING key, but `jsonb_array_length` RAISES on a key that is
+        // present and not an array (`"dishes": {}`). {@see DishMaterializer::parse()}
+        // already guards that shape in PHP, so the codebase assumes it happens —
+        // and here it would abort the DELETE, exit non-zero, and (since deploy.sh
+        // treats this step as non-fatal) leave the WHOLE corpus unmaterialized:
+        // every place with an empty menu because of one malformed row.
+        // Note the shape: the CASE wraps the VALUE, it is not an `AND` guard in
+        // front of the call. Postgres does not promise to evaluate AND operands
+        // left to right — the planner reordered exactly this and raised anyway —
+        // so the argument has to be an array by construction. That is why
+        // {@see App\Models\Place::DISCOUNTS_JSONB} is written the same way, and
+        // it is the kind of detail a copy of the idiom loses.
+        $dishesArray = "CASE WHEN jsonb_typeof(extraction_snapshot_json->'dishes') = 'array'
+             THEN extraction_snapshot_json->'dishes' ELSE '[]'::jsonb END";
+        $carriesDishes = "jsonb_array_length({$dishesArray}) > 0";
 
         DB::statement(
             'DELETE FROM dishes d USING place_sources ps

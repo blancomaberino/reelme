@@ -112,10 +112,16 @@ class PlaceQueryBuilder extends Builder
      * these dishes were read out of the snapshot — and closing it means gating
      * the whole source load, which also moves attribution and tags. That belongs
      * in its own task, not smuggled in behind a filter.
-     * The publish gate is also what keeps this filter agreeing with its older
-     * twin: dish names are ALSO materialized as `TagKind::Dish` tags, and that
-     * path runs only at the publish seam, so an ungated `?dish=` would answer
-     * differently from `?tags[]=<dish-slug>` over the same field.
+     * What the gate does NOT do — stated because the first version of this
+     * comment claimed the opposite, and a false premise beside a guard is what
+     * stops the next reader checking: it does not keep this filter agreeing with
+     * its older twin. Dish names are ALSO materialized as `TagKind::Dish` tags,
+     * and `ShareModerator::takeDown()` nulls `published_at` WITHOUT re-running
+     * `TagMaterializer` (`PlacePublisher::recountCounters()` recomputes counters
+     * only). So after a take-down `?dish=milanesa` correctly returns nothing
+     * while `?tags[]=<the dish slug>` still returns the place. The gate makes
+     * THIS filter honest; the tag path's retraction is a separate, pre-existing
+     * gap, and closing it means making take-down re-materialize tags.
      *
      * A BLOCKED account's source is deliberately NOT excluded here, though it is
      * excluded from the place detail's source load. Review proposed adding it;

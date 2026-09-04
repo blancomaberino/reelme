@@ -9,10 +9,19 @@
 #
 # ORDER IS THE WHOLE POINT HERE. The sequence below is not arbitrary:
 #
-#   1. Maintenance mode goes on BEFORE the migration and off after, and it is
-#      the ONLY thing that must survive a failure — hence the trap. A deploy
-#      that dies mid-migration with the site still down is an outage; one that
-#      dies with the site up serving a half-migrated schema is worse.
+#   1. Maintenance mode goes on BEFORE THE PULL — not merely before the
+#      migration — and off after, and it is the ONLY thing that must survive a
+#      failure, hence the trap. A deploy that dies mid-migration with the site
+#      still down is an outage; one that dies with the site up serving a
+#      half-migrated schema is worse.
+#
+#      It used to go on after `composer install`, which left the NEW code
+#      serving live traffic against the OLD schema for the length of the
+#      install. That was survivable while every migration only ADDED a column
+#      the old code ignored. T-157 ended that: `PlaceController::show()` eager-
+#      loads a `dishes` relation whose table the same deploy creates, so the
+#      window meant `SQLSTATE[42P01] relation "dishes" does not exist` — a 500
+#      on every place detail, for as long as composer took.
 #   2. Caches are cleared BEFORE composer install and rebuilt AFTER, because a
 #      cached config file that references a class the new code deleted makes
 #      artisan itself unbootable — including the command you would use to clear
@@ -46,17 +55,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> Pulling"
-git -C "$SITE_PATH" pull origin main
-
-echo "==> Clearing compiled caches (before install — see the header)"
-$PHP artisan config:clear
-$PHP artisan route:clear
-$PHP artisan view:clear
-
-echo "==> Installing dependencies"
-$COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
-
 echo "==> Maintenance mode"
 # `--secret` keeps a way in: the deployer can hit /<secret> to check a migration
 # landed before letting traffic back. It is passed ONLY when DEPLOY_SECRET is
@@ -71,6 +69,17 @@ if [ -n "${DEPLOY_SECRET:-}" ]; then
 else
   $PHP artisan down --render="errors::503" --retry=15
 fi
+
+echo "==> Pulling"
+git -C "$SITE_PATH" pull origin main
+
+echo "==> Clearing compiled caches (before install — see the header)"
+$PHP artisan config:clear
+$PHP artisan route:clear
+$PHP artisan view:clear
+
+echo "==> Installing dependencies"
+$COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
 
 echo "==> Migrating"
 # --force because there is no TTY. --isolated so two overlapping deploys (a

@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ShareStatus;
+use App\Jobs\PublishShare;
 use App\Models\Dish;
 use App\Models\Place;
 use App\Models\PlaceMerge;
@@ -12,6 +13,8 @@ use App\Services\Moderation\ShareModerator;
 use App\Services\Places\PlaceMerger;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 
 uses(RefreshDatabase::class);
 
@@ -131,25 +134,34 @@ function knownPlaceSourceQueryBuilderWriters(): array
     return [
         // Merge: rehomes place_id / demotes is_primary. Never touches the
         // snapshot, and dishes key on place_source_id, so they follow the row.
-        'PlaceMerger.php' => 'merge/unmerge row surgery — unmerge re-materializes explicitly',
+        'app/Services/Places/PlaceMerger.php' => 'merge/unmerge row surgery — unmerge re-materializes explicitly',
         // Un-publish + orphan cleanup. Deletes rows (dishes cascade) or writes
         // published_at; never the snapshot.
-        'MePlacesController.php' => 'removes my sources — deletes cascade to dishes',
+        'app/Http/Controllers/Api/V1/MePlacesController.php' => 'removes my sources — deletes cascade to dishes',
     ];
 }
 
 it('has no UNKNOWN query-builder writer of place_sources, which would bypass the observer', function () {
     $offenders = [];
 
-    /** @var SplFileInfo $file */
-    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path())) as $file) {
-        if ($file->isDir() || $file->getExtension() !== 'php') {
-            continue;
-        }
+    // `database/` as well as `app/`: migrations and seeders write this table too,
+    // and an earlier version scanned only app_path(), so a migration could have
+    // rewritten every snapshot with the guard silent.
+    foreach ([app_path(), base_path('database')] as $root) {
+        foreach (File::allFiles($root) as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
 
-        if (dishGuardMutatesPlaceSources(stripPhpComments((string) file_get_contents($file->getPathname())))
-            && ! array_key_exists($file->getFilename(), knownPlaceSourceQueryBuilderWriters())) {
-            $offenders[] = $file->getPathname();
+            // Keyed on the path RELATIVE TO THE REPO, not the basename: keying on
+            // the filename meant a brand-new `app/Http/Controllers/Api/V2/
+            // MePlacesController.php` inherited the exemption for free.
+            $relative = str_replace(base_path().'/', '', $file->getPathname());
+
+            if (dishGuardMutatesPlaceSources(stripPhpComments((string) file_get_contents($file->getPathname())))
+                && ! array_key_exists($relative, knownPlaceSourceQueryBuilderWriters())) {
+                $offenders[] = $relative;
+            }
         }
     }
 
@@ -171,6 +183,20 @@ it('the writer detector actually detects — positive and negative controls', fu
     ['eloquent mass update', 'PlaceSource::query()->whereKey($id)->update([$x]);', true],
     ['eloquent toBase update', 'PlaceSource::query()->toBase()->update([$x]);', true],
     ['eloquent toBase insert', 'PlaceSource::query()->toBase()->insert($rows);', true],
+    ['eloquent upsert', 'PlaceSource::query()->upsert($rows, ["id"]);', true],
+    ['raw delete', "DB::table('place_sources')->where('id', 1)->delete();", true],
+    ['DB::update', "DB::update('UPDATE place_sources SET extraction_snapshot_json = ?', [\$j]);", true],
+    ['DB::unprepared', "DB::unprepared('UPDATE place_sources SET is_primary = true');", true],
+    ['raw INSERT INTO', "DB::statement('INSERT INTO place_sources (id) VALUES (1)');", true],
+    ['raw DELETE FROM', "DB::statement('DELETE FROM place_sources WHERE id = 1');", true],
+    ['schema-qualified', "DB::statement('UPDATE public.place_sources SET is_primary = true');", true],
+    ['quoted identifier', 'DB::statement(\'UPDATE "place_sources" SET is_primary = true\');', true],
+    // Event-free Eloquent — the likeliest future mistake, since it looks ordinary.
+    ['updateQuietly', "\$s = PlaceSource::find(1); \$s->updateQuietly(['extraction_snapshot_json' => \$j]);", true],
+    ['saveQuietly', '$s = PlaceSource::find(1); $s->saveQuietly();', true],
+    ['withoutEvents', 'PlaceSource::withoutEvents(fn () => $source->save());', true],
+    // …and the same shapes on another model must NOT flag.
+    ['updateQuietly elsewhere', "\$user->updateQuietly(['name' => 'x']);", false],
     // Must NOT flag: a plain Eloquent delete cascades the dish rows at the DB
     // level, which is exactly what these two production paths rely on.
     ['eloquent delete (cascades)', 'PlaceSource::query()->where("share_id", $id)->delete();', false],
@@ -203,6 +229,90 @@ it('replaces rather than appends, so the backfill is idempotent', function () {
     expect(Dish::query()->count())->toBe(2)
         ->and(Dish::query()->where('place_source_id', $source->id)->pluck('name')->all())
         ->toBe(['Chivito', 'Fainá']);
+});
+
+it('does not re-insert (and poison the caller\'s transaction) on a second no-op save', function () {
+    // The regression for a real bug. The observer used to hang off `saved` and
+    // ask "was this the insert?" as `wasRecentlyCreated && getChanges() === []`.
+    // But `saved` ALSO fires on a save with nothing dirty, where both halves are
+    // still true — so a second save took the insert path again, re-inserted the
+    // same dishes, and hit `dishes_place_source_id_name_unique`.
+    //
+    // The row count alone does NOT catch it (the failed insert changes nothing)
+    // and neither does an exception (the observer swallows). What catches it is
+    // the damage: on Postgres a duplicate key aborts the SURROUNDING
+    // transaction, so the next statement dies with 25P02 and the cause is gone.
+    Log::spy();
+
+    $source = sourceWithDishes([['name' => 'Chivito', 'shown_in_video' => true]]);
+
+    $source->save();   // nothing dirty — `updated` must not fire
+
+    // The projection never failed…
+    Log::shouldNotHaveReceived('warning', ['dishes.materialize_failed', Mockery::any()]);
+    // …the rows are untouched…
+    expect(Dish::query()->where('place_source_id', $source->id)->pluck('name')->all())->toBe(['Chivito']);
+    // …and the connection still works, which is what a poisoned transaction breaks.
+    expect(PlaceSource::query()->whereKey($source->id)->exists())->toBeTrue();
+});
+
+it('materializes through the REAL publish job, not just a model save', function () {
+    // Acceptance (a) is "rows written at publish". Every other test drives the
+    // model directly, which proves the observer fires but NOT that PublishShare
+    // reaches it — swap its save for `updateQuietly()` and all of them stay
+    // green while no corrected dish ever materializes.
+    $share = Share::factory()->create(['status' => ShareStatus::Analyzing]);
+    $place = Place::factory()->active()->atPoint(-34.90, -56.16)->create();
+    PlaceSource::factory()->create([
+        'place_id' => $place->id,
+        'share_id' => $share->id,
+        'extraction_snapshot_json' => ['dishes' => [['name' => 'Wrong dish', 'shown_in_video' => true]]],
+    ]);
+
+    // The sharer corrected the extraction in the review sheet.
+    $share->corrected_extraction_json = [
+        'places' => [['dishes' => [['name' => 'Chivito canadiense', 'shown_in_video' => true]]]],
+    ];
+    $share->save();
+
+    (new PublishShare($share->id))->handle();
+
+    expect(Dish::query()->pluck('name')->all())->toBe(['Chivito canadiense']);
+    expect($this->getJson('/api/v1/places?dish=chivito')->assertOk()->json('data'))->toHaveCount(1);
+});
+
+it('clears rows for a source whose snapshot NO LONGER carries dishes', function () {
+    // The one case the backfill's bulk DELETE exists for, and the one no other
+    // test covers: every other backfill test starts from an empty table, so
+    // inverting the statement's `NOT` — or deleting it outright — stays green
+    // in all of them. Here the rows exist and the snapshot has moved on.
+    $source = sourceWithDishes([['name' => 'Chivito', 'shown_in_video' => true]]);
+    expect(Dish::query()->where('place_source_id', $source->id)->count())->toBe(1);
+
+    // Bypass the observer, which is the whole point: this simulates the rows
+    // having been left behind (a swallowed materialize failure, a pre-T-157
+    // edit) rather than the happy path that would have cleaned them up.
+    DB::table('place_sources')->where('id', $source->id)
+        ->update(['extraction_snapshot_json' => json_encode(['cuisines' => ['italian']])]);
+
+    $this->artisan('reelmap:dishes:backfill')->assertSuccessful();
+
+    expect(Dish::query()->where('place_source_id', $source->id)->count())->toBe(0);
+});
+
+it('survives a snapshot whose `dishes` is not an array, rather than aborting the whole backfill', function () {
+    // `jsonb_array_length` RAISES on a non-array. One hand-edited row would have
+    // taken down the entire backfill — and because deploy.sh treats the step as
+    // non-fatal, the deploy would finish with EVERY place showing an empty menu.
+    $good = sourceWithDishes([['name' => 'Chivito', 'shown_in_video' => true]]);
+    $malformed = PlaceSource::factory()->create(['extraction_snapshot_json' => ['dishes' => ['not' => 'a list']]]);
+
+    Dish::query()->delete();
+
+    $this->artisan('reelmap:dishes:backfill')->assertSuccessful();
+
+    expect(Dish::query()->where('place_source_id', $good->id)->pluck('name')->all())->toBe(['Chivito'])
+        ->and(Dish::query()->where('place_source_id', $malformed->id)->count())->toBe(0);
 });
 
 it('backfills a source whose rows were never written (a pre-T-157 row)', function () {
@@ -360,8 +470,11 @@ it('refuses a needle too short for the trigram index instead of scanning the cor
     // cannot use dishes_name_normalized_trgm and reads every dish we have — on a
     // public, unauthenticated route.
     //
-    // Each of these clears a raw-string `min:3` and still reduces below it,
-    // which is exactly why the guard lives on the NORMALIZED needle.
+    // Not all of these reach the builder in production — `a.` and `p!` are two
+    // raw characters and the FormRequest rejects them first. That is the point
+    // of testing the BUILDER directly: it is callable from anywhere, and only
+    // `!!a!!` and `-e-` (which clear a raw `min:3` and still reduce below it)
+    // prove the request rule is not the thing holding the line.
     $sql = Place::query()->publiclyVisible()->servingDish($raw)->toSql();
 
     // The needle never reaches a LIKE: the query is short-circuited to a
@@ -428,6 +541,20 @@ it('keeps a moderated contribution out of search when its share is taken down', 
     expect($this->getJson('/api/v1/places?dish=milanesa')->json('data'))->toBe([])
         ->and(collect($this->getJson('/api/v1/places?dish=asado')->json('data'))->pluck('id')->all())
         ->toBe([(string) $keep->place_id]);
+});
+
+it('ignores an unpublished source even when its share is perfectly healthy', function () {
+    // Separates "unpublished" from "taken down". The take-down test alone is
+    // also satisfied by a gate keyed on `shares.status`, because takeDown()
+    // rejects the share AND nulls published_at. This one has a live share and a
+    // source that simply has not published yet — the resolver's pre-publish
+    // state — so only a `published_at` gate passes it.
+    $place = Place::factory()->active()->atPoint(-34.90, -56.16)->create();
+    sourceWithDishes([['name' => 'Borrador', 'shown_in_video' => true]], $place, published: false);
+
+    expect(Dish::query()->count())->toBe(1)                       // the rows exist…
+        ->and($this->getJson('/api/v1/places?dish=borrador')->assertOk()->json('data'))
+        ->toBe([]);                                               // …and are not discoverable
 });
 
 it('restores a dropped duplicate source WITH its dishes when a merge is undone', function () {
@@ -525,9 +652,7 @@ function stripPhpComments(string $code): string
  * Does this (comment-stripped) source mutate `place_sources` outside Eloquent
  * model events?
  *
- * Split on `;` first so each check only has to look inside ONE statement — that
- * is what the tempered-greedy `(?:(?!;).)*?` groups an earlier version used were
- * doing the hard way.
+ * Split on `;` first so each check only has to look inside ONE statement.
  *
  * Note the asymmetry, which is deliberate rather than an accident of which
  * pattern fires: a RAW builder write (or an Eloquent query dropped to the base
@@ -535,12 +660,27 @@ function stripPhpComments(string $code): string
  * Eloquent query counts only for `update`/`upsert`, because its `delete()` still
  * cascades the dish rows correctly at the database level — which is what
  * `ForceReprocessShare` and `ProcessTakedown` rely on, and neither should flag.
+ *
+ * The `*Quietly` / `withoutEvents` family is caught too. Those are the likeliest
+ * future mistake precisely because they look like ordinary Eloquent.
  */
 function dishGuardMutatesPlaceSources(string $code): bool
 {
     $table = '/DB::(?:connection\([^)]*\)->)?table\(\s*["\']place_sources(?:\s+as\s+\w+)?["\']\s*\)/';
 
+    // Event-free Eloquent is only interesting where a PlaceSource is in play.
+    // Matching `*Quietly` on ANY model flagged User, AccountDeletion and a
+    // factory — noise that would have taught the next reader to widen the
+    // allowlist instead of reading the finding.
+    $touchesPlaceSource = str_contains($code, 'PlaceSource');
+
     foreach (explode(';', $code) as $statement) {
+        if ($touchesPlaceSource
+            && (preg_match('/->\s*(?:updateQuietly|saveQuietly)\s*\(/', $statement)
+                || preg_match('/PlaceSource::withoutEvents\s*\(/', $statement))) {
+            return true;
+        }
+
         $eloquent = str_contains($statement, 'PlaceSource::query()');
         $raw = (bool) preg_match($table, $statement)
             || ($eloquent && str_contains($statement, '->toBase()'));
@@ -551,7 +691,13 @@ function dishGuardMutatesPlaceSources(string $code): bool
             return true;
         }
 
-        if (preg_match('/DB::statement\(\s*["\'][^"\']*\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+place_sources\b/i', $statement)) {
+        // Raw SQL: `statement`, `update`, `unprepared`, an optional schema
+        // qualifier, and an optionally-quoted identifier. An earlier version
+        // matched only DB::statement on a bare unquoted name.
+        if (preg_match(
+            '/DB::(?:statement|update|unprepared)\(\s*["\'][^"\']*\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+(?:\w+\.)?"?place_sources"?\b/i',
+            $statement,
+        )) {
             return true;
         }
     }

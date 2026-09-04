@@ -154,6 +154,13 @@ it('reads dishes from the table with output identical to the JSONB parse it repl
     ]]]],
     'blank price is null, not an empty string' => [[['dishes' => [['name' => 'Asado', 'shown_in_video' => true, 'price' => '   ']]]]],
     'non-string price is ignored' => [[['dishes' => [['name' => 'Asado', 'shown_in_video' => true, 'price' => 450]]]]],
+    // A JSON-number name rendered as a dish before this change, and still does.
+    // The projection guards against arrays (which throw when cast), NOT against
+    // scalars — tightening to is_string() here would have silently dropped this
+    // dish from the place detail, the sources embed and its tag.
+    'numeric name still renders' => [[['dishes' => [['name' => 1955, 'shown_in_video' => true]]]]],
+    'boolean name still renders' => [[['dishes' => [['name' => true, 'shown_in_video' => false]]]]],
+
     'ordered across three sources' => [[
         ['dishes' => [['name' => 'A', 'shown_in_video' => true], ['name' => 'B', 'shown_in_video' => false]]],
         ['dishes' => [['name' => 'B', 'shown_in_video' => true], ['name' => 'C', 'shown_in_video' => false]]],
@@ -198,6 +205,24 @@ it('diverges from the old JSONB parse ONLY at the write-path caps, and says how'
         ->and($new)->toHaveCount(32);  // …the projection bounds it (MAX_DISHES_PER_SOURCE)
     expect(mb_strlen($old[0]['name']))->toBe(200)
         ->and(mb_strlen($new[0]['name']))->toBe(120);  // Dish::MAX_NAME
+});
+
+it('diverges on an ARRAY dish name by not crashing, which the old parse did', function () {
+    // The third divergence, and the only one that is a fix rather than a bound:
+    // `legacyDishes()` is a faithful copy of the implementation this replaced,
+    // and it raises "Array to string conversion" on `{"name": ["x"]}` — a 500 on
+    // the place detail. The projection drops that entry and keeps its siblings.
+    //
+    // Scalars are deliberately NOT dropped: a JSON-number name rendered as a
+    // dish before and still does (pinned in the equivalence table above). The
+    // guard is against what THROWS, not against what is merely untyped.
+    $place = placeWithSnapshots([['dishes' => [
+        ['name' => ['nope'], 'shown_in_video' => true],
+        ['name' => 'Ok', 'shown_in_video' => true],
+    ]]]);
+
+    expect(collect(PlaceAggregations::tags($place)['dishes'])->pluck('name')->all())->toBe(['Ok']);
+    expect(fn () => legacyDishes($place))->toThrow(ErrorException::class);
 });
 
 it('never reports a menu timestamp for a menu it will not show', function () {

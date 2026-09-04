@@ -48,14 +48,18 @@ class DishMaterializer
         $rows = $this->rows($source);
 
         if ($isInsert) {
-            // Nothing to replace and nothing to race: a fresh bigserial id cannot
-            // already own dish rows, and no other session can reference it yet.
-            // Skipping the transaction, the row lock and the DELETE takes the
-            // common path from 5 round-trips to 1 — and this runs on every
-            // PlaceSource ever created, in production and in ~2100 tests.
-            if ($rows !== []) {
-                Dish::query()->insert($rows);
+            if ($rows === []) {
+                return;
             }
+
+            // Still a transaction, but no lock and no DELETE: a fresh bigserial
+            // id cannot already own rows and no other session can see it, so the
+            // only thing this buys is the SAVEPOINT — which is what lets the
+            // observer swallow a failure without poisoning its caller's
+            // transaction. That is not optional: a duplicate-key error aborts
+            // the surrounding transaction on Postgres (25P02), and a swallowed
+            // 25P02 fails every later statement with the cause hidden.
+            DB::transaction(fn () => Dish::query()->insert($rows));
 
             return;
         }
@@ -140,11 +144,21 @@ class DishMaterializer
                 continue;
             }
 
-            // `is_string` before the cast, not after: a snapshot hand-edited in
-            // Filament or tinker is not schema-validated, and casting an array to
-            // string throws — which on the WRITE path fails the publish that
-            // produced the snapshot, where the same shape used to only spoil one GET.
-            if (! is_string($dish['name'] ?? null)) {
+            // `is_scalar`, not `is_string`, and checked BEFORE the cast.
+            //
+            // Before is the point: a snapshot hand-edited in Filament or tinker
+            // is not schema-validated, and casting an array to string throws —
+            // which on the WRITE path fails the publish that produced the
+            // snapshot, where the same shape used to only spoil one GET.
+            //
+            // `is_scalar` rather than `is_string` because the three parsers this
+            // replaced all did `(string) ($dish['name'] ?? '')`, so a JSON number
+            // rendered as the dish "1955". Tightening to `is_string` would have
+            // silently dropped it from the place detail, the sources embed AND
+            // its dish tag — undocumented data loss dressed as a type guard.
+            // Scalars stringify safely; arrays and objects are what throw.
+            $raw = $dish['name'] ?? null;
+            if (! is_scalar($raw)) {
                 continue;
             }
 
@@ -155,7 +169,7 @@ class DishMaterializer
             // distinguishes — a real, accepted trade, and only reachable from a
             // hand-corrected snapshot, since the extraction contract caps a name
             // at 120 itself.
-            $name = mb_substr(trim($dish['name']), 0, Dish::MAX_NAME);
+            $name = mb_substr(trim((string) $raw), 0, Dish::MAX_NAME);
             if ($name === '' || isset($parsed[$name])) {
                 continue;
             }

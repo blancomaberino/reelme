@@ -37,51 +37,72 @@ use Throwable;
  */
 class PlaceSourceObserver
 {
-    public function saved(PlaceSource $source): void
+    /**
+     * The INSERT. Fires exactly once, on the row's creation — which is why this
+     * is `created` and not `saved` plus a "was this the insert?" heuristic.
+     *
+     * That heuristic was here, and it was wrong: `saved` ALSO fires on a save
+     * with nothing dirty, where `wasRecentlyCreated` is still true and
+     * `getChanges()` is still empty — so a second `$source->save()` on the same
+     * instance took the insert path again, re-inserted the same dishes, and hit
+     * `dishes_place_source_id_name_unique`. On Postgres that aborts the
+     * SURROUNDING transaction (25P02), so the catch below swallowed the cause
+     * while every later statement in the caller's transaction failed.
+     */
+    public function created(PlaceSource $source): void
     {
-        if (! $this->justInserted($source) && ! $source->wasChanged('extraction_snapshot_json')) {
-            return;
-        }
+        // Nothing to replace and nothing to race: a fresh bigserial id cannot
+        // already own dish rows, and no other session can reference it yet. So
+        // this path skips the row lock and the DELETE.
+        $this->project($source, isInsert: true);
+    }
 
+    /**
+     * A snapshot that CHANGED. `updated` only fires when something was actually
+     * dirty, so a no-op save cannot reach here either.
+     *
+     * A source is also updated on publish (`published_at`) and on demotion
+     * (`is_primary`); rewriting the rows for those would churn ids for nothing.
+     */
+    public function updated(PlaceSource $source): void
+    {
+        if ($source->wasChanged('extraction_snapshot_json')) {
+            $this->project($source);
+        }
+    }
+
+    private function project(PlaceSource $source, bool $isInsert = false): void
+    {
         try {
             // Resolved HERE rather than constructor-injected: Laravel re-resolves
             // an observer on every event dispatch (there is no listener instance
             // cache), so autowiring the dependency would build a DishMaterializer
-            // on every PlaceSource save and discard it at the line above.
-            app(DishMaterializer::class)->materialize($source, $this->justInserted($source));
+            // on every PlaceSource save and discard it at the guard above.
+            app(DishMaterializer::class)->materialize($source, $isInsert);
         } catch (Throwable $e) {
             // Derived data with a rebuild path (`reelmap:dishes:backfill`) must
             // never fail the publish or resolve that produced the snapshot —
             // the same rule PlacePublisher applies to TagMaterializer, and this
-            // has strictly less claim on the caller than tags do. The
-            // materializer's own nested transaction rolled back to its
-            // SAVEPOINT, so the caller's transaction is intact.
+            // has strictly less claim on the caller than tags do.
             //
-            // The structured log is the load-bearing half, because a RETRY
-            // CANNOT HEAL THIS: a re-dispatched job re-assigns the same
-            // snapshot, jsonb round-trips to an equivalent PHP array,
-            // `wasChanged()` is therefore false, and the guard above skips. The
-            // log line is the only way anyone learns this source needs the
-            // backfill.
+            // Safe to swallow only because the materializer wraps BOTH paths in
+            // its own transaction: the failure rolls back to a SAVEPOINT and the
+            // caller's transaction survives. Without that, catching here would
+            // hide an error that had already poisoned the outer transaction —
+            // which is exactly what the previous version did.
+            //
+            // The structured log is the load-bearing half, and the reason is
+            // narrower than an earlier version of this comment claimed. It said
+            // a retry CANNOT heal this. Measured, it usually can — but only by
+            // accident: jsonb stores object keys in its own order, so a
+            // re-dispatched job re-assigning the same PHP array compares
+            // UNEQUAL to the value read back, the model is dirty, and
+            // `updated()` fires. A snapshot whose key order already matches
+            // jsonb's does not, and neither does a retry that re-reads rather
+            // than re-assigns. So: sometimes self-healing, never reliably, and
+            // this log line is the only thing that says which happened.
             report($e);
             Log::warning('dishes.materialize_failed', ['place_source_id' => $source->id]);
         }
-    }
-
-    /**
-     * Was THIS save the INSERT? `wasRecentlyCreated` alone will not do: it stays
-     * true for the model instance's whole lifetime, so a later
-     * `$source->update(['published_at' => now()])` on the same object still sees
-     * it. Pairing it with "this save changed nothing" pins it to the insert
-     * itself — on an insert there are no changes yet, on any later save there are.
-     *
-     * `getChanges()`, not `wasChanged()` — the latter returns a BOOL, so
-     * `wasChanged() === []` is always false and this would never fire on an
-     * insert. (It didn't, for one run: every "rows are written" test went red at
-     * once, which is the only reason this is a comment and not a shipped bug.)
-     */
-    private function justInserted(PlaceSource $source): bool
-    {
-        return $source->wasRecentlyCreated && $source->getChanges() === [];
     }
 }
