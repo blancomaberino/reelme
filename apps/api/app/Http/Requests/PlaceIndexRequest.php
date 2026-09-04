@@ -45,6 +45,9 @@ class PlaceIndexRequest extends FormRequest
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'card' => ['nullable', 'string', 'max:64'],
+            // "…that do pasta" (T-157). `min:2` is load-bearing: the match is a
+            // substring, and a single letter would return most of the corpus.
+            'dish' => ['nullable', 'string', 'min:2', 'max:120'],
             'near' => ['nullable', 'string'],
             'nearLat' => ['required_with:near', 'numeric', 'between:-90,90'],
             'nearLng' => ['required_with:near', 'numeric', 'between:-180,180'],

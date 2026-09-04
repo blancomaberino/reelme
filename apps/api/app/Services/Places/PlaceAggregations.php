@@ -7,8 +7,8 @@ use App\Models\Place;
 /**
  * Cross-source aggregation for a place (T-096), split out of the Place model so
  * the model keeps persistence + relationships + geo I/O + the locked-field API.
- * Every method is pure: it reads the already-loaded `sources` relation and
- * issues no queries.
+ * Every method is pure: it reads the already-loaded `sources` relation (and, for
+ * dishes, `sources.dishes`) and issues no queries. Callers MUST eager-load both.
  *
  * The discount label {@see discountCard()} is the PHP twin of the query-side
  * `Place::DISCOUNT_CARD_SQL` (the T-079 card filter + facet). They MUST produce
@@ -19,8 +19,15 @@ class PlaceAggregations
 {
     /**
      * Union + dedupe the discovery tags across every place_source's frozen
-     * extraction snapshot. `cuisines`/`vibe_tags`/`dietary_tags` are string lists;
-     * `dishes` are `{name, shown_in_video}` objects deduped by name (first wins).
+     * extraction snapshot. `cuisines`/`vibe_tags`/`dietary_tags` are string lists
+     * read from the snapshot; `dishes` are {@see App\Models\Dish} rows deduped by
+     * name (first wins), read from the table the snapshot is projected into.
+     *
+     * Iterating the SOURCES rather than the place's dishes directly is what keeps
+     * the aggregation honest: `PlaceController::show()` caps the loaded sources
+     * and drops the ones belonging to blocked accounts, and dishes must obey the
+     * same set — a moderated contribution must not walk back in through its
+     * dishes.
      *
      * @return array{cuisines: list<string>, vibe_tags: list<string>, dietary_tags: list<string>, dishes: list<array{name: string, shown_in_video: bool, price: string|null}>}
      */
@@ -45,32 +52,30 @@ class PlaceAggregations
                 $dietaryTags[$value] = $value;
             }
 
-            if (is_array($snapshot['dishes'] ?? null)) {
-                foreach ($snapshot['dishes'] as $dish) {
-                    if (! is_array($dish)) {
-                        continue;
-                    }
-                    $name = trim((string) ($dish['name'] ?? ''));
-                    if ($name === '') {
-                        continue;
-                    }
-                    $priceRaw = $dish['price'] ?? null;
-                    $price = is_string($priceRaw) && trim($priceRaw) !== '' ? trim($priceRaw) : null;
-                    if (isset($dishes[$name])) {
-                        // First occurrence wins for the dish, but a later source
-                        // can fill in a price the first one lacked (menu update).
-                        if ($dishes[$name]['price'] === null && $price !== null) {
-                            $dishes[$name]['price'] = $price;
-                        }
+            // Dishes come from the first-class `dishes` rows, NOT from
+            // `$snapshot['dishes']` (T-157). Same data, same order, same dedupe
+            // — the projection is written by DishMaterializer from this very
+            // snapshot — but read from the table so there is one dish corpus,
+            // and so the thing `?dish=` filters on is the thing the place shows.
+            foreach ($source->dishes as $dish) {
+                $name = $dish->name;
+                $price = $dish->price;
 
-                        continue;
+                if (isset($dishes[$name])) {
+                    // First occurrence wins for the dish, but a later source
+                    // can fill in a price the first one lacked (menu update).
+                    if ($dishes[$name]['price'] === null && $price !== null) {
+                        $dishes[$name]['price'] = $price;
                     }
-                    $dishes[$name] = [
-                        'name' => $name,
-                        'shown_in_video' => (bool) ($dish['shown_in_video'] ?? false),
-                        'price' => $price,
-                    ];
+
+                    continue;
                 }
+
+                $dishes[$name] = [
+                    'name' => $name,
+                    'shown_in_video' => $dish->shown_in_video,
+                    'price' => $price,
+                ];
             }
         }
 

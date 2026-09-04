@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\MaterializesDishes;
 use Database\Factories\PlaceSourceFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -28,6 +29,10 @@ class PlaceSource extends Model
 {
     /** @use HasFactory<PlaceSourceFactory> */
     use HasFactory;
+
+    // Keeps the source's first-class `dishes` rows in step with its snapshot,
+    // and exposes them as `->dishes` (T-157).
+    use MaterializesDishes;
 
     protected $fillable = [
         'place_id', 'source_post_id', 'share_id', 'analysis_run_id',

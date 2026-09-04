@@ -17,7 +17,7 @@ use Illuminate\Http\JsonResponse;
  * Shared list-view machinery for the personal + per-user place lists (T-071).
  * A caller supplies the base ownership scope (mine, or a user's published
  * shares) and this applies the common faceted filters (country, type, tags,
- * q), sort, and keyset pagination, then renders {@see PlaceSummaryResource}.
+ * dish, q), sort, and keyset pagination, then renders {@see PlaceSummaryResource}.
  * The two callers differ only in that base scope — everything else is one code
  * path so the "my map" and "my places" list stay two views of one dataset.
  */
@@ -58,6 +58,10 @@ trait PaginatesPlaces
         $tags = $request->validated('tags');
         if (is_array($tags) && $tags !== []) {
             $query->allTagSlugs($tags);
+        }
+
+        if (($dish = (string) ($request->validated('dish') ?? '')) !== '') {
+            $query->servingDish($dish);
         }
 
         // Always selected, not only when filtering, so the card can badge it.

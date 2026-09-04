@@ -4,6 +4,7 @@ namespace App\Models\Builders;
 
 use App\Enums\PlaceStatus;
 use App\Enums\ShareStatus;
+use App\Models\Dish;
 use App\Models\HiddenPlace;
 use App\Models\Influencer;
 use App\Models\Offer;
@@ -64,6 +65,44 @@ class PlaceQueryBuilder extends Builder
                 ->whereColumn('place_tag.place_id', 'places.id')
                 ->where('tags.slug', $slug));
         }
+
+        return $this;
+    }
+
+    /**
+     * Places serving a matching dish (T-157) — the filter behind "five places
+     * near me that do pasta", which neither `cuisine_primary` (`italian`) nor the
+     * vibe chips can answer.
+     *
+     * Matches the normalized dish text as a SUBSTRING, so `?dish=pasta` finds
+     * "Pasta al pesto", "Pastas caseras" and "Lasagna de pasta". That favours
+     * recall over precision on purpose — a discovery filter that misses the
+     * plural of the word someone typed is worse than one that occasionally
+     * offers a near neighbour — and the request's `min:2` is what keeps a
+     * one-letter query from matching the whole corpus. The trigram GIN index on
+     * `name_normalized` is what keeps the leading `%` off a sequential scan.
+     *
+     * Case- and accent-insensitivity comes from both sides reducing through
+     * {@see Dish::normalizeName()}; because that leaves only `[a-z0-9 ]`, the
+     * needle cannot smuggle a LIKE wildcard into the pattern.
+     *
+     * A non-empty term that normalizes to nothing (`?dish=!!!`) matches NOTHING
+     * rather than falling through. A filter that silently becomes "every place"
+     * when it cannot understand its input is worse than an empty result: the
+     * caller believes they filtered.
+     */
+    public function servingDish(string $dish): self
+    {
+        $needle = Dish::normalizeName($dish);
+
+        if ($needle === '') {
+            return $this->whereRaw('false');
+        }
+
+        $this->whereExists(fn ($sub) => $sub->from('dishes')
+            ->join('place_sources', 'place_sources.id', '=', 'dishes.place_source_id')
+            ->whereColumn('place_sources.place_id', 'places.id')
+            ->where('dishes.name_normalized', 'like', '%'.$needle.'%'));
 
         return $this;
     }

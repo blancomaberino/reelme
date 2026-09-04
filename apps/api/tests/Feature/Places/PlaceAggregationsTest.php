@@ -23,7 +23,7 @@ function placeWithSnapshots(array $snapshots): Place
         ]);
     }
 
-    return $place->load('sources');
+    return $place->load(['sources.dishes']);
 }
 
 it('unions and dedupes tags across sources, filling a missing dish price from a later source', function () {
@@ -79,4 +79,101 @@ it('pins Place::DISCOUNT_CARD_SQL to PlaceAggregations::discountCard() over a fi
 
         expect($sql)->toBe($php, 'SQL/PHP card label diverged for '.json_encode($discount));
     }
+});
+
+/**
+ * T-157 acceptance: `PlaceAggregations::tags()` now reads the `dishes` table
+ * instead of re-parsing `extraction_snapshot_json`, and the switch must be
+ * invisible. `legacyDishes()` below is the code it replaced, kept HERE (not in
+ * the app) so this is a genuine before/after comparison rather than the new
+ * implementation agreeing with itself.
+ */
+function legacyDishes(Place $place): array
+{
+    $dishes = [];
+
+    foreach ($place->sources as $source) {
+        $snapshot = $source->extraction_snapshot_json;
+        if (! is_array($snapshot['dishes'] ?? null)) {
+            continue;
+        }
+        foreach ($snapshot['dishes'] as $dish) {
+            if (! is_array($dish)) {
+                continue;
+            }
+            $name = trim((string) ($dish['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $priceRaw = $dish['price'] ?? null;
+            $price = is_string($priceRaw) && trim($priceRaw) !== '' ? trim($priceRaw) : null;
+            if (isset($dishes[$name])) {
+                if ($dishes[$name]['price'] === null && $price !== null) {
+                    $dishes[$name]['price'] = $price;
+                }
+
+                continue;
+            }
+            $dishes[$name] = [
+                'name' => $name,
+                'shown_in_video' => (bool) ($dish['shown_in_video'] ?? false),
+                'price' => $price,
+            ];
+        }
+    }
+
+    return array_values($dishes);
+}
+
+it('reads dishes from the table with output identical to the JSONB parse it replaced', function (array $snapshots) {
+    $place = placeWithSnapshots($snapshots);
+
+    expect(PlaceAggregations::tags($place)['dishes'])->toBe(legacyDishes($place));
+})->with([
+    'no dishes key' => [[['cuisines' => ['italian']]]],
+    'empty list' => [[['dishes' => []]]],
+    'single source' => [[['dishes' => [['name' => 'Chivito', 'shown_in_video' => true, 'price' => '$450']]]]],
+    'price backfilled by a later source' => [[
+        ['dishes' => [['name' => 'Tonkotsu', 'shown_in_video' => true]]],
+        ['dishes' => [['name' => 'Tonkotsu', 'price' => '12€']]],
+    ]],
+    'first source wins shown_in_video' => [[
+        ['dishes' => [['name' => 'Fainá', 'shown_in_video' => false]]],
+        ['dishes' => [['name' => 'Fainá', 'shown_in_video' => true]]],
+    ]],
+    'case-distinct names stay distinct' => [[['dishes' => [
+        ['name' => 'Pasta', 'shown_in_video' => true],
+        ['name' => 'pasta', 'shown_in_video' => false],
+    ]]]],
+    'whitespace-padded names are trimmed' => [[['dishes' => [['name' => '  Ñoquis  ', 'shown_in_video' => true]]]]],
+    'blank + non-array entries are dropped' => [[['dishes' => [
+        ['name' => '   ', 'shown_in_video' => true],
+        'not an object',
+        ['shown_in_video' => true],
+        ['name' => 'Milanesa', 'shown_in_video' => true],
+    ]]]],
+    'blank price is null, not an empty string' => [[['dishes' => [['name' => 'Asado', 'shown_in_video' => true, 'price' => '   ']]]]],
+    'non-string price is ignored' => [[['dishes' => [['name' => 'Asado', 'shown_in_video' => true, 'price' => 450]]]]],
+    'ordered across three sources' => [[
+        ['dishes' => [['name' => 'A', 'shown_in_video' => true], ['name' => 'B', 'shown_in_video' => false]]],
+        ['dishes' => [['name' => 'B', 'shown_in_video' => true], ['name' => 'C', 'shown_in_video' => false]]],
+        ['dishes' => [['name' => 'A', 'shown_in_video' => false, 'price' => '$1']]],
+    ]],
+]);
+
+it('leaves a moderated source\'s dishes out of the aggregate, exactly as it leaves out its tags', function () {
+    // PlaceController::show() drops blocked accounts' sources from the load;
+    // dishes are read THROUGH those sources, so a dish cannot walk back in on a
+    // contribution the aggregate has already excluded.
+    $place = placeWithSnapshots([
+        ['dishes' => [['name' => 'Visible', 'shown_in_video' => true]]],
+        ['dishes' => [['name' => 'Hidden', 'shown_in_video' => true]]],
+    ]);
+    $keep = $place->sources->first()->id;
+
+    $narrowed = Place::query()->whereKey($place->id)
+        ->with(['sources' => fn ($q) => $q->whereKey($keep)->with('dishes')])
+        ->first();
+
+    expect(collect(PlaceAggregations::tags($narrowed)['dishes'])->pluck('name')->all())->toBe(['Visible']);
 });

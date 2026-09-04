@@ -39,6 +39,9 @@ class PlaceListingRequest extends FormRequest
             'q' => ['nullable', 'string', 'max:120'],
             'country' => ['nullable', 'string', 'size:2', 'alpha'],
             'type' => ['nullable', 'string', 'max:64'],
+            // "…of my places that do pasta" (T-157). See PlaceIndexRequest for
+            // why the minimum is two characters.
+            'dish' => ['nullable', 'string', 'min:2', 'max:120'],
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'sort' => ['nullable', Rule::in(['recent', 'popular'])],

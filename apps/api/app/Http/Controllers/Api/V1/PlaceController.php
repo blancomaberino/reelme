@@ -86,6 +86,11 @@ class PlaceController extends Controller
             $query->withPaymentCard($card);
         }
 
+        // Filter to places serving a matching dish (T-157).
+        if (($dish = (string) ($request->validated('dish') ?? '')) !== '') {
+            $query->servingDish($dish);
+        }
+
         if (($influencerId = $request->validated('influencer_id')) !== null) {
             $query->whereExists(fn ($sub) => $sub->from('place_sources')
                 ->join('source_posts', 'source_posts.id', '=', 'place_sources.source_post_id')
@@ -172,7 +177,10 @@ class PlaceController extends Controller
         $invisible = app(BlockUsers::class)->invisibleTo($request->user('sanctum')?->id);
 
         $place->load([
+            // `dishes` is always loaded, not only for the embed: the tag
+            // aggregation reads it for every request (T-157).
             'sources' => fn ($q) => $q
+                ->with('dishes')
                 ->when($withSources, fn ($qq) => $qq->with(['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user']))
                 ->when($invisible !== [], fn ($qq) => $qq
                     ->whereHas('share', fn ($sq) => $sq->whereNotIn('shares.user_id', $invisible)))
@@ -228,7 +236,7 @@ class PlaceController extends Controller
         $cursor = KeysetCursor::decode($request->validated('cursor'), 'sources', 1);
 
         $query = $place->sources()
-            ->with(['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user'])
+            ->with(['sourcePost.influencer', 'sourcePost.mediaAssets', 'share.user', 'dishes'])
             ->orderBy('id');
 
         // A blocked account's contribution drops out of the attribution list
