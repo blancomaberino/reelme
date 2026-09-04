@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Support;
 
 use Sentry\Breadcrumb;
@@ -34,7 +36,21 @@ class SentryScrubber
      * site, so a new endpoint that adopts the same spelling is covered by
      * construction rather than by someone remembering.
      */
-    private const REDACTED_PARAMS = ['near', 'lat', 'lng', 'latitude', 'longitude'];
+    /**
+     * Query parameters redacted by NAME, whatever their value.
+     *
+     * `location` and `lon` are here because the OUTBOUND calls this app makes
+     * spell a coordinate that way — Google's timezone and places endpoints take
+     * `?location=lat,lng` — and an HTTP breadcrumb carries their query string
+     * verbatim. The credential names are here for the same reason: those same
+     * URLs carry `?key=`, so a failed geocode put an API key in an error report.
+     * A name list is the right instrument for a breadcrumb, where the value
+     * cannot be pattern-matched reliably.
+     */
+    private const REDACTED_PARAMS = [
+        'near', 'lat', 'lng', 'lon', 'latitude', 'longitude', 'location',
+        'key', 'api_key', 'apikey', 'token', 'access_token', 'signature',
+    ];
 
     private const REDACTED = '[redacted]';
 
@@ -105,22 +121,34 @@ class SentryScrubber
         //
         // `(string) $key` is load-bearing: `Log::warning('x', ['a', 'b'])` is
         // legal Laravel and yields INTEGER metadata keys, which `withMetadata`
-        // types as `string`. Under `declare(strict_types=1)` — one lint sweep
-        // away — that TypeErrors, and the SDK does not wrap `before_send`, so
-        // the throw propagates out of `captureException()`: telemetry taking
-        // down the request it was watching.
+        // types as `string`. Strict mode is decided by the CALLING file, which
+        // is why this one declares it at the top — without that the cast is
+        // silently redundant, the test covering it cannot fail, and the
+        // TypeError arrives the day somebody adds the declaration. The SDK does
+        // not wrap `before_send`, so that throw propagates out of
+        // `captureException()`: telemetry taking down the request it watched.
         foreach ($crumb->getMetadata() as $key => $value) {
             if (! is_string($value)) {
                 continue;
             }
 
-            // A `url` carries its parameters, so it gets the query-string pass
-            // as well — `?lat=…&lng=…` is redacted by NAME there, which the
-            // coordinate-pair regex would miss entirely.
-            $crumb = $crumb->withMetadata(
-                (string) $key,
-                $key === 'url' ? self::scrubUrl($value) : self::scrubText($value),
-            );
+            // `http.query` is the carrier, and it took a reviewer reading the
+            // SDK to find that out: an earlier version of this special-cased
+            // `url`, which `HttpClientIntegration::getPartialUri()` rebuilds
+            // from scheme/host/port/PATH — the query is stripped out of it and
+            // put in a SIBLING key. So the branch matched no producer at all,
+            // and the test covering it invented a shape nothing emits.
+            //
+            // Both are handled now: `url` in case a future producer keeps its
+            // query, and `http.query`, which is where the parameters actually
+            // are. By NAME, because that is what catches `?location=…&key=…` on
+            // an outbound Google call — percent-encoded, so the coordinate-pair
+            // regex never matched it either.
+            $crumb = $crumb->withMetadata((string) $key, match ((string) $key) {
+                'url' => self::scrubUrl($value),
+                'http.query' => self::scrubQueryString($value),
+                default => self::scrubText($value),
+            });
         }
 
         return $crumb;
@@ -157,8 +185,24 @@ class SentryScrubber
         return implode('&', $pairs);
     }
 
+    /**
+     * Decoded before matching: a query string percent-encodes the separator, so
+     * `-34.9011%2C-56.1645` never matched a pattern written around a comma. The
+     * decode is for MATCHING only — the returned string is the original with
+     * matches replaced, so a value that was encoded stays encoded.
+     */
     private static function scrubText(string $text): string
     {
+        $decoded = rawurldecode($text);
+
+        // Matched on the decoded form, replaced on whichever form matched. A
+        // value that arrived encoded is returned decoded only when it actually
+        // carried a coordinate — which is the case where losing the encoding is
+        // the lesser problem, since the text is already being rewritten.
+        if ($decoded !== $text && preg_match(self::COORD_PAIR, $decoded) === 1) {
+            return (string) preg_replace(self::COORD_PAIR, self::REDACTED, $decoded);
+        }
+
         return (string) preg_replace(self::COORD_PAIR, self::REDACTED, $text);
     }
 }

@@ -156,10 +156,39 @@ it('leaves an ordinary breadcrumb alone', function () {
         ->toBe('Job 12, 34 finished in 1.5s');
 });
 
-it('redacts by NAME in a breadcrumb url, where the coordinate-pair regex would not', function () {
-    // An HTTP breadcrumb carries the request URL in its metadata. `?lat=…&lng=…`
-    // as separate parameters is not a coordinate PAIR, so `scrubText` alone
-    // walks past it — the query-string pass is what catches it.
+it('redacts the breadcrumb key the HTTP integration ACTUALLY carries a query string in', function () {
+    // `http.query`, not `url`. `HttpClientIntegration::getPartialUri()` rebuilds
+    // the url from scheme/host/port/PATH and puts the query in a sibling key —
+    // so an earlier version of this scrub special-cased `url` and matched no
+    // producer at all, with a test that invented a shape nothing emits.
+    //
+    // The real one: a Google timezone lookup fails, and the breadcrumb carries
+    // the place's coordinates AND the API key. Percent-encoded, so the
+    // coordinate-pair regex would not have caught it either.
+    $event = Event::createEvent();
+    $event->setBreadcrumb([
+        new Breadcrumb(
+            Breadcrumb::LEVEL_INFO,
+            Breadcrumb::TYPE_HTTP,
+            'http',
+            null,
+            [
+                'url' => 'https://maps.googleapis.com/maps/api/timezone/json',
+                'http.query' => 'location=-34.9011%2C-56.1645&timestamp=1757260800&key=AIzaSyTESTKEY',
+            ],
+        ),
+    ]);
+
+    $metadata = SentryScrubber::scrub($event)->getBreadcrumbs()[0]->getMetadata();
+
+    expect($metadata['http.query'])
+        ->toBe('location=[redacted]&timestamp=1757260800&key=[redacted]')
+        ->and($metadata['url'])->toBe('https://maps.googleapis.com/maps/api/timezone/json');
+});
+
+it('still redacts a query string that a breadcrumb url does carry', function () {
+    // Kept because `url` is only query-stripped by the CURRENT integration; a
+    // future producer that leaves the query on must not walk past this.
     $event = Event::createEvent();
     $event->setBreadcrumb([
         new Breadcrumb(
@@ -175,15 +204,30 @@ it('redacts by NAME in a breadcrumb url, where the coordinate-pair regex would n
         ->toBe('https://api.reelmap.app/api/v1/places?lat=[redacted]&lng=[redacted]&sort=distance');
 });
 
+it('matches a percent-encoded coordinate pair in free text', function () {
+    // The separator is `%2C` once a coordinate has been through a query string,
+    // and a pattern written around a comma never saw it.
+    $event = scrubbed(exceptionMessage: 'GET .../json?location=-34.9011%2C-56.1645 failed');
+
+    expect($event->getExceptions()[0]->getValue())->not->toContain('34.9011');
+});
+
 it('survives a breadcrumb whose metadata keys are integers', function () {
     // `Log::warning('x', ['a', 'b'])` is legal and yields a LIST as context, so
-    // the keys are ints while `withMetadata()` types its name as string. The SDK
-    // does not wrap `before_send`, so a TypeError here would propagate out of
-    // `captureException()` — telemetry taking down the request it was watching.
+    // the keys are ints while `withMetadata()` types its name as `string`. This
+    // file declares `strict_types`, so without the `(string)` cast that is a
+    // TypeError — and the SDK does not wrap `before_send`, so it would propagate
+    // out of `captureException()`: telemetry taking down the request it watched.
+    //
+    // Asserting the RESULT, not `not->toThrow`: an earlier version used the
+    // latter and stayed green with the cast removed, so it was not testing what
+    // its comment claimed.
     $event = Event::createEvent();
     $event->setBreadcrumb([
         new Breadcrumb(Breadcrumb::LEVEL_WARNING, Breadcrumb::TYPE_DEFAULT, 'log', 'x', ['a', 'b']),
     ]);
 
-    expect(fn () => SentryScrubber::scrub($event))->not->toThrow(Throwable::class);
+    $metadata = SentryScrubber::scrub($event)->getBreadcrumbs()[0]->getMetadata();
+
+    expect(array_values($metadata))->toBe(['a', 'b']);
 });

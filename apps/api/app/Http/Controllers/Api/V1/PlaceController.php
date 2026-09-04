@@ -22,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use LogicException;
 
 /**
  * Public places surface (T-030, 03 §2.6): browse index with filters, place
@@ -301,15 +302,15 @@ class PlaceController extends Controller
                 // setting), making the one environment that matters the one with
                 // no check.
                 //
-                // FALLING THROUGH to `recent` rather than ordering by hand: a
-                // hand-written fallback gave the right ORDER BY and no keyset
-                // WHERE, so a cursor would have paged the same rows forever with
-                // no error anywhere. A degraded sort has to degrade the whole
-                // sort — ordering and cursor together — which is what the arm
-                // below already is.
+                // THROWS rather than degrading here. A second fallback in this
+                // arm would be a second copy of the degradation policy, in code
+                // that cannot execute — so the next person to change the policy
+                // edits `index()`, this arm keeps the old answer, and no test
+                // can go red because nothing reaches it. One policy, one place;
+                // this is the assertion that the invariant held, and it is a
+                // real `throw` because `assert()` is compiled out in production.
                 if ($near === null) {
-                    $this->applyRecentSort($query, $cursor);
-                    break;
+                    throw new LogicException('applySort(distance) needs a point; index() normalises the sort when there is none.');
                 }
 
                 // SQL and bindings together, from the one place that knows the
