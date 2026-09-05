@@ -1,6 +1,5 @@
-import { Ionicons } from '@expo/vector-icons';
 import { type ReactNode, useMemo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/button';
 import { SheetShell } from '@/components/sheet-shell';
@@ -67,34 +66,6 @@ export function FilterGroup({ label, children }: { label: string; children: Reac
   );
 }
 
-/** A selectable pill; fills with the accent when selected. */
-export function OptionPill({
-  label,
-  selected,
-  icon,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  icon?: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-}) {
-  const c = useColors();
-  const styles = useMemo(() => makeStyles(c), [c]);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [styles.pill, selected && styles.pillActive, pressed && styles.pillPressed]}
-    >
-      {icon ? <Ionicons name={icon} size={14} color={selected ? c.onPrimary : c.text} /> : null}
-      <Text style={[styles.pillLabel, selected && styles.pillLabelActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     // The sheet chrome (backdrop, card, handle, header, footer) lives in
@@ -111,19 +82,4 @@ const makeStyles = (c: Palette) =>
       marginBottom: 12,
     },
     options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    pill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-      borderRadius: 999,
-      backgroundColor: c.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.border,
-    },
-    pillActive: { backgroundColor: c.primary, borderColor: c.primary },
-    pillPressed: { opacity: 0.7 },
-    pillLabel: { color: c.text, fontSize: 14, fontWeight: '600' },
-    pillLabelActive: { color: c.onPrimary },
   });

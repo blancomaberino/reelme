@@ -59,6 +59,10 @@ class MapPlacesRequest extends FormRequest
             // "the caller believes they filtered" failure servingDish() guards
             // against, relocated to the surface that forgot the filter.
             'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:'.Dish::MAX_NAME],
+            // "…and open right now" (T-158). A cheap boolean, but the answer is
+            // not: a place with no structured hours or no timezone is EXCLUDED,
+            // never assumed open — {@see PlaceQueryBuilder::openNow()}.
+            'open_now' => ['nullable', 'boolean'],
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'filter' => ['nullable', Rule::in(['all', 'following', 'mine'])],

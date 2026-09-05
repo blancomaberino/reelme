@@ -9,7 +9,11 @@ use App\Models\HiddenPlace;
 use App\Models\Influencer;
 use App\Models\Offer;
 use App\Models\Place;
+use App\Models\PlaceOpenPeriod;
 use App\Models\User;
+use DateTimeImmutable;
+use DateTimeInterface;
+use DateTimeZone;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 
@@ -177,6 +181,109 @@ class PlaceQueryBuilder extends Builder
     public function havingActiveOffer(): self
     {
         return $this->whereHas('offers', self::onlyActiveOffers(...));
+    }
+
+    /**
+     * Places that are OPEN at the given instant, in their own local time
+     * (T-158).
+     *
+     * A place with no usable hours or no usable zone is EXCLUDED, not included:
+     * {@see App\Services\Places\OpenPeriodMaterializer} writes it no rows, so
+     * this semi-join drops it. That is the T-128/T-155 rule — "closed" is said
+     * from the ABSENCE of a period and never from a guess — and here it is a
+     * property of the data rather than a convention someone has to remember.
+     *
+     * `$at` is REQUIRED and has no default, for the same reason
+     * {@see OpeningSchedule::stateAt()} demands one: `now()` inside the SQL would
+     * read the DATABASE clock, so `travelTo()` could not move it and every test
+     * of this filter would be untestable in the one way that matters. It is
+     * bound as a parameter and converted per row with `AT TIME ZONE`, which is
+     * what makes the answer DST-correct — the stored spans are local wall-clock,
+     * so the only conversion needed is "what time is it there".
+     *
+     * WIRED ON ALL THREE PLACE SURFACES — the public index, the personal
+     * listings and the map. A filter one surface silently drops returns a 200
+     * the caller believes was filtered, which is what `?dish=` shipped with on
+     * the map in T-157 and had to fix in review; the surface table in
+     * `OpenPeriodTest` is what keeps a fourth one from repeating it.
+     *
+     * The containment test is the same shape as `stateAt()`'s, deliberately: a
+     * span may end past the week's end (that is how a Saturday-night-into-Sunday
+     * service stays a forward interval), so the instant is tested in BOTH the
+     * current week and the next.
+     */
+    public function openNow(DateTimeInterface $at): self
+    {
+        $table = (new PlaceOpenPeriod)->getTable();
+
+        // The instant's position in the row's OWN local week, in minutes from
+        // Sunday 00:00.
+        //
+        // The zone is read from THIS table, not from `places`: these are the
+        // values the materializer proved Postgres can resolve, and `AT TIME
+        // ZONE` throws on anything else — on a public listing that is a 500 for
+        // everyone rather than a missing cue for one venue.
+        //
+        // `EXTRACT(DOW …)` is 0 for Sunday, which is also Google's day 0 and so
+        // the numbering `open_minute` is already in. No translation to get wrong.
+        // Bound as an ISO-8601 string WITH ITS OFFSET and cast explicitly, not
+        // as a `DateTimeInterface`. Laravel's `prepareBindings()` formats a date
+        // object with the connection's plain `Y-m-d H:i:s`, which drops the zone
+        // — Postgres then reads the wall-clock digits in the SERVER's zone and
+        // every answer is off by the difference. It is a silent, plausible
+        // error: 20:00 in Montevideo arrived as 20:00 UTC and the venue looked
+        // closed by exactly three hours.
+        $instant = DateTimeImmutable::createFromInterface($at)
+            ->setTimezone(new DateTimeZone('UTC'))
+            ->format('Y-m-d H:i:sP');
+
+        $localNow = "(?::timestamptz AT TIME ZONE {$table}.timezone)";
+        // TWO references to the instant, not four. `EXTRACT(EPOCH FROM …::time)`
+        // gives seconds since local midnight, so one term replaces the separate
+        // HOUR and MINUTE extractions — Postgres does not common-subexpression
+        // the `AT TIME ZONE` conversion, so each reference is a real repeat of
+        // the cast (measured ~3µs per period row for the redundant pair;
+        // negligible at a 300-pin viewport, but free to remove).
+        //
+        // `floor(… / 60)`, NOT `…::int / 60`. Casting the epoch to int ROUNDS
+        // in Postgres, so a time carrying sub-second precision lands on the NEXT
+        // minute: 20:59:59.6 gave 21:00, and a venue closing at 21:00 would have
+        // read as shut for the last half second of every minute. The instant is
+        // bound through `format('Y-m-d H:i:sP')`, which drops microseconds, so
+        // this was unreachable — but only by a property of the binding two lines
+        // below, which is exactly the kind of coupling that survives until
+        // someone makes the format more precise. Verified equal to the
+        // HOUR*60+MINUTE form it replaced across sub-second inputs.
+        $minuteOfWeek = "(EXTRACT(DOW FROM {$localNow})::int * 1440"
+            ." + floor(EXTRACT(EPOCH FROM {$localNow}::time) / 60)::int)";
+
+        // Built once and counted from the FINAL string. Counting `?` in
+        // `$minuteOfWeek` instead would silently under-fill the moment anything
+        // interpolates that fragment twice — the bindings would then shift, and
+        // PDO reports HY093 rather than a wrong answer, but only at runtime.
+        $contains = "(({$minuteOfWeek} - {$table}.open_minute + 10080) % 10080)"
+            ." < ({$table}.close_minute - {$table}.open_minute)";
+
+        return $this->whereExists(function ($query) use ($table, $contains, $instant): void {
+            $query->selectRaw('1')
+                ->from($table)
+                ->whereColumn($table.'.place_id', 'places.id')
+                // Containment in the half-open span [open, close), MODULO the
+                // week — which is what lets one comparison do the job of the two
+                // {@see OpeningSchedule::stateAt()} makes ("test now in both the
+                // current week and the next").
+                //
+                // They are the same test. A span has length L = close - open,
+                // with 0 < L <= WEEK. If now >= open, (now - open) mod WEEK is
+                // just now - open, and the test is the direct one. If now <
+                // open, the term is now - open + WEEK, which is exactly the
+                // "next week" candidate rebased — so a Saturday 22:00 → Sunday
+                // 01:00 service still contains Sunday 00:30. The addend keeps
+                // the dividend positive (Postgres `%` follows the sign of the
+                // dividend), and an always-open span, where L = WEEK, matches
+                // every instant, as it must.
+                ->whereRaw($contains, array_fill(0, substr_count($contains, '?'), $instant));
+        });
     }
 
     /**

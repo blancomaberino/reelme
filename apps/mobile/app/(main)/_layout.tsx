@@ -36,6 +36,16 @@ export default function MainTabsLayout() {
         name="map"
         options={{ title: t('tabs.map'), tabBarIcon: ({ color, size }) => <Ionicons name="map" color={color} size={size} /> }}
       />
+      {/* Tonight (T-158) sits second, right after the map: it answers the same
+          question the map does — "where do I eat, here, now" — but as a list you
+          can filter, so it belongs beside the map rather than at the end. */}
+      <Tabs.Screen
+        name="tonight"
+        options={{
+          title: t('tabs.tonight'),
+          tabBarIcon: ({ color, size }) => <Ionicons name="moon" color={color} size={size} />,
+        }}
+      />
       <Tabs.Screen
         name="places"
         options={{ title: t('tabs.myPlaces'), tabBarIcon: ({ color, size }) => <Ionicons name="bookmark" color={color} size={size} /> }}

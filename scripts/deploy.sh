@@ -26,9 +26,11 @@
 #      cached config file that references a class the new code deleted makes
 #      artisan itself unbootable — including the command you would use to clear
 #      it.
-#   3. Horizon is terminated LAST. It restarts with the new code; terminating it
-#      first would leave a window where the old workers pick up jobs the new
-#      migration has already reshaped underneath them.
+#   3. Horizon is terminated AFTER `migrate` and after the caches are rebuilt,
+#      so replacement workers boot on the new code AND the new config. Doing it
+#      before `migrate` is the hazard: replacements would come up on the NEW
+#      code against the OLD schema. The derived-projection backfills then run
+#      after the restart — see the note beside them.
 #
 # WHAT THIS SCRIPT CANNOT DO: it does not provision anything, and it has never
 # run against real infrastructure — see docs/runbooks/provisioning.md. Treat the
@@ -156,28 +158,6 @@ $PHP artisan migrate --force --isolated
 # Schema now matches the checkout: lifting maintenance mode is safe again.
 DEPLOY_STATE="consistent"
 
-# Derived-projection backfills, INSIDE the outage and immediately after the
-# schema they depend on. These are not optional repair tools: T-157's read path
-# (place detail `dishes[]`, `?dish=`) switched to the `dishes` table in the same
-# release that created it, so an unpopulated table is a live regression — every
-# place loses its menu — not a feature waiting to be enabled.
-#
-# Idempotent by construction (each rewrites a source's whole dish set), so a
-# retried deploy is free, and they no-op once the corpus is materialized.
-echo "==> Backfilling derived projections"
-# NOT fatal, deliberately. The command exits non-zero when it could not
-# materialize every source — which is the right answer for a human running it by
-# hand, but the wrong one here: under `set -e` it would abort the deploy AFTER
-# `migrate` and BEFORE the cache rebuild and worker restart, and the EXIT trap
-# would then lift maintenance mode onto the new schema with stale caches. A
-# handful of sources whose dishes lag by minutes is a far smaller problem, and
-# one source vanishing mid-walk is a routine race against the queue (maintenance
-# mode stops HTTP, not Horizon). Re-run the command to close the gap.
-if ! $PHP artisan reelmap:dishes:backfill; then
-  echo "==> WARNING: dish backfill did not complete. The deploy continues; those"
-  echo "    places show no menu until 'php artisan reelmap:dishes:backfill' is re-run."
-fi
-
 echo "==> Rebuilding caches"
 $PHP artisan config:cache
 $PHP artisan route:cache
@@ -191,11 +171,66 @@ if [ -n "${SENTRY_RELEASE:-}" ]; then
 fi
 
 echo "==> Restarting queue workers"
-# LAST, and `terminate` not `restart`: it lets in-flight jobs finish on the old
+# `terminate`, not `restart`: it lets in-flight jobs finish on the old
 # code and brings the replacements up on the new. The pipeline's jobs run for
 # minutes (see config/horizon.php timeouts), so killing them mid-flight would
 # strand shares in a non-terminal state.
 $PHP artisan horizon:terminate
+
+# Backfills run AFTER the worker restart, not before it.
+#
+# Maintenance mode stops HTTP, not Horizon — the block below says so itself —
+# so before `horizon:terminate` the queue is still executing the PREVIOUS
+# release. An old-code worker has no PlaceObserver, so an enrichment that saves
+# a place's hours mid-walk writes no projection rows; if `chunkById` has already
+# passed that id, the place is silently unlistable in Tonight forever, because
+# TimezoneBusinessSource resolves once and nothing re-triggers the projection.
+# Restarting first means a save by a REPLACEMENT worker during the walk is
+# observed, and the walk's own replace makes the overlap harmless.
+#
+# It NARROWS the window rather than closing it, and the difference matters:
+# `horizon:terminate` is a signal, not a join. It returns immediately and
+# in-flight jobs keep running on the old code until they finish — up to the
+# timeouts in config/horizon.php, which are minutes, not seconds. A long
+# enrichment still draining when the walk reaches its place can therefore still
+# write hours that no observer sees. Re-running the backfill after a deploy is
+# the cheap way to close the remainder; it is idempotent by construction.
+
+# Derived-projection backfills, INSIDE the outage and immediately after the
+# schema they depend on. These are not optional repair tools: T-157's read path
+# (place detail `dishes[]`, `?dish=`) switched to the `dishes` table in the same
+# release that created it, so an unpopulated table is a live regression — every
+# place loses its menu — not a feature waiting to be enabled.
+#
+# Idempotent by construction (each rewrites a source's whole dish set), so a
+# retried deploy is free, and they no-op once the corpus is materialized.
+echo "==> Backfilling derived projections"
+# NOT fatal, deliberately. The command exits non-zero when it could not
+# materialize every source — the right answer for a human running it by hand,
+# the wrong one here. The reason given used to be that `set -e` would abort
+# before the cache rebuild; that stopped being true when these moved after it,
+# and is corrected rather than left as a false premise beside the code. The real
+# reason is simpler: the EXIT trap lifts maintenance mode on the way out, so
+# aborting here ends the outage with the deploy half finished and no
+# projections, when the alternative is a complete deploy whose projections lag
+# by minutes. A
+# handful of sources whose dishes lag by minutes is a far smaller problem, and
+# one source vanishing mid-walk is a routine race against the queue (maintenance
+# mode stops HTTP, not Horizon). Re-run the command to close the gap.
+if ! $PHP artisan reelmap:dishes:backfill; then
+  echo "==> WARNING: dish backfill did not complete. The deploy continues; those"
+  echo "    places show no menu until 'php artisan reelmap:dishes:backfill' is re-run."
+fi
+
+# T-158's open-now filter is a semi-join onto `place_open_periods`, so an
+# unpopulated table does not degrade the listing — it EMPTIES it: every place
+# reads as "hours unknown" and none of them are open. Same non-fatal treatment
+# and the same reason as above.
+if ! $PHP artisan reelmap:open-periods:backfill; then
+  echo "==> WARNING: open-period backfill did not complete. The deploy continues;"
+  echo "    those places cannot be found by 'open now' until"
+  echo "    'php artisan reelmap:open-periods:backfill' is re-run."
+fi
 
 echo "==> Deploy complete"
 # The trap runs `artisan up` on the way out.

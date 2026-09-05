@@ -91,6 +91,12 @@ class PlaceController extends Controller
             $query->servingDish($dish);
         }
 
+        // "…and open right now" (T-158). Applied on all three place surfaces;
+        // the reasoning lives once, on PlaceQueryBuilder::openNow().
+        if ($request->validated('open_now')) {
+            $query->openNow(now());
+        }
+
         if (($influencerId = $request->validated('influencer_id')) !== null) {
             $query->whereExists(fn ($sub) => $sub->from('place_sources')
                 ->join('source_posts', 'source_posts.id', '=', 'place_sources.source_post_id')

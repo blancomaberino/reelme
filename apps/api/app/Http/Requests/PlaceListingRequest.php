@@ -46,6 +46,10 @@ class PlaceListingRequest extends FormRequest
             'tags' => ['nullable', 'array', 'max:10'],
             'tags.*' => ['string', 'max:96'],
             'sort' => ['nullable', Rule::in(['recent', 'popular'])],
+            // "…and open right now" (T-158). A cheap boolean, but the answer is
+            // not: a place with no structured hours or no timezone is EXCLUDED,
+            // never assumed open — {@see PlaceQueryBuilder::openNow()}.
+            'open_now' => ['nullable', 'boolean'],
             // "Only places running an offer I could redeem right now" (T-047).
             'has_offers' => ['nullable', 'boolean'],
             'limit' => ['nullable', 'integer', 'between:1,100'],

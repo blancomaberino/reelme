@@ -92,6 +92,12 @@ class MapViewport
             $query->servingDish($dish);
         }
 
+        // "…and open right now" (T-158). Applied on all three place surfaces;
+        // the reasoning lives once, on PlaceQueryBuilder::openNow().
+        if ($request->validated('open_now')) {
+            $query->openNow(now());
+        }
+
         if ($constrain !== null) {
             $constrain($query);
         }
