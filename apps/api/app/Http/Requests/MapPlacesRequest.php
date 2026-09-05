@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ParsesNearPoint;
 use App\Models\Dish;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -15,6 +16,8 @@ use Illuminate\Validation\Validator;
  */
 class MapPlacesRequest extends FormRequest
 {
+    use ParsesNearPoint;
+
     public function authorize(): bool
     {
         return true;
@@ -22,9 +25,9 @@ class MapPlacesRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        // Same guard as `near` above: an array `?bbox[]=…` would be cast to
-        // string here, before the `string` rule can reject it, and the warning
-        // surfaces as a 500 rather than a 422.
+        // Same guard as {@see ParsesNearPoint::mergeNearPoint()}: an array
+        // `?bbox[]=…` would be cast to string here, before the `string` rule can
+        // reject it, and the warning surfaces as a 500 rather than a 422.
         $bbox = $this->query('bbox');
         $parts = is_string($bbox) ? array_map('trim', explode(',', $bbox)) : [];
         if (count($parts) === 4) {
@@ -35,6 +38,8 @@ class MapPlacesRequest extends FormRequest
                 'maxLat' => $parts[3],
             ]);
         }
+
+        $this->mergeNearPoint();
     }
 
     /**
@@ -52,6 +57,10 @@ class MapPlacesRequest extends FormRequest
             'cuisine' => ['nullable', 'string', 'max:64'],
             'price_range' => ['nullable', 'integer', 'between:1,4'],
             'card' => ['nullable', 'string', 'max:64'],
+            // The viewer's own position (T-156). Optional: the map works without
+            // it, and every viewer-relative field on a pin is ABSENT rather than
+            // faked when it is missing.
+            ...$this->nearRules(),
             // "…that do pasta", on the surface where that question is actually
             // asked (T-157). A FormRequest ignores unknown parameters, so
             // omitting this rule would not 422 `?dish=` on the map — it would
@@ -75,6 +84,13 @@ class MapPlacesRequest extends FormRequest
         return [
             'maxLng.gt' => 'A bbox crossing the antimeridian is not supported.',
             'minLat.lt' => 'minLat must be south of maxLat.',
+            // Shared with `/places`, because the parse is. Without them the map
+            // answers `?near=-34.90` with "The near lat field is required when
+            // near is present." — naming `nearLat`, a field the caller never sent
+            // and will not find in any documentation — while the sibling endpoint
+            // answers the same input with `near must be "lat,lng"`. One parameter,
+            // two endpoints, two stories about it.
+            ...$this->nearMessages(),
         ];
     }
 

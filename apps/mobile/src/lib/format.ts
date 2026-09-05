@@ -92,3 +92,58 @@ export function cuisinePriceLine(category: string | null, priceRange: number | n
   const price = priceGlyphs(priceRange, symbol);
   return [category, price].filter(Boolean).join(' · ');
 }
+
+/**
+ * A distance in metres as a person reads it: "450 m", "1,2 km", "12 km".
+ *
+ * THE app's only distance renderer, extracted rather than written twice — the
+ * venue-candidate picker had the first one inline (`Math.round(m)` and a key
+ * hard-coding " m"), which read fine for a 40 m match and would have said
+ * "3218 m" on the map. Both call sites go through here now.
+ *
+ * Rounding is by magnitude, not by a fixed precision, because precision the
+ * source does not have is a lie of a different kind: a GPS fix is good to tens
+ * of metres, so "1.23 km" claims a resolution nobody has. Under a kilometre it
+ * rounds to whole metres; to 9.9 km it keeps one decimal (the difference between
+ * a 1.2 km walk and a 1.9 km one is the difference between walking and not);
+ * past that it rounds to whole kilometres.
+ *
+ * `decimal` is the locale's separator — Spanish writes 1,2 km. Passed in rather
+ * than read from `Intl`, which Hermes ships only partially.
+ *
+ * Returns '' for a missing or non-finite value, so a caller can render it
+ * conditionally without a second null check.
+ */
+export function distanceLabel(meters: number | null | undefined, decimal = '.'): string {
+  if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) return '';
+
+  // ROUND FIRST, THEN PICK THE UNIT. Choosing the unit from the raw value and
+  // rounding afterwards puts the rounding on the wrong side of the boundary in
+  // both directions: 999.6 m is "under a kilometre", so it rounds to 1000 and
+  // prints "1000 m"; 9950 m is "under 10 km", so it keeps a decimal and prints
+  // "10.0 km". Both were live here until the boundary cases were written down.
+  const whole = Math.round(meters);
+  if (whole < 1000) return `${whole} m`;
+
+  const km = Math.round(meters / 100) / 10;
+  // Grouped past a thousand kilometres: "1500 km" reads as a typo where
+  // "1.500 km" reads as a distance. Reachable from a wide map.
+  //
+  // Grouped BY HAND, not with `toLocaleString`: Hermes ships only a partial Intl
+  // (the reason `use-format.ts` carries a literal table of month names rather
+  // than asking Intl for them), so a locale argument here is silently ignored on
+  // device and correct in jest — green tests over a wrong screen. The group
+  // separator is whichever of `.`/`,` the decimal separator is not.
+  const wholeKm = Math.round(meters / 1000);
+  if (wholeKm >= 1000) {
+    return `${group(wholeKm, decimal === ',' ? '.' : ',')} km`;
+  }
+  if (km >= 10) return `${wholeKm} km`;
+
+  return `${km.toFixed(1).replace('.', decimal)} km`;
+}
+
+/** Thousands separators for a non-negative integer, without Intl. */
+function group(value: number, separator: string): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, separator);
+}

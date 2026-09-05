@@ -47,6 +47,20 @@ const tracks = () => screen.getByTestId('marker').props.tracksViewChanges;
 const coordinate = () => screen.getByTestId('marker').props.coordinate;
 const anchor = () => screen.getByTestId('marker').props.anchor;
 
+it('announces the place NAME — the identity the map screen presses by', () => {
+  // Two things depend on this exact string and neither could see it. VoiceOver
+  // reads it, and it is the only handle a screen-reader user has on a pin
+  // (annotations are not otherwise in the iOS a11y tree). And `map.test.tsx`
+  // presses its mocked marker by `pin.name`, so if the real one announced
+  // something else, that test would be pressing a door this component does not
+  // have — which is what it did before review caught it (`marker-${pin.id}`).
+  //
+  // Mutate this to `pin.id` and both suites stayed green.
+  render(<PlaceMarker pin={pin()} detailed selected={false} onPress={noop} />);
+
+  expect(screen.getByTestId('marker').props.accessibilityLabel).toBe('Café Brasilero');
+});
+
 it('anchors the coordinate to the pointer tip when detailed and the dot centre when compact', () => {
   // Detailed: a fixed, off-centre hotspot (the pointer tip) so the glyph can
   // grow/shrink without dragging the marker off its real position.

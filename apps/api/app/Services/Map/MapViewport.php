@@ -105,13 +105,15 @@ class MapViewport
      */
     private function pinsResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total): JsonResponse
     {
-        $places = $this->selectPinFields($this->baseQuery($request, $bbox, $constrain))
+        $near = $request->nearPoint();
+        $places = $this->selectPinFields($this->baseQuery($request, $bbox, $constrain), $near)
             ->orderByDesc('shares_count')
             ->limit(self::PIN_CAP + 1)
             ->get();
 
         $truncated = $places->count() > self::PIN_CAP;
-        $pins = $places->take(self::PIN_CAP)->map(fn (Place $p) => $this->pin($p))->all();
+        $at = now();
+        $pins = $places->take(self::PIN_CAP)->map(fn (Place $p) => $this->pin($p, $near, $at))->all();
 
         return ApiResponse::item(['pins' => $pins, 'clusters' => []], array_filter([
             'zoom' => $zoom,
@@ -186,9 +188,14 @@ class MapViewport
 
         $pins = [];
         if ($singletonIds !== []) {
-            $pins = $this->selectPinFields(Place::query()->whereIn('id', $singletonIds))
+            // The SAME viewer point as the unclustered path. A pin that carries a
+            // distance at zoom 15 and loses it at zoom 13 is a bug the user finds
+            // by pinching, and one nothing but a test at both zooms would catch.
+            $near = $request->nearPoint();
+            $at = now();
+            $pins = $this->selectPinFields(Place::query()->whereIn('id', $singletonIds), $near)
                 ->get()
-                ->map(fn (Place $p) => $this->pin($p))
+                ->map(fn (Place $p) => $this->pin($p, $near, $at))
                 ->all();
         }
 
@@ -207,12 +214,29 @@ class MapViewport
      * clustered response promotes to pins — because they render the SAME shape.
      * When they each spelled it out, a field added to `pin()` was one edit away
      * from being null on half the map.
+     *
+     * @param  array{lat: float, lng: float}|null  $near  the viewer's position,
+     *                                                    or null when they gave none
      */
-    private function selectPinFields(PlaceQueryBuilder $query): PlaceQueryBuilder
+    private function selectPinFields(PlaceQueryBuilder $query, ?array $near = null): PlaceQueryBuilder
     {
-        return $query
+        // Distance is computed by POSTGIS, once per row in the same query — not
+        // in PHP per pin. At the pin cap that is the difference between one
+        // query and 300 haversines, and it is what lets a caller sort on it
+        // without a second pass.
+        //
+        // It is added AFTER `select('*')`, and that ordering is not cosmetic —
+        // see {@see PlaceQueryBuilder::withDistanceFrom()}, which is also the one
+        // place the alias and the `[lng, lat]` binding order are spelled.
+        $query = $query
             ->select('*')
-            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng')
+            ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng');
+
+        if ($near !== null) {
+            $query->withDistanceFrom($near);
+        }
+
+        return $query
             ->with([
                 'primarySource.sourcePost.influencer',
                 'primarySource.sourcePost.mediaAssets',
@@ -224,9 +248,17 @@ class MapViewport
     }
 
     /**
+     * @param  array{lat: float, lng: float}|null  $near  the viewer's position
+     * @param  \DateTimeInterface  $at  ONE clock reading for the whole response,
+     *                                  required rather than defaulted so the
+     *                                  invariant is the signature's rather than a
+     *                                  comment's. A bare `now()` per pin lets a
+     *                                  300-pin map served across a minute
+     *                                  boundary report two venues with identical
+     *                                  hours as one open and one closed.
      * @return array<string, mixed>
      */
-    private function pin(Place $place): array
+    private function pin(Place $place, ?array $near, \DateTimeInterface $at): array
     {
         $sourcePost = $place->primarySource?->sourcePost;
         $influencer = $sourcePost?->influencer;
@@ -253,6 +285,29 @@ class MapViewport
                 'handle' => $influencer->handle,
                 'display_name' => $influencer->display_name,
             ],
+            // UNCONDITIONAL, unlike `distance_m`, and the asymmetry is the point:
+            // open-or-closed is a fact about the VENUE — its periods, its own
+            // timezone, the clock — and nothing about the viewer. Gating it on
+            // `near` (as this first did) meant a user who declined location saw
+            // no open/closed cue on any pin, while `/places`, `/search`, the feed
+            // and every list showed one for the same restaurants. Two surfaces
+            // disagreeing about a fact neither viewer influences.
+            //
+            // Null whenever the answer is not KNOWABLE — no structured periods,
+            // or no timezone — and never a fabricated "closed" (T-155).
+            'open_state' => $place->openState($at),
+            // Appended, so the identity fields stay first and a reader sees the
+            // viewer-relative field as the addition it is.
+            //
+            // ABSENT without a viewer position — not 0. Zero is a real distance
+            // ("you are standing in it"), so a default is indistinguishable from
+            // the truth. Same 1-decimal precision as {@see PlaceSummaryResource}:
+            // one key name must not mean two shapes, and the client re-rounds by
+            // magnitude, so an int here and a float there put the same restaurant
+            // in two different kilometre buckets.
+            ...($near === null ? [] : [
+                'distance_m' => round((float) $place->getAttribute('distance'), 1),
+            ]),
         ];
     }
 }

@@ -29,7 +29,7 @@ function place(id: string): PlaceSummary {
     country_code: 'UY',
     source_count: 0,
     rating: { google: { value: null, count: 0 } },
-    distance_m: null,
+    distance_m: null, open_state: null,
     created_at: null,
   };
 }

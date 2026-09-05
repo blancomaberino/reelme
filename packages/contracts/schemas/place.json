@@ -6,105 +6,271 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "id", "name", "slug", "status", "claimed", "can_edit", "lat", "lng", "category", "price_range",
-    "city", "country_code", "address", "address_line1", "google_place_id", "opening_hours", "open_state",
-    "phone", "website", "cuisines", "vibe_tags", "dietary_tags", "dishes",
-    "dishes_updated_at", "dishes_language", "source_count", "rating", "google_reviews",
-    "review_sources", "discounts", "image_url", "thumbnail_url", "gallery"
+    "id",
+    "name",
+    "slug",
+    "status",
+    "claimed",
+    "can_edit",
+    "lat",
+    "lng",
+    "category",
+    "price_range",
+    "city",
+    "country_code",
+    "address",
+    "address_line1",
+    "google_place_id",
+    "opening_hours",
+    "open_state",
+    "phone",
+    "website",
+    "cuisines",
+    "vibe_tags",
+    "dietary_tags",
+    "dishes",
+    "dishes_updated_at",
+    "dishes_language",
+    "source_count",
+    "rating",
+    "google_reviews",
+    "review_sources",
+    "discounts",
+    "image_url",
+    "thumbnail_url",
+    "gallery"
   ],
   "properties": {
-    "id": { "type": "string" },
-    "name": { "type": "string" },
-    "slug": { "type": "string" },
-    "status": { "type": "string", "enum": ["pending", "active"] },
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active"
+      ]
+    },
     "claimed": {
       "type": "boolean",
       "description": "Whether a restaurant operator has a verified claim on this place (T-041). Who the operator is stays private; this only says the venue is claimed."
     },
-    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
-    "lng": { "type": "number", "minimum": -180, "maximum": 180 },
-    "category": { "type": ["string", "null"] },
-    "price_range": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
-    "city": { "type": ["string", "null"] },
-    "country_code": { "type": "string" },
+    "lat": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "lng": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "category": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "price_range": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 4
+    },
+    "city": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "country_code": {
+      "type": "string"
+    },
     "can_edit": {
       "type": "boolean",
       "description": "Whether THIS viewer may edit the place directly — a verified operator (T-041/T-083). False for guests and for everyone else, whose changes go through the suggestion queue instead. Re-derived from the claim on every request."
     },
-    "address": { "type": "string" },
+    "address": {
+      "type": "string"
+    },
     "address_line1": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The street line on its own (T-083), beside the display string `address` built from it. The suggest-an-edit form corrects this field and cannot parse it back out of the joined address."
     },
-    "google_place_id": { "type": ["string", "null"] },
-    "opening_hours": {
-      "type": ["array", "null"],
-      "description": "Human-readable opening-hour lines, one rule per entry, exactly as the client shows them. A FLAT LIST OF STRINGS — never Google's {periods, weekday_text} object. TWO ORIGINS, and the client renders both the same way: (1) when the place has structured periods, the lines are GENERATED server-side in the REQUEST'S LOCALE (T-168) — localized day names, the locale's first day of the week, its 12/24-hour clock, and a localized word for a closed day derived from the absence of a period; (2) otherwise they are the source's own prose, in the source's language and day order, rendered VERBATIM. The client must never parse these lines in either case: from prose the weekday order and the meridiem are ambiguous (T-128), and from generated lines there is nothing to recover that `open_state` and the API do not already provide. Because origin (1) depends on the request locale, a cached copy may be in a previously requested language until it is refetched.",
-      "items": { "type": "string" }
+    "google_place_id": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
-    "open_state": {
-      "type": ["object", "null"],
-      "additionalProperties": false,
-      "required": ["open_now", "closes_at", "opens_at"],
-      "description": "Whether the venue is open RIGHT NOW, computed server-side from structured periods and the venue's IANA timezone (T-155). NULL means the answer is not knowable — no structured periods, or no timezone — and the client must then show the `opening_hours` lines with NO status cue. Null is never to be rendered as \"Closed\": a confidently wrong \"Closed\" sends someone away from a restaurant that is open. The periods and the timezone themselves are deliberately NOT served: one implementation decides this (App\\Support\\OpeningSchedule) and the client renders its answer, because shipping a second parseable copy of the week is how the client came to invent its own reading in T-128. Google's own `open_now` is never forwarded — it is true at fetch time and a lie for the 30 days the response is cached.",
-      "properties": {
-        "open_now": { "type": "boolean" },
-        "closes_at": {
-          "type": ["string", "null"],
-          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
-          "description": "Venue-local wall clock at which the current opening period ends. Null while closed, and also null for a venue that never closes."
-        },
-        "opens_at": {
-          "type": ["string", "null"],
-          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
-          "description": "Venue-local wall clock of the next opening, and ONLY when it falls on the same local day. Null while open, and null when the next opening is tomorrow — \"opens 11:00\" without a weekday would read as \"in an hour\", and rendering the weekday belongs to the client's locale."
-        }
+    "opening_hours": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "description": "Human-readable opening-hour lines, one rule per entry, exactly as the client shows them. A FLAT LIST OF STRINGS — never Google's {periods, weekday_text} object. TWO ORIGINS, and the client renders both the same way: (1) when the place has structured periods, the lines are GENERATED server-side in the REQUEST'S LOCALE (T-168) — localized day names, the locale's first day of the week, its 12/24-hour clock, and a localized word for a closed day derived from the absence of a period; (2) otherwise they are the source's own prose, in the source's language and day order, rendered VERBATIM. The client must never parse these lines in either case: from prose the weekday order and the meridiem are ambiguous (T-128), and from generated lines there is nothing to recover that `open_state` and the API do not already provide. Because origin (1) depends on the request locale, a cached copy may be in a previously requested language until it is refetched.",
+      "items": {
+        "type": "string"
       }
     },
-    "phone": { "type": ["string", "null"] },
-    "website": { "type": ["string", "null"] },
-    "image_url": { "type": ["string", "null"], "description": "Curated business photo (T-084); the detail hero, else the client falls back to the reel poster." },
-    "thumbnail_url": { "type": ["string", "null"], "description": "Curated marker photo (T-084); the map marker prefers it, falling back to image_url then the reel poster." },
+    "open_state": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "open-state.json"
+        }
+      ]
+    },
+    "phone": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "website": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "image_url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Curated business photo (T-084); the detail hero, else the client falls back to the reel poster."
+    },
+    "thumbnail_url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Curated marker photo (T-084); the map marker prefers it, falling back to image_url then the reel poster."
+    },
     "gallery": {
       "type": "array",
       "description": "Ordered business photo gallery (T-099): owned website (schema.org) images first, then business-attributed Google photos, then fill. image_url mirrors gallery[0]. The client shows a carousel only when length > 1.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["url", "source", "attribution"],
+        "required": [
+          "url",
+          "source",
+          "attribution"
+        ],
         "properties": {
-          "url": { "type": "string", "description": "Client-loadable http(s) image URL (no API key)." },
-          "source": { "type": "string", "enum": ["website", "google", "reel"], "description": "Where the photo came from: the business's own website, Google Places, or the reel-derived thumbnail (last-resort)." },
-          "attribution": { "type": ["string", "null"], "description": "Uploader/attribution text (Google html_attributions, tags stripped); null for owned website images." }
+          "url": {
+            "type": "string",
+            "description": "Client-loadable http(s) image URL (no API key)."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "website",
+              "google",
+              "reel"
+            ],
+            "description": "Where the photo came from: the business's own website, Google Places, or the reel-derived thumbnail (last-resort)."
+          },
+          "attribution": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Uploader/attribution text (Google html_attributions, tags stripped); null for owned website images."
+          }
         }
       }
     },
-    "cuisines": { "type": "array", "items": { "type": "string" } },
-    "vibe_tags": { "type": "array", "items": { "type": "string" } },
-    "dietary_tags": { "type": "array", "items": { "type": "string" } },
+    "cuisines": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "vibe_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dietary_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "dishes": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "shown_in_video", "price"],
+        "required": [
+          "name",
+          "shown_in_video",
+          "price"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "shown_in_video": { "type": "boolean" },
-          "price": { "type": ["string", "null"] }
+          "name": {
+            "type": "string"
+          },
+          "shown_in_video": {
+            "type": "boolean"
+          },
+          "price": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
-    "dishes_updated_at": { "type": ["string", "null"], "description": "When the dish/menu list was last refreshed by a source (ISO 8601)." },
-    "dishes_language": { "type": ["string", "null"], "description": "BCP-47 language of the menu source; dish names are kept verbatim in this language so the client can label it." },
-    "source_count": { "type": "integer", "minimum": 0 },
+    "dishes_updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "When the dish/menu list was last refreshed by a source (ISO 8601)."
+    },
+    "dishes_language": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "BCP-47 language of the menu source; dish names are kept verbatim in this language so the client can label it."
+    },
+    "source_count": {
+      "type": "integer",
+      "minimum": 0
+    },
     "rating": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["google", "app"],
+      "required": [
+        "google",
+        "app"
+      ],
       "properties": {
-        "google": { "$ref": "#/definitions/ratingBlock" },
-        "app": { "$ref": "#/definitions/ratingBlock" }
+        "google": {
+          "$ref": "#/definitions/ratingBlock"
+        },
+        "app": {
+          "$ref": "#/definitions/ratingBlock"
+        }
       }
     },
     "google_reviews": {
@@ -114,14 +280,51 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["author", "rating", "text", "relative_time", "time", "profile_photo_url"],
+        "required": [
+          "author",
+          "rating",
+          "text",
+          "relative_time",
+          "time",
+          "profile_photo_url"
+        ],
         "properties": {
-          "author": { "type": ["string", "null"] },
-          "rating": { "type": ["number", "null"] },
-          "text": { "type": ["string", "null"] },
-          "relative_time": { "type": ["string", "null"] },
-          "time": { "type": ["integer", "null"] },
-          "profile_photo_url": { "type": ["string", "null"] }
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rating": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "relative_time": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "time": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "profile_photo_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
@@ -131,26 +334,91 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["source", "rating", "count", "url", "synced_at", "snippets"],
+        "required": [
+          "source",
+          "rating",
+          "count",
+          "url",
+          "synced_at",
+          "snippets"
+        ],
         "properties": {
-          "source": { "type": "string", "description": "Provider id / UI label key, e.g. \"google\"." },
-          "rating": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
-          "count": { "type": "integer", "minimum": 0 },
-          "url": { "type": ["string", "null"], "description": "Deep link to the full reviews on the source; null for native." },
-          "synced_at": { "type": ["string", "null"], "description": "ISO 8601 time the external summary was last fetched; null for computed sources." },
+          "source": {
+            "type": "string",
+            "description": "Provider id / UI label key, e.g. \"google\"."
+          },
+          "rating": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 5
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Deep link to the full reviews on the source; null for native."
+          },
+          "synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 time the external summary was last fetched; null for computed sources."
+          },
           "snippets": {
             "type": "array",
             "maxItems": 5,
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["author", "rating", "text", "relative_time", "profile_photo_url"],
+              "required": [
+                "author",
+                "rating",
+                "text",
+                "relative_time",
+                "profile_photo_url"
+              ],
               "properties": {
-                "author": { "type": ["string", "null"] },
-                "rating": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
-                "text": { "type": ["string", "null"] },
-                "relative_time": { "type": ["string", "null"] },
-                "profile_photo_url": { "type": ["string", "null"] }
+                "author": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rating": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 5
+                },
+                "text": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "relative_time": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "profile_photo_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
               }
             }
           }
@@ -163,27 +431,50 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["card", "terms", "percent"],
+        "required": [
+          "card",
+          "terms",
+          "percent"
+        ],
         "properties": {
-          "card": { "type": "string", "description": "Display label of the paying card/bank/wallet." },
-          "terms": { "type": "string", "description": "The benefit as stated, e.g. \"20% off\"." },
-          "percent": { "type": ["integer", "null"], "minimum": 1, "maximum": 100 }
+          "card": {
+            "type": "string",
+            "description": "Display label of the paying card/bank/wallet."
+          },
+          "terms": {
+            "type": "string",
+            "description": "The benefit as stated, e.g. \"20% off\"."
+          },
+          "percent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 100
+          }
         }
       }
     },
     "sources": {
       "type": "array",
-      "items": { "$ref": "place-source.json" }
+      "items": {
+        "$ref": "place-source.json"
+      }
     },
     "reviews": {
-      "description": "Native in-app reviews (T-059), newest first, present only with ?include=reviews \u2014 the include-set the place detail screen sends. Hidden (moderated) reviews are already filtered out. CAPPED at the newest few (PlaceController::REVIEW_CAP): this embed is a PREVIEW, not the whole set, so a client must not read absence from it as absence altogether \u2014 GET /places/{place}/reviews is the paginated list.",
+      "description": "Native in-app reviews (T-059), newest first, present only with ?include=reviews — the include-set the place detail screen sends. Hidden (moderated) reviews are already filtered out. CAPPED at the newest few (PlaceController::REVIEW_CAP): this embed is a PREVIEW, not the whole set, so a client must not read absence from it as absence altogether — GET /places/{place}/reviews is the paginated list.",
       "type": "array",
-      "items": { "$ref": "review.json" }
+      "items": {
+        "$ref": "review.json"
+      }
     },
     "offers": {
       "description": "Live offers only (T-042) — the embed is filtered by the active() scope, so drafts, paused promos, and lapsed windows never appear here. The `place` block is omitted: the caller already holds it.",
       "type": "array",
-      "items": { "$ref": "offer.json" }
+      "items": {
+        "$ref": "offer.json"
+      }
     },
     "my_tags": {
       "type": "array",
@@ -191,11 +482,24 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "label", "created_at"],
+        "required": [
+          "id",
+          "label",
+          "created_at"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "label": { "type": "string" },
-          "created_at": { "type": ["string", "null"] }
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     }
@@ -204,10 +508,23 @@
     "ratingBlock": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["value", "count"],
+      "required": [
+        "value",
+        "count"
+      ],
       "properties": {
-        "value": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
-        "count": { "type": "integer", "minimum": 0 }
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 5
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     }
   }

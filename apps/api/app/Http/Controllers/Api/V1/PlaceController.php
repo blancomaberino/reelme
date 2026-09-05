@@ -22,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use LogicException;
 
 /**
  * Public places surface (T-030, 03 §2.6): browse index with filters, place
@@ -50,18 +51,29 @@ class PlaceController extends Controller
         $limit = $request->limit();
         $near = $request->nearPoint();
 
+        // Normalised ONCE, here, because FOUR things read `$sort`: the cursor
+        // decoder, `applySort`, `KeysetPage` and `cursorKeys`. An earlier fix
+        // degraded only the ORDER BY, which left the other three still believing
+        // the page was distance-sorted — so `cursorKeys` read an unselected
+        // `distance` attribute, minted `[0.0, lastId]`, and the branch it paired
+        // with had no keyset WHERE at all: page 2 came back identical to page 1,
+        // forever, with no error anywhere. That is worse than the TypeError it
+        // replaced, which at least failed loudly.
+        //
+        // Unreachable through HTTP today — `PlaceIndexRequest` 422s
+        // `sort=distance` without `near` — so this is a guard for the next
+        // caller, and it is deliberately not covered by a test: there is no way
+        // to reach it without disabling the validation that makes it moot.
+        if ($sort === 'distance' && $near === null) {
+            $sort = 'recent';
+        }
+
         $query = $this->visible()
             ->select('places.*')
             ->selectRaw('ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng');
 
         if ($near !== null) {
-            $query->selectRaw(
-                'ST_Distance(location, ST_MakePoint(?, ?)::geography) AS distance',
-                [$near['lng'], $near['lat']],
-            )->whereRaw(
-                'ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
-                [$near['lng'], $near['lat'], $request->radiusM()],
-            );
+            $query->withDistanceFrom($near)->withinRadiusOf($near, $request->radiusM());
         }
 
         if (($q = (string) ($request->validated('q') ?? '')) !== '') {
@@ -284,10 +296,27 @@ class PlaceController extends Controller
                 break;
 
             case 'distance':
-                // Guaranteed by validation: distance requires near.
-                assert($near !== null);
-                $dist = 'ST_Distance(location, ST_MakePoint(?, ?)::geography)';
-                $point = [$near['lng'], $near['lat']];
+                // `$near` is non-null here because `index()` normalised the sort
+                // away when it was not — NOT because of an `assert()`, which is
+                // compiled out under `zend.assertions=-1` (the production
+                // setting), making the one environment that matters the one with
+                // no check.
+                //
+                // THROWS rather than degrading here. A second fallback in this
+                // arm would be a second copy of the degradation policy, in code
+                // that cannot execute — so the next person to change the policy
+                // edits `index()`, this arm keeps the old answer, and no test
+                // can go red because nothing reaches it. One policy, one place;
+                // this is the assertion that the invariant held, and it is a
+                // real `throw` because `assert()` is compiled out in production.
+                if ($near === null) {
+                    throw new LogicException('applySort(distance) needs a point; index() normalises the sort when there is none.');
+                }
+
+                // SQL and bindings together, from the one place that knows the
+                // `[lng, lat]` order — retyping the pair here is how a mirrored
+                // point gets measured with no error and no red test.
+                [$dist, $point] = PlaceQueryBuilder::distanceFrom($near);
                 $query->orderByRaw("{$dist} ASC, id ASC", $point);
                 if ($cursor !== null) {
                     $query->whereRaw("({$dist}, id) > (?, ?)", [...$point, (float) $cursor[0], KeysetCursor::intKey($cursor[1])]);
@@ -295,14 +324,33 @@ class PlaceController extends Controller
                 break;
 
             default: // recent
-                $query->orderByDesc('created_at')->orderByDesc('id');
-                if ($cursor !== null) {
-                    // The key binds into a ?::timestamp cast; timestampKey() does
-                    // the strict round-trip (rejecting month-13 / year-0) so an
-                    // unparseable value 422s instead of 500-ing.
-                    $ts = KeysetCursor::timestampKey($cursor[0]);
-                    $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, KeysetCursor::intKey($cursor[1])]);
-                }
+                $this->applyRecentSort($query, $cursor);
+        }
+    }
+
+    /**
+     * Newest first, id-keyed.
+     *
+     * Its own method so that ordering and keyset clause travel together. They
+     * did not once: a `distance` request with no point degraded by writing the
+     * ORDER BY inline and leaving the keyset clause out, so a cursor paged the
+     * same rows forever with no error anywhere. The degradation itself now
+     * happens in `index()` — ONE place, before all four readers of `$sort` — and
+     * `applySort` throws rather than carrying a second copy of that policy.
+     *
+     * @param  Builder<Place>  $query
+     * @param  list<string>|null  $cursor
+     */
+    private function applyRecentSort(Builder $query, ?array $cursor): void
+    {
+        $query->orderByDesc('created_at')->orderByDesc('id');
+
+        if ($cursor !== null) {
+            // The key binds into a ?::timestamp cast; timestampKey() does the
+            // strict round-trip (rejecting month-13 / year-0) so an unparseable
+            // value 422s instead of 500-ing.
+            $ts = KeysetCursor::timestampKey($cursor[0]);
+            $query->whereRaw('(created_at, id) < (?::timestamp, ?)', [$ts, KeysetCursor::intKey($cursor[1])]);
         }
     }
 

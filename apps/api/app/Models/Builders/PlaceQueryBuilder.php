@@ -168,6 +168,76 @@ class PlaceQueryBuilder extends Builder
      * nothing rewrites that column when a window closes overnight — a badge
      * built on the column alone promises an offer the till would refuse.
      */
+    /**
+     * Metres from a point, as PostGIS measures it on the `geography` column.
+     *
+     * PRIVATE, and paired with its bindings by {@see self::distanceFrom()}. The
+     * expression is needed in two grammatical positions — aliased into a select
+     * list, and unaliased in the ORDER BY and keyset predicate of
+     * `sort=distance`, since Postgres will not accept a select alias in a WHERE
+     * — so it cannot simply be hidden inside one method. But exposing the SQL
+     * without the bindings shares the harmless half and leaves the dangerous
+     * half to be retyped: the order is `[lng, lat]`, the reverse of how every
+     * other line in this codebase says a coordinate, because that is the
+     * argument order `ST_MakePoint` takes. Getting it backwards measures from a
+     * mirrored point — a plausible ordering, no error, and no red test unless
+     * the fixture's coordinates are asymmetric.
+     */
+    private const DISTANCE_SQL = 'ST_Distance(location, ST_MakePoint(?, ?)::geography)';
+
+    /**
+     * The distance expression and its bindings, together, for a caller that
+     * needs to place it itself (an ORDER BY, a keyset comparison).
+     *
+     * @param  array{lat: float, lng: float}  $near
+     * @return array{string, array{float, float}}
+     */
+    public static function distanceFrom(array $near): array
+    {
+        return [self::DISTANCE_SQL, [$near['lng'], $near['lat']]];
+    }
+
+    /**
+     * Constrain to places within `$metres` of `$near`.
+     *
+     * Here rather than at the call sites for the reason
+     * {@see self::DISTANCE_SQL} gives: the `[lng, lat]` binding order is the
+     * dangerous half, and it was retyped in the two controllers that geofence —
+     * four lines below a comment saying not to. A mirrored point produces a
+     * plausible result set, no error, and no red test unless the fixture's
+     * coordinates are asymmetric.
+     *
+     * Uses `ST_DWithin`, not a filter on the `distance` alias: DWithin is
+     * index-assisted on the GIST index, and Postgres will not accept a select
+     * alias in a WHERE anyway.
+     *
+     * @param  array{lat: float, lng: float}  $near
+     */
+    public function withinRadiusOf(array $near, int $metres): self
+    {
+        return $this->whereRaw(
+            'ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
+            [$near['lng'], $near['lat'], $metres],
+        );
+    }
+
+    /**
+     * Select metres from `$near` as `distance`.
+     *
+     * Call it AFTER any `select()`: `select()` REPLACES the select list while
+     * `selectRaw()` appends, so adding the distance first silently drops it and
+     * every row reports 0 — which is not null, so a `not->toBeNull()` test would
+     * have passed.
+     *
+     * @param  array{lat: float, lng: float}  $near
+     */
+    public function withDistanceFrom(array $near): self
+    {
+        [$sql, $bindings] = self::distanceFrom($near);
+
+        return $this->selectRaw($sql.' AS distance', $bindings);
+    }
+
     public function withActiveOfferFlag(): self
     {
         return $this->withExists(['offers as has_active_offer' => self::onlyActiveOffers(...)]);

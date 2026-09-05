@@ -6,6 +6,7 @@ import type { MapData } from '@/api/hooks/useMapPlaces';
 import type { MapFilters } from '@/api/keys';
 import type { MapPin } from '@/api/places';
 import { DEFAULT_REGION } from '@/lib/initial-region';
+import { OPEN_STATE_MAX_AGE_MS } from '@/lib/opening-hours';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
@@ -22,7 +23,7 @@ const { __animateToRegion: animateToRegion } = jest.requireMock('react-native-ma
 };
 
 // --- Mocks: feed the screen fixture data, and count PlaceMarker renders. ---
-const mapData: { current: MapData } = { current: { pins: [], clusters: [], truncated: false } };
+const mockMapData: { current: MapData } = { current: { pins: [], clusters: [], truncated: false, fetchedAt: Date.now() } };
 // Captures the (derived) filters the screen hands the fetch — for the T-071
 // personal-scope derivation tests. `mock`-prefixed so jest allows it in the
 // hoisted factory.
@@ -31,18 +32,34 @@ const mockFiltersSeen: { current: MapFilters | undefined } = { current: undefine
 // keepPreviousData — so tests exercise the marker-memoization invariant under
 // real reference churn (the handlers must stay stable across "refetches").
 jest.mock('@/api/hooks/useMapPlaces', () => ({
-  useMapPlaces: (_region: unknown, filters: MapFilters) => {
+  useMapPlaces: (_region: unknown, filters: MapFilters, viewer: unknown) => {
     mockFiltersSeen.current = filters;
+    mockViewerSeen.current = viewer;
     return {
       data: {
-        pins: [...mapData.current.pins],
-        clusters: [...mapData.current.clusters],
-        truncated: mapData.current.truncated,
+        pins: [...mockMapData.current.pins],
+        clusters: [...mockMapData.current.clusters],
+        truncated: mockMapData.current.truncated,
       },
+      // The age of the rows on screen. Controllable, because "the cue is dropped
+      // once the payload is stale" is a SCREEN-level claim: place-sheet.test.tsx
+      // passes `fetchedAt` in by hand, so only this seam proves the map actually
+      // hands the sheet the payload's own timestamp rather than `Date.now()`.
+      fetchedAt: mockFetchedAt.current,
       isFetching: false,
       isSuccess: true,
     };
   },
+}));
+// The viewer point the screen hands the fetch (T-156) — the seam a screen-level
+// test can check and a hook-level one cannot: the hook sends whatever it is
+// given, and the bug worth catching is the screen never giving it anything.
+const mockViewerSeen: { current: unknown } = { current: undefined };
+const mockFetchedAt = { current: 0 };
+const mockViewer: { current: { latitude: number; longitude: number } | null } = { current: null };
+jest.mock('@/lib/use-viewer-position', () => ({
+  useViewerPosition: () => mockViewer.current,
+  useRefreshViewerPosition: () => () => {},
 }));
 jest.mock('@/api/hooks/useTags', () => ({
   useTagCatalog: () => ({ data: [] }),
@@ -90,7 +107,7 @@ jest.mock('@/components/map/place-marker', () => {
     markerRenders.push(pin.id);
     return React.createElement(
       Pressable,
-      { accessibilityLabel: `marker-${pin.id}`, onPress: () => onPress(pin.id) },
+      { accessibilityLabel: pin.name, onPress: () => onPress(pin.id) },
       React.createElement(Text, null, pin.name),
     );
   };
@@ -128,8 +145,11 @@ function pin(id: string, over: Partial<MapPin> = {}): MapPin {
 beforeEach(() => {
   markerRenders.length = 0;
   mockFiltersSeen.current = undefined;
+  mockViewerSeen.current = undefined;
+  mockViewer.current = null;
+  mockFetchedAt.current = Date.now();
   mockRemoveMutate.mockClear();
-  mapData.current = { pins: [pin('1'), pin('2'), pin('3')], clusters: [], truncated: false };
+  mockMapData.current = { pins: [pin('1'), pin('2'), pin('3')], clusters: [], truncated: false, fetchedAt: Date.now() };
   useMapStore.setState({ selected: null, filters: { cuisine: null, price_range: null, tags: [], list: null, filter: null } });
   useSessionStore.setState({ user: null, status: 'guest' });
   useSettingsStore.setState({ locale: 'en' }); // match jest.setup's default
@@ -166,8 +186,8 @@ it('drops the personal scope while a saved list is the active view', () => {
 
 it('renders a marker per pin', () => {
   render(<MapScreen />);
-  expect(screen.getByLabelText('marker-1')).toBeOnTheScreen();
-  expect(screen.getByLabelText('marker-3')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Place 1')).toBeOnTheScreen();
+  expect(screen.getByLabelText('Place 3')).toBeOnTheScreen();
 });
 
 it('does not re-render unrelated markers when one pin is selected (memoization)', () => {
@@ -178,7 +198,7 @@ it('does not re-render unrelated markers when one pin is selected (memoization)'
   // With a stable onPress and immutable pin data, memo skips pins 1 and 3 —
   // exactly one additional render (pin 2). If the screen churned props (inline
   // closures / new region state) all three would re-render and this would fail.
-  fireEvent.press(screen.getByLabelText('marker-2'));
+  fireEvent.press(screen.getByLabelText('Place 2'));
 
   expect(useMapStore.getState().selected?.id).toBe('2');
   const rerendered = markerRenders.slice(3);
@@ -200,7 +220,7 @@ it('does not re-render markers across a refetch (stable onPress despite new data
 
 it('opens the preview sheet with the tapped place and navigates to detail', () => {
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-2'));
+  fireEvent.press(screen.getByLabelText('Place 2'));
 
   // The sheet renders the place name + "View place" CTA.
   expect(screen.getByText('View place')).toBeOnTheScreen();
@@ -208,8 +228,77 @@ it('opens the preview sheet with the tapped place and navigates to detail', () =
   expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/place/[slug]', params: { slug: '2' } });
 });
 
+// --- T-156: the viewer point, from the screen to the sheet ---
+
+it('hands the viewer point to the fetch, and nothing when there is none', () => {
+  render(<MapScreen />);
+  // No permission / no fix: the request goes out WITHOUT a point, and every
+  // viewer-relative field is then absent rather than faked.
+  expect(mockViewerSeen.current).toBeNull();
+
+  mockViewer.current = { latitude: -34.9011, longitude: -56.1645 };
+  render(<MapScreen />);
+  expect(mockViewerSeen.current).toEqual({ latitude: -34.9011, longitude: -56.1645 });
+});
+
+it('shows distance and the open cue on a tapped pin — reached by pressing the marker', () => {
+  // The seam: a pin the API answered with, a press on the marker, and the sheet
+  // it opens. Rendering PlaceSheet directly (as its own test file does) proves
+  // the component; only this proves the payload reaches it.
+  //
+  // The mock presses by the SAME label the real marker exposes
+  // (`accessibilityLabel={pin.name}`, place-marker.tsx). It used to invent
+  // `marker-2`, which made the real component's press surface untested by
+  // construction — a mock inventing an identity the real thing lacks is how a
+  // screen gets proven reachable through a door that does not exist.
+  //
+  // Still not an end-to-end proof: `PlaceMarker` is mocked, so react-native-maps
+  // and the native annotation are out of the picture. What this covers is the
+  // screen→sheet wiring and the payload reaching it.
+  mockMapData.current = {
+    pins: [pin('2', { distance_m: 450, open_state: { open_now: true, closes_at: '23:30', opens_at: null } })],
+    clusters: [],
+    truncated: false, fetchedAt: Date.now(),
+  };
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('Place 2'));
+
+  expect(screen.getByText('450 m')).toBeOnTheScreen();
+  expect(screen.getByText('Open · closes 23:30')).toBeOnTheScreen();
+});
+
+it('drops BOTH the open cue and the distance when the map data is stale', () => {
+  // The seam a component test cannot reach: `place-sheet.test.tsx` is handed
+  // `fetchedAt` directly, so it proves the sheet obeys an age it is given. Only
+  // here can the SCREEN be caught handing over a fabricated freshness — mutate
+  // `fetchedAt={fetchedAt}` to `Date.now()` in map.tsx and last night's
+  // "Abierto" comes back on a cold start with every other test still green.
+  mockFetchedAt.current = Date.now() - (OPEN_STATE_MAX_AGE_MS + 60_000);
+  mockMapData.current = {
+    pins: [pin('2', { distance_m: 450, open_state: { open_now: true, closes_at: '23:30', opens_at: null } })],
+    clusters: [],
+    truncated: false, fetchedAt: Date.now(),
+  };
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('Place 2'));
+
+  expect(screen.queryByText('Open · closes 23:30')).toBeNull();
+  // The distance goes with it. The place has not moved; the VIEWER has, and
+  // they are the other end of the measurement — see place-sheet.tsx.
+  expect(screen.queryByText('450 m')).toBeNull();
+});
+
+it('shows neither on a pin the API answered without a viewer point', () => {
+  render(<MapScreen />);
+  fireEvent.press(screen.getByLabelText('Place 2'));
+
+  expect(screen.queryByTestId('place-sheet-status')).toBeNull();
+  // The sheet is otherwise intact — this is an omission, not a broken card.
+  expect(screen.getByText('View place')).toBeOnTheScreen();
+});
+
 it('shows the "zoom in for more" chip when the response is truncated', () => {
-  mapData.current = { pins: [pin('1')], clusters: [], truncated: true };
+  mockMapData.current = { pins: [pin('1')], clusters: [], truncated: true, fetchedAt: Date.now() };
   render(<MapScreen />);
   expect(screen.getByText(/Zoom in for more/)).toBeOnTheScreen();
 });
@@ -257,7 +346,7 @@ it('removes a list-scoped pin from that list via the membership mutation', () =>
   const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-1'));
+  fireEvent.press(screen.getByLabelText('Place 1'));
 
   // The sheet offers remove-from-list (not save) while a list is active.
   expect(screen.queryByLabelText('Save to a list')).toBeNull();
@@ -281,7 +370,7 @@ it('removes a list-scoped pin from that list via the membership mutation', () =>
 it('offers save (not remove-from-list) on the personal map with no active list', () => {
   useSessionStore.setState({ user: null, status: 'authed' });
   render(<MapScreen />);
-  fireEvent.press(screen.getByLabelText('marker-1'));
+  fireEvent.press(screen.getByLabelText('Place 1'));
 
   expect(screen.getByLabelText('Save to a list')).toBeOnTheScreen();
   expect(screen.queryByLabelText('Remove from list')).toBeNull();

@@ -4,6 +4,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { MapPin } from '@/api/places';
 import { useT } from '@/i18n';
+import { OPEN_STATE_MAX_AGE_MS, openStateLabel } from '@/lib/opening-hours';
+import { useAgeOf } from '@/lib/use-age-of';
 import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
@@ -17,6 +19,14 @@ type Props = {
    * replaces the save action with "remove from this list" (T-073 follow-up).
    */
   onRemoveFromList?: (pinId: string) => void;
+  /**
+   * When the pins on screen were fetched — stamped into the payload by
+   * `useMapPlaces`, so it describes the ROWS rather than the cache key. Ages the
+   * open/closed cue out — see {@link openStateLabel}. Zero means "unknown",
+   * which reads as a huge age and therefore no cue: the honest default, since a
+   * caller that forgot to pass it has no idea how old its data is either.
+   */
+  fetchedAt?: number;
 };
 
 /**
@@ -24,18 +34,75 @@ type Props = {
  * slug, so "View place" routes by id — the place route binding accepts both
  * (T-030). Tapping another pin swaps this content in place (no dismiss/reopen).
  */
-export function PlaceSheet({ pin, onViewPlace, onSave, onRemoveFromList }: Props) {
+export function PlaceSheet({ pin, onViewPlace, onSave, onRemoveFromList, fetchedAt = 0 }: Props) {
   const c = useColors();
   const t = useT();
   const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
   const line = fmt.priceLine(pin.category, pin.price_range);
 
+  // "Can I go there, now" — the pair T-156 exists to put on this sheet, and the
+  // reason it sits directly under the name rather than in the meta row: it is
+  // the question someone with a map open is actually asking.
+  //
+  // Both are rendered only when the SERVER sent them, and each independently.
+  // `distance_m` is absent unless the request carried the viewer's position, and
+  // `open_state` is additionally null whenever the answer is not knowable — no
+  // structured periods, or no timezone for the venue. A null must render as NO
+  // CUE. Never "Cerrado": telling someone a place is shut when nobody knows
+  // sends them away from a restaurant that is open and wanted them, and that is
+  // exactly the wrong answer T-128 deleted and T-155 refused to reinstate.
+  //
+  // The age is the payload's, not the app's: past five minutes BOTH halves drop
+  // themselves, because the map query is persisted for a day and a cold start
+  // would otherwise repaint last night's answers.
+  //
+  // The distance ages out for the same reason the cue does, and it took three
+  // reviewers to see it because the comment that used to sit here had a true
+  // sentence defending the wrong half: "a place does not move". It doesn't — but
+  // a distance has TWO endpoints, and the viewer is the one that moves. The
+  // failure is the concrete one: pins fetched in Montevideo last night, opened
+  // this morning in Buenos Aires with no signal. The cue correctly withdraws,
+  // and beside the gap it leaves, "450 m" for a restaurant 200 km away — with no
+  // refetch coming to correct it, since `near` is deliberately not in the cache
+  // key. `VIEWER_FIX_MAX_AGE_MS` refuses a two-minute-old fix for exactly this
+  // reason; a rehydrated one must not walk in through the back door.
+  const age = useAgeOf(fetchedAt);
+  const openState = openStateLabel(pin.open_state, age);
+  const openText = openState ? t(openState.key, openState.vars) : null;
+  const distance = age > OPEN_STATE_MAX_AGE_MS ? '' : fmt.distance(pin.distance_m);
+
   return (
     <View style={styles.container}>
       <Text style={styles.name} numberOfLines={1}>
         {pin.name}
       </Text>
+      {openState || distance ? (
+        // One accessibility element for the pair, because they answer ONE
+        // question — "can I go there, now" — and two separate stops make a
+        // screen-reader user assemble it themselves.
+        //
+        // The middle dot is swapped for a comma in the ANNOUNCED name only.
+        // VoiceOver reads `·` aloud as "middle dot", so the raw string is heard
+        // as "Abierto middle dot cierra 23:00": the right information, delivered
+        // badly. The place detail solved this exact problem the same way; doing
+        // it differently here would be two answers to one question.
+        <View
+          style={styles.metaRow}
+          testID="place-sheet-status"
+          accessible
+          accessibilityLabel={[openText?.replace(' · ', ', '), distance].filter(Boolean).join(', ')}
+        >
+          {openState ? (
+            <Text style={openState.open ? styles.openCue : styles.closedCue}>{openText}</Text>
+          ) : null}
+          {distance ? (
+            <Text style={styles.muted} testID="place-sheet-distance">
+              {distance}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       <View style={styles.metaRow}>
         {line ? <Text style={styles.meta}>{line}</Text> : null}
         {pin.city ? <Text style={styles.muted}>{pin.city}</Text> : null}
@@ -97,6 +164,11 @@ const makeStyles = (c: Palette) =>
     metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
     meta: { fontSize: 15, color: c.text, textTransform: 'capitalize' },
     muted: { fontSize: 14, color: c.muted },
+    // The same two cue styles the place detail uses (T-155), deliberately — a
+    // green that means "open" on one screen and something else on another
+    // teaches the reader that colour here means nothing.
+    openCue: { fontSize: 15, color: c.green, fontWeight: '600' },
+    closedCue: { fontSize: 15, color: c.muted, fontWeight: '600' },
     attr: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     attrText: { fontSize: 14, color: c.text, fontWeight: '600' },
     tags: { fontSize: 13, color: c.muted },

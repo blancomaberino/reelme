@@ -19,8 +19,14 @@ import { QuickShareModal } from '@/components/map/quick-share';
 import { SaveToListSheet } from '@/components/place/save-to-list';
 import { buildClusterIndex, clusterExpansionZoom, clusterItems } from '@/lib/cluster';
 import { bboxToRegion, regionToBbox, zoomBand, zoomFromRegion } from '@/lib/geo';
-import { type InitialRegion, resolveInitialRegion, syncInitialRegion } from '@/lib/initial-region';
+import {
+  type InitialRegion,
+  resolveInitialRegion,
+  shouldCenterOnViewer,
+  syncInitialRegion,
+} from '@/lib/initial-region';
 import { useT } from '@/i18n';
+import { useRefreshViewerPosition, useViewerPosition } from '@/lib/use-viewer-position';
 import { useMapStore } from '@/stores/map';
 import { useSessionStore } from '@/stores/session';
 import { useViewportStore } from '@/stores/viewport';
@@ -169,7 +175,21 @@ function MapCanvas({
   // The pin whose "save to a list" sheet is open (T-073); authed viewers only.
   const [saveFor, setSaveFor] = useState<string | null>(null);
 
-  const { data, isFetching, isError, refetch } = useMapPlaces(queryRegion, effectiveFilters);
+  // The viewer's own position, for VIEWER-RELATIVE data (T-156) — never a
+  // prompt of its own: it reads a permission the first-launch resolve or the
+  // "locate me" button already obtained, and yields null otherwise. Null means
+  // the pins simply carry no distance and no open/closed cue, which is the
+  // honest outcome, not a degraded one.
+  const viewer = useViewerPosition();
+  // "Locate me" owns a permission prompt; a grant there is a new answer to the
+  // question `useViewerPosition` asked at mount and got "not allowed" to.
+  const refreshViewer = useRefreshViewerPosition();
+
+  const { data, fetchedAt, isFetching, isError, refetch } = useMapPlaces(
+    queryRegion,
+    effectiveFilters,
+    viewer,
+  );
 
   // A map with no pins has three causes and the user can only act on one of
   // them (T-103). Offline is the ConnectionBanner's job — it is app-wide and
@@ -223,8 +243,68 @@ function MapCanvas({
     initialRegion,
     initialUserRegion: initial.source === 'user' ? initial.region : null,
     onInteraction: markInteraction,
+    onLocated: refreshViewer,
   });
   const { mapRef, moveMap } = camera;
+
+  // Re-frame onto the viewer once, when they are near their own places (T-156).
+  //
+  // AFTER the first paint, not before it: the opening viewport must be known
+  // synchronously or a returning user waits on the GPS, so the map opens where
+  // they left it and this only improves the frame if a fix arrives. By
+  // construction the move is small — `shouldCenterOnViewer` allows it only
+  // inside CENTER_ON_VIEWER_RADIUS_M of the frame they left, so it reads as
+  // "here you are", never as being yanked across the world.
+  //
+  // It moves with `persist: false`, and that flag is the whole point. A plain
+  // `moveMap` marks an interaction, and an interaction is what makes the
+  // resulting settle PERSIST — so re-framing through it saved a viewport the
+  // user never chose. Worse, it was self-perpetuating: next launch the saved
+  // frame is that box, the viewer is 0 m from it, so it re-framed and re-saved
+  // again, and a user could never keep a wide city frame. That is the
+  // "fallback-poisoning" bug T-100 fixed, re-entering through the one path that
+  // bypasses its guard.
+  //
+  // The camera still records the region, because the zoom buttons step from its
+  // idea of where the map is; only the PERSISTENCE is withheld.
+  //
+  // Three guards, all load-bearing:
+  //  - `interacted.current` — the moment the user has touched the map, the
+  //    viewport is THEIRS. A fix can land seconds after mount.
+  //  - `selected` — a pin sheet is open, so the user is reading. Moving the map
+  //    under it (and refetching a different viewport) is the same theft, and a
+  //    marker tap does not set `interacted`.
+  //  - `centred` — once only.
+  const centred = useRef(false);
+  useEffect(() => {
+    if (centred.current) return;
+
+    // ABANDONED, not deferred, the moment the user touches anything. The guards
+    // used to merely skip, and `selected` is a dependency — so a viewer who
+    // opened a pin before the fix landed got the re-frame when they DISMISSED
+    // the sheet: the effect re-ran, the guards now passed, and the map slid 450
+    // ms in response to a gesture whose meaning was "close this". Once the map
+    // is theirs it stays theirs.
+    if (interacted.current || selected) {
+      centred.current = true;
+      return;
+    }
+
+    if (!viewer) return;
+    if (!shouldCenterOnViewer({ viewer, anchor: initialRegion, source: initial.source })) return;
+
+    centred.current = true;
+    // The viewer's position at the CURRENT zoom, not a hard-coded 0.02 box.
+    // Someone who left the map showing all of Montevideo asked for that scale;
+    // re-centring is an improvement, silently zooming them to two streets is not.
+    const next = {
+      latitude: viewer.latitude,
+      longitude: viewer.longitude,
+      latitudeDelta: initialRegion.latitudeDelta,
+      longitudeDelta: initialRegion.longitudeDelta,
+    };
+    moveMap(next, 450, { persist: false });
+  }, [viewer, initialRegion, initial.source, selected, moveMap]);
 
   const onRegionChangeComplete = useCallback(
     (region: Region) => {
@@ -524,6 +604,9 @@ function MapCanvas({
 
       <PreviewSheet
         pin={selected}
+        // When these pins were fetched — the sheet's open/closed cue ages out on
+        // it rather than repainting a stale "Abierto" from a persisted query.
+        fetchedAt={fetchedAt}
         onClose={() => select(null)}
         onViewPlace={(id) => {
           select(null);
@@ -549,12 +632,14 @@ function MapCanvas({
 /** The gorhom bottom sheet, opened/closed by the selected pin. */
 function PreviewSheet({
   pin,
+  fetchedAt,
   onClose,
   onViewPlace,
   onSave,
   onRemoveFromList,
 }: {
   pin: MapPin | null;
+  fetchedAt: number;
   onClose: () => void;
   onViewPlace: (id: string) => void;
   onSave?: (id: string) => void;
@@ -567,7 +652,13 @@ function PreviewSheet({
     <BottomSheet ref={sheetRef} index={pin ? 0 : -1} snapPoints={snapPoints} enablePanDownToClose onClose={onClose}>
       <BottomSheetView>
         {pin ? (
-          <PlaceSheet pin={pin} onViewPlace={onViewPlace} onSave={onSave} onRemoveFromList={onRemoveFromList} />
+          <PlaceSheet
+            pin={pin}
+            fetchedAt={fetchedAt}
+            onViewPlace={onViewPlace}
+            onSave={onSave}
+            onRemoveFromList={onRemoveFromList}
+          />
         ) : null}
       </BottomSheetView>
     </BottomSheet>

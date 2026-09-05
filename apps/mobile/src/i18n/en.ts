@@ -504,7 +504,7 @@ export const en = {
   'review.candidates.title': 'Is this the same place?',
   'review.candidates.hint': 'Pick a match to link to it, or keep it as a new place.',
   'review.candidates.newPlace': 'None — add as new',
-  'review.candidate.distance': '{{meters}} m away',
+  'review.candidate.distance': '{{distance}} away',
   'review.evidence.caption': 'From the caption',
   'review.evidence.transcript': 'From the audio',
   'review.evidence.none': 'No supporting quotes were captured.',

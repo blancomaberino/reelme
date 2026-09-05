@@ -1,4 +1,11 @@
-import { cuisinePriceLine, elapsedSince, platformIcon, priceGlyphs, relativeTime } from '../format';
+import {
+  cuisinePriceLine,
+  distanceLabel,
+  elapsedSince,
+  platformIcon,
+  priceGlyphs,
+  relativeTime,
+} from '../format';
 
 describe('priceGlyphs', () => {
   it('maps 1–4 to currency glyphs (defaults to $)', () => {
@@ -83,5 +90,54 @@ describe('cuisinePriceLine', () => {
     expect(cuisinePriceLine('ramen', null)).toBe('ramen');
     expect(cuisinePriceLine(null, 3)).toBe('$$$');
     expect(cuisinePriceLine(null, null)).toBe('');
+  });
+});
+
+describe('distanceLabel', () => {
+  it('reads metres under a kilometre, rounded to whole metres', () => {
+    expect(distanceLabel(0)).toBe('0 m');
+    expect(distanceLabel(48.4)).toBe('48 m');
+    expect(distanceLabel(999.4)).toBe('999 m');
+  });
+
+  it('switches to kilometres AT 1000 m, keeping one decimal to 9.9 km', () => {
+    // The boundary in both directions: 999.6 must not read "1000 m", and 1000
+    // must not read "1.0 km" as "1000 m" either.
+    expect(distanceLabel(999.6)).toBe('1.0 km');
+    expect(distanceLabel(1000)).toBe('1.0 km');
+    expect(distanceLabel(1240)).toBe('1.2 km');
+    expect(distanceLabel(9949)).toBe('9.9 km');
+  });
+
+  it('drops the decimal past 10 km — precision a GPS fix does not have', () => {
+    expect(distanceLabel(9950)).toBe('10 km');
+    expect(distanceLabel(12_400)).toBe('12 km');
+  });
+
+  it('groups thousands of kilometres, with the separator the locale is not using', () => {
+    // Reachable from a zoomed-out map. "1500 km" reads as a typo; and the group
+    // separator must be the OTHER character, or Spanish would render "1,500 km"
+    // where a comma means a decimal point.
+    expect(distanceLabel(1_500_000)).toBe('1,500 km');
+    expect(distanceLabel(1_500_000, ',')).toBe('1.500 km');
+    // Just below the threshold it stays ungrouped, in both locales.
+    expect(distanceLabel(999_400)).toBe('999 km');
+    expect(distanceLabel(999_400, ',')).toBe('999 km');
+  });
+
+  it('uses the locale decimal separator', () => {
+    expect(distanceLabel(1240, ',')).toBe('1,2 km');
+    // Metres carry no separator, so the locale must not change them.
+    expect(distanceLabel(450, ',')).toBe('450 m');
+  });
+
+  it('returns "" for anything it cannot honestly render', () => {
+    // '' rather than "0 m": a caller renders it conditionally, and "0 m" is a
+    // real distance that a missing value must never be mistaken for.
+    expect(distanceLabel(null)).toBe('');
+    expect(distanceLabel(undefined)).toBe('');
+    expect(distanceLabel(Number.NaN)).toBe('');
+    expect(distanceLabel(Number.POSITIVE_INFINITY)).toBe('');
+    expect(distanceLabel(-5)).toBe('');
   });
 });
