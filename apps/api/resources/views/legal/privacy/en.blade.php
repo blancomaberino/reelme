@@ -137,7 +137,12 @@
       </tr>
       <tr>
         <td>Showing how far away each place is</td>
-        <td>Approximate device location</td>
+        {{-- "rounded to about 10 metres", NOT "approximate": 10 m is PRECISE
+             location under Apple's and Google's definitions (their coarse tier
+             is 1–3 km), so reusing the word from the rows above would make this
+             row disagree with the Location bullet below — and would be the
+             evidence against a store privacy label that claimed coarse. --}}
+        <td>Device location, rounded to about 10 metres</td>
         <td>Consent (system permission)</td>
       </tr>
       <tr>
@@ -236,6 +241,7 @@
     <li><strong>Your data export:</strong> the archive is deleted after 7 days and the download link expires after 24 hours.</li>
     <li><strong>Account and content:</strong> for as long as your account exists. If you delete it, the next section applies.</li>
     <li><strong>Redemption, payout and ledger records:</strong> retained even after you delete your account, as a legal and accounting obligation.</li>
+    <li><strong>Server logs:</strong> 14 days. This is the "limited time" referred to above; after it, the daily log file that may contain a request of yours is deleted.</li>
   </ul>
 
   <h2 id="rights">Your rights</h2>

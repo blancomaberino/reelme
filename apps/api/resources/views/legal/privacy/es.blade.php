@@ -136,7 +136,9 @@
       </tr>
       <tr>
         <td>Mostrar a qué distancia queda cada lugar</td>
-        <td>Ubicación aproximada del dispositivo</td>
+        {{-- Ver en.blade.php: 10 m es ubicación PRECISA para Apple y Google,
+             no «aproximada». --}}
+        <td>Ubicación del dispositivo, redondeada a unos 10 metros</td>
         <td>Consentimiento (permiso del sistema)</td>
       </tr>
       <tr>
@@ -240,6 +242,7 @@
     <li><strong>Copia de tus datos (exportación):</strong> el archivo se borra a los 7 días y el enlace de descarga vence a las 24 horas.</li>
     <li><strong>Cuenta y contenido:</strong> mientras tu cuenta exista. Al borrarla, se aplica lo que dice la sección siguiente.</li>
     <li><strong>Registros de canjes, pagos y asientos contables:</strong> se conservan aunque borres tu cuenta, por obligación legal y contable.</li>
+    <li><strong>Registros del servidor:</strong> 14 días. Ese es el «tiempo acotado» que se menciona más arriba: pasado ese plazo se borra el archivo diario que puede contener un pedido tuyo.</li>
   </ul>
 
   <h2 id="derechos">Tus derechos</h2>

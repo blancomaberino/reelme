@@ -84,3 +84,53 @@ it('says in the policy what the configuration does', function (string $view, str
     ['en', 'before they are discarded'],
     ['es', 'antes de que se descarten'],
 ]);
+
+it('states the retention period the configuration actually keeps', function (string $view, string $claim) {
+    // The policy used to say logs are discarded "after a limited time" with no
+    // period, and the retention section listed five classes without this one —
+    // which an SEO/compliance read flagged as the single easiest thing for a
+    // data-protection authority or an app-store privacy review to pick up.
+    //
+    // It can state 14 days now because the configuration keeps 14 days: the
+    // number here and `LOG_DAILY_DAYS` are the same commitment, and the test
+    // above is what stops the config drifting away from it.
+    expect((string) File::get(resource_path("views/legal/privacy/{$view}.blade.php")))->toContain($claim);
+})->with([
+    ['en', '<strong>Server logs:</strong> 14 days'],
+    ['es', '<strong>Registros del servidor:</strong> 14 días'],
+]);
+
+it('quotes the same number in the policy as the config prunes at', function () {
+    // Two literals, one promise. If someone lowers LOG_DAILY_DAYS to 7 for disk
+    // reasons, the page keeps promising 14 and is wrong; this is where that is
+    // noticed rather than in a complaint.
+    $days = (int) config('logging.channels.daily.days');
+
+    expect($days)->toBeGreaterThan(0)
+        ->and((string) File::get(resource_path('views/legal/privacy/en.blade.php')))
+        ->toContain("<strong>Server logs:</strong> {$days} days")
+        ->and((string) File::get(resource_path('views/legal/privacy/es.blade.php')))
+        ->toContain("<strong>Registros del servidor:</strong> {$days} días");
+});
+
+it('does not call a ~10 metre fix "approximate", which is a coarser tier', function (string $view, string $purpose) {
+    // 10m is PRECISE location under Apple's and Google's definitions — their
+    // coarse tier is 1-3 km. The purposes table reused "approximate" from the
+    // rows above, which made it disagree with the Location bullet below and
+    // would have been the evidence against a store label claiming coarse.
+    //
+    // The whole <tr> is extracted, not a fixed-width window: the first version
+    // read 400 characters from the purpose text, and the explanatory comment
+    // inside the row is long enough that the cell fell outside it — so
+    // reinstating "Approximate device location" left the test green.
+    $source = (string) File::get(resource_path("views/legal/privacy/{$view}.blade.php"));
+
+    expect(preg_match('/<tr>(?:(?!<\/tr>).)*'.preg_quote($purpose, '/').'.*?<\/tr>/s', $source, $m))->toBe(1);
+
+    expect($m[0])->not->toContain('Approximate device location')
+        ->and($m[0])->not->toContain('Ubicación aproximada del dispositivo')
+        ->and($m[0])->toMatch('/10\s*(metres|metros)/');
+})->with([
+    ['en', 'Showing how far away each place is'],
+    ['es', 'Mostrar a qué distancia queda cada lugar'],
+]);
