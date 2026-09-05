@@ -17,19 +17,54 @@ use Illuminate\Support\Facades\File;
  * asserted here rather than left to whoever writes the next `.env`.
  */
 it('defaults to a log channel that actually discards, because the privacy policy says so', function () {
-    // Asserted at the DEFAULT, not at the effective value. A developer's own
-    // `.env` may well pin `LOG_STACK=single` — this repo's does — and that is
-    // their business; what the policy commits to is what a deployment gets when
-    // nobody has chosen otherwise. Reading the fallback out of the config source
-    // is the only way to see it, since `env()` has already resolved by the time
-    // the container is up.
-    $source = (string) File::get(config_path('logging.php'));
+    // The RESOLVED default, not a substring of the config source.
+    //
+    // The first version matched `env('LOG_STACK', 'daily')` anywhere in
+    // `config/logging.php` — which a COMMENT satisfies. Delete the code and
+    // leave the prose (that file is now full of it) and the test stayed green
+    // while the default reverted to Laravel's unbounded `single`. It would also
+    // have gone red on a Pint reformat with behaviour unchanged.
+    //
+    // So: clear any override the way a fresh deployment has none, re-evaluate
+    // the config file, and read what a box nobody configured actually gets.
+    // That is the thing the policy sentence commits to, and it is the same
+    // answer locally (where this repo's own `.env` pins `single`) and in CI.
+    $saved = getenv('LOG_STACK');
+    putenv('LOG_STACK');
+    unset($_ENV['LOG_STACK'], $_SERVER['LOG_STACK']);
 
-    expect($source)->toMatch("/env\('LOG_STACK', 'daily'\)/");
+    try {
+        /** @var array<string, mixed> $config */
+        $config = require config_path('logging.php');
+        /** @var list<string> $channels */
+        $channels = $config['channels']['stack']['channels'];
+    } finally {
+        if ($saved !== false) {
+            putenv('LOG_STACK='.$saved);
+            $_ENV['LOG_STACK'] = $saved;
+            $_SERVER['LOG_STACK'] = $saved;
+        }
+    }
 
-    // And the channel that default names must genuinely prune.
-    expect(config('logging.channels.daily.days'))->toBeGreaterThan(0);
-})->group('privacy');
+    expect($channels)->not->toBeEmpty();
+
+    foreach ($channels as $name) {
+        $channel = config("logging.channels.{$name}");
+
+        expect($channel)->not->toBeNull("the default stack names an undefined channel [{$name}]");
+
+        // Prune on a schedule, or store nothing locally. `single` is neither —
+        // it is one file that grows forever, and it is the default this config
+        // deliberately overrides.
+        $prunes = ($channel['days'] ?? 0) > 0;
+        $storesNothing = in_array($channel['driver'] ?? '', ['null', 'stderr', 'syslog', 'errorlog'], true);
+
+        expect($prunes || $storesNothing)->toBeTrue(
+            "the DEFAULT logging channel [{$name}] neither prunes nor is a pass-through, so request data "
+            .'would be kept indefinitely — contradicting the retention sentence in the privacy policy.'
+        );
+    }
+});
 
 it('keeps the shipped example in step with the config default', function () {
     // A default nobody deploys is not a commitment. `.env.example` is what a new

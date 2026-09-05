@@ -138,6 +138,14 @@ curl -fsS https://api.example.com/api/v1/health
 # database can be missing it while the migrations table says otherwise).
 php artisan tinker --execute="dd(DB::select('select postgis_version()'));"
 
+# Logs are pruned, in BOTH sinks. The privacy policy states that request data is
+# discarded after a limited time, and `?near=lat,lng` is a query parameter — so
+# the coordinates are in the web server's access log as well as the app's.
+# `LogRetentionTest` covers the app side; nothing in this repo can see the other.
+php artisan tinker --execute="dd(config('logging.channels.stack.channels'));"  # expect ["daily"]
+ls storage/logs/laravel.log 2>/dev/null && echo "PRUNE ME: pre-daily file, never rotated"
+grep -rl "$(php -r 'echo "access";')" /etc/logrotate.d/ || echo "NO LOGROTATE FOR THE ACCESS LOG — the policy claim is false here"
+
 # The scheduler is registered and its next runs look sane.
 php artisan schedule:list
 
