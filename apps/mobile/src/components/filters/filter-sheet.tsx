@@ -66,7 +66,6 @@ export function FilterGroup({ label, children }: { label: string; children: Reac
   );
 }
 
-
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     // The sheet chrome (backdrop, card, handle, header, footer) lives in
@@ -83,19 +82,4 @@ const makeStyles = (c: Palette) =>
       marginBottom: 12,
     },
     options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    pill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-      borderRadius: 999,
-      backgroundColor: c.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.border,
-    },
-    pillActive: { backgroundColor: c.primary, borderColor: c.primary },
-    pillPressed: { opacity: 0.7 },
-    pillLabel: { color: c.text, fontSize: 14, fontWeight: '600' },
-    pillLabelActive: { color: c.onPrimary },
   });

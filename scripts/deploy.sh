@@ -26,11 +26,11 @@
 #      cached config file that references a class the new code deleted makes
 #      artisan itself unbootable — including the command you would use to clear
 #      it.
-#   3. Horizon is terminated AFTER the caches are rebuilt, so replacement
-#      workers boot on the new code and the new config; terminating it before
-#      `migrate` would leave old workers picking up jobs the new migration has
-#      already reshaped underneath them. The derived-projection backfills then
-#      run after the restart — see the note beside them.
+#   3. Horizon is terminated AFTER `migrate` and after the caches are rebuilt,
+#      so replacement workers boot on the new code AND the new config. Doing it
+#      before `migrate` is the hazard: replacements would come up on the NEW
+#      code against the OLD schema. The derived-projection backfills then run
+#      after the restart — see the note beside them.
 #
 # WHAT THIS SCRIPT CANNOT DO: it does not provision anything, and it has never
 # run against real infrastructure — see docs/runbooks/provisioning.md. Treat the
@@ -171,7 +171,7 @@ if [ -n "${SENTRY_RELEASE:-}" ]; then
 fi
 
 echo "==> Restarting queue workers"
-# LAST, and `terminate` not `restart`: it lets in-flight jobs finish on the old
+# `terminate`, not `restart`: it lets in-flight jobs finish on the old
 # code and brings the replacements up on the new. The pipeline's jobs run for
 # minutes (see config/horizon.php timeouts), so killing them mid-flight would
 # strand shares in a non-terminal state.
@@ -206,10 +206,14 @@ $PHP artisan horizon:terminate
 # retried deploy is free, and they no-op once the corpus is materialized.
 echo "==> Backfilling derived projections"
 # NOT fatal, deliberately. The command exits non-zero when it could not
-# materialize every source — which is the right answer for a human running it by
-# hand, but the wrong one here: under `set -e` it would abort the deploy AFTER
-# `migrate` and BEFORE the cache rebuild and worker restart, and the EXIT trap
-# would then lift maintenance mode onto the new schema with stale caches. A
+# materialize every source — the right answer for a human running it by hand,
+# the wrong one here. The reason given used to be that `set -e` would abort
+# before the cache rebuild; that stopped being true when these moved after it,
+# and is corrected rather than left as a false premise beside the code. The real
+# reason is simpler: the EXIT trap lifts maintenance mode on the way out, so
+# aborting here ends the outage with the deploy half finished and no
+# projections, when the alternative is a complete deploy whose projections lag
+# by minutes. A
 # handful of sources whose dishes lag by minutes is a far smaller problem, and
 # one source vanishing mid-walk is a routine race against the queue (maintenance
 # mode stops HTTP, not Horizon). Re-run the command to close the gap.

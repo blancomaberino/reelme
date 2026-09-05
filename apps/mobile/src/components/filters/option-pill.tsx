@@ -3,7 +3,6 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { type Palette, useColors } from '@/theme/colors';
-import { radius, space, type } from '@/theme/tokens';
 
 /**
  * A selectable pill; fills with the accent when selected.
@@ -43,19 +42,32 @@ export function OptionPill({
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    // The LITERALS this component shipped with, deliberately kept.
+    //
+    // Moving a component must not restyle it. The first version of this file
+    // tokenized them on the way across — gap 6→4, padding 14/9→12/8, label
+    // 14/600→13/400 — which silently changed all eight pills on three screens
+    // (the map filter sheet, my-places, and Tonight), and cost the selected
+    // state the bold that carried it on the accent fill. Nothing pinned it and
+    // the commit called it a relocation.
+    //
+    // Migrating these to the scale may well be right; it is a design change and
+    // belongs in a change that says so, with `/frontend-design` looking at it.
+    /* eslint-disable no-restricted-syntax */
     pill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: space.xxs,
-      paddingHorizontal: space.sm,
-      paddingVertical: space.xs,
-      borderRadius: radius.pill,
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      borderRadius: 999,
       backgroundColor: c.surface,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: c.border,
     },
     pillActive: { backgroundColor: c.primary, borderColor: c.primary },
     pillPressed: { opacity: 0.7 },
-    pillLabel: { ...type.bodySm, color: c.text },
+    pillLabel: { color: c.text, fontSize: 14, fontWeight: '600' },
     pillLabelActive: { color: c.onPrimary },
+    /* eslint-enable no-restricted-syntax */
   });

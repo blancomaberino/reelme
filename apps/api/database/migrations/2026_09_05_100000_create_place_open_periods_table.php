@@ -87,6 +87,22 @@ return new class extends Migration
             $table->unique(['place_id', 'open_minute', 'close_minute']);
         });
 
+        // KNOWN LIMIT, stated rather than left to be discovered: `timezone` has
+        // no database-level constraint, so a value written by psql or tinker —
+        // bypassing the materializer, which is the only application writer and
+        // is held to that by a test — would make `AT TIME ZONE` throw. That is
+        // a 500 on the public, unauthenticated place index for every caller,
+        // which is a blast radius out of proportion to the write.
+        //
+        // It is left uncontained deliberately, because the containment costs
+        // more than the risk. `pg_timezone_names` is a set-returning function,
+        // not a table: it cannot be a foreign key, it is not IMMUTABLE so it
+        // cannot be a CHECK, and a trigger consulting it would pay the ~150ms
+        // that function costs ON EVERY INSERTED ROW — including the backfill's
+        // bulk inserts, inside a maintenance window. A cached mirror table with
+        // an FK would work and goes stale on a tzdata upgrade, which is a
+        // design worth having only if a second column ever needs it.
+
         // The invariant the whole read predicate rests on, enforced rather than
         // assumed. `intervals()` can only produce a span of 1..10080 minutes —
         // it wraps a close that is at or before its open by exactly one week —

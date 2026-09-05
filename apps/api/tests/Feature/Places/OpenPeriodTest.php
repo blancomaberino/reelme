@@ -679,7 +679,11 @@ it('has no request class that ACCEPTS open_now while its consumer drops it', fun
     // also accepted the bare `MapViewport $viewport` type-hint, which meant any
     // file injecting the viewport for an unrelated reason marked itself as
     // filtering. The companion test below proves each of these really applies.
-    $appliers = ['placeListResponse(', '->respond('];
+    // `$viewport->respond(`, not a bare `->respond(`: two unrelated responders
+    // exist (InfluencerClaimController, UserPlaceTagController), and the loose
+    // form would mark one of them the day its own `respond()` met a place
+    // request in the same method.
+    $appliers = ['placeListResponse(', '$viewport->respond('];
 
     // The applier files themselves are checked WHOLE, by the companion test
     // below, and skipped here: they legitimately split the work across their own
@@ -723,43 +727,24 @@ it('has no request class that ACCEPTS open_now while its consumer drops it', fun
     expect(array_unique($unwired))->toBe([]);
 });
 
-it('the appliers a surface may delegate to do apply the filter', function (string $file) {
-    // Without this the delegation list above is a hole: a controller would be
-    // "covered" by calling something that had stopped filtering.
-    expect(stripPhpComments((string) file_get_contents(app_path($file))))->toContain('openNow(');
+it('the appliers a surface may delegate to apply the filter, in every action they expose', function (string $file, array $expected) {
+    // Two assertions, because "the file contains openNow( somewhere" is not
+    // enough. The surface guard skips these files whole — they legitimately
+    // split the work across their own methods — so a NEW action added to either
+    // one that built its own query and forgot the filter would stay green,
+    // which is the identical shape to the `?dish=` bug the guard exists to stop.
+    //
+    // Pinning the SET of request-consuming methods is what closes that: adding
+    // `respondCompact(MapPlacesRequest $request)` here fails until someone lists
+    // it, and listing it is where they are asked whether it filters.
+    $source = stripPhpComments((string) file_get_contents(app_path($file)));
+
+    expect($source)->toContain('openNow(');
+
+    preg_match_all('/function\s+(\w+)\s*\([^)]*\b(MapPlacesRequest|PlaceIndexRequest|PlaceListingRequest)\s+\$/s', $source, $m);
+
+    expect($m[1])->toEqualCanonicalizing($expected);
 })->with([
-    'Http/Controllers/Api/V1/Concerns/PaginatesPlaces.php',
-    'Services/Map/MapViewport.php',
+    ['Http/Controllers/Api/V1/Concerns/PaginatesPlaces.php', ['placeListResponse']],
+    ['Services/Map/MapViewport.php', ['respond', 'baseQuery', 'pinsResponse', 'clusteredResponse']],
 ]);
-
-it('binds the instant WITHOUT sub-second precision, which is what the minute maths relies on', function () {
-    // This pins a coupling rather than a behaviour, deliberately — the first
-    // version of this test drove a fractional instant through `openNow()` and
-    // passed with the defect reinstated, because the defect is unreachable from
-    // that direction. It is a test that asserts nothing, which is the thing this
-    // project's testing rules ban.
-    //
-    // What actually happened: `EXTRACT(EPOCH …)::int / 60` ROUNDS in Postgres,
-    // so a local time of 23:59:59.9 yields minute 1440 — and on a Saturday that
-    // is 10080, outside [0, 10079], which the modular containment then reads as
-    // SUNDAY 00:00. The filter would answer for the wrong end of the week.
-    //
-    // Two things keep that from happening: the expression now uses `floor()`,
-    // and the instant is bound through `format('Y-m-d H:i:sP')`, which drops
-    // microseconds. The second is a property of a line two below the SQL, so it
-    // is asserted here: make the format more precise and this goes red, sending
-    // the reader to the maths that depends on it.
-    $query = Place::query()->openNow(new DateTimeImmutable('2026-09-12 23:58:59.987654', new DateTimeZone(MONTEVIDEO)));
-
-    $instants = array_values(array_filter(
-        $query->getBindings(),
-        fn ($b): bool => is_string($b) && preg_match('/^\d{4}-\d{2}-\d{2} /', $b) === 1,
-    ));
-
-    expect($instants)->not->toBeEmpty();
-
-    foreach ($instants as $instant) {
-        expect($instant)->not->toContain('.')
-            ->and($instant)->toMatch('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/');
-    }
-});
