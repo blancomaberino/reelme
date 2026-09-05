@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Places\OpenPeriodMaterializer;
 use App\Services\Places\PlaceEditor;
 use App\Support\OpeningSchedule;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -225,16 +226,22 @@ it('uses the instant it is GIVEN, not the database clock', function () {
 });
 
 it('stays correct across a DST transition, which is why the spans are local wall-clock', function () {
-    // Madrid moves off summer time on 2026-10-25 at 03:00 local. A place open
-    // 19:00–23:00 LOCAL is open at 20:00 local on both sides of that boundary,
-    // even though the UTC offset differs — which is exactly what an interval
-    // stored in UTC would get wrong for half the year.
+    // Madrid leaves summer time on 2026-10-25 at 03:00 local. A place open
+    // 19:00–23:00 LOCAL is open at 22:30 local on both sides of that boundary,
+    // even though the UTC offset differs — which is what an interval stored in
+    // UTC gets wrong for half the year.
+    //
+    // 22:30 rather than 20:00, and the half hour matters. At 20:00 the probe sat
+    // three hours inside a four-hour window, so a DST-BLIND implementation — a
+    // hard-coded `+ interval '2 hours'` instead of `AT TIME ZONE` — passed both
+    // assertions and the test could not fail on the bug it is named for. At
+    // 22:30 that same mutant computes 23:30 on the CET date and drops the row.
     $place = placeWithHours([period(0, '19:00', 0, '23:00')], 'Europe/Madrid'); // Sundays
     $zone = new DateTimeZone('Europe/Madrid');
 
-    expect(Place::query()->openNow(new DateTimeImmutable('2026-10-18 20:00', $zone))->pluck('id'))
+    expect(Place::query()->openNow(new DateTimeImmutable('2026-10-18 22:30', $zone))->pluck('id'))
         ->toContain($place->id) // CEST, UTC+2
-        ->and(Place::query()->openNow(new DateTimeImmutable('2026-11-01 20:00', $zone))->pluck('id'))
+        ->and(Place::query()->openNow(new DateTimeImmutable('2026-11-01 22:30', $zone))->pluck('id'))
         ->toContain($place->id); // CET, UTC+1
 });
 
@@ -286,7 +293,15 @@ it('agrees with the cue on every shape, because both read one implementation', f
             $cue = OpeningSchedule::stateAt($place->opening_hours_periods_json, $place->timezone, $at);
             $sql = in_array($place->id, $listed, strict: true);
 
-            if (($cue['open_now'] ?? false) !== $sql) {
+            // `?? false` would let a cue that became UNKNOWABLE agree with an
+            // empty projection, so the two would "match" by both failing.
+            if ($cue === null) {
+                $disagreements[] = $label.' at '.$at->format('D H:i').' — cue is null; every shape here is knowable';
+
+                continue;
+            }
+
+            if ($cue['open_now'] !== $sql) {
                 $disagreements[] = $label.' at '.$at->format('D H:i').' — cue: '
                     .var_export($cue['open_now'] ?? null, true).', sql: '.var_export($sql, true);
             }
@@ -418,20 +433,42 @@ it('filters on every surface that takes the faceted filters', function (string $
         ->and($ids)->not->toContain($unknown->id);
 })->with(['public index', 'map', 'my places']);
 
-it('leaves the listing unfiltered when open_now is absent or false', function () {
+it('reads every spelling of the flag the way the caller meant it', function (string $query, ?bool $filtered) {
     $this->travelTo(new DateTimeImmutable('2026-09-08 20:00', new DateTimeZone(MONTEVIDEO)));
 
     $closed = placeWithHours([period(2, '08:00', 2, '15:00')]);
 
-    // Absent and explicitly-false must both mean "do not filter" — a truthiness
-    // bug here would make `open_now=0` narrow the list, which is worse than
-    // ignoring it because the caller cannot tell.
-    foreach (['/api/v1/places', '/api/v1/places?open_now=0'] as $url) {
-        $ids = collect(data_get($this->getJson($url)->assertOk()->json(), 'data'))
-            ->pluck('id')->map(intval(...))->all();
-        expect($ids)->toContain($closed->id);
+    $response = $this->getJson('/api/v1/places'.$query);
+
+    if ($filtered === null) {
+        $response->assertStatus(422);
+
+        return;
     }
-});
+
+    $ids = collect(data_get($response->assertOk()->json(), 'data'))->pluck('id')->map(intval(...))->all();
+
+    expect(in_array($closed->id, $ids, strict: true))->toBe(! $filtered);
+})->with([
+    // The table is the point, and it is here because the two spellings an
+    // earlier version enumerated — absent and `open_now=0` — were the two the
+    // code happened to get right. A review flagged `(bool) "false" === true` as
+    // a live defect on all three surfaces; the table is what settles that it is
+    // NOT, and pins the reason so nobody has to re-derive it.
+    //
+    // Laravel's `boolean` RULE is strict: `in_array($v, [true, false, 0, 1,
+    // '0', '1'], true)`. So "false", "true" and "on" never reach the controller
+    // at all — they are 422 at the boundary, which is why reading the flag with
+    // `validated()` rather than `Request::boolean()` is safe. If that rule is
+    // ever loosened, THESE ROWS GO RED, and the reader is sent to the cast.
+    'absent' => ['', false],
+    'open_now=0' => ['?open_now=0', false],
+    'open_now= (empty)' => ['?open_now=', false],
+    'open_now=1' => ['?open_now=1', true],
+    'open_now=false is REFUSED, not read as false' => ['?open_now=false', null],
+    'open_now=true is REFUSED, not read as true' => ['?open_now=true', null],
+    'open_now=on is REFUSED' => ['?open_now=on', null],
+]);
 
 // ---------------------------------------------------------------------------
 // The bypass the observer cannot see.
@@ -470,6 +507,17 @@ function knownPlaceQueryBuilderWriters(): array
         'database/migrations/2026_07_16_100000_add_removed_to_place_status_check.php' => 'sets status only',
         'database/migrations/2026_07_19_000001_activate_google_verified_pending_places.php' => 'sets status only',
         'database/migrations/2026_08_19_120000_add_contact_field_provenance_to_places.php' => 'sets contact provenance only',
+        // Raw `UPDATE places SET …`, both predating the hours columns and both
+        // writing an unrelated column (`google_reviews_synced_at`, `status`).
+        'database/migrations/2026_07_11_000017_add_review_moderation_and_google_sync.php' => 'sets google_reviews_synced_at only',
+        'database/migrations/2026_07_12_000019_add_hidden_place_status.php' => 'sets status only',
+        // The Eloquent mass update the first version of this guard could not
+        // see: `Place::whereKey($ids)->update(['needs_admin_review' => false])`.
+        // Harmless as written — but it is the shape a "set timezone for these
+        // venues" bulk action would take, and that one WOULD need to
+        // re-materialize. Listed so the next person adding a bulk action here
+        // has to answer the question rather than discover it.
+        'app/Filament/Resources/Places/Tables/PlacesTable.php' => 'bulk-clears needs_admin_review; touches no hours',
     ];
 }
 
@@ -480,7 +528,32 @@ function mentionsPlacesQueryBuilder(string $code): bool
     // allow-list, where a real DML writer would then be invisible among them.
     $code = preg_replace('/Schema::table\(/', 'SchemaDdl(', $code) ?? $code;
 
-    return preg_match("/(DB::table|->table|->from)\(\s*'places'\s*\)/", $code) === 1;
+    // THREE spellings, because the first version of this guard knew only the
+    // first one — and the bypass the codebase already contains is the second.
+    //
+    // 1. The query builder by table name.
+    // 2. An ELOQUENT MASS UPDATE. `Place::whereKey($ids)->update([...])` fires
+    //    no model events either, and contains no 'places' literal, so the
+    //    table-name regex cannot see it. One already ships, at
+    //    `app/Filament/Resources/Places/Tables/PlacesTable.php` — and a bulk
+    //    action one word different from it ("set timezone for these 40 venues")
+    //    would write the hours, skip the observer, and leave the projection
+    //    describing last week.
+    // 3. Raw `UPDATE places SET …`. Data migrations here are routinely written
+    //    that way.
+    $patterns = [
+        "/(DB::table|->table|->from)\(\s*'places'\s*\)/",
+        '/\bPlace::(query\(\)|where\w*\()[^;]*?->\s*(update|insert|upsert|delete)\s*\(/s',
+        '/\bupdate\s+places\b/i',
+    ];
+
+    foreach ($patterns as $pattern) {
+        if (preg_match($pattern, $code) === 1) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function stripCommentsForOpenPeriodGuard(string $code): string
@@ -518,15 +591,90 @@ it('has no UNKNOWN query-builder writer of places, which would bypass the observ
 });
 
 it('detects a writer that the allow-list does not name', function () {
-    // The detector has to be shown to DETECT. A guard nobody has watched fire is
-    // worth as much as the bug it was written to catch — the dishes guard had
-    // never been proved before it was found to be missing a real violation.
+    // The detector has to be shown to DETECT, and each arm separately — a guard
+    // nobody has watched fire is worth as much as the bug it was written to
+    // catch, and this one shipped blind to two of the three spellings.
     expect(mentionsPlacesQueryBuilder("DB::table('places')->update(['timezone' => 'X']);"))->toBeTrue()
         ->and(mentionsPlacesQueryBuilder("\$q->from('places')->insert(\$row);"))->toBeTrue()
+        // The Eloquent mass update — no 'places' literal anywhere in it.
+        ->and(mentionsPlacesQueryBuilder("Place::whereKey(\$ids)->update(['timezone' => 'X']);"))->toBeTrue()
+        ->and(mentionsPlacesQueryBuilder("Place::query()->whereNull('timezone')->update(['timezone' => 'X']);"))->toBeTrue()
+        // Raw SQL, as the data migrations here are written.
+        ->and(mentionsPlacesQueryBuilder("DB::statement('UPDATE places SET timezone = NULL');"))->toBeTrue()
         // DDL is not a row write, and must not drag every schema migration in.
         ->and(mentionsPlacesQueryBuilder("Schema::table('places', function (\$t) {});"))->toBeFalse()
-        // A different table is not this table.
+        // A different table is not this table, and a READ is not a write.
         ->and(mentionsPlacesQueryBuilder("DB::table('place_sources')->update([]);"))->toBeFalse()
+        ->and(mentionsPlacesQueryBuilder("Place::query()->where('id', 1)->first();"))->toBeFalse()
         // And prose about it is not a write.
         ->and(stripCommentsForOpenPeriodGuard("// see DB::table('places')\ncode();"))->not->toContain('places');
+});
+
+// ---------------------------------------------------------------------------
+// Two branches the suite reached but never asserted.
+// ---------------------------------------------------------------------------
+
+it('reports a venue that never closes as never closing, however it says so', function (array $periods) {
+    // The close-less shape and the long way round (open Sunday 00:00, close
+    // Sunday 00:00) are the same claim, and `intervals()` folds both into a
+    // full-week span so both get the same answer. Before the extraction the
+    // second one reported "closes at 00:00" — confidently wrong, and the sort
+    // of thing a parity test cannot see, because it only ever compared
+    // `open_now`.
+    $place = placeWithHours($periods);
+    $at = new DateTimeImmutable('2026-09-09 14:00', new DateTimeZone(MONTEVIDEO));
+
+    $cue = OpeningSchedule::stateAt($place->opening_hours_periods_json, $place->timezone, $at);
+
+    expect($cue)->not->toBeNull()
+        ->and($cue['open_now'])->toBeTrue()
+        ->and($cue['closes_at'])->toBeNull()
+        ->and(Place::query()->openNow($at)->pluck('id'))->toContain($place->id);
+})->with([
+    'the documented close-less shape' => [[['open_day' => 0, 'open_time' => '00:00', 'close_day' => null, 'close_time' => null]]],
+    'the same claim said the long way' => [[['open_day' => 0, 'open_time' => '00:00', 'close_day' => 0, 'close_time' => '00:00']]],
+]);
+
+it('folds a period a provider sent twice, instead of failing the write on the unique index', function () {
+    // A repeated period is a duplicate, not a conflict. Unfolded it reaches
+    // `place_open_periods_place_id_open_minute_close_minute_unique`, the insert
+    // raises, PlaceObserver swallows it to a warning — and the place is left
+    // permanently unlistable while its detail screen shows a correct cue.
+    $place = placeWithHours([period(2, '19:00', 2, '23:00'), period(2, '19:00', 2, '23:00')]);
+
+    expect(PlaceOpenPeriod::query()->where('place_id', $place->id)->count())->toBe(1);
+});
+
+it('repairs rows that went STALE, not only rows that went missing', function () {
+    // The idempotence test proves the backfill does not double. This proves it
+    // CORRECTS — which is the job the query-builder bypass creates for it, and
+    // the one a walk restricted to places with no rows would silently stop
+    // doing while every other backfill test stayed green.
+    $place = placeWithHours([period(1, '11:00', 1, '23:00')]);
+    DB::table('places')->where('id', $place->id)->update([
+        'opening_hours_periods_json' => DB::raw('\'[{"open_day":1,"open_time":"09:00","close_day":1,"close_time":"17:00"}]\'::jsonb'),
+    ]);
+    // Still describing the OLD week: the query-builder write fired no events.
+    expect(PlaceOpenPeriod::query()->where('place_id', $place->id)->value('open_minute'))->toBe(1 * 1440 + 11 * 60);
+
+    $this->artisan('reelmap:open-periods:backfill')->assertExitCode(0);
+
+    expect(PlaceOpenPeriod::query()->where('place_id', $place->id)->value('open_minute'))->toBe(1 * 1440 + 9 * 60);
+});
+
+it('refuses a span that would match every instant', function () {
+    // The predicate `((now - open + 10080) % 10080) < close - open` is only
+    // equivalent to "is now inside this span" while the span is at most a week.
+    // A longer one is true for every instant, so a single bad row would put a
+    // closed venue in every "open now" listing until something re-materialized
+    // it. `intervals()` cannot produce one — this is the database saying so
+    // too, since all four columns are fillable and the model is reachable.
+    $place = placeWithHours(null, null);
+
+    expect(fn () => PlaceOpenPeriod::query()->create([
+        'place_id' => $place->id,
+        'open_minute' => 0,
+        'close_minute' => 20000,
+        'timezone' => 'UTC',
+    ]))->toThrow(QueryException::class);
 });

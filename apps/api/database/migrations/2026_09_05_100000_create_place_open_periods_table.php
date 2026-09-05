@@ -3,6 +3,7 @@
 use App\Support\OpeningSchedule;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -85,6 +86,19 @@ return new class extends Migration
             // without distinguishing anything.
             $table->unique(['place_id', 'open_minute', 'close_minute']);
         });
+
+        // The invariant the whole read predicate rests on, enforced rather than
+        // assumed. `intervals()` can only produce a span of 1..10080 minutes —
+        // it wraps a close that is at or before its open by exactly one week —
+        // and the containment test `((now - open + 10080) %% 10080) < close - open`
+        // is only equivalent to "is now inside this span" while that holds. A
+        // row with a longer span matches EVERY instant, so one bad insert puts a
+        // closed venue in every "open now" listing forever. The smallint type
+        // bounds these columns at 32767, which is not the same statement.
+        DB::statement(
+            'ALTER TABLE place_open_periods ADD CONSTRAINT place_open_periods_span_check '
+            .'CHECK (close_minute > open_minute AND close_minute - open_minute <= 10080)'
+        );
     }
 
     public function down(): void

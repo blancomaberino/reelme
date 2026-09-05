@@ -11,13 +11,13 @@ import { DEFAULT_ZONE_M, useTonight, type ZoneM, ZONES_M } from '@/api/hooks/use
 import { queryKeys } from '@/api/keys';
 import type { PlaceSummary } from '@/api/places';
 import { Button } from '@/components/button';
-import { LocationBlockedHint } from '@/components/map/map-controls';
 import { Chip } from '@/components/place/chip';
 import { MyPlaceCard } from '@/components/place/my-place-card';
 import { useT } from '@/i18n';
 import { useDebounced } from '@/lib/use-debounced';
 import { useFormat } from '@/lib/use-format';
 import { locateUser } from '@/lib/initial-region';
+import { openLocationSettings } from '@/lib/location';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
@@ -36,9 +36,16 @@ const DISH_SUGGESTIONS = 8;
  *
  * Sibling-first throughout: the rows are {@link MyPlaceCard} (the list twin of a
  * map pin, minus the swipe-to-remove that only makes sense on my own places),
- * the pills are {@link Chip}, the position is {@link locateUser} and its refusal
- * is {@link LocationBlockedHint} — the same one the map uses. Nothing here is a
+ * the pills are {@link Chip}, the position is {@link locateUser}, on the same
+ * query key the map and the offers browse use, so arriving from either costs no
+ * second prompt. Nothing here is a
  * second implementation of something the app already has.
+ *
+ * The refusal is rendered here rather than through the map's
+ * `LocationBlockedHint` banner: that banner sits OVER a map which still draws
+ * something useful behind it, whereas this screen has nothing to show without a
+ * fix — so the refusal is the whole body, and one state carries one action
+ * instead of a banner and a body both offering "Open Settings".
  *
  * Location is REQUIRED rather than a nice-to-have: "near you" without a fix is
  * either an empty screen or a list from a city you are not in, and the second is
@@ -53,7 +60,6 @@ export default function TonightScreen() {
   const [zone, setZone] = useState<ZoneM>(DEFAULT_ZONE_M);
   const [openNow, setOpenNow] = useState(true);
   const [dish, setDish] = useState('');
-  const [hintDismissed, setHintDismissed] = useState(false);
   // Debounced so typing "milanesa" is one request at the end, not eight.
   const debouncedDish = useDebounced(dish, 300);
 
@@ -85,11 +91,22 @@ export default function TonightScreen() {
     [catalog.data],
   );
 
+  // `places.length` is what has been PAGED IN, not a total — the pagination
+  // envelope carries cursors and no count. Saying "20 places" and then watching
+  // it become 40 as you scroll would make the one line that is supposed to
+  // explain the dials change for a reason that has nothing to do with them, so
+  // a set with more pages behind it is stated as unbounded.
   const answer = at
-    ? t(openNow ? 'tonight.answer.open' : 'tonight.answer.any', {
-        count: places.length,
-        km: zone / 1000,
-      })
+    ? t(
+        list.hasNextPage
+          ? openNow
+            ? 'tonight.answer.openMore'
+            : 'tonight.answer.anyMore'
+          : openNow
+            ? 'tonight.answer.open'
+            : 'tonight.answer.any',
+        { count: places.length, km: zone / 1000 },
+      )
     : t('tonight.answer.locating');
 
   return (
@@ -137,19 +154,18 @@ export default function TonightScreen() {
         {suggestions.length > 0 && dish.length === 0 ? (
           <View style={styles.suggestions}>
             {suggestions.map((tag) => (
-              <Chip key={tag.id} label={tag.label ?? fmt.tag(tag.name)} onPress={() => setDish(tag.name)} />
+              <Chip key={tag.id} label={tag.label ?? fmt.tag(tag.name)} onPress={() => setDish(tag.label ?? fmt.tag(tag.name))} />
             ))}
           </View>
         ) : null}
       </View>
 
-      {blocked && !hintDismissed ? <LocationBlockedHint onDismiss={() => setHintDismissed(true)} /> : null}
-
       <TonightBody
-        blocked={blocked !== null}
+        blocked={blocked}
         list={list}
         places={places}
         onRetryLocation={() => void fix.refetch()}
+        onOpenSettings={() => void openLocationSettings()}
         styles={styles}
         c={c}
       />
@@ -169,23 +185,39 @@ function TonightBody({
   list,
   places,
   onRetryLocation,
+  onOpenSettings,
   styles,
   c,
 }: {
-  blocked: boolean;
+  blocked: 'blocked' | 'denied' | 'unavailable' | null;
   list: ReturnType<typeof useTonight>;
   places: PlaceSummary[];
   onRetryLocation: () => void;
+  onOpenSettings: () => void;
   styles: Styles;
   c: Palette;
 }) {
   const t = useT();
 
-  if (blocked) {
+  if (blocked !== null) {
+    // THREE outcomes, not two. `unavailable` means permission was GRANTED and
+    // the fix timed out — indoors, in a tunnel, a simulator with no location
+    // set. Telling that person to open Settings sends them to a switch that is
+    // already on, with no way forward. `offers/index.tsx` already makes this
+    // distinction; collapsing it here would have been a second, worse answer to
+    // a question the app had already answered.
+    const settings = blocked === 'blocked';
+
     return (
-      <View style={styles.state}>
-        <Text style={styles.stateText}>{t('tonight.needsLocation')}</Text>
-        <Button title={t('common.tryAgain')} variant="secondary" onPress={onRetryLocation} />
+      <View style={styles.state} testID="tonight-location">
+        <Text style={styles.stateText}>
+          {t(blocked === 'unavailable' ? 'tonight.noFix' : 'tonight.needsLocation')}
+        </Text>
+        <Button
+          title={t(settings ? 'map.location.blocked.cta' : 'common.tryAgain')}
+          variant="secondary"
+          onPress={settings ? onOpenSettings : onRetryLocation}
+        />
       </View>
     );
   }

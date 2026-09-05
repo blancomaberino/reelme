@@ -25,13 +25,15 @@ use Illuminate\Support\Facades\DB;
 class OpenPeriodMaterializer
 {
     /**
-     * Zone ids Postgres has confirmed it can resolve, by id.
+     * Whether Postgres can resolve a zone id, by id — BOTH answers cached.
      *
-     * SUCCESSES ONLY, and for the same reason {@see OpeningSchedule} caches only
-     * its successes: the key comes from a free-text column, so caching failures
-     * would let junk grow the table without bound in a long-lived Horizon or
-     * Octane process. A success can only land here if it is in
-     * `pg_timezone_names`, which bounds the table by the tz database.
+     * Caching the failures is safe here, and only because of what runs first:
+     * a key reaches this map only after {@see OpeningSchedule::zoneId()} has
+     * accepted it, which requires a constructible REGION/CITY id, so the key
+     * space is bounded by PHP's tz database (~600 ids) rather than by whatever
+     * junk the free-text `places.timezone` column happens to hold. Without that
+     * gate in front, negative caching here WOULD be unbounded growth in a
+     * long-lived Horizon or Octane process.
      *
      * @var array<string, bool>
      */

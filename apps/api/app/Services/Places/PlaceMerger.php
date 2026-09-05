@@ -28,7 +28,13 @@ class PlaceMerger
     private const BACKFILL_FIELDS = [
         'google_place_id', 'address_line1', 'address_line2', 'city', 'region',
         'postal_code', 'cuisine_primary', 'price_range', 'phone', 'website',
-        'opening_hours_json',
+        // The display LINES and the STRUCTURED pair travel together. Donating
+        // only the lines (which is what this list did until T-158) leaves a
+        // survivor showing opening hours that no "open now" query can ever
+        // match — and the survivor is the more popular record by construction,
+        // so the merge would quietly remove the better record from the new
+        // Tonight tab. Each is still donated only when the survivor has NONE.
+        'opening_hours_json', 'opening_hours_periods_json', 'timezone',
     ];
 
     /**

@@ -129,17 +129,32 @@ it('RE-ASKS when the dish changes, once the typing settles', async () => {
   expect(requests().at(-1)).toMatchObject({ dish: 'pasta' });
 });
 
-it('does not send a dish too short for the API to match', async () => {
+it('sends a dish at the API floor, and never one below it', async () => {
   await renderTonight();
-  const before = requests().length;
 
-  // The API floor is three characters; below it pg_trgm extracts no trigram at
-  // all. Sending "pa" would be a 422 on a half-typed word — so a short entry
-  // narrows nothing rather than emptying the screen.
+  // A BARRIER first. The earlier version of this test asserted only that no
+  // request had appeared, and `waitFor` runs its callback synchronously on the
+  // first pass — so it resolved at t≈0, before any request could have landed,
+  // and stayed green with the floor mutated to 1. It also never pinned the
+  // floor's VALUE: raising it to 5 left every assertion here passing.
+  //
+  // So: type exactly at the floor, WAIT for that request, and only then check
+  // that the shorter one never produced one.
+  fireEvent.changeText(screen.getByTestId('tonight-dish'), 'pas');
+  jest.advanceTimersByTime(400);
+
+  await waitFor(() => expect(requests().at(-1)).toMatchObject({ dish: 'pas' }));
+
+  const atFloor = requests().length;
+
+  // One below the floor. Three characters is where pg_trgm can extract a
+  // trigram at all; below it the API would 422 a half-typed word, so a short
+  // entry has to narrow nothing rather than empty the screen.
   fireEvent.changeText(screen.getByTestId('tonight-dish'), 'pa');
   jest.advanceTimersByTime(400);
 
-  await waitFor(() => expect(requests().length).toBe(before));
+  await waitFor(() => expect(requests().length).toBeGreaterThan(atFloor));
+  expect(requests().at(-1)).not.toHaveProperty('dish');
 });
 
 it('renders an EMPTY result and a FAILED request differently, and only the failure offers a retry', async () => {
@@ -169,11 +184,27 @@ it('offers a retry when the request FAILS, and the retry re-asks', async () => {
   await waitFor(() => expect(requests().length).toBeGreaterThan(before));
 });
 
-it('asks for location and says what is missing when it is refused, without querying', async () => {
-  mockedLocate.mockResolvedValue({ ok: false, reason: 'denied' });
-  render(<TonightScreen />, { wrapper });
+it('tells the three location outcomes apart, and queries on none of them', async () => {
+  // Only 'denied' was ever mocked here, which is how `unavailable` — permission
+  // GRANTED, the fix timed out — came to be shown "Location is off for Reelmap"
+  // and an Open Settings button pointing at a switch that is already on.
+  const cases = [
+    { reason: 'denied' as const, text: /needs your location/i, cta: 'Try again' },
+    { reason: 'blocked' as const, text: /needs your location/i, cta: 'Open Settings' },
+    { reason: 'unavailable' as const, text: /couldn.t get your location/i, cta: 'Try again' },
+  ];
 
-  await waitFor(() => expect(screen.getByText(/needs your location/i)).toBeTruthy());
+  for (const c of cases) {
+    mockedLocate.mockResolvedValue({ ok: false, reason: c.reason });
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const view = render(<TonightScreen />, { wrapper });
+
+    await waitFor(() => expect(view.getByTestId('tonight-location')).toBeTruthy());
+    expect(view.getByText(c.text)).toBeTruthy();
+    expect(view.getByText(c.cta)).toBeTruthy();
+    view.unmount();
+  }
+
   // "near you" with no fix is either an empty screen or a list from a city the
   // diner is not in. Neither is worth a request.
   expect(requests()).toEqual([]);
@@ -197,4 +228,45 @@ it('virtualizes the list, and reaching the end asks for the NEXT page', async ()
 
   await waitFor(() => expect(requests().length).toBeGreaterThan(before));
   expect(requests().at(-1)).toMatchObject({ cursor: 'c2' });
+});
+
+it('a dish chip puts into the box the SAME words it shows, not the English slug', async () => {
+  // The whole suggestion row was uncovered: `/tags` was stubbed to `[]` in every
+  // test, so nothing exercised it. The bug that hid there is that a chip renders
+  // its LOCALIZED label ("Hamburguesas") while `tag.name` is the canonical
+  // English slug ("burger") — and `?dish=` matches verbatim Uruguayan menu text,
+  // so tapping the chip wrote a word no menu contains and emptied the list.
+  mock.onGet('/tags').reply(200, {
+    data: [{ id: '1', name: 'burger', slug: 'burger', kind: 'dish', label: 'Hamburguesas' }],
+  });
+  await renderTonight();
+
+  const chip = await screen.findByText('Hamburguesas');
+  const before = requests().length;
+  fireEvent.press(chip);
+  jest.advanceTimersByTime(400);
+
+  await waitFor(() => expect(requests().length).toBeGreaterThan(before));
+  expect(requests().at(-1)).toMatchObject({ dish: 'Hamburguesas' });
+  // And the field shows what was queried, rather than disagreeing with it.
+  expect(screen.getByTestId('tonight-dish').props.value).toBe('Hamburguesas');
+});
+
+it('does not state a page count as though it were a total', async () => {
+  // `places.length` is what has been paged in. With another page behind it,
+  // saying "20 places" would become "40 places" on scroll — the one line that
+  // exists to explain the dials, changing for a reason unrelated to them.
+  mock.onGet('/places').reply(200, {
+    data: Array.from({ length: 20 }, (_, i) => place({ id: String(i + 1), slug: `p-${i + 1}` })),
+    meta: { pagination: { next_cursor: 'c2', prev_cursor: null, limit: 20 } },
+  });
+  await renderTonight();
+
+  await waitFor(() => expect(screen.getByTestId('tonight-answer').props.children).toMatch(/20\+/));
+});
+
+it('states an exact count when there is no page behind it', async () => {
+  await renderTonight();
+
+  await waitFor(() => expect(screen.getByTestId('tonight-answer').props.children).toMatch(/^1 place open/));
 });

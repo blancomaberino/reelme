@@ -156,6 +156,36 @@ $PHP artisan migrate --force --isolated
 # Schema now matches the checkout: lifting maintenance mode is safe again.
 DEPLOY_STATE="consistent"
 
+echo "==> Rebuilding caches"
+$PHP artisan config:cache
+$PHP artisan route:cache
+$PHP artisan view:cache
+$PHP artisan event:cache
+
+# Sentry wants to know what shipped. Without a release tag every regression
+# reads as "always been broken" — see docs/observability.md.
+if [ -n "${SENTRY_RELEASE:-}" ]; then
+  echo "==> Deploying release ${SENTRY_RELEASE}"
+fi
+
+echo "==> Restarting queue workers"
+# LAST, and `terminate` not `restart`: it lets in-flight jobs finish on the old
+# code and brings the replacements up on the new. The pipeline's jobs run for
+# minutes (see config/horizon.php timeouts), so killing them mid-flight would
+# strand shares in a non-terminal state.
+$PHP artisan horizon:terminate
+
+# Backfills run AFTER the worker restart, not before it.
+#
+# Maintenance mode stops HTTP, not Horizon — the block below says so itself —
+# so before `horizon:terminate` the queue is still executing the PREVIOUS
+# release. An old-code worker has no PlaceObserver, so an enrichment that saves
+# a place's hours mid-walk writes no projection rows; if `chunkById` has already
+# passed that id, the place is silently unlistable in Tonight forever, because
+# TimezoneBusinessSource resolves once and nothing re-triggers the projection.
+# Restarting first means any save during the walk is observed, and the walk's
+# own replace makes the overlap harmless.
+
 # Derived-projection backfills, INSIDE the outage and immediately after the
 # schema they depend on. These are not optional repair tools: T-157's read path
 # (place detail `dishes[]`, `?dish=`) switched to the `dishes` table in the same
@@ -188,24 +218,6 @@ if ! $PHP artisan reelmap:open-periods:backfill; then
   echo "    'php artisan reelmap:open-periods:backfill' is re-run."
 fi
 
-echo "==> Rebuilding caches"
-$PHP artisan config:cache
-$PHP artisan route:cache
-$PHP artisan view:cache
-$PHP artisan event:cache
-
-# Sentry wants to know what shipped. Without a release tag every regression
-# reads as "always been broken" — see docs/observability.md.
-if [ -n "${SENTRY_RELEASE:-}" ]; then
-  echo "==> Deploying release ${SENTRY_RELEASE}"
-fi
-
-echo "==> Restarting queue workers"
-# LAST, and `terminate` not `restart`: it lets in-flight jobs finish on the old
-# code and brings the replacements up on the new. The pipeline's jobs run for
-# minutes (see config/horizon.php timeouts), so killing them mid-flight would
-# strand shares in a non-terminal state.
-$PHP artisan horizon:terminate
 
 echo "==> Deploy complete"
 # The trap runs `artisan up` on the way out.

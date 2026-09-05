@@ -18,13 +18,24 @@ use Throwable;
  * and `timezone` are both `fillable`, and they are written by
  * {@see App\Services\Places\Enrichment\BusinessEnricher} (via
  * {@see App\Services\Geo\BusinessDetails}), by
- * {@see App\Services\Places\PlaceEditor::apply()}, by
- * {@see App\Services\Places\PlaceMerger} donating a loser's hours, by Filament,
- * and by factories. All of those go through Eloquent, so all of them are covered
+ * {@see App\Services\Places\PlaceEditor::apply()}, by Filament, and by
+ * factories. `PlaceMerger` now donates them too — see below. All of those go through Eloquent, so all of them are covered
  * here by construction.
  *
- * WHAT STILL GETS PAST IT: a query-builder write to either column, which fires
- * no model events. The "no unguarded query-builder write to the hours columns"
+ * A NOTE ON `PlaceMerger`, because an earlier version of this docblock got it
+ * wrong and CLAUDE.md rule 5 is about exactly that: it said the merger donated a
+ * loser's hours. It did not — `BACKFILL_FIELDS` carried `opening_hours_json`
+ * (the display LINES) and neither structured column. That was survivable while
+ * the columns only drove a cue; T-158 makes it cost discoverability, because a
+ * survivor that inherits a loser's hours lines but not its periods shows
+ * opening hours and can never be returned by `?open_now=1` — and the survivor
+ * is the more popular record by construction. Both columns are now in
+ * `BACKFILL_FIELDS`, and `backfill()` assigns then `save()`s, so this observer
+ * covers that path like any other.
+ *
+ * WHAT STILL GETS PAST IT: a query-builder write to either column, or an
+ * Eloquent MASS update (`Place::whereKey(...)->update([...])`), neither of which
+ * fires model events. The "no unguarded query-builder write to the hours columns"
  * test in `tests/Feature/Places/OpenPeriodTest.php` fails if one appears.
  */
 class PlaceObserver
