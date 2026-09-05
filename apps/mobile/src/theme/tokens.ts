@@ -25,6 +25,16 @@ import { fonts } from './colors';
  * is where "inside a component" becomes "between components".
  */
 export const space = {
+  /**
+   * 0 — for RESETTING a platform default, not for expressing a gap.
+   *
+   * A bare `padding: 0` is what the lint rule bans, and rightly: a raw number in
+   * a stylesheet is how the drift field grew. But zero is a real value with one
+   * real use — `TextInput` ships with inner padding on Android that has to be
+   * removed for the field to sit on the same baseline as its icons — and the
+   * rule's own instruction for a value the scale lacks is to change the scale.
+   */
+  none: 0,
   /** 4 — hairline gaps: an icon and its label. */
   xxs: 4,
   /** 8 — tight grouping inside a row. */

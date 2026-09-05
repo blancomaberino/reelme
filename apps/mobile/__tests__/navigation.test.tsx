@@ -38,11 +38,23 @@ describe('navigation wiring', () => {
     expect(mockRouter.redirectHref).toBeNull();
   });
 
-  it('mounts the four visible tabs in order with map as the initial route (Search replaced Share — T-077)', () => {
+  it('mounts the five visible tabs in order with map as the initial route (Tonight joined — T-158)', () => {
     render(<MainTabsLayout />);
 
-    // Share moved off the tab bar (href: null → hidden route); Search takes its slot.
-    expect(mockRouter.tabNames).toEqual(['map', 'places', 'search', 'profile']);
+    // Share moved off the tab bar (href: null → hidden route); Search takes its
+    // slot. Tonight (T-158) sits second, beside the map it shares a question
+    // with.
+    //
+    // This is the REACHABILITY assertion for Tonight, and it is worth saying
+    // what it does and does not prove. The mock pushes a name only when
+    // `options.href !== null` — that is, only for tabs the real bar renders as
+    // pressable — so a Tonight route added without a bar entry, or hidden with
+    // `href: null`, fails here. What it cannot do is fire the press: the Tabs
+    // mock records wiring rather than rendering a bar, so no press target
+    // exists in this harness. Being in the pressable set is the strongest claim
+    // available without replacing the mock, and it is the one that catches the
+    // failure the rule exists for — a screen reachable only by deep link.
+    expect(mockRouter.tabNames).toEqual(['map', 'tonight', 'places', 'search', 'profile']);
     expect(mockRouter.initialRouteName).toBe('map');
   });
 });

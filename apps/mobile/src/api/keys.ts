@@ -86,6 +86,13 @@ export const queryKeys = {
   /** Distinct payment-discount cards for the map filter (T-079). */
   paymentCards: () => ['places', 'payment-cards'] as const,
   placesByTag: (slug: string) => ['places', 'tag', slug] as const,
+  /**
+   * Tonight (T-158). Every input is IN the key — that is what makes changing
+   * the zone, the dish or the open-now toggle re-ask rather than re-render the
+   * page already in hand.
+   */
+  tonight: (near: string, radiusM: number, dish: string, openNow: boolean) =>
+    ['places', 'tonight', near, radiusM, dish, openNow] as const,
   share: (id: string) => ['shares', id] as const,
   /** The viewer's recent-shares list (ingest history), keyed by page size. */
   sharesList: (limit: number) => ['shares', 'list', limit] as const,
