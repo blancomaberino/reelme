@@ -6,10 +6,12 @@ use App\Enums\ClaimStatus;
 use App\Enums\ContactFieldSource;
 use App\Enums\PlaceStatus;
 use App\Models\Builders\PlaceQueryBuilder;
+use App\Observers\PlaceObserver;
 use App\Services\Reviews\ReviewSourceRegistry;
 use App\Services\Reviews\ReviewSourceSummary;
 use App\Support\OpeningHours;
 use Database\Factories\PlaceFactory;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -59,6 +61,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $reviews_count
  * @property float|numeric-string|null $reviews_avg_rating
  */
+#[ObservedBy(PlaceObserver::class)]
 class Place extends Model
 {
     use Concerns\DerivesNameColumns;

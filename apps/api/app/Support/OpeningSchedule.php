@@ -219,6 +219,80 @@ final class OpeningSchedule
     }
 
     /**
+     * The zone id, exactly as given, if this build can construct a real
+     * REGION/CITY zone from it — otherwise null.
+     *
+     * The id is returned rather than a `DateTimeZone` because the caller that
+     * needs this ({@see App\Services\Places\OpenPeriodMaterializer}) is
+     * copying the value into a column, and it is returned UNCHANGED rather than
+     * canonicalized so that the stored id is the same string `places.timezone`
+     * holds. Folding an alias to its canonical name here would silently make the
+     * two disagree, and the whole point of the copy is that it does not.
+     */
+    public static function zoneId(?string $timezone): ?string
+    {
+        return self::zone($timezone) === null ? null : $timezone;
+    }
+
+    /**
+     * The week's opening spans, as half-open minute-of-week intervals
+     * `[open, close)` measured from Sunday 00:00 LOCAL time — or null when the
+     * periods are not usable, which is the same "not knowable" contract
+     * {@see self::stateAt()} has.
+     *
+     * This exists so that there is exactly ONE implementation of the schedule's
+     * awkward parts — the midnight wrap, the week wrap, and the two ways a
+     * venue says it never closes — shared by the two things that need them:
+     * `stateAt()`, which answers for one place in PHP, and the
+     * `place_open_periods` projection (T-158), which is what lets a LISTING
+     * filter on "open now" in SQL without re-deriving any of this. A second
+     * spelling of these rules in a query would diverge on the first edge case,
+     * and the query is the copy nobody would think to test against the other.
+     *
+     * A close AT OR BEFORE its open crosses midnight (23:00 → 02:00) or wraps
+     * the week (Sat 22:00 → Sun 01:00), so `close` is pushed a full week ahead
+     * to keep every span a forward one. That means `close` may exceed a week,
+     * and a caller testing containment must therefore test `now` in BOTH the
+     * current week and the next — an interval that began last Saturday and ends
+     * this Sunday morning must still contain Sunday 00:30.
+     *
+     * The documented close-less 24/7 shape becomes the single span `[0, WEEK)`.
+     * Both normalizers guarantee such an entry is the only one in the list, so
+     * collapsing to it loses nothing.
+     *
+     * @param  mixed  $periods  the raw column value; salvaged here so callers need not
+     * @return list<array{0: int, 1: int}>|null
+     */
+    public static function intervals(mixed $periods): ?array
+    {
+        $schedule = self::salvage($periods);
+
+        if ($schedule === null) {
+            return null;
+        }
+
+        $intervals = [];
+
+        foreach ($schedule as $period) {
+            // No close at all: the documented 24/7 shape.
+            if ($period['close_day'] === null || $period['close_time'] === null) {
+                return [[0, self::WEEK]];
+            }
+
+            $start = $period['open_day'] * self::DAY + self::minutes($period['open_time']);
+            $end = $period['close_day'] * self::DAY + self::minutes($period['close_time']);
+
+            if ($end <= $start) {
+                $end += self::WEEK;
+            }
+
+            $intervals[] = [$start, $end];
+        }
+
+        return $intervals;
+    }
+
+    /**
      * The venue's open/closed state at a given instant, or NULL when that is not
      * knowable — which is the important half of this method's contract.
      *
@@ -244,9 +318,9 @@ final class OpeningSchedule
     public static function stateAt(mixed $periods, ?string $timezone, DateTimeInterface $now): ?array
     {
         $zone = self::zone($timezone);
-        $schedule = self::salvage($periods);
+        $intervals = self::intervals($periods);
 
-        if ($zone === null || $schedule === null) {
+        if ($zone === null || $intervals === null) {
             return null;
         }
 
@@ -258,33 +332,19 @@ final class OpeningSchedule
 
         $nextOpen = null;
 
-        foreach ($schedule as $period) {
-
-            // No close at all: the documented 24/7 shape. Both normalizers
-            // guarantee such an entry is the ONLY one in the list, so it really
-            // does mean "always", and there is no closing time to report — not
-            // "closes at midnight".
-            if ($period['close_day'] === null || $period['close_time'] === null) {
-                return ['open_now' => true, 'closes_at' => null, 'opens_at' => null];
-            }
-
-            $start = $period['open_day'] * self::DAY + self::minutes($period['open_time']);
-            $end = $period['close_day'] * self::DAY + self::minutes($period['close_time']);
-
-            // A close at or before the open crosses midnight (23:00 → 02:00) or
-            // wraps the week (Sat 22:00 → Sun 01:00). Push it a full week ahead
-            // so the interval stays a forward span, then test `now` in BOTH the
-            // current week and the next: an interval that began last Saturday and
-            // ends this Sunday morning must still contain Sunday 00:30.
-            if ($end <= $start) {
-                $end += self::WEEK;
-            }
-
+        foreach ($intervals as [$start, $end]) {
             foreach ([$minuteOfWeek, $minuteOfWeek + self::WEEK] as $candidate) {
                 if ($candidate >= $start && $candidate < $end) {
                     return [
                         'open_now' => true,
-                        'closes_at' => self::clock($end % self::WEEK),
+                        // A span of a full week or more is a venue that never
+                        // closes, so there is no closing time to report — not
+                        // "closes at midnight". {@see self::intervals()} folds
+                        // the documented close-less 24/7 shape into exactly such
+                        // a span, and a period that states the same thing the
+                        // long way (open Sunday 00:00, close Sunday 00:00) now
+                        // gets the same answer instead of a spurious "00:00".
+                        'closes_at' => $end - $start >= self::WEEK ? null : self::clock($end % self::WEEK),
                         'opens_at' => null,
                     ];
                 }

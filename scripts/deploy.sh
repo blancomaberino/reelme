@@ -178,6 +178,16 @@ if ! $PHP artisan reelmap:dishes:backfill; then
   echo "    places show no menu until 'php artisan reelmap:dishes:backfill' is re-run."
 fi
 
+# T-158's open-now filter is a semi-join onto `place_open_periods`, so an
+# unpopulated table does not degrade the listing — it EMPTIES it: every place
+# reads as "hours unknown" and none of them are open. Same non-fatal treatment
+# and the same reason as above.
+if ! $PHP artisan reelmap:open-periods:backfill; then
+  echo "==> WARNING: open-period backfill did not complete. The deploy continues;"
+  echo "    those places cannot be found by 'open now' until"
+  echo "    'php artisan reelmap:open-periods:backfill' is re-run."
+fi
+
 echo "==> Rebuilding caches"
 $PHP artisan config:cache
 $PHP artisan route:cache
