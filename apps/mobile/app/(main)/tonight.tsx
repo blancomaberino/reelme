@@ -10,7 +10,7 @@ import { useTagCatalog } from '@/api/hooks/useTags';
 import { DEFAULT_ZONE_M, useTonight, type ZoneM, ZONES_M } from '@/api/hooks/useTonight';
 import type { PlaceSummary } from '@/api/places';
 import { Button } from '@/components/button';
-import { OptionPill } from '@/components/filters/filter-sheet';
+import { OptionPill } from '@/components/filters/option-pill';
 import { Chip } from '@/components/place/chip';
 import { MyPlaceCard } from '@/components/place/my-place-card';
 import { useT } from '@/i18n';

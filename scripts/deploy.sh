@@ -26,9 +26,11 @@
 #      cached config file that references a class the new code deleted makes
 #      artisan itself unbootable — including the command you would use to clear
 #      it.
-#   3. Horizon is terminated LAST. It restarts with the new code; terminating it
-#      first would leave a window where the old workers pick up jobs the new
-#      migration has already reshaped underneath them.
+#   3. Horizon is terminated AFTER the caches are rebuilt, so replacement
+#      workers boot on the new code and the new config; terminating it before
+#      `migrate` would leave old workers picking up jobs the new migration has
+#      already reshaped underneath them. The derived-projection backfills then
+#      run after the restart — see the note beside them.
 #
 # WHAT THIS SCRIPT CANNOT DO: it does not provision anything, and it has never
 # run against real infrastructure — see docs/runbooks/provisioning.md. Treat the
@@ -183,8 +185,16 @@ $PHP artisan horizon:terminate
 # a place's hours mid-walk writes no projection rows; if `chunkById` has already
 # passed that id, the place is silently unlistable in Tonight forever, because
 # TimezoneBusinessSource resolves once and nothing re-triggers the projection.
-# Restarting first means any save during the walk is observed, and the walk's
-# own replace makes the overlap harmless.
+# Restarting first means a save by a REPLACEMENT worker during the walk is
+# observed, and the walk's own replace makes the overlap harmless.
+#
+# It NARROWS the window rather than closing it, and the difference matters:
+# `horizon:terminate` is a signal, not a join. It returns immediately and
+# in-flight jobs keep running on the old code until they finish — up to the
+# timeouts in config/horizon.php, which are minutes, not seconds. A long
+# enrichment still draining when the walk reaches its place can therefore still
+# write hours that no observer sees. Re-running the backfill after a deploy is
+# the cheap way to close the remainder; it is idempotent by construction.
 
 # Derived-projection backfills, INSIDE the outage and immediately after the
 # schema they depend on. These are not optional repair tools: T-157's read path

@@ -36,8 +36,12 @@ class OpenPeriodMaterializer
      * server's tz database is upgraded. One query answers it for all of them at
      * the same price.
      *
-     * Null until loaded; `[]` is not a valid loaded state (Postgres always
-     * knows some zones), so the two cannot be confused.
+     * Reloaded while EMPTY, not merely while null. A Postgres whose system
+     * tzdata directory is missing returns zero rows from `pg_timezone_names`
+     * without error; latching that would leave the process rejecting every zone
+     * for its whole life, where the per-id probe this replaced would have healed
+     * once the server was fixed. An empty map is never a correct answer here —
+     * Postgres always knows some zones.
      *
      * @var array<string, true>|null
      */
@@ -170,7 +174,7 @@ class OpenPeriodMaterializer
             return null;
         }
 
-        if (self::$zones === null) {
+        if (! self::$zones) {
             /** @var array<string, true> $loaded */
             $loaded = [];
             foreach (DB::table('pg_timezone_names')->pluck('name') as $name) {

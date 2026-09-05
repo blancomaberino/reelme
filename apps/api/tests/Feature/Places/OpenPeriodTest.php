@@ -658,24 +658,35 @@ it('has no request class that ACCEPTS open_now while its consumer drops it', fun
     // endpoint red — and "a surface that accepts a filter and quietly ignores
     // it" is the exact failure `?dish=` shipped with on the map in T-157.
     //
-    // So this DERIVES the surfaces: every FormRequest whose rules declare
-    // `open_now`, then every file that type-hints one, which must either apply
-    // the filter itself or hand the request to something that does.
+    // So this DERIVES the surfaces: every FormRequest declaring `open_now`,
+    // then every ACTION taking one, which must apply the filter or hand the
+    // request to something that does.
     $requests = [];
     foreach (File::allFiles(app_path('Http/Requests')) as $file) {
-        if (str_contains(stripPhpComments((string) file_get_contents($file->getPathname())), "'open_now'")) {
+        if (preg_match('/[\'"]open_now[\'"]/', stripPhpComments((string) file_get_contents($file->getPathname()))) === 1) {
             $requests[] = $file->getFilenameWithoutExtension();
         }
     }
 
-    // A guard over an empty set passes for the wrong reason.
-    expect($requests)->not->toBeEmpty();
+    // The SET, not merely "not empty". A request that stops declaring the flag —
+    // renamed, or moved into a shared trait outside this directory — would
+    // otherwise drop silently out of coverage while the other two kept the list
+    // non-empty and the guard green.
+    expect($requests)->toEqualCanonicalizing(['MapPlacesRequest', 'PlaceIndexRequest', 'PlaceListingRequest']);
 
-    // The two shared appliers a controller may delegate to instead of filtering
-    // itself. Each is asserted below to actually apply the filter, so this is a
-    // delegation chain rather than a hole: a controller is covered because the
-    // thing it calls is covered.
-    $appliers = ['placeListResponse(', '$viewport->respond(', 'MapViewport $viewport'];
+    // Delegation targets a consumer may hand the request to instead of
+    // filtering itself. `$viewport->respond(` is a CALL — an earlier version
+    // also accepted the bare `MapViewport $viewport` type-hint, which meant any
+    // file injecting the viewport for an unrelated reason marked itself as
+    // filtering. The companion test below proves each of these really applies.
+    $appliers = ['placeListResponse(', '->respond('];
+
+    // The applier files themselves are checked WHOLE, by the companion test
+    // below, and skipped here: they legitimately split the work across their own
+    // methods (MapViewport takes the request in `respond()` and filters in
+    // `baseQuery()`), so per-method scoping would flag the very seams that do
+    // the filtering.
+    $applierFiles = ['Http/Controllers/Api/V1/Concerns/PaginatesPlaces.php', 'Services/Map/MapViewport.php'];
 
     $unwired = [];
     foreach (File::allFiles(app_path()) as $file) {
@@ -683,19 +694,28 @@ it('has no request class that ACCEPTS open_now while its consumer drops it', fun
             continue;
         }
 
+        if (in_array(str_replace(app_path().'/', '', $file->getPathname()), $applierFiles, true)) {
+            continue;
+        }
+
         $source = stripPhpComments((string) file_get_contents($file->getPathname()));
         $relative = str_replace(base_path().'/', '', $file->getPathname());
 
-        $applies = str_contains($source, 'openNow(');
-        foreach ($appliers as $applier) {
-            $applies = $applies || str_contains($source, $applier);
-        }
+        // PER METHOD, not per file. File scope was a hole with the same shape as
+        // the bug this guards: `PlaceController` already contains `openNow(`, so
+        // a NEW action added to it that built its own query and forgot the
+        // filter was pre-covered for free — and that is precisely how `?dish=`
+        // came to be missing on the map.
+        foreach (preg_split('/(?=\bfunction\s+\w+\s*\()/', $source) ?: [] as $block) {
+            $applies = str_contains($block, 'openNow(');
+            foreach ($appliers as $applier) {
+                $applies = $applies || str_contains($block, $applier);
+            }
 
-        foreach ($requests as $request) {
-            // A type-hinted parameter, not a mere mention — an import or a
-            // docblock reference is not a consumer.
-            if (preg_match('/\b'.preg_quote($request, '/').'\s+\$\w+/', $source) === 1 && ! $applies) {
-                $unwired[] = $relative.' consumes '.$request;
+            foreach ($requests as $request) {
+                if (preg_match('/\b'.preg_quote($request, '/').'\s+\$\w+/', $block) === 1 && ! $applies) {
+                    $unwired[] = $relative.'::'.trim(explode('(', $block, 2)[0]).' consumes '.$request;
+                }
             }
         }
     }
@@ -704,10 +724,42 @@ it('has no request class that ACCEPTS open_now while its consumer drops it', fun
 });
 
 it('the appliers a surface may delegate to do apply the filter', function (string $file) {
-    // Without this the delegation allow-list above is a hole: a controller would
-    // be "covered" by calling something that stopped filtering.
+    // Without this the delegation list above is a hole: a controller would be
+    // "covered" by calling something that had stopped filtering.
     expect(stripPhpComments((string) file_get_contents(app_path($file))))->toContain('openNow(');
 })->with([
     'Http/Controllers/Api/V1/Concerns/PaginatesPlaces.php',
     'Services/Map/MapViewport.php',
 ]);
+
+it('binds the instant WITHOUT sub-second precision, which is what the minute maths relies on', function () {
+    // This pins a coupling rather than a behaviour, deliberately — the first
+    // version of this test drove a fractional instant through `openNow()` and
+    // passed with the defect reinstated, because the defect is unreachable from
+    // that direction. It is a test that asserts nothing, which is the thing this
+    // project's testing rules ban.
+    //
+    // What actually happened: `EXTRACT(EPOCH …)::int / 60` ROUNDS in Postgres,
+    // so a local time of 23:59:59.9 yields minute 1440 — and on a Saturday that
+    // is 10080, outside [0, 10079], which the modular containment then reads as
+    // SUNDAY 00:00. The filter would answer for the wrong end of the week.
+    //
+    // Two things keep that from happening: the expression now uses `floor()`,
+    // and the instant is bound through `format('Y-m-d H:i:sP')`, which drops
+    // microseconds. The second is a property of a line two below the SQL, so it
+    // is asserted here: make the format more precise and this goes red, sending
+    // the reader to the maths that depends on it.
+    $query = Place::query()->openNow(new DateTimeImmutable('2026-09-12 23:58:59.987654', new DateTimeZone(MONTEVIDEO)));
+
+    $instants = array_values(array_filter(
+        $query->getBindings(),
+        fn ($b): bool => is_string($b) && preg_match('/^\d{4}-\d{2}-\d{2} /', $b) === 1,
+    ));
+
+    expect($instants)->not->toBeEmpty();
+
+    foreach ($instants as $instant) {
+        expect($instant)->not->toContain('.')
+            ->and($instant)->toMatch('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/');
+    }
+});

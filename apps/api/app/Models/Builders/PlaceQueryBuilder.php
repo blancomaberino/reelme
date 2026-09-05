@@ -244,10 +244,27 @@ class PlaceQueryBuilder extends Builder
         // the `AT TIME ZONE` conversion, so each reference is a real repeat of
         // the cast (measured ~3µs per period row for the redundant pair;
         // negligible at a 300-pin viewport, but free to remove).
+        //
+        // `floor(… / 60)`, NOT `…::int / 60`. Casting the epoch to int ROUNDS
+        // in Postgres, so a time carrying sub-second precision lands on the NEXT
+        // minute: 20:59:59.6 gave 21:00, and a venue closing at 21:00 would have
+        // read as shut for the last half second of every minute. The instant is
+        // bound through `format('Y-m-d H:i:sP')`, which drops microseconds, so
+        // this was unreachable — but only by a property of the binding two lines
+        // below, which is exactly the kind of coupling that survives until
+        // someone makes the format more precise. Verified equal to the
+        // HOUR*60+MINUTE form it replaced across sub-second inputs.
         $minuteOfWeek = "(EXTRACT(DOW FROM {$localNow})::int * 1440"
-            ." + EXTRACT(EPOCH FROM {$localNow}::time)::int / 60)";
+            ." + floor(EXTRACT(EPOCH FROM {$localNow}::time) / 60)::int)";
 
-        return $this->whereExists(function ($query) use ($table, $minuteOfWeek, $instant): void {
+        // Built once and counted from the FINAL string. Counting `?` in
+        // `$minuteOfWeek` instead would silently under-fill the moment anything
+        // interpolates that fragment twice — the bindings would then shift, and
+        // PDO reports HY093 rather than a wrong answer, but only at runtime.
+        $contains = "(({$minuteOfWeek} - {$table}.open_minute + 10080) % 10080)"
+            ." < ({$table}.close_minute - {$table}.open_minute)";
+
+        return $this->whereExists(function ($query) use ($table, $contains, $instant): void {
             $query->selectRaw('1')
                 ->from($table)
                 ->whereColumn($table.'.place_id', 'places.id')
@@ -265,11 +282,7 @@ class PlaceQueryBuilder extends Builder
                 // the dividend positive (Postgres `%` follows the sign of the
                 // dividend), and an always-open span, where L = WEEK, matches
                 // every instant, as it must.
-                ->whereRaw(
-                    "(({$minuteOfWeek} - {$table}.open_minute + 10080) % 10080)"
-                    ." < ({$table}.close_minute - {$table}.open_minute)",
-                    array_fill(0, substr_count($minuteOfWeek, '?'), $instant)
-                );
+                ->whereRaw($contains, array_fill(0, substr_count($contains, '?'), $instant));
         });
     }
 
