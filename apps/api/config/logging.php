@@ -54,7 +54,21 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            // `daily`, not Laravel's shipped `single` default (T-156).
+            //
+            // This is a PRIVACY commitment, not a housekeeping preference. The
+            // privacy policy tells people their coordinates "may appear in our
+            // server logs for a limited time before they are discarded" — and
+            // `single` writes one file that grows forever and discards nothing,
+            // so on the default configuration that sentence was false. `daily`
+            // rotates and prunes at `LOG_DAILY_DAYS` (14), which is what makes
+            // the published claim true on any deployment that has not
+            // deliberately chosen otherwise.
+            //
+            // Overriding `LOG_STACK` back to `single` in an environment is
+            // therefore a decision about what the policy page says, not just
+            // about log files. `LogRetentionTest` fails if this default drifts.
+            'channels' => explode(',', (string) env('LOG_STACK', 'daily')),
             'ignore_exceptions' => false,
         ],
 
