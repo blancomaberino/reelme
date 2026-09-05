@@ -201,6 +201,12 @@ class PlaceQueryBuilder extends Builder
      * what makes the answer DST-correct — the stored spans are local wall-clock,
      * so the only conversion needed is "what time is it there".
      *
+     * WIRED ON ALL THREE PLACE SURFACES — the public index, the personal
+     * listings and the map. A filter one surface silently drops returns a 200
+     * the caller believes was filtered, which is what `?dish=` shipped with on
+     * the map in T-157 and had to fix in review; the surface table in
+     * `OpenPeriodTest` is what keeps a fourth one from repeating it.
+     *
      * The containment test is the same shape as `stateAt()`'s, deliberately: a
      * span may end past the week's end (that is how a Saturday-night-into-Sunday
      * service stays a forward interval), so the instant is tested in BOTH the
@@ -232,9 +238,14 @@ class PlaceQueryBuilder extends Builder
             ->format('Y-m-d H:i:sP');
 
         $localNow = "(?::timestamptz AT TIME ZONE {$table}.timezone)";
+        // TWO references to the instant, not four. `EXTRACT(EPOCH FROM …::time)`
+        // gives seconds since local midnight, so one term replaces the separate
+        // HOUR and MINUTE extractions — Postgres does not common-subexpression
+        // the `AT TIME ZONE` conversion, so each reference is a real repeat of
+        // the cast (measured ~3µs per period row for the redundant pair;
+        // negligible at a 300-pin viewport, but free to remove).
         $minuteOfWeek = "(EXTRACT(DOW FROM {$localNow})::int * 1440"
-            ." + EXTRACT(HOUR FROM {$localNow})::int * 60"
-            ." + EXTRACT(MINUTE FROM {$localNow})::int)";
+            ." + EXTRACT(EPOCH FROM {$localNow}::time)::int / 60)";
 
         return $this->whereExists(function ($query) use ($table, $minuteOfWeek, $instant): void {
             $query->selectRaw('1')
@@ -257,7 +268,7 @@ class PlaceQueryBuilder extends Builder
                 ->whereRaw(
                     "(({$minuteOfWeek} - {$table}.open_minute + 10080) % 10080)"
                     ." < ({$table}.close_minute - {$table}.open_minute)",
-                    [$instant, $instant, $instant]
+                    array_fill(0, substr_count($minuteOfWeek, '?'), $instant)
                 );
         });
     }

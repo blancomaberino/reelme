@@ -125,3 +125,16 @@ export function regionRadiusM(region: Region): number {
 
   return Math.round(Math.hypot(latM, lngM) / 2);
 }
+
+/**
+ * Quantization for a `?near=lat,lng` query key — ~11m at 4 decimals.
+ *
+ * Lives here with {@link quantizeBbox} for the same reason: a hand-held phone's
+ * GPS jitters by metres while it sits on a table, and an unquantized key turns
+ * that jitter into a refetch of the whole list.
+ */
+export const NEAR_PRECISION = 4;
+
+export function nearParam(at: Pick<Region, 'latitude' | 'longitude'> | null): string {
+  return at ? `${at.latitude.toFixed(NEAR_PRECISION)},${at.longitude.toFixed(NEAR_PRECISION)}` : '';
+}

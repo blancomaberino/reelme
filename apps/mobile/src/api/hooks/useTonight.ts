@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 
-import type { Region } from '@/lib/geo';
+import { nearParam, type Region } from '@/lib/geo';
 
 import { api } from '../client';
 import { queryKeys } from '../keys';
@@ -26,17 +26,6 @@ export type TonightQuery = {
   dish: string;
   openNow: boolean;
 };
-
-/**
- * Quantized to ~11m, the same rule {@link useNearbyOffers} uses: a hand-held
- * phone's GPS jitters by metres while it sits on a table, and an unquantized key
- * turns that jitter into a refetch of the whole list.
- */
-const NEAR_PRECISION = 4;
-
-function nearParam(at: TonightQuery['at']): string {
-  return at ? `${at.latitude.toFixed(NEAR_PRECISION)},${at.longitude.toFixed(NEAR_PRECISION)}` : '';
-}
 
 async function fetchPage(q: TonightQuery, cursor: string | null): Promise<Paginated<PlaceSummary>> {
   const params: Record<string, string | number> = {

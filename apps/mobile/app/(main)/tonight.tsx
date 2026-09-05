@@ -1,23 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useDeviceLocation } from '@/api/hooks/useDeviceLocation';
 import { useTagCatalog } from '@/api/hooks/useTags';
 import { DEFAULT_ZONE_M, useTonight, type ZoneM, ZONES_M } from '@/api/hooks/useTonight';
-import { queryKeys } from '@/api/keys';
 import type { PlaceSummary } from '@/api/places';
 import { Button } from '@/components/button';
+import { OptionPill } from '@/components/filters/filter-sheet';
 import { Chip } from '@/components/place/chip';
 import { MyPlaceCard } from '@/components/place/my-place-card';
 import { useT } from '@/i18n';
 import { useDebounced } from '@/lib/use-debounced';
 import { useFormat } from '@/lib/use-format';
-import { locateUser } from '@/lib/initial-region';
-import { openLocationSettings } from '@/lib/location';
+import { openLocationSettings, presentRefusal } from '@/lib/location';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
@@ -63,21 +62,7 @@ export default function TonightScreen() {
   // Debounced so typing "milanesa" is one request at the end, not eight.
   const debouncedDish = useDebounced(dish, 300);
 
-  /*
-   * The device fix is a QUERY, not an effect writing state: `locateUser` answers
-   * with a reason instead of throwing, so a refusal is data and the retry button
-   * is `refetch()` rather than a second copy of the same logic. Shared key with
-   * the offers browse, so arriving here after that screen costs no second prompt.
-   */
-  const fix = useQuery({
-    queryKey: queryKeys.deviceLocation(),
-    queryFn: locateUser,
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
-
-  const at = fix.data?.ok ? fix.data.region : null;
-  const blocked = fix.data && !fix.data.ok ? fix.data.reason : null;
+  const { fix, at, blocked } = useDeviceLocation();
 
   const list = useTonight({ at, radiusM: zone, dish: debouncedDish, openNow });
   const places = useMemo(() => list.data?.pages.flatMap((p) => p.data) ?? [], [list.data]);
@@ -96,37 +81,31 @@ export default function TonightScreen() {
   // it become 40 as you scroll would make the one line that is supposed to
   // explain the dials change for a reason that has nothing to do with them, so
   // a set with more pages behind it is stated as unbounded.
-  const answer = at
-    ? t(
-        list.hasNextPage
-          ? openNow
-            ? 'tonight.answer.openMore'
-            : 'tonight.answer.anyMore'
-          : openNow
-            ? 'tonight.answer.open'
-            : 'tonight.answer.any',
-        { count: places.length, km: zone / 1000 },
-      )
-    : t('tonight.answer.locating');
+  const answerKey = `tonight.answer.${openNow ? 'open' : 'any'}${list.hasNextPage ? 'More' : ''}` as const;
+  const answer = !at
+    ? t('tonight.answer.locating')
+    : list.isPending
+      ? t('tonight.answer.looking')
+      : t(answerKey, { count: places.length, km: zone / 1000 });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>{t('tonight.title')}</Text>
         <Text style={styles.answer} testID="tonight-answer">
-          {list.isPending && at ? t('tonight.answer.looking') : answer}
+          {answer}
         </Text>
       </View>
 
       <View style={styles.controls}>
         <View style={styles.pillRow}>
-          <Chip
+          <OptionPill
             label={t('tonight.openNow')}
             selected={openNow}
             onPress={() => setOpenNow((on) => !on)}
           />
           {ZONES_M.map((m) => (
-            <Chip key={m} label={t('tonight.zone', { km: m / 1000 })} selected={zone === m} onPress={() => setZone(m)} />
+            <OptionPill key={m} label={t('tonight.zone', { km: m / 1000 })} selected={zone === m} onPress={() => setZone(m)} />
           ))}
         </View>
 
@@ -180,6 +159,15 @@ export default function TonightScreen() {
  * server" invites you to retry. Collapsing them into one grey message is how a
  * person ends up widening a search that never ran.
  */
+/**
+ * Hoisted, not inline. `MyPlaceCard` is `memo`'d, and an arrow rebuilt on every
+ * render defeats that — so each keystroke re-rendered every mounted card even
+ * though the debounce correctly suppressed the request.
+ */
+const openPlace = (slug: string) => router.push({ pathname: '/place/[slug]', params: { slug } });
+
+const renderCard = ({ item }: { item: PlaceSummary }) => <MyPlaceCard place={item} onPress={openPlace} />;
+
 function TonightBody({
   blocked,
   list,
@@ -200,23 +188,20 @@ function TonightBody({
   const t = useT();
 
   if (blocked !== null) {
-    // THREE outcomes, not two. `unavailable` means permission was GRANTED and
-    // the fix timed out — indoors, in a tunnel, a simulator with no location
-    // set. Telling that person to open Settings sends them to a switch that is
-    // already on, with no way forward. `offers/index.tsx` already makes this
-    // distinction; collapsing it here would have been a second, worse answer to
-    // a question the app had already answered.
-    const settings = blocked === 'blocked';
+    // The three-way decision lives in `lib/location` beside the enum that
+    // produces it — this screen and the offers browse both need it, and it was
+    // duplicating the choice that put the wrong answer on the newer one.
+    const { unavailable, openSettings } = presentRefusal(blocked);
 
     return (
       <View style={styles.state} testID="tonight-location">
         <Text style={styles.stateText}>
-          {t(blocked === 'unavailable' ? 'tonight.noFix' : 'tonight.needsLocation')}
+          {t(unavailable ? 'tonight.noFix' : 'tonight.needsLocation')}
         </Text>
         <Button
-          title={t(settings ? 'map.location.blocked.cta' : 'common.tryAgain')}
+          title={t(openSettings ? 'map.location.blocked.cta' : 'common.tryAgain')}
           variant="secondary"
-          onPress={settings ? onOpenSettings : onRetryLocation}
+          onPress={openSettings ? onOpenSettings : onRetryLocation}
         />
       </View>
     );
@@ -248,12 +233,7 @@ function TonightBody({
       data={places}
       keyExtractor={(place) => place.id}
       contentContainerStyle={styles.list}
-      renderItem={({ item }) => (
-        <MyPlaceCard
-          place={item}
-          onPress={(slug) => router.push({ pathname: '/place/[slug]', params: { slug } })}
-        />
-      )}
+      renderItem={renderCard}
       onEndReachedThreshold={0.5}
       onEndReached={() => {
         if (list.hasNextPage && !list.isFetchingNextPage) void list.fetchNextPage();
@@ -288,7 +268,12 @@ const makeStyles = (c: Palette) =>
       paddingHorizontal: space.sm,
       paddingVertical: space.xs,
     },
-    input: { flex: 1, ...type.body, color: c.text, padding: space.none },
+    input: { flex: 1, ...type.body, color: c.text,
+      // Zero, to strip TextInput's Android inner padding. Not a token: the lint
+      // rule bans raw numbers to stop the 3/5/7/9/13 drift it names, and zero is
+      // not in that class — so the exemption belongs in the rule, not as a step
+      // on a scale of gaps where `gap: space.none` would mean nothing.
+      padding: 0 },
     suggestions: { flexDirection: 'row', gap: space.xs, flexWrap: 'wrap' },
     list: { paddingHorizontal: space.md, paddingTop: space.sm, paddingBottom: space.xl },
     state: { alignItems: 'center', gap: space.sm, paddingHorizontal: space.xl, paddingTop: space.xxl },

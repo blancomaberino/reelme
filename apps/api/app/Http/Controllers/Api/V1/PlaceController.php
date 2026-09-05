@@ -91,10 +91,8 @@ class PlaceController extends Controller
             $query->servingDish($dish);
         }
 
-        // "…and open right now" (T-158). Applied on all three place surfaces —
-        // this index, the personal listings and the map — because a filter one
-        // surface silently drops is the "the caller believes they filtered"
-        // failure T-157 shipped on the map and had to fix in review.
+        // "…and open right now" (T-158). Applied on all three place surfaces;
+        // the reasoning lives once, on PlaceQueryBuilder::openNow().
         if ($request->validated('open_now')) {
             $query->openNow(now());
         }

@@ -218,6 +218,5 @@ if ! $PHP artisan reelmap:open-periods:backfill; then
   echo "    'php artisan reelmap:open-periods:backfill' is re-run."
 fi
 
-
 echo "==> Deploy complete"
 # The trap runs `artisan up` on the way out.

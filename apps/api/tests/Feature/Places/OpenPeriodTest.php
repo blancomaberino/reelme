@@ -171,8 +171,15 @@ it('finds a place that is open, and not one that is closed', function () {
 it('EXCLUDES a place whose hours are unknown, rather than guessing either way', function () {
     $at = new DateTimeImmutable('2026-09-08 20:00', new DateTimeZone(MONTEVIDEO));
     $unknown = placeWithHours(null, null);
+    // The CONTROL is what makes the exclusion mean anything. Without a place
+    // that must come back, this test passes just as well when `openNow()`
+    // returns nothing at all — which is the shape of a filter that is broken
+    // rather than one that is strict.
+    $open = placeWithHours([period(2, '19:00', 2, '23:00')]);
 
-    expect(Place::query()->openNow($at)->pluck('id'))->not->toContain($unknown->id);
+    expect(Place::query()->openNow($at)->pluck('id'))
+        ->toContain($open->id)
+        ->not->toContain($unknown->id);
 });
 
 it('holds a span that crosses midnight into the next day', function () {
@@ -477,16 +484,15 @@ it('reads every spelling of the flag the way the caller meant it', function (str
 /**
  * The set of query-builder writers of `places`, each with a reason.
  *
- * The observer fires on Eloquent events, so a query-builder write to that table
- * is a potential bypass — the rows would silently describe last week's hours.
- * This asserts over the SET OF WRITERS rather than over any one call's spelling,
- * because the same guard written for `dishes` (T-157) originally grepped for the
- * column name and missed the writer that passes a whole row array, where the
- * column name never appears in the source text.
+ * The observer fires on Eloquent events, so a write that bypasses them is a
+ * potential bypass — the projection would silently describe last week's hours.
+ * This asserts over the SET OF WRITERS rather than any one call's spelling,
+ * because the sibling guard for `dishes` (T-157) originally grepped for the
+ * column name and missed the writer that passes a whole row array.
  *
- * A new query-builder write to `places` fails here until someone adds it to this
- * list, which forces "does this touch the hours, and if so who re-projects
- * them?" to be answered deliberately rather than discovered in production.
+ * A new writer fails here until someone adds it to this list, which forces
+ * "does this touch the hours, and if so who re-projects them?" to be answered
+ * deliberately rather than discovered in production.
  *
  * @return array<string, string>
  */
@@ -495,20 +501,15 @@ function knownPlaceQueryBuilderWriters(): array
     return [
         // Reads a row for the geofence check. No write at all.
         'app/Services/Redemptions/RedemptionGeofence.php' => 'read-only distance lookup',
-        // Dev-only performance fixture. Bulk-inserts places with no hours; the
-        // backfill would give them rows if they ever gained any.
+        // Dev-only performance fixture. Bulk-inserts places with no hours.
         'database/seeders/MapPerformanceSeeder.php' => 'dev seeder, bulk insert, writes no hours',
-        // Three historical data migrations, all of which predate the hours
-        // columns (added 2026_09_03) and so cannot have touched them: they write
-        // `status`, and `website_source` / `phone_source`. Listed rather than
-        // pattern-exempted, because "it is a migration" is not a reason — a data
-        // migration is exactly where a mass rewrite of every row's hours would
-        // live, and it would fire no model events.
+        // Three historical data migrations, all predating the hours columns
+        // (added 2026_09_03) and so unable to have touched them: they write
+        // `status`, and `website_source` / `phone_source`.
         'database/migrations/2026_07_16_100000_add_removed_to_place_status_check.php' => 'sets status only',
         'database/migrations/2026_07_19_000001_activate_google_verified_pending_places.php' => 'sets status only',
         'database/migrations/2026_08_19_120000_add_contact_field_provenance_to_places.php' => 'sets contact provenance only',
-        // Raw `UPDATE places SET …`, both predating the hours columns and both
-        // writing an unrelated column (`google_reviews_synced_at`, `status`).
+        // Raw `UPDATE places SET …`, both writing an unrelated column.
         'database/migrations/2026_07_11_000017_add_review_moderation_and_google_sync.php' => 'sets google_reviews_synced_at only',
         'database/migrations/2026_07_12_000019_add_hidden_place_status.php' => 'sets status only',
         // The Eloquent mass update the first version of this guard could not
@@ -521,29 +522,27 @@ function knownPlaceQueryBuilderWriters(): array
     ];
 }
 
+/**
+ * Does this source write `places` by a route that fires no model events?
+ *
+ * THREE spellings, because the first version knew only the first — and the
+ * bypass this codebase already contains is the second.
+ */
 function mentionsPlacesQueryBuilder(string $code): bool
 {
-    // `Schema::table('places', …)` is DDL and is excluded: it cannot change a
-    // row's hours, and including it would put all nine schema migrations on the
-    // allow-list, where a real DML writer would then be invisible among them.
+    // `Schema::table('places', …)` is DDL: it cannot change a row's hours, and
+    // including it would put all nine schema migrations on the allow-list,
+    // where a real DML writer would then be invisible among them.
     $code = preg_replace('/Schema::table\(/', 'SchemaDdl(', $code) ?? $code;
 
-    // THREE spellings, because the first version of this guard knew only the
-    // first one — and the bypass the codebase already contains is the second.
-    //
-    // 1. The query builder by table name.
-    // 2. An ELOQUENT MASS UPDATE. `Place::whereKey($ids)->update([...])` fires
-    //    no model events either, and contains no 'places' literal, so the
-    //    table-name regex cannot see it. One already ships, at
-    //    `app/Filament/Resources/Places/Tables/PlacesTable.php` — and a bulk
-    //    action one word different from it ("set timezone for these 40 venues")
-    //    would write the hours, skip the observer, and leave the projection
-    //    describing last week.
-    // 3. Raw `UPDATE places SET …`. Data migrations here are routinely written
-    //    that way.
     $patterns = [
+        // 1. The query builder, by table name.
         "/(DB::table|->table|->from)\(\s*'places'\s*\)/",
+        // 2. An ELOQUENT MASS UPDATE — fires no model events either, and
+        //    contains no 'places' literal, so the first pattern cannot see it.
         '/\bPlace::(query\(\)|where\w*\()[^;]*?->\s*(update|insert|upsert|delete)\s*\(/s',
+        // 3. Raw `UPDATE places SET …`. Data migrations here are routinely
+        //    written that way.
         '/\bupdate\s+places\b/i',
     ];
 
@@ -556,38 +555,8 @@ function mentionsPlacesQueryBuilder(string $code): bool
     return false;
 }
 
-function stripCommentsForOpenPeriodGuard(string $code): string
-{
-    // Comments name these symbols constantly — this very file does — so a guard
-    // that scanned raw text would flag prose and, worse, teach the next person
-    // to add an exemption for a file that writes nothing.
-    return preg_replace('!/\*.*?\*/|//[^\n]*!s', '', $code) ?? $code;
-}
-
 it('has no UNKNOWN query-builder writer of places, which would bypass the observer', function () {
-    $offenders = [];
-
-    // `database/` as well as `app/`: seeders and data migrations write this
-    // table too, and a guard scanning only app_path() would let a migration
-    // rewrite every row's hours in silence.
-    foreach ([app_path(), base_path('database')] as $root) {
-        foreach (File::allFiles($root) as $file) {
-            if ($file->getExtension() !== 'php') {
-                continue;
-            }
-
-            // Keyed on the path RELATIVE TO THE REPO, not the basename: keying
-            // on the filename would let a brand-new file inherit an exemption.
-            $relative = str_replace(base_path().'/', '', $file->getPathname());
-
-            if (mentionsPlacesQueryBuilder(stripCommentsForOpenPeriodGuard((string) file_get_contents($file->getPathname())))
-                && ! array_key_exists($relative, knownPlaceQueryBuilderWriters())) {
-                $offenders[] = $relative;
-            }
-        }
-    }
-
-    expect($offenders)->toBe([]);
+    expect(unknownWritersOf(knownPlaceQueryBuilderWriters(), mentionsPlacesQueryBuilder(...)))->toBe([]);
 });
 
 it('detects a writer that the allow-list does not name', function () {
@@ -606,8 +575,12 @@ it('detects a writer that the allow-list does not name', function () {
         // A different table is not this table, and a READ is not a write.
         ->and(mentionsPlacesQueryBuilder("DB::table('place_sources')->update([]);"))->toBeFalse()
         ->and(mentionsPlacesQueryBuilder("Place::query()->where('id', 1)->first();"))->toBeFalse()
-        // And prose about it is not a write.
-        ->and(stripCommentsForOpenPeriodGuard("// see DB::table('places')\ncode();"))->not->toContain('places');
+        // And prose about it is not a write — the shared, TOKEN-based stripper
+        // removes the comment. The regex this replaced also stripped inside
+        // string literals, so a line holding a URL with `//` in it lost
+        // everything after it, which could hide a real writer on that line.
+        ->and(stripPhpComments("// see DB::table('places')\n\$x = 1;"))->not->toContain('places')
+        ->and(stripPhpComments("\$u = 'https://x/places'; DB::table('places')->update([]);"))->toContain("DB::table('places')");
 });
 
 // ---------------------------------------------------------------------------
@@ -678,3 +651,63 @@ it('refuses a span that would match every instant', function () {
         'timezone' => 'UTC',
     ]))->toThrow(QueryException::class);
 });
+
+it('has no request class that ACCEPTS open_now while its consumer drops it', function () {
+    // The surface table above is hand-written, so it proves the three surfaces
+    // that existed when it was written. Nothing in it makes a FOURTH listing
+    // endpoint red — and "a surface that accepts a filter and quietly ignores
+    // it" is the exact failure `?dish=` shipped with on the map in T-157.
+    //
+    // So this DERIVES the surfaces: every FormRequest whose rules declare
+    // `open_now`, then every file that type-hints one, which must either apply
+    // the filter itself or hand the request to something that does.
+    $requests = [];
+    foreach (File::allFiles(app_path('Http/Requests')) as $file) {
+        if (str_contains(stripPhpComments((string) file_get_contents($file->getPathname())), "'open_now'")) {
+            $requests[] = $file->getFilenameWithoutExtension();
+        }
+    }
+
+    // A guard over an empty set passes for the wrong reason.
+    expect($requests)->not->toBeEmpty();
+
+    // The two shared appliers a controller may delegate to instead of filtering
+    // itself. Each is asserted below to actually apply the filter, so this is a
+    // delegation chain rather than a hole: a controller is covered because the
+    // thing it calls is covered.
+    $appliers = ['placeListResponse(', '$viewport->respond(', 'MapViewport $viewport'];
+
+    $unwired = [];
+    foreach (File::allFiles(app_path()) as $file) {
+        if ($file->getExtension() !== 'php') {
+            continue;
+        }
+
+        $source = stripPhpComments((string) file_get_contents($file->getPathname()));
+        $relative = str_replace(base_path().'/', '', $file->getPathname());
+
+        $applies = str_contains($source, 'openNow(');
+        foreach ($appliers as $applier) {
+            $applies = $applies || str_contains($source, $applier);
+        }
+
+        foreach ($requests as $request) {
+            // A type-hinted parameter, not a mere mention — an import or a
+            // docblock reference is not a consumer.
+            if (preg_match('/\b'.preg_quote($request, '/').'\s+\$\w+/', $source) === 1 && ! $applies) {
+                $unwired[] = $relative.' consumes '.$request;
+            }
+        }
+    }
+
+    expect(array_unique($unwired))->toBe([]);
+});
+
+it('the appliers a surface may delegate to do apply the filter', function (string $file) {
+    // Without this the delegation allow-list above is a hole: a controller would
+    // be "covered" by calling something that stopped filtering.
+    expect(stripPhpComments((string) file_get_contents(app_path($file))))->toContain('openNow(');
+})->with([
+    'Http/Controllers/Api/V1/Concerns/PaginatesPlaces.php',
+    'Services/Map/MapViewport.php',
+]);

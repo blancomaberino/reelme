@@ -25,19 +25,23 @@ use Illuminate\Support\Facades\DB;
 class OpenPeriodMaterializer
 {
     /**
-     * Whether Postgres can resolve a zone id, by id — BOTH answers cached.
+     * Every zone id THIS Postgres can resolve, loaded once per process.
      *
-     * Caching the failures is safe here, and only because of what runs first:
-     * a key reaches this map only after {@see OpeningSchedule::zoneId()} has
-     * accepted it, which requires a constructible REGION/CITY id, so the key
-     * space is bounded by PHP's tz database (~600 ids) rather than by whatever
-     * junk the free-text `places.timezone` column happens to hold. Without that
-     * gate in front, negative caching here WOULD be unbounded growth in a
-     * long-lived Horizon or Octane process.
+     * Loaded whole rather than probed per id, because `pg_timezone_names` is a
+     * set-returning function over ~1200 zones with no server-side caching:
+     * measured on this stack it costs ~150ms per call, EVERY call. Probing one
+     * id at a time made that a 150ms tax on the first hours-write in each
+     * PHP-FPM process — a Filament edit, a `PlaceEditor::apply()` — for a
+     * question whose answer is identical for every id and changes only when the
+     * server's tz database is upgraded. One query answers it for all of them at
+     * the same price.
      *
-     * @var array<string, bool>
+     * Null until loaded; `[]` is not a valid loaded state (Postgres always
+     * knows some zones), so the two cannot be confused.
+     *
+     * @var array<string, true>|null
      */
-    private static array $zones = [];
+    private static ?array $zones = null;
 
     /**
      * @param  bool  $isInsert  the place was just INSERTed, so nothing can already
@@ -166,10 +170,15 @@ class OpenPeriodMaterializer
             return null;
         }
 
-        if (! isset(self::$zones[$timezone])) {
-            self::$zones[$timezone] = DB::table('pg_timezone_names')->where('name', $timezone)->exists();
+        if (self::$zones === null) {
+            /** @var array<string, true> $loaded */
+            $loaded = [];
+            foreach (DB::table('pg_timezone_names')->pluck('name') as $name) {
+                $loaded[(string) $name] = true;
+            }
+            self::$zones = $loaded;
         }
 
-        return self::$zones[$timezone] ? $timezone : null;
+        return isset(self::$zones[$timezone]) ? $timezone : null;
     }
 }

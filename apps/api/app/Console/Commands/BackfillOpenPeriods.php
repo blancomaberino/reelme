@@ -61,6 +61,11 @@ class BackfillOpenPeriods extends Command
 
         Place::query()
             ->withoutGlobalScopes()
+            // Only the key: `materialize()` re-reads the row under its lock
+            // anyway (deliberately — see there), so hydrating 37 columns and
+            // five jsonb blobs here is a wide-row read per place, discarded one
+            // line later. This walk runs inside the maintenance window.
+            ->select('places.id')
             ->whereRaw($carriesHours)
             ->chunkById(200, function ($chunk) use ($materializer, &$places, &$failed): void {
                 foreach ($chunk as $place) {

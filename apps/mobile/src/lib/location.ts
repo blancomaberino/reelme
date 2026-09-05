@@ -205,3 +205,29 @@ export async function openLocationSettings(): Promise<void> {
     // Nothing actionable for the user beyond the tap doing nothing.
   }
 }
+
+/**
+ * How a screen should present a refusal, given which one it is.
+ *
+ * The three outcomes are not interchangeable, and collapsing them is a real
+ * bug rather than a rough edge: `unavailable` means permission was GRANTED and
+ * the fix timed out — indoors, in a tunnel, a simulator with no location set —
+ * so sending that person to Settings points them at a switch that is already
+ * on, with no way forward.
+ *
+ * The decision lives here, next to {@link PermissionState}, rather than in the
+ * screens: two of them need it (the offers browse and Tonight), their CHROME
+ * differs legitimately, and it was duplicating this three-way choice that put
+ * the wrong answer on the newer screen.
+ */
+export type RefusalPresentation = { unavailable: boolean; openSettings: boolean };
+
+export function presentRefusal(reason: 'blocked' | 'denied' | 'unavailable'): RefusalPresentation {
+  return {
+    // A timed-out fix needs "try again in a moment", not "location is off".
+    unavailable: reason === 'unavailable',
+    // Only a permanently blocked permission is fixed in Settings; `denied` can
+    // still be re-requested in-app, so it gets a retry.
+    openSettings: reason === 'blocked',
+  };
+}

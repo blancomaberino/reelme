@@ -28,12 +28,18 @@ class PlaceMerger
     private const BACKFILL_FIELDS = [
         'google_place_id', 'address_line1', 'address_line2', 'city', 'region',
         'postal_code', 'cuisine_primary', 'price_range', 'phone', 'website',
-        // The display LINES and the STRUCTURED pair travel together. Donating
-        // only the lines (which is what this list did until T-158) leaves a
-        // survivor showing opening hours that no "open now" query can ever
-        // match — and the survivor is the more popular record by construction,
-        // so the merge would quietly remove the better record from the new
-        // Tonight tab. Each is still donated only when the survivor has NONE.
+        // Donating only the display LINES — which is what this list did until
+        // T-158 — leaves a survivor showing opening hours that no "open now"
+        // query can ever match, and the survivor is the more popular record by
+        // construction, so a merge quietly removed the better record from the
+        // Tonight tab.
+        //
+        // These three are donated INDEPENDENTLY, each only when the survivor
+        // has none of it — this list has no notion of a pair, and saying they
+        // "travel together" would be a comment asserting a coupling the code
+        // does not implement. A survivor can therefore take a loser's periods
+        // under its own timezone. That is sound here and only here: a merge
+        // joins two records of ONE venue, so the two zones are the same zone.
         'opening_hours_json', 'opening_hours_periods_json', 'timezone',
     ];
 
