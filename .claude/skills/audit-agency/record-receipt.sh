@@ -53,7 +53,10 @@ fi
 # Everything that produces or wires this receipt: the skill, the hooks, and the
 # settings file that installs them. Untracked files count — the tree hash does.
 self_mod=""
-_mb="$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo HEAD)"
+# No fallback to HEAD: a diff against HEAD is empty, and the flag would read
+# false on exactly the branch nobody can audit. Fail closed like the selector.
+_mb="$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null)" \
+  || { echo "refused: no base ref (origin/main, main) — no receipt written" >&2; exit 2; }
 if { git diff --name-only "$_mb" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } \
      | grep -qE '^\.claude/(skills/audit-agency/|hooks/|settings\.json$)'; then
   self_mod=1

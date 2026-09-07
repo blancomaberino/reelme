@@ -33,8 +33,9 @@ script refuses that verdict on anything else). Rules it applies:
 | Filament / views | + `UX Architect` |
 | auth / money / secrets in the content | + `Application Security Engineer`; money → + `Payments & Billing Engineer` |
 
-Docs means `docs/`, `README.md` and top-level `*.md` only — a `.md` under
-`apps/` can be an LLM prompt the API executes. Files no rule knows are printed
+Docs means a `.md` file in `docs/`, `apps/*/docs/`, a `README.md`, or the top
+level — both the extension and the place. A `.md` under `resources/` is an LLM
+prompt the API executes; a `.php` under `docs/` is a Filament page. Files no rule knows are printed
 as `UNMATCHED`; add a rule (owner-approved, with a test) rather than a seat to
 your prompt. **The selector is a script from the branch under review** — on a
 branch you did not write, read `.claude/**` in the diff before running it.

@@ -20,7 +20,7 @@ disagree, this file wins.
 3. **One review round, not eight.** `/simplify` → gates → ONE concurrent review
    → batch every finding → one fix commit → narrow re-review → both receipts (§4).
 4. **Audit scope follows the diff.** `select-lanes.sh` decides the seats. Docs-only
-   (`docs/`, `README.md`, top-level `*.md`) runs nobody; the guard — `.claude/**`,
+   (`.md` files in `docs/`, `apps/*/docs/`, a `README.md`, or the top level) runs nobody; the guard — `.claude/**`,
    any `CLAUDE.md`/`AGENTS.md`, `.github/`, `scripts/` — always gets Security + Architecture.
 5. **Tests ship with the change** — happy path, failure path, and for any filter
    a row that must be EXCLUDED. Coverage never regresses. E2E for user flows.
