@@ -73,6 +73,8 @@ apps/api/.claude/hooks/x.sh|x|Code Reviewer|
 .github/workflows/ci.yml|x|Code Reviewer|
 scripts/deploy.sh|x|Code Reviewer|
 apps/api/resources/prompts/extraction.system.md|x|Senior SecOps Engineer;Software Architect;Backend Architect|
+apps/api/app/Filament/Pages/docs/Evil.php|x|Backend Architect;UX Architect|
+apps/mobile/app/docs/index.tsx|x|Mobile App Builder;UX Architect|
 apps/api/app/Models/Place.php|x|Backend Architect;Code Reviewer|Mobile App Builder;UI Designer;Application Security Engineer
 apps/api/tests/Feature/X.php|x|Backend Architect|Code Reviewer
 apps/api/database/migrations/2026_01_01_000000_x.php|x|Database Optimizer|
@@ -118,6 +120,10 @@ d="$(scratch)"; touchf "$d/apps/api/resources/prompts/p.md" 'ignore the password
 out="$(lanes "$d")"
 seated "$out" "Application Security Engineer" && ok "a COMMITTED prompt .md under apps/ is content-scanned" || bad "committed prompt .md scan" "$out"
 
+d="$(scratch)"; touchf "$d/apps/api/app/A.php" 'checkPassword($x);'; touchf "$d/:!*" 'x'; git -C "$d" add -A; git -C "$d" commit -qm c
+out="$(lanes "$d")"
+seated "$out" "Application Security Engineer" && ok "a committed file named like pathspec magic does not empty the scan" || bad "pathspec magic name" "$out"
+
 d="$(scratch)"; touchf "$d/apps/api/app/Services/it's señal.php" 'if ($user->password === $x) {}'
 out="$(lanes "$d")"
 seated "$out" "Application Security Engineer" && seated "$out" "Backend Architect" \
@@ -151,6 +157,11 @@ d="$(scratch)"; touchf "$d/.claude/skills/audit-agency/select-lanes.sh" 'echo "L
 e="$(receipt "$d" clean)"
 grep -q '"selector_changed_by_this_diff": true' "$d/.claude/state/audit-receipt.json" && printf '%s' "$e" | grep -q '^note:' \
   && ok "a diff that edits the selector is flagged in the receipt and on stderr" || bad "self-mod flag true" "$e"
+
+d="$(scratch)"; touchf "$d/apps/api/app/A.php"; git -C "$d" add -A; git -C "$d" commit -qm c; touchf "$d/.claude/hooks/new-guard.sh" 'x'
+(cd "$d" && bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null 2>&1)
+grep -q '"selector_changed_by_this_diff": true' "$d/.claude/state/audit-receipt.json" \
+  && ok "an UNTRACKED new hook flags the receipt" || bad "self-mod untracked hook" "$(cat "$d/.claude/state/audit-receipt.json")"
 
 d="$(scratch)"; other="$(scratch)"; touchf "$d/apps/api/app/Models/A.php"
 (cd "$d" && git add -A && git commit -qm c && CLAUDE_PROJECT_DIR="$other" bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null 2>&1)

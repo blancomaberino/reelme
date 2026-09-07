@@ -50,11 +50,14 @@ if [ -z "$lanes" ] || printf '%s' "$lanes" | grep -q '^LANES: unknown'; then
   exit 2
 fi
 # Say so when the diff changes the very files that produce this receipt.
+# Everything that produces or wires this receipt: the skill, the hooks, and the
+# settings file that installs them. Untracked files count — the tree hash does.
 self_mod=""
-if ! git diff --quiet "$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo HEAD)" -- \
-     .claude/skills/audit-agency .claude/hooks/guard-pr-audit.py 2>/dev/null; then
+_mb="$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo HEAD)"
+if { git diff --name-only "$_mb" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } \
+     | grep -qE '^\.claude/(skills/audit-agency/|hooks/|settings\.json$)'; then
   self_mod=1
-  echo "note: this diff changes the selector or the audit hook — the receipt is produced by code the diff itself changed; the Code Reviewer seat is mandatory here." >&2
+  echo "note: this diff changes the audit skill, a hook, or .claude/settings.json — the receipt is produced by code the diff itself changed; the Code Reviewer seat is mandatory here." >&2
 fi
 if [ "$verdict" = docs-only ] && ! printf '%s' "$lanes" | grep -q '^LANES: none — documentation only'; then
   echo "refused: 'docs-only' but the diff selects seats:" >&2

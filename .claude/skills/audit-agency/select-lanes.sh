@@ -15,9 +15,10 @@
 # what the receipt certifies.
 #
 # Rules (owner decision, 2026-09-07):
-#   - Documentation is an ALLOWLIST, not a suffix: docs/ trees, README.md, and
-#     top-level *.md. A .md under apps/ or packages/ is never "just docs" — the
-#     API loads resources/prompts/*.md as an LLM system prompt.
+#   - Documentation is a .md file in an allowlisted place: docs/, apps/*/docs/,
+#     a README.md, or a top-level *.md. BOTH conditions — a .php under docs/ is
+#     a Filament page and a .tsx under app/docs/ is an Expo route, and a .md
+#     under resources/prompts/ is an LLM system prompt the API executes.
 #   - The guard — a .claude/, .github/ or scripts/ directory AT ANY DEPTH, any
 #     CLAUDE.md / AGENTS.md, .mcp.json — always seats Security + Architecture
 #     (+ Code Reviewer): a weakened hook or escape hatch would otherwise ship
@@ -66,7 +67,7 @@ only()  { ! printf '%s\n' "$FILES" | grep -vE "$1" | grep -q .; }
 count() { printf '%s\n' "$FILES" | grep -c .; }
 
 GUARD_RE='(^|/)(\.claude|\.github|scripts)/|(^|/)(CLAUDE|AGENTS)(\.local)?\.md$|(^|/)\.mcp\.json$'
-DOCS_RE='^(docs/|[^/]+\.md$)|/(docs/|README\.md$)'
+DOCS_RE='^([^/]+\.md|docs/.*\.md|apps/[^/]+/docs/.*\.md|(.*/)?README\.md)$'
 KNOWN_RE="$GUARD_RE|$DOCS_RE|"'^(apps/api|apps/mobile|packages/contracts)/|^(package\.json|package-lock\.json|\.gitignore)$'
 
 # --- docs only ---------------------------------------------------------------
@@ -118,13 +119,15 @@ hasi "$SENSITIVE_RE" && sensitive=1
 if [ -z "$sensitive" ]; then
   set +o pipefail  # grep -q SIGPIPEs its producer; under pipefail a big diff read as "no match"
   # Only DOCS paths are exempt — a committed resources/prompts/*.md is code.
-  printf '%s\n' "$FILES" | grep -vE "$DOCS_RE" | tr '\n' '\0' \
-    | xargs -0r git -c core.quotePath=off diff "$MB" -- 2>/dev/null | grep -E '^[+-]' | grep -qiE "$SENSITIVE_RE" && sensitive=1
+  # NUL-separated names and --literal-pathspecs: a file named `:!*` is pathspec
+  # magic that would otherwise empty the whole scan.
+  g diff --name-only -z "$MB" 2>/dev/null | grep -zvE "$DOCS_RE" \
+    | xargs -0r git --literal-pathspecs -c core.quotePath=off diff "$MB" -- 2>/dev/null | grep -E '^[+-]' | grep -qiE "$SENSITIVE_RE" && sensitive=1
   # Untracked files are not in `git diff`; read them directly. NUL-separated:
   # a quote or non-ASCII byte in a name made xargs drop the file, or abort the
   # whole scan, so a new file could carry a password check past this line.
   g ls-files -z --others --exclude-standard 2>/dev/null | grep -zvE "$DOCS_RE" | grep -zv '^\.claude/state/' \
-    | xargs -0r grep -liE "$SENSITIVE_RE" -- 2>/dev/null | grep -q . && sensitive=1
+    | xargs -0r grep -liE "$SENSITIVE_RE" -- 2>/dev/null | grep -q . && sensitive=1  # -- : a name starting with - is not an option
   set -o pipefail
 fi
 [ -n "$sensitive" ] && want "Application Security Engineer" "auth / money / secrets in the change — a second, code-level security reading"
