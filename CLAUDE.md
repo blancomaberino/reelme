@@ -58,6 +58,57 @@ Agent Teams is enabled on this machine (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
 
   > `/coderabbit`, its scripts, and the gate hook are a **local, user-level** setup under `~/.claude` — they cover Claude Code sessions on this machine, not CI or PRs opened from the GitHub UI. (There is currently no server-side CI gate; add GitHub branch protection + a required status check when the project gains collaborators.)
 
+### After the PR is open: the bot's findings are homework for the skill
+
+*(owner instruction — this is not a pre-PR step; it happens once GitHub's
+CodeRabbit has reviewed.)*
+
+The bot reviewing the same diff is the only independent measure of whether the
+local `/coderabbit` pass is still worth running. So when its comments land, read
+each finding against **"would `/coderabbit` have caught this?"** — and where the
+answer is no, fix the skill in the same session, before the context is gone. The
+skill's own "Learnings" section holds the mechanics (which file, which lane,
+which pattern) because it lives at `~/.claude`, outside this repo, and only that
+copy can be edited. Findings the local pass already caught need nothing; only the
+misses teach.
+
+Two things that decide whether you are reading real signal:
+
+- **Read the review BODIES, not just the threads.** A finding whose line falls
+  outside the diff range has no thread, no `isResolved` flag, and nothing for a
+  thread check to gate on.
+- **Confirm a review actually ran before reading silence as agreement.** A
+  rate-limited or skipped round leaves a green check and zero comments, which is
+  indistinguishable from clean. Merging does not postpone that review — the bot
+  will not review a closed PR — it forfeits it.
+
+**What this loop may edit, and what it may not.** State it as a property, not a
+file list, because a list is only ever right until the next script:
+
+> **Anything the gate reads to decide whether a check is REQUIRED — or whether
+> it passed — is owner-approved only, whatever it is called.**
+
+That covers `pr-gate.sh`, `approve.sh`, `record-panel.sh` and
+`check-review-threads.sh`, and everything they invoke or read:
+`parse-review-threads.py` decides what counts as an unresolved thread, and
+`select-agency-panel.sh` / `select-seo-panel.sh` decide whether a panel is
+required at all — `approve.sh` reads the selector's output to set
+`PANEL_REQUIRED`, and refuses `--panel-skipped` only when it is set. So dropping
+one term from that selector's `RISK_RE` makes `--panel-skipped="docs only"`
+acceptable on a payments diff, with an identical receipt and no artifact
+anywhere. Enumerating four filenames would have permitted exactly that, by
+omission.
+
+What the loop MAY edit is the skill's *judgement* — the prose and patterns the
+gate does not consult: `references/review-checklist.md` and `ground.sh`'s
+heuristics.
+
+Why the line is drawn at all: this loop takes text written by a third party on a
+public PR and turns it into an edit of the thing that gates this repo, in a
+directory outside it. The audit receipt hashes this repo's HEAD and worktree, so
+such an edit leaves no artifact anywhere and nothing can notice it. Findings
+about the gates themselves get raised with the owner, not applied.
+
 ## Task completion report
 
 **Whenever you finish working on a task, end your reply with a short completion summary.** This is mandatory — it's how the owner knows what shipped and how to verify it by hand. Give it every time you wrap a task (whether the work merged, is awaiting merge, or is a WIP hand-off), not only at PR time. Format:
@@ -77,8 +128,12 @@ Pick whichever surface(s) actually exercise the change — don't invent an admin
   - `assertTrue(true)` / `expect(true)->toBeTrue()` and other no-op tests.
   - "Asserts 200 but never checks the body / side effects."
   - Snapshot-only tests, or tests that just mirror the implementation without exercising behavior.
-  - Tests that pass whether or not the feature works.
-- **Coverage is required.** Run coverage (`composer test -- --coverage` / Pest `--coverage`; mobile: `jest --coverage`) and do not regress it. New/changed code paths must be covered; call out any deliberate gap in the PR and why.
+  - Tests that pass whether or not the feature works. **A single fixture cannot
+    tell "it filtered" from "it returned everything"** — any test of a filter
+    needs a row that must be EXCLUDED, and an assertion that it was. *(observed —
+    T-158, where the 200 branches of a new test proved only that the endpoint
+    answered.)*
+- **Coverage is required.** Run coverage (`composer test:coverage`; mobile: `jest --coverage`) and do not regress it. New/changed code paths must be covered; call out any deliberate gap in the PR and why.
 - **E2E is required for user-facing flows.**
   - API: full-pipeline / end-to-end feature tests driven by fakes+fixtures (e.g. share → published, redeem → verify → ledger).
   - Mobile: Maestro flows (see task T-053).
@@ -124,6 +179,16 @@ So, before any UI task is called done:
    - **Navigate:** `~/.maestro/bin/maestro test` with `launchApp` + `tapOn`. A plain launch carries no URL, so nothing is left behind.
    - **`openurl` is only acceptable** to reach a screen that genuinely has no in-app path (deep-link handling itself). When you must, finish with `terminate` + plain `launch` — a URL-less launch is what actually clears it (verified: Cmd+R afterwards lands on home).
    - Other residue to restore: `simctl location set` persists until overwritten (**`clear` is a no-op**) — put it back to Montevideo `-34.9011,-56.1645`; and flying the map persists the viewport.
+   - **To test a DENIED permission, use Maestro, not `simctl privacy`.** *(observed — T-158)*
+     `xcrun simctl privacy booted revoke location <bundle>` does **not** reach the
+     app: the screen came up with the ordinary granted-state view, so a flow built
+     on it passes while asserting nothing. Set it at launch instead —
+     `launchApp: { permissions: { location: never } }` (the values are
+     `always|inuse|never`; `deny` is rejected). Put the restoring `launchApp`
+     (`inuse`) **in the same flow** so it cannot be forgotten in a separate file
+     — but Maestro has no `finally`, so a flow that dies at the denied-state
+     assertion never reaches it. Denied is sticky state like the others here:
+     check where the app comes up afterwards, don't assume the restore ran.
    - **Verify the restore, don't assert it.** Send Cmd+R yourself and screenshot where it lands. Twice this was reported "fixed" without that check, and twice it wasn't.
 
 8. **Never describe a path you haven't walked.** The [task completion report](#task-completion-report) click-path is a claim about the running app. Walk it on the device before writing it down. If a state couldn't be reached (no fix, no seed data, a control that won't take a synthetic tap), say so explicitly — an unverified step reported as verified is worse than an admitted gap.
@@ -146,6 +211,21 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
 
 - **Local PHP is 8.2 — too old for Laravel 13.** Run all API tooling inside Docker (PHP 8.4+, Laravel Sail). The API is exposed on **`:8080`** locally (MAMP holds `:80`).
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
+- **The API suite takes ~8 minutes, and three ways of running it lied about the result.** *(observed — T-158, and the audit of the commit that wrote this bullet)* Mechanisms, measurements and the reasoning behind every number are in [`apps/api/README.md`](apps/api/README.md#running-the-suite-without-being-lied-to) — kept there, once, so a correction is one edit. The rules:
+  - **Exit 124, or a `ProcessTimedOutException`, means the suite was STOPPED —
+    not that it failed. Exit 137 means SIGKILL**, which is a time bound
+    escalating *or* a container OOM kill: check the output and memory before
+    blaming the clock. Never pipe the run through `tail`/`grep` to find out: the
+    pipeline's exit status is the pipe's, not composer's.
+  - **Pass Pest flags after `--`** (`composer test -- --filter=X`). That works
+    only because the `test` script guards its first COMMAND entry (`config:clear`
+    — entry 0 is the `disableProcessTimeout` static call) with `@no_additional_args`; without it every flag also hits `artisan config:clear`,
+    which exits 1 before Pest starts. That was true, loudly and unread, until
+    2026-09-07. For coverage use `composer test:coverage` — same guard, and a
+    time bound sized for an instrumented run rather than for CI.
+  - **Never run two suites at once.** Both `migrate:fresh` the shared `testing`
+    database and the DDL interleaves, surfacing as `SQLSTATE[42P01]` or `42P07`
+    in an unrelated test. Re-run the named test alone before believing it.
 - The **build plan and task queue live in `~/Sites/plans/reelmap`** (`tasks/tasks.json` is the source of truth); application code lives here. Follow the plan; record deviations as ADRs in the plan, never by editing the spec to match code.
 
 ### Automation in `.claude/` (checked in — shared, not personal)

@@ -9,12 +9,124 @@ Laravel 13 REST API (scaffolded in T-002). Sanctum auth, Horizon queues, Postgre
 ## Quality gates
 
 ```bash
-composer lint    # pint --test  (code style, Laravel preset)
-composer stan    # phpstan analyse (Larastan, level 6)
-composer test    # pest
+composer lint          # pint --test  (code style, Laravel preset)
+composer stan          # phpstan analyse (Larastan, level 6)
+composer test          # pest
+composer test:coverage # pest --coverage (its own, roomier time bound)
 ```
 
-All three must be green before committing. CI runs the same three (T-006).
+`lint`, `stan` and `test` must be green before committing; CI runs those three
+(T-006). `test:coverage` is not part of CI (`ci.yml` sets `coverage: none`) but
+CLAUDE.md requires it for changed code paths — run it locally.
+
+### Running the suite without being lied to
+
+The Pest suite takes ~8 minutes (2160 tests; 482s and 493s on two runs of this branch). Four separate
+mechanisms can make a run report something other than what happened. Three of
+them did (§1, §3, §4); §2 is a hazard §1's own fix introduced and then bounded.
+Each is closed here, and each is written down because the fix is invisible from the
+outside.
+
+**1. Composer used to kill the suite at 300s.** `process-timeout` defaults to
+300 seconds, so `composer test` died mid-run with a `ProcessTimedOutException` —
+which reads like a failure and is not one. The `test` script now opens with
+`Composer\Config::disableProcessTimeout`, the line the `dev` script has always
+carried one entry above.
+
+*Why per-script and not `config.process-timeout`.* That config key applies to
+every composer invocation in the package, including the `composer install` that
+`scripts/deploy.sh` runs inside the maintenance window — whose
+`post-autoload-dump` boots Laravel twice (`package:discover`, `filament:upgrade`).
+A global bound generous enough for the suite would let a boot blocked on an
+unreachable Redis sit there for the rest of it: `deploy.sh`'s `EXIT` trap fires
+on exit, and a hung process does not exit. Uncapping the one script leaves the
+deploy at the 300s default, where `lint` (1.1s) and `stan` (21s cold) have margin
+to spare.
+
+*What `process-timeout` actually bounds:* composer's spawned children — VCS
+clones and script commands — and nothing else. HTTP downloads are bounded
+separately by curl (`CURLOPT_CONNECTTIMEOUT` 10s, `CURLOPT_TIMEOUT` ≥300s), so a
+stalled download was never the case this setting was about.
+
+**2. Uncapping removed the only bound there was.** The `testing` database leaves
+`lock_timeout` at `0` — nothing in this repo sets it; that is Postgres's default,
+so grepping for it finds only this sentence — meaning a migration waiting on a
+lock another suite holds waits forever — silently, with no output and no exit. So the
+`test` script wraps Pest in `timeout -k 30s 700` (GNU `timeout`; it runs wherever
+`composer test` does — the Sail container and CI's `ubuntu-latest` both have it,
+and macOS ships none but cannot run this suite anyway on PHP 8.2).
+
+*Why in the script and not in `.claude/skills/gates/run-gates.sh`.* Three things
+invoke `composer test` — that script, `.github/workflows/ci.yml`, and the bare
+`docker compose exec` the pre-PR checklist prescribes. A bound added to the one
+being edited is the failure CLAUDE.md's "a new rule needs every writer" names:
+it passes its own test and leaves the other two unbounded. In the script it
+covers all three, and sits beside the `disableProcessTimeout` that removed it.
+
+*Why 700.* CI's `api` job is `timeout-minutes: 15` covering checkout, `setup-php`,
+an `apt-get install ffmpeg`, `composer install`, lint, stan and migrate as well,
+so the suite's real budget there is under 750s. `run-gates.sh` promises that a
+green run locally means a green `api` job in CI; a local bound above CI's own
+would break that promise quietly. Measured suite: 482–493s, so 700 leaves ~1.4×. If a run ever gets near it,
+the answer is a faster suite, not a bigger number — CI's ceiling does not move.
+
+*Coverage gets its own bound.* Instrumented, the suite runs 552s against 493s
+plain — comfortably inside 700, but 700 exists to match CI's ceiling, and CI runs
+`coverage: none` (`ci.yml:150`), so coverage has no business being sized by it.
+`composer test:coverage` carries `timeout -k 30s 1200` — the same ~2× headroom
+over its own measurement that 700 gives the plain run, anchored to nothing but
+that, since no CI job bounds it. If a coverage run ever approaches 1200s the
+answer is the same as for the plain suite: make it faster, do not raise the
+number. `composer test -- --coverage` still works and still gets the tighter
+700s, which is fine today and would be the first thing to break if the suite
+grew — prefer the dedicated script.
+
+*Both entries are bounded, for different reasons.* `config:clear` gets
+`timeout -k 5s 60`. That is not sized to the work — it measures 0.5–0.75s cold
+across runs, and opens no database or Redis connection, so nothing in it is
+expected to block. It is a backstop: `disableProcessTimeout` is process-wide, so
+adding it for Pest silently removed this entry's old 300s ceiling, and an entry
+that boots the framework with NO ceiling is the shape that hangs forever with no
+output. 60s is ~100× the measured cost, so it cannot fire on slowness — only on
+a wedge.
+
+Exit **124** from either script is a bound firing, not a red suite. Exit **137**
+means a signal killed it: usually `-k` escalating to SIGKILL because the process
+ignored the SIGTERM (a `--parallel` worker, or anything with a debugger
+attached) — but a container OOM-kill is also 137, so check memory before
+assuming the clock. Which bound fired is in the output above it: a `config:clear`
+timeout produces no Pest output at all, which is the tell that no test ran. `run-gates.sh` names both
+codes in its summary; mutation-tested in
+`.claude/skills/gates/tests/gate-harness.test.sh`.
+
+*One thing not to "fix".* Neither entry carries composer's `@php` prefix any
+more — an `@php` entry cannot be wrapped in anything, so bounding them meant
+dropping it from both.
+The cost is that `php` and `timeout` resolve from PATH rather than from
+composer's own detection — correct in the container (PATH gives `/usr/bin/php`, the 8.5 build composer
+itself reports as `PHP_BINARY`) and in CI (`setup-php` owns PATH), and irrelevant on the macOS host, where PATH would find
+MAMP's PHP 8.2 and this suite needs 8.4+ anyway. Restoring `@php` would silently
+drop the bound.
+
+**3. `composer test -- --coverage` ran nothing at all until 2026-09-07.**
+Composer appends `--` arguments to *every* command in a multi-entry script, so
+`--coverage` landed on the `artisan config:clear` entry first; that exits 1 with
+`The "--coverage" option does not exist`, and composer aborts the script before
+Pest starts. Every flag was affected — `--filter`, `--parallel`. The
+`config:clear` entry now carries `@no_additional_args` (composer ≥2.8 — the feature landed 2024-09-18, after 2.7.9 and before 2.8.0), so flags
+reach Pest and only Pest. The entry itself must stay: `phpunit.xml` sets
+`DB_DATABASE=testing` through `<env>`, and a stale `bootstrap/cache/config.php`
+would make `RefreshDatabase` run `migrate:fresh` against the **dev** database.
+
+**4. Never run two suites at once.** Both call `migrate:fresh` against the same
+`testing` database (`tests/Pest.php` applies `RefreshDatabase` to `Feature` and
+`Load`), and the drop/create sequences interleave — surfacing as
+`SQLSTATE[42P01]` (undefined table) or `42P07` (duplicate table) in a test that
+has nothing to do with either run — those two reproduced here. `40P01`
+(deadlock_detected) was recorded earlier and is also reachable, since concurrent
+`CASCADE` drops can form a real wait cycle; if you hit any of the three, it is
+this, not a regression. Distinct from the lock-wait hang in §2: there nothing
+errors at all, because `lock_timeout` is 0 and the waiter simply never returns.
 
 ## Local environment
 

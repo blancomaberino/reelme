@@ -65,6 +65,17 @@ Give every one of them the same frame:
 - **A clean dimension gets one line, not padding.** Without this they invent
   work to look useful.
 - Cap the reply (~600–700 words) and forbid file dumps.
+- **Tell every seat to check each new COMMENT against every file it rests on** —
+  not only the one it cites. A claim about how other code behaves usually
+  names one file and depends on several; checking the cited line and stopping
+  is how a false premise survives its own review. A
+  comment that asserts how other code behaves is the one claim no gate can test,
+  and this project keeps producing them: T-168 shipped one whose premise was
+  false, and T-158 produced five in a single branch — including one crediting
+  `scripts/deploy.sh` with rollback protection it does not have, and one calling
+  the map's 90°-span bbox a bound comparable to a 50km radius. They are cheap to
+  catch (open the named file) and, once wrong, they are what stops the next
+  reader from looking.
 
 Adjust the lanes to the diff: a backend-only branch does not need the UI seat,
 and a diff touching payments or auth deserves a seat this table does not list.
@@ -76,7 +87,8 @@ security hole is usually an absence, and an architecture problem is usually
 somewhere the diff does not touch. Fitting lanes to the diff means dropping
 *mobile* from a backend branch, never dropping these two because the change
 "looks small". On a mobile-only diff the architecture seat reads the mobile
-architecture; on a docs-only diff, say so in one line and move on.
+architecture; on a docs-only diff the seat is still FILLED — it may report in
+one line, but it is not skipped. Under `.claude/`, docs are the guard.
 
 ## After they report
 
@@ -87,12 +99,31 @@ architecture; on a docs-only diff, say so in one line and move on.
    that is a product decision rather than a defect (a deliberate removal, a
    design tradeoff) is the owner's call — surface it, do not quietly implement
    your own answer.
-3. **Prove each fix bites.** Mutate the fix, run the test, confirm it fails,
+3. **Batch the fixes into ONE commit before re-reviewing.** Both receipts are
+   keyed to HEAD and die on the next commit — deliberately, since a fix is
+   exactly the code nobody has reviewed. So every fix commit costs a full round:
+   T-158 ran five. Collect every seat's findings, apply them together, re-seat
+   the panel once. Narrow the lanes for a later round only when that round
+   changed neither code nor any comment asserting how other code behaves — the
+   defect above is prose, and it lives in whichever lane owns the code it lies
+   about. **Narrowing never reaches Security or Architecture**, prose-only
+   rounds included: under `.claude/` the prose IS the guard, so "no code
+   changed" is exactly the round in which a weakened escape hatch would ship
+   looking audited. The receipt records no seats and cannot notice. Otherwise the seats that code belongs to stay, tests included: a fix
+   is the least-reviewed thing on the branch, and no receipt records which seats
+   you filled.
+
+   (The two receipts: this skill's `record-receipt.sh`, enforced by
+   `.claude/hooks/guard-pr-audit.py`; and `/coderabbit`'s, written by
+   `~/.claude/skills/coderabbit/scripts/approve.sh` and enforced by `pr-gate.sh`
+   beside it. Those last two are user-level — grepping this repo for them finds
+   nothing.)
+4. **Prove each fix bites.** Mutate the fix, run the test, confirm it fails,
    restore. A guard nobody has watched fail is worth as little as the bug it was
    written to catch. **Restore with absolute paths** — a `cd` inside a multi-step
    script has already left mutants in the tree here.
-4. **Re-run the gates** (`.claude/skills/gates/run-gates.sh`); the fixes are code.
-5. **Commit**, then record the receipt — in that order, since it covers the tree:
+5. **Re-run the gates** (`.claude/skills/gates/run-gates.sh`); the fixes are code.
+6. **Commit**, then record the receipt — in that order, since it covers the tree:
 
 ```bash
 .claude/skills/audit-agency/record-receipt.sh findings-fixed "3 🟡: contract guard, hours reporting path, review cap"
