@@ -24,9 +24,8 @@ python3 .claude/skills/task/task.py status        # counts by phase
 
 ## Picking a task
 
-Run `next`. It applies the ordering rule recorded in `tasks.json`: **ARCH is the
-current priority phase**, worked before the remaining M1/M3/M4/M5 backlog, honoring
-`depends_on` within it. If something is already `in_progress`, finish or explicitly
+Run `next`. It applies the ordering rule recorded in `tasks.json`: the priority phase
+named in `tasks.json`, honoring `depends_on` within it. If something is already `in_progress`, finish or explicitly
 park it before starting anything new.
 
 Confirm the choice with the user unless they already named a task.
@@ -37,13 +36,18 @@ Confirm the choice with the user unless they already named a task.
    the branch **and** the PR title. Pick the prefix by kind: `feat/`, `fix/`, `chore/`.
 2. **Read the brief** (`show T-###`) and treat its acceptance criteria as the
    definition of done. For "how does X work" questions prefer `graphify query`.
-3. **UI work → `/frontend-design`.** Mobile screens, Filament customizations, web UI.
-4. **Tests ship with the change** — happy path *and* failure/edge paths, coverage not
-   regressed, E2E for user-facing flows. No placeholder tests.
-5. **`/gates`** as you go; **`/coderabbit`** before the PR (it runs the gates,
-   `/simplify`, `/security-review`, and the line-by-line review, and records the
-   receipt the PR-gate hook requires).
-6. **Open the PR** with summary, the `T-###` id, and test evidence. Never push to `main`.
+3. **Write the design brief** `start` printed into `.claude/state/HANDOFF.md`
+   before any code (CLAUDE.md §3). Run the two-agent plan review when the task
+   touches auth, money, a migration, a public contract, or ≥ 3 layers.
+4. **UI work → `/frontend-design`.** Mobile screens, Filament customizations, web UI.
+5. **Tests ship with the change** — happy path *and* failure/edge paths, an
+   excluded-row case for any filter, coverage not regressed, E2E for user flows.
+6. **Iterate narrowly** (`composer test -- --filter=X`, `jest <path>`); then
+   `/simplify`; then the full gates **once** on the final tree.
+7. **`/coderabbit`** — one concurrent round with the `select-lanes.sh` seats and
+   `/security-review`; batch findings into one fix commit; re-review narrowly;
+   record both receipts. Round limit: two.
+8. **Open the PR** with summary, the `T-###` id, and test evidence. Never push to `main`.
 
 If the task ships only partly, `note` what landed and what remains, and leave the
 status `in_progress` — don't mark it done.

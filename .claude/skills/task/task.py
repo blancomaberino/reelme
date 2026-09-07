@@ -112,6 +112,27 @@ def cmd_show(doc: dict, task_id: str) -> None:
         print(p.read_text())
 
 
+BRIEF = """
+DESIGN BRIEF — write it into .claude/state/HANDOFF.md BEFORE the first line of code
+(CLAUDE.md §3). Every line answered or marked n/a. This is the review, run early,
+while the answers are free.
+
+  ## {id} design brief
+  - Entry point: which existing screen/route/command reaches this? which test presses it?
+  - Sibling: what existing map/list/form/sheet/query does this extend? what gets extracted?
+  - State & writers: state given a new consequence → EVERY place that writes it
+  - Contract ends: Resource ↔ JSON Schema ↔ mobile TS — which change together?
+  - Data: migration? index? backfill? rollback? what does a hostile input reach (DB/logs/Sentry)?
+  - Authz: who may call this, and where is that checked?
+  - Tests: the failure cases + the EXCLUDED-row case, named now
+  - Native: new module / plugin? then prebuild --clean + rebuild is part of the task
+  - Out of scope: what you will NOT do
+
+  Plan review (Software Architect + Senior SecOps Engineer, one message, over the
+  brief) if this touches auth, money, a migration, a public contract, or ≥3 layers.
+"""
+
+
 def cmd_start(doc: dict, task_id: str) -> None:
     t = find(doc, task_id)
     done = {x["id"] for x in doc["tasks"] if x["status"] == "done"}
@@ -128,6 +149,7 @@ def cmd_start(doc: dict, task_id: str) -> None:
     print(f"\nPut {t['id']} in the branch name AND the PR title. Acceptance criteria:")
     for a in t["acceptance"]:
         print(f"  - {a}")
+    print(BRIEF.format(id=t["id"]))
 
 
 def cmd_done(doc: dict, task_id: str) -> None:

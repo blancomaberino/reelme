@@ -32,6 +32,19 @@ That is the whole skill. The script mirrors the `changes` path-filter job in
 
   ⚠️ **Running the gates on a branch runs that branch's shell, with your privileges — and not only in this area.** `run-gates.sh` is itself a `.claude/*` file that arrives in the PR you are reviewing, it sources `.claude/lib/use-node.sh` before any area is selected, and each tooling test execs the hook it tests. This repo is public, so **read `.claude/**` in the diff before running the gates on a branch you did not write.** There is deliberately no in-script guard: one was written, defeated three ways (untracked files, a PR touching only a hook, and the unchecked runner), and removed rather than left as decoration — a check the same diff can delete is worse than the honest warning, because it stops people looking.
 
+## When to run the full thing
+
+The API suite takes ~8 minutes. Run it **once**, on the final tree, after
+`/simplify` — not after every edit and not inside every review round. While
+building, run only what you touched:
+
+```bash
+docker compose -f apps/api/compose.yaml exec -T laravel.test composer test -- --filter=PlaceController
+npm test -w apps/mobile -- --ci --forceExit apps/mobile/src/lib/__tests__/tags.test.ts
+```
+
+`/coderabbit` reuses a green run on an unchanged tree instead of repeating it.
+
 ## Reading the result
 
 Every selected gate runs even after an earlier one fails, so one invocation gives

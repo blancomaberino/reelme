@@ -18,21 +18,34 @@ cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
 
 verdict=${1:-}
 if [ -z "$verdict" ]; then
-  echo "usage: record-receipt.sh <clean|findings-fixed> [note]" >&2
-  echo "  Record ONLY after every 🔴 and 🟡 is fixed or explicitly waived by the owner." >&2
+  echo "usage: record-receipt.sh <clean|findings-fixed|docs-only> [note]" >&2
+  echo "  clean / findings-fixed: ONLY after every 🔴 and 🟡 is fixed or explicitly waived by the owner." >&2
+  echo "  docs-only: ONLY when select-lanes.sh reports 'LANES: none' — this script checks." >&2
   exit 2
 fi
 case "$verdict" in
-  clean | findings-fixed) ;;
+  clean | findings-fixed | docs-only) ;;
   *)
-    echo "unknown verdict '$verdict' (expected: clean | findings-fixed)" >&2
+    echo "unknown verdict '$verdict' (expected: clean | findings-fixed | docs-only)" >&2
     exit 2
     ;;
 esac
 
+# The lanes the diff SELECTS are recorded beside the verdict — so a receipt
+# says what was required, and a `docs-only` receipt on a code diff is refused
+# rather than written. The hook still checks only HEAD + tree; this is the one
+# place the lane decision leaves an artifact.
+lanes="$(.claude/skills/audit-agency/select-lanes.sh 2>/dev/null | sed -n '/^LANES/,/^$/p' | sed '/^$/d')"
+if [ "$verdict" = docs-only ] && ! printf '%s' "$lanes" | grep -q '^LANES: none'; then
+  echo "refused: 'docs-only' but the diff selects seats:" >&2
+  printf '%s
+' "$lanes" >&2
+  exit 2
+fi
+
 mkdir -p .claude/state
 
-VERDICT="$verdict" NOTE="${2:-}" python3 - <<'PY'
+VERDICT="$verdict" NOTE="${2:-}" LANES="$lanes" python3 - <<'PY'
 import importlib.util, json, os, pathlib, subprocess
 
 spec = importlib.util.spec_from_file_location("guard", ".claude/hooks/guard-pr-audit.py")
@@ -58,6 +71,11 @@ pathlib.Path(".claude/state/audit-receipt.json").write_text(
             "branch": branch,
             "verdict": os.environ["VERDICT"],
             "note": os.environ["NOTE"],
+            "required_lanes": [
+                l.strip()[2:].split("—")[0].strip()
+                for l in os.environ["LANES"].splitlines()
+                if l.strip().startswith("- ")
+            ],
             "recorded_at": subprocess.run(
                 ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"], capture_output=True, text=True
             ).stdout.strip(),
