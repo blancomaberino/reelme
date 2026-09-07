@@ -82,16 +82,32 @@ Two things that decide whether you are reading real signal:
   indistinguishable from clean. Merging does not postpone that review — the bot
   will not review a closed PR — it forfeits it.
 
-**What this loop may edit, and what it may not.** It updates the skill's
-*judgement*: `references/review-checklist.md`, the specialist/lane selection, and
-`ground.sh`'s patterns. It may **never** touch the enforcement scripts —
-`pr-gate.sh`, `approve.sh`, `record-panel.sh`, `check-review-threads.sh` — and a
-change to those is **owner-approved only**. The reason is the shape of the loop:
-it takes text written by a third party on a public PR and turns it into an edit
-of the thing that gates this repo, in a directory outside it. The audit receipt
-hashes this repo's HEAD and worktree, so such an edit leaves no artifact
-anywhere and nothing can notice it. Findings about the gates themselves get
-raised with the owner, not applied.
+**What this loop may edit, and what it may not.** State it as a property, not a
+file list, because a list is only ever right until the next script:
+
+> **Anything the gate reads to decide whether a check is REQUIRED — or whether
+> it passed — is owner-approved only, whatever it is called.**
+
+That covers `pr-gate.sh`, `approve.sh`, `record-panel.sh` and
+`check-review-threads.sh`, and everything they invoke or read:
+`parse-review-threads.py` decides what counts as an unresolved thread, and
+`select-agency-panel.sh` / `select-seo-panel.sh` decide whether a panel is
+required at all — `approve.sh` reads the selector's output to set
+`PANEL_REQUIRED`, and refuses `--panel-skipped` only when it is set. So dropping
+one term from that selector's `RISK_RE` makes `--panel-skipped="docs only"`
+acceptable on a payments diff, with an identical receipt and no artifact
+anywhere. Enumerating four filenames would have permitted exactly that, by
+omission.
+
+What the loop MAY edit is the skill's *judgement* — the prose and patterns the
+gate does not consult: `references/review-checklist.md` and `ground.sh`'s
+heuristics.
+
+Why the line is drawn at all: this loop takes text written by a third party on a
+public PR and turns it into an edit of the thing that gates this repo, in a
+directory outside it. The audit receipt hashes this repo's HEAD and worktree, so
+such an edit leaves no artifact anywhere and nothing can notice it. Findings
+about the gates themselves get raised with the owner, not applied.
 
 ## Task completion report
 

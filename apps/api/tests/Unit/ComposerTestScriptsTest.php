@@ -60,7 +60,7 @@ it('keeps both test scripts bounded, guarded, and in step', function () {
     // entries. A false PASS in the test written to stop false passes. (An entry
     // inserted before config:clear cannot do it — the identity pin above
     // catches that one.)
-    $pestBound = function (array $script, string $name): int {
+    $pestEntry = function (array $script, string $name): string {
         $entries = array_values(array_filter(
             $script,
             fn ($entry) => is_string($entry) && str_contains($entry, 'vendor/bin/pest'),
@@ -70,10 +70,17 @@ it('keeps both test scripts bounded, guarded, and in step', function () {
         expect($entries[0])->toMatch('/^timeout -k \d+s \d+ /',
             "`$name`'s Pest entry must carry its own time bound");
 
-        preg_match('/^timeout -k \d+s (\d+) /', $entries[0], $m);
+        return $entries[0];
+    };
+
+    $bound = function (string $entry): int {
+        preg_match('/^timeout -k \d+s (\d+) /', $entry, $m);
 
         return (int) $m[1];
     };
+
+    $plainEntry = $pestEntry($test, 'test');
+    $coverageEntry = $pestEntry($coverage, 'test:coverage');
 
     // The suite bound must stay under what CI would actually allow, which is
     // NOT the job's 15 minutes: `ci.yml`'s api job spends ~130s on checkout,
@@ -83,19 +90,13 @@ it('keeps both test scripts bounded, guarded, and in step', function () {
     // would pass here and be killed by GitHub — which emits no 124, no 137 and
     // no summary line, i.e. the one kill shape this project cannot read. 750
     // keeps a margin against that overhead drifting.
-    $plain = $pestBound($test, 'test');
-    $instrumented = $pestBound($coverage, 'test:coverage');
+    expect($bound($plainEntry))->toBeLessThanOrEqual(750)
+        ->and($bound($coverageEntry))->toBeGreaterThan($bound($plainEntry));
 
-    expect($plain)->toBeLessThanOrEqual(750)
-        ->and($instrumented)->toBeGreaterThan($plain);
-
-    // Coverage must actually measure coverage. Without this the flag can be
-    // dropped and every other assertion here still passes — the script would
-    // simply be a slower duplicate of `test`, and CLAUDE.md mandates it.
-    $coverageEntry = array_values(array_filter(
-        $coverage,
-        fn ($entry) => is_string($entry) && str_contains($entry, 'vendor/bin/pest'),
-    ))[0];
-    expect($coverageEntry)->toContain('--coverage');
-    expect($test[count($test) - 1])->not->toContain('--coverage');
+    // Coverage must actually measure coverage, and the plain script must not pay
+    // for it. Both halves go through the content lookup above — pinning either
+    // to an index would retarget the moment an entry is appended, which is the
+    // false PASS this file exists to prevent.
+    expect($coverageEntry)->toContain('--coverage')
+        ->and($plainEntry)->not->toContain('--coverage');
 });
