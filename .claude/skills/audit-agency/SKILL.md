@@ -95,18 +95,20 @@ architecture; on a docs-only diff, say so in one line and move on.
    that is a product decision rather than a defect (a deliberate removal, a
    design tradeoff) is the owner's call — surface it, do not quietly implement
    your own answer.
-3. **Batch the fixes into ONE commit before re-reviewing.** Both gates hash
-   HEAD: this skill's `record-receipt.sh` (enforced by
-   `.claude/hooks/guard-pr-audit.py`, which blocks the push and the PR-mutating
-   `gh` commands) and `/coderabbit`'s own receipt, written by the user-level
+3. **Batch the fixes into ONE commit before re-reviewing.** Both receipts are
+   keyed to HEAD and die on the next commit — deliberately, since a fix is
+   exactly the code nobody has reviewed. So every fix commit costs a full round:
+   T-158 ran five. Collect every seat's findings, apply them together, re-seat
+   the panel once. Narrow the lanes for a later round only when that round
+   changed nothing but prose — a round that touched code, tests included, gets
+   the seats that code belongs to, since a fix is the least-reviewed thing on
+   the branch and no receipt records which seats you filled.
+
+   (The two receipts: this skill's `record-receipt.sh`, enforced by
+   `.claude/hooks/guard-pr-audit.py`; and `/coderabbit`'s, written by
    `~/.claude/skills/coderabbit/scripts/approve.sh` and enforced by `pr-gate.sh`
-   beside it — neither script lives in this repo, so grepping for them here
-   finds nothing. Both die on the next commit, deliberately: a fix is exactly
-   the code nobody has reviewed. So each fix commit costs another round — T-158
-   ran five. Collect every seat's findings, apply them together, then re-seat
-   the panel once. Rounds should converge; if round N finds only comment
-   wording, fit the lanes down to Security, Architecture and whichever seat owns
-   the change.
+   beside it. Those last two are user-level — grepping this repo for them finds
+   nothing.)
 4. **Prove each fix bites.** Mutate the fix, run the test, confirm it fails,
    restore. A guard nobody has watched fail is worth as little as the bug it was
    written to catch. **Restore with absolute paths** — a `cd` inside a multi-step

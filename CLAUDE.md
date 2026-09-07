@@ -133,9 +133,11 @@ So, before any UI task is called done:
      app: the screen came up with the ordinary granted-state view, so a flow built
      on it passes while asserting nothing. Set it at launch instead —
      `launchApp: { permissions: { location: never } }` (the values are
-     `always|inuse|never`; `deny` is rejected) — and restore with a second
-     `launchApp` granting `inuse` **inside the same flow**, so a run that dies
-     half-way does not leave the simulator denied for every later flow.
+     `always|inuse|never`; `deny` is rejected). Put the restoring `launchApp`
+     (`inuse`) **in the same flow** so it cannot be forgotten in a separate file
+     — but Maestro has no `finally`, so a flow that dies at the denied-state
+     assertion never reaches it. Denied is sticky state like the others here:
+     check where the app comes up afterwards, don't assume the restore ran.
    - **Verify the restore, don't assert it.** Send Cmd+R yourself and screenshot where it lands. Twice this was reported "fixed" without that check, and twice it wasn't.
 
 8. **Never describe a path you haven't walked.** The [task completion report](#task-completion-report) click-path is a claim about the running app. Walk it on the device before writing it down. If a state couldn't be reached (no fix, no seed data, a control that won't take a synthetic tap), say so explicitly — an unverified step reported as verified is worse than an admitted gap.
@@ -160,18 +162,25 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
 - **The API suite takes ~8 minutes, and two ways of running it lie about the result.** *(observed — T-158)*
   - Composer's default `process-timeout` is 300s, so `composer test` used to die
-    mid-suite with a `ProcessTimedOutException`. `apps/api/composer.json` now sets
-    `"process-timeout": 1800`. If you ever see "exceeded the timeout of 300
-    seconds", that setting is gone — the suite did not fail, it was killed. Piping
-    the run through `tail`/`grep` hides it further, because the pipeline's exit
-    status is the pipe's, not composer's.
-    - **1800, not 0.** The setting is global to every composer script, and one of
-      them is `composer install` in `scripts/deploy.sh`, which runs inside the
-      maintenance window. With no timeout, an install that hangs on a stalled
-      connection never returns, so the script never exits, so the `EXIT` trap
-      never lifts maintenance mode — the site stays down until a human notices.
-      A finite bound keeps that a 30-minute worst case. CI is separately capped
-      by `timeout-minutes: 15` on the `api` job.
+    mid-suite with a `ProcessTimedOutException` — the suite did not fail, it was
+    **killed**. The `test` script in `apps/api/composer.json` now opens with
+    `Composer\Config::disableProcessTimeout`, the line the `dev` script has always
+    carried; if you see "exceeded the timeout of 300 seconds", that line is gone.
+    Piping the run through `tail`/`grep` hides the death further, because the
+    pipeline's exit status is the pipe's, not composer's.
+    - **Per-script, not `config.process-timeout`.** The config key applies to
+      every composer invocation in the package — including `composer install` at
+      `scripts/deploy.sh:148`, which runs inside the maintenance window and whose
+      `post-autoload-dump` boots Laravel twice (`package:discover`,
+      `filament:upgrade`). Raising the global bound to keep the suite alive would
+      also let a boot blocking on an unreachable Redis or database sit there
+      25 minutes longer, silently: `deploy.sh`'s `EXIT` trap fires on exit, and a
+      hung process does not exit. Uncapping the one script leaves that path at
+      300s. (CI is separately capped by `timeout-minutes: 15` on the `api` job.)
+    - It bounds composer's **spawned children** — VCS clones and script commands
+      — and nothing else. HTTP downloads are bounded independently by curl
+      (`CURLOPT_CONNECTTIMEOUT` 10s, `CURLOPT_TIMEOUT` ≥300s), so a stalled
+      download is not the case this setting was ever about.
   - **Run it serially.** Two suites against the shared `testing` database deadlock
     each other on migration DDL (`SQLSTATE[40P01]`), which reads as a real failure
     in an unrelated test. Re-run the named test alone before believing it.
