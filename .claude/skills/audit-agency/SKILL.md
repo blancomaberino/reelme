@@ -102,7 +102,10 @@ architecture; on a docs-only diff, say so in one line and move on.
    the panel once. Narrow the lanes for a later round only when that round
    changed neither code nor any comment asserting how other code behaves — the
    defect above is prose, and it lives in whichever lane owns the code it lies
-   about. Otherwise the seats that code belongs to stay, tests included: a fix
+   about. **Narrowing never reaches Security or Architecture**, prose-only
+   rounds included: under `.claude/` the prose IS the guard, so "no code
+   changed" is exactly the round in which a weakened escape hatch would ship
+   looking audited. The receipt records no seats and cannot notice. Otherwise the seats that code belongs to stay, tests included: a fix
    is the least-reviewed thing on the branch, and no receipt records which seats
    you filled.
 

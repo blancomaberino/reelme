@@ -21,13 +21,14 @@ That is the whole skill. The script mirrors the `changes` path-filter job in
 | --- | --- |
 | `run-gates.sh` | gates for areas changed vs `main`, including uncommitted work |
 | `run-gates.sh --all` | every gate regardless of the diff |
-| `run-gates.sh api mobile` | only the named areas (`api`, `contracts`, `mobile`) |
+| `run-gates.sh api mobile` | only the named areas (`api`, `contracts`, `mobile`, `tooling`) |
 
 ## What runs where
 
 - **api** → `composer lint` (Pint), `composer stan` (PHPStan level 6), `composer test` (Pest on Postgres) — all **inside the Sail container**. Local PHP is 8.2 and cannot run this codebase; the script refuses rather than falling back to the host.
 - **contracts** → regenerate + `git diff --exit-code` drift check, `typecheck`, Jest. Editing a schema without committing the regenerated `src/generated` is the single most common red build.
 - **mobile** → ESLint, `tsc --noEmit`, Jest. A `packages/contracts` change selects **both** contracts and mobile, exactly as CI does.
+- **tooling** → every `.test.sh` under `.claude/hooks/tests/` and `.claude/skills/*/tests/` — the guards (destructive-DB, simulator deep-link) and this script's own `gate()` reporting. Selected by any `.claude/*` change, and not part of CI, so this is the only thing that runs them. It works by running repo shell with your privileges: on a branch you did not write, read the new test files before running this area.
 
 ## Reading the result
 

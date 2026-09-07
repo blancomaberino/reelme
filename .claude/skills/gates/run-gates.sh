@@ -6,7 +6,11 @@
 #
 #   ./run-gates.sh            # gates for areas changed vs main (+ working tree)
 #   ./run-gates.sh --all      # every gate, regardless of the diff
-#   ./run-gates.sh api mobile # only the named areas (api | contracts | mobile)
+#   ./run-gates.sh api mobile # only the named areas (api | contracts | mobile | tooling)
+#
+# `tooling` runs the .claude/ test suites — and runs them by executing repo
+# shell, so it is the one area that should be read before it is run on a branch
+# you did not write.
 #
 # Every selected gate runs even after an earlier one fails — one invocation
 # surfaces the full list of problems instead of just the first.
@@ -93,8 +97,12 @@ gate() { # gate <label> <command...>
     # fired bound and a red suite were byte-identical. (A local, not
     # `${failed[-1]}` — macOS ships bash 3.2, which has no negative index.)
     local msg
-    if [ "$rc" -eq 124 ]; then
-      msg="$label — TIMED OUT (exit 124): the bound fired, the suite did not fail"
+    # 124 AND 137: `timeout -k` sends SIGTERM, then SIGKILL if that is ignored,
+    # and only the first path exits 124 — the second reports 128+9. A pest
+    # `--parallel` worker or a debugger-attached process reaches it, which is
+    # exactly the run someone is most likely to be doing when this fires.
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+      msg="$label — TIMED OUT (exit $rc): the bound fired, the suite did not fail"
     else
       msg="$label (exit $rc)"
     fi
@@ -147,6 +155,11 @@ fi
 if [ $run_tooling -eq 1 ]; then
   # Both trees: the hooks' tests, and the skills' own (this script's `gate()`
   # reporting has one — a test nothing runs is not a test).
+  #
+  # Note what this is: `bash` on every matching file. Fine while the repo has no
+  # outside contributors, but it means a PR can add `.claude/skills/*/tests/*.test.sh`
+  # and a maintainer running the gates before reviewing it executes that file.
+  # Narrow the pattern, or read new test files first, once that changes.
   for t in .claude/hooks/tests/*.test.sh .claude/skills/*/tests/*.test.sh; do
     [ -e "$t" ] || continue
     gate "Tooling · $(basename "$t")" bash "$t"

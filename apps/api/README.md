@@ -22,8 +22,9 @@ CLAUDE.md requires it for changed code paths — run it locally.
 ### Running the suite without being lied to
 
 The Pest suite takes ~8 minutes (2160 tests; 482s and 493s on two runs of this branch). Four separate
-mechanisms have made a run report something other than what happened; each is
-fixed here, and each is written down because the fix is invisible from the
+mechanisms can make a run report something other than what happened — three of
+them did, and the fourth is a hazard the fix for the first one introduced; each
+is closed here, and each is written down because the fix is invisible from the
 outside.
 
 **1. Composer used to kill the suite at 300s.** `process-timeout` defaults to
@@ -48,8 +49,9 @@ separately by curl (`CURLOPT_CONNECTTIMEOUT` 10s, `CURLOPT_TIMEOUT` ≥300s), so
 stalled download was never the case this setting was about.
 
 **2. Uncapping removed the only bound there was.** The `testing` database leaves
-`lock_timeout` at Postgres's default of `0`, so a migration waiting on a lock
-another suite holds waits forever — silently, with no output and no exit. So the
+`lock_timeout` at `0` — nothing in this repo sets it; that is Postgres's default,
+so grepping for it finds only this sentence — meaning a migration waiting on a
+lock another suite holds waits forever — silently, with no output and no exit. So the
 `test` script wraps Pest in `timeout -k 30s 700` (GNU `timeout`; it runs wherever
 `composer test` does — the Sail container and CI's `ubuntu-latest` both have it,
 and macOS ships none but cannot run this suite anyway on PHP 8.2).
@@ -79,9 +81,19 @@ number. `composer test -- --coverage` still works and still gets the tighter
 700s, which is fine today and would be the first thing to break if the suite
 grew — prefer the dedicated script.
 
-Exit **124** from either script is that bound firing, not a red suite, and
-`run-gates.sh` says so in its summary — mutation-tested in
+Exit **124** from either script is that bound firing, not a red suite — and so is
+**137**, which is what you get when the process ignores the SIGTERM and `-k`
+escalates to SIGKILL (a `--parallel` worker, or anything with a debugger
+attached). `run-gates.sh` names both in its summary; mutation-tested in
 `.claude/skills/gates/tests/gate-harness.test.sh`.
+
+*One thing not to "fix".* That entry is `timeout … php vendor/bin/pest`, not
+composer's `@php` prefix, because an `@php` entry cannot be wrapped in anything.
+The cost is that `php` and `timeout` resolve from PATH rather than from
+composer's own detection — correct in the container (`/usr/bin/php8.5`) and in CI
+(`setup-php` owns PATH), and irrelevant on the macOS host, where PATH would find
+MAMP's PHP 8.2 and this suite needs 8.4+ anyway. Restoring `@php` would silently
+drop the bound.
 
 **3. `composer test -- --coverage` ran nothing at all until 2026-09-07.**
 Composer appends `--` arguments to *every* command in a multi-entry script, so
@@ -96,7 +108,12 @@ would make `RefreshDatabase` run `migrate:fresh` against the **dev** database.
 **4. Never run two suites at once.** Both call `migrate:fresh` against the same
 `testing` database (`tests/Pest.php` applies `RefreshDatabase` to `Feature` and
 `Load`), and the drop/create sequences interleave — surfacing as
-`SQLSTATE[42P01]` or `42P07` in a test that has nothing to do with either run.
+`SQLSTATE[42P01]` (undefined table) or `42P07` (duplicate table) in a test that
+has nothing to do with either run — those two reproduced here. `40P01`
+(deadlock_detected) was recorded earlier and is also reachable, since concurrent
+`CASCADE` drops can form a real wait cycle; if you hit any of the three, it is
+this, not a regression. Distinct from the lock-wait hang in §2: there nothing
+errors at all, because `lock_timeout` is 0 and the waiter simply never returns.
 
 ## Local environment
 
