@@ -21,7 +21,7 @@ disagree, this file wins.
    → batch every finding → one fix commit → narrow re-review → both receipts (§4).
 4. **Audit scope follows the diff.** `select-lanes.sh` decides the seats. Docs-only
    (`docs/`, `README.md`, top-level `*.md`) runs nobody; the guard — `.claude/**`,
-   any `CLAUDE.md`, `.github/`, `scripts/` — always gets Security + Architecture.
+   any `CLAUDE.md`/`AGENTS.md`, `.github/`, `scripts/` — always gets Security + Architecture.
 5. **Tests ship with the change** — happy path, failure path, and for any filter
    a row that must be EXCLUDED. Coverage never regresses. E2E for user flows.
 6. **Wiring over code** — reachable from an existing screen, sibling reused not

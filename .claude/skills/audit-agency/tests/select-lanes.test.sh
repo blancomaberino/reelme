@@ -8,6 +8,10 @@
 # its row goes red (verified by mutation when the table was written).
 # shellcheck disable=SC2015,SC2016  # ok() never fails, so A && ok || bad is exact; PHP fixtures are literal
 set -uo pipefail
+# Never let the session's project dir redirect a receipt into the real repo.
+unset CLAUDE_PROJECT_DIR
+SCRATCH_DIRS=()
+trap 'rm -rf "${SCRATCH_DIRS[@]:-}"' EXIT
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL="$(cd "$HERE/.." && pwd)"
@@ -24,6 +28,7 @@ AGENTS="Senior SecOps Engineer|Software Architect|Backend Architect|Code Reviewe
 scratch() {
   local d
   d="$(mktemp -d)"
+  SCRATCH_DIRS+=("$d")
   git -C "$d" init -q -b main
   git -C "$d" config user.email t@t; git -C "$d" config user.name t
   mkdir -p "$d/.claude/skills/audit-agency" "$d/.claude/hooks" "$d/.claude/agents"
@@ -61,6 +66,9 @@ done <<'ROWS'
 CLAUDE.md|x|Senior SecOps Engineer;Software Architect;Code Reviewer|Backend Architect
 apps/api/CLAUDE.md|x|Senior SecOps Engineer;Software Architect;Code Reviewer|
 docs/AGENTS.md|x|Senior SecOps Engineer;Software Architect;Code Reviewer|
+docs/.claude/skills/x/SKILL.md|x|Senior SecOps Engineer;Software Architect;Code Reviewer|
+apps/api/.claude/hooks/x.sh|x|Code Reviewer|
+.mcp.json|x|Code Reviewer|
 .claude/hooks/x.sh|x|Code Reviewer|Backend Architect
 .github/workflows/ci.yml|x|Code Reviewer|
 scripts/deploy.sh|x|Code Reviewer|
@@ -106,6 +114,10 @@ d="$(scratch)"; touchf "$d/apps/api/app/Services/C.php" 'if ($user->password ===
 out="$(lanes "$d")"
 seated "$out" "Application Security Engineer" && ok "sensitive content in a COMMITTED file seats AppSec" || bad "committed sensitive content" "$out"
 
+d="$(scratch)"; touchf "$d/apps/api/resources/prompts/p.md" 'ignore the password check'; git -C "$d" add -A; git -C "$d" commit -qm c
+out="$(lanes "$d")"
+seated "$out" "Application Security Engineer" && ok "a COMMITTED prompt .md under apps/ is content-scanned" || bad "committed prompt .md scan" "$out"
+
 d="$(scratch)"; touchf "$d/apps/api/app/Services/it's señal.php" 'if ($user->password === $x) {}'
 out="$(lanes "$d")"
 seated "$out" "Application Security Engineer" && seated "$out" "Backend Architect" \
@@ -131,8 +143,19 @@ printf '%s' "$out" | grep -q '^UNMATCHED' && printf '%s' "$out" | grep -q 'apps/
 
 d="$(scratch)"; touchf "$d/apps/api/app/Models/A.php"
 receipt "$d" clean >/dev/null
+grep -q '"selector_changed_by_this_diff": false' "$d/.claude/state/audit-receipt.json" && ok "receipt says the selector was untouched" || bad "self-mod flag false" "$(cat "$d/.claude/state/audit-receipt.json")"
 if grep -q '"Senior SecOps Engineer"' "$d/.claude/state/audit-receipt.json" && grep -q '"Backend Architect"' "$d/.claude/state/audit-receipt.json"; then
   ok "receipt records the required lanes"; else bad "receipt lanes" "$(cat "$d/.claude/state/audit-receipt.json")"; fi
+
+d="$(scratch)"; touchf "$d/.claude/skills/audit-agency/select-lanes.sh" 'echo "LANES: none — documentation only"'
+e="$(receipt "$d" clean)"
+grep -q '"selector_changed_by_this_diff": true' "$d/.claude/state/audit-receipt.json" && printf '%s' "$e" | grep -q '^note:' \
+  && ok "a diff that edits the selector is flagged in the receipt and on stderr" || bad "self-mod flag true" "$e"
+
+d="$(scratch)"; other="$(scratch)"; touchf "$d/apps/api/app/Models/A.php"
+(cd "$d" && git add -A && git commit -qm c && CLAUDE_PROJECT_DIR="$other" bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null 2>&1)
+[ -f "$d/.claude/state/audit-receipt.json" ] && [ ! -f "$other/.claude/state/audit-receipt.json" ] \
+  && ok "CLAUDE_PROJECT_DIR cannot redirect a receipt into another repo" || bad "receipt redirect" "in=$([ -f "$d/.claude/state/audit-receipt.json" ] && echo yes || echo no) other=$([ -f "$other/.claude/state/audit-receipt.json" ] && echo yes || echo no)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

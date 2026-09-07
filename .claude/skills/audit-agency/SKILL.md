@@ -25,7 +25,7 @@ script refuses that verdict on anything else). Rules it applies:
 | Diff touches | Seats added |
 | --- | --- |
 | anything but docs | `Senior SecOps Engineer`, `Software Architect` (always) |
-| `.claude/`, any `CLAUDE.md`/`AGENTS.md`, `.github/`, `scripts/` | + `Code Reviewer` (the guard is prose; a check that cannot fail is the bug) |
+| a `.claude/`, `.github/` or `scripts/` dir at any depth, any `CLAUDE.md`/`AGENTS.md`, `.mcp.json` | + `Code Reviewer` (the guard is prose; a check that cannot fail is the bug) |
 | `apps/api/` | + `Backend Architect`; app/routes/database → + `Code Reviewer` |
 | migrations / `.sql` | + `Database Optimizer` |
 | `apps/mobile/` | + `Mobile App Builder`; a screen/component → + `UX Architect`, `UI Designer`; app.config/package.json → + `native-rebuild-checker` |
@@ -81,7 +81,8 @@ not three stages. Give every seat the same frame:
 .claude/skills/audit-agency/record-receipt.sh docs-only        # only when select-lanes.sh said none
 ```
 
-The receipt stores `required_lanes` so a reader can see what the diff demanded.
+The receipt stores `required_lanes` and `selector_changed_by_this_diff` (the
+receipt was produced by code the diff changed — Code Reviewer is mandatory then).
 It still cannot tell which seats you filled — that stays on you.
 
 ## Notes

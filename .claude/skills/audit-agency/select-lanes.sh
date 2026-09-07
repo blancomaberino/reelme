@@ -18,9 +18,11 @@
 #   - Documentation is an ALLOWLIST, not a suffix: docs/ trees, README.md, and
 #     top-level *.md. A .md under apps/ or packages/ is never "just docs" — the
 #     API loads resources/prompts/*.md as an LLM system prompt.
-#   - The guard — .claude/**, any CLAUDE.md or AGENTS.md at any depth, .github/,
-#     scripts/ — always seats Security + Architecture (+ Code Reviewer): a
-#     weakened hook or escape hatch would otherwise ship looking audited.
+#   - The guard — a .claude/, .github/ or scripts/ directory AT ANY DEPTH, any
+#     CLAUDE.md / AGENTS.md, .mcp.json — always seats Security + Architecture
+#     (+ Code Reviewer): a weakened hook or escape hatch would otherwise ship
+#     looking audited. Anchored on a path segment, not the root: this harness
+#     auto-loads docs/.claude/skills/* and apps/api/.claude/* just the same.
 #   - Any other change: Security + Architecture (mandatory), plus the lanes the
 #     paths select. A lane is added by a path; nothing is added "to be safe".
 #     Files no rule knows are listed as UNMATCHED so the gap is visible.
@@ -63,9 +65,9 @@ hasi()  { printf '%s\n' "$FILES" | grep -qiE "$1"; }
 only()  { ! printf '%s\n' "$FILES" | grep -vE "$1" | grep -q .; }
 count() { printf '%s\n' "$FILES" | grep -c .; }
 
-GUARD_RE='^(\.claude/|\.github/|scripts/)|(^|/)(CLAUDE|AGENTS)(\.local)?\.md$'
+GUARD_RE='(^|/)(\.claude|\.github|scripts)/|(^|/)(CLAUDE|AGENTS)(\.local)?\.md$|(^|/)\.mcp\.json$'
 DOCS_RE='^(docs/|[^/]+\.md$)|/(docs/|README\.md$)'
-KNOWN_RE="$GUARD_RE|$DOCS_RE|"'^(apps/api|apps/mobile|packages/contracts)/|^(package\.json|package-lock\.json|\.gitignore|\.mcp\.json)$'
+KNOWN_RE="$GUARD_RE|$DOCS_RE|"'^(apps/api|apps/mobile|packages/contracts)/|^(package\.json|package-lock\.json|\.gitignore)$'
 
 # --- docs only ---------------------------------------------------------------
 if only "$DOCS_RE" && ! has "$GUARD_RE"; then
@@ -115,12 +117,14 @@ sensitive=""
 hasi "$SENSITIVE_RE" && sensitive=1
 if [ -z "$sensitive" ]; then
   set +o pipefail  # grep -q SIGPIPEs its producer; under pipefail a big diff read as "no match"
-  g diff "$MB" -- . ':(exclude)*.md' 2>/dev/null | grep -E '^[+-]' | grep -qiE "$SENSITIVE_RE" && sensitive=1
+  # Only DOCS paths are exempt — a committed resources/prompts/*.md is code.
+  printf '%s\n' "$FILES" | grep -vE "$DOCS_RE" | tr '\n' '\0' \
+    | xargs -0r git -c core.quotePath=off diff "$MB" -- 2>/dev/null | grep -E '^[+-]' | grep -qiE "$SENSITIVE_RE" && sensitive=1
   # Untracked files are not in `git diff`; read them directly. NUL-separated:
   # a quote or non-ASCII byte in a name made xargs drop the file, or abort the
   # whole scan, so a new file could carry a password check past this line.
   g ls-files -z --others --exclude-standard 2>/dev/null | grep -zvE "$DOCS_RE" | grep -zv '^\.claude/state/' \
-    | xargs -0 grep -liE "$SENSITIVE_RE" -- 2>/dev/null | grep -q . && sensitive=1
+    | xargs -0r grep -liE "$SENSITIVE_RE" -- 2>/dev/null | grep -q . && sensitive=1
   set -o pipefail
 fi
 [ -n "$sensitive" ] && want "Application Security Engineer" "auth / money / secrets in the change — a second, code-level security reading"

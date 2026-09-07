@@ -14,7 +14,11 @@
 # that matches when it should not.
 set -euo pipefail
 
-cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+# The repo the caller is IN, not CLAUDE_PROJECT_DIR: the env var names the
+# session's project, and a receipt written there from another checkout (a
+# test's scratch repo, a worktree) would certify code nobody audited.
+top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "refused: not inside a git repository — no receipt written" >&2; exit 2; }
+cd "$top"
 
 verdict=${1:-}
 if [ -z "$verdict" ]; then
@@ -45,6 +49,13 @@ if [ -z "$lanes" ] || printf '%s' "$lanes" | grep -q '^LANES: unknown'; then
   printf '%s\n' "${lanes:-(no output)}" >&2
   exit 2
 fi
+# Say so when the diff changes the very files that produce this receipt.
+self_mod=""
+if ! git diff --quiet "$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null || echo HEAD)" -- \
+     .claude/skills/audit-agency .claude/hooks/guard-pr-audit.py 2>/dev/null; then
+  self_mod=1
+  echo "note: this diff changes the selector or the audit hook — the receipt is produced by code the diff itself changed; the Code Reviewer seat is mandatory here." >&2
+fi
 if [ "$verdict" = docs-only ] && ! printf '%s' "$lanes" | grep -q '^LANES: none — documentation only'; then
   echo "refused: 'docs-only' but the diff selects seats:" >&2
   printf '%s\n' "$lanes" >&2
@@ -53,7 +64,7 @@ fi
 
 mkdir -p .claude/state
 
-VERDICT="$verdict" NOTE="${2:-}" LANES="$lanes" python3 - <<'PY'
+VERDICT="$verdict" NOTE="${2:-}" LANES="$lanes" SELF_MOD="$self_mod" python3 - <<'PY'
 import importlib.util, json, os, pathlib, subprocess
 from datetime import datetime, timezone
 
@@ -80,6 +91,7 @@ pathlib.Path(".claude/state/audit-receipt.json").write_text(
             "branch": branch,
             "verdict": os.environ["VERDICT"],
             "note": os.environ["NOTE"],
+            "selector_changed_by_this_diff": bool(os.environ["SELF_MOD"]),
             "required_lanes": [
                 l.strip()[2:].split("—")[0].strip()
                 for l in os.environ["LANES"].splitlines()
