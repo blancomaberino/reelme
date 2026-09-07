@@ -106,9 +106,9 @@ gate() { # gate <label> <command...>
     # bound fired — telling someone to raise a time bound when they are out of
     # memory is the wrong hour to hand them.
     if [ "$rc" -eq 124 ]; then
-      msg="$label — TIMED OUT (exit 124): the bound fired, the suite did not fail"
+      msg="$label — TIMED OUT (exit 124): a bound fired, not a red suite — check the output above for WHICH entry (no Pest output at all means the setup entry died and no test ran)"
     elif [ "$rc" -eq 137 ]; then
-      msg="$label — KILLED (exit 137): a signal, not a red suite — the time bound escalating, or an OOM kill"
+      msg="$label — KILLED (exit 137): a signal, not a red suite — a time bound escalating, or an OOM kill"
     else
       msg="$label (exit $rc)"
     fi
@@ -162,10 +162,12 @@ if [ $run_tooling -eq 1 ]; then
   # Both trees: the hooks' tests, and the skills' own (this script's `gate()`
   # reporting has one — a test nothing runs is not a test).
   #
-  # Note what this is: `bash` on every matching file. Fine while the repo has no
-  # outside contributors, but it means a PR can add `.claude/skills/*/tests/*.test.sh`
-  # and a maintainer running the gates before reviewing it executes that file.
-  # Narrow the pattern, or read new test files first, once that changes.
+  # Note what this is: `bash` on every matching file, with your privileges. This
+  # repo is PUBLIC, so anyone can open a PR adding `.claude/*/tests/*.test.sh` —
+  # and `tooling` auto-selects on any `.claude/*` change, so running the gates
+  # before reading the diff executes it. Read new test files on a branch you did
+  # not write. (Narrowing the glob would be theatre: a hostile file is as easily
+  # named `.claude/hooks/tests/x.test.sh`, which has always been swept up.)
   for t in .claude/hooks/tests/*.test.sh .claude/skills/*/tests/*.test.sh; do
     [ -e "$t" ] || continue
     gate "Tooling · $(basename "$t")" bash "$t"

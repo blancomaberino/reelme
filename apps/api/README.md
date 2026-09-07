@@ -82,11 +82,13 @@ number. `composer test -- --coverage` still works and still gets the tighter
 grew — prefer the dedicated script.
 
 *Both entries are bounded, for different reasons.* `config:clear` gets
-`timeout -k 5s 60`. That is not sized to the work — it measures 0.55s cold — but
-to "obviously hung": the entry boots the framework, so an unreachable Redis or
-database blocks it forever, and `disableProcessTimeout` is process-wide, so
-adding it for Pest silently removed this entry's old 300s ceiling too. 60s is
-~100× the real cost and still fails fast against a hang.
+`timeout -k 5s 60`. That is not sized to the work — it measures 0.5–0.75s cold
+across runs, and opens no database or Redis connection, so nothing in it is
+expected to block. It is a backstop: `disableProcessTimeout` is process-wide, so
+adding it for Pest silently removed this entry's old 300s ceiling, and an entry
+that boots the framework with NO ceiling is the shape that hangs forever with no
+output. 60s is ~100× the measured cost, so it cannot fire on slowness — only on
+a wedge.
 
 Exit **124** from either script is a bound firing, not a red suite. Exit **137**
 means a signal killed it: usually `-k` escalating to SIGKILL because the process
@@ -101,8 +103,8 @@ codes in its summary; mutation-tested in
 more — an `@php` entry cannot be wrapped in anything, so bounding them meant
 dropping it from both.
 The cost is that `php` and `timeout` resolve from PATH rather than from
-composer's own detection — correct in the container (`/usr/bin/php8.5`) and in CI
-(`setup-php` owns PATH), and irrelevant on the macOS host, where PATH would find
+composer's own detection — correct in the container (PATH gives `/usr/bin/php`, the 8.5 build composer
+itself reports as `PHP_BINARY`) and in CI (`setup-php` owns PATH), and irrelevant on the macOS host, where PATH would find
 MAMP's PHP 8.2 and this suite needs 8.4+ anyway. Restoring `@php` would silently
 drop the bound.
 

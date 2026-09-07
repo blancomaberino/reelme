@@ -53,6 +53,11 @@ check "summary: 137 keeps the code" "(exit 137)" "${failed[1]}"
 # are out of memory costs them the hour.
 check "137 does not blame the bound alone" "OOM" "${failed[1]}"
 
+# A gate is labelled for its headline command, but a composer script has several
+# entries and ANY of them can hit its bound. So the 124 message must not assert
+# the suite ran — a `config:clear` timeout exits 124 with no Pest output at all.
+check "124 does not claim the suite ran" "WHICH entry" "${failed[0]}"
+
 gate "red-suite" bash -c 'exit 3' >"$tmp" 2>&1
 out=$(cat "$tmp")
 check "inline: a real failure shows its code" "(exit 3)" "$out"

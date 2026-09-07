@@ -82,6 +82,17 @@ Two things that decide whether you are reading real signal:
   indistinguishable from clean. Merging does not postpone that review — the bot
   will not review a closed PR — it forfeits it.
 
+**What this loop may edit, and what it may not.** It updates the skill's
+*judgement*: `references/review-checklist.md`, the specialist/lane selection, and
+`ground.sh`'s patterns. It may **never** touch the enforcement scripts —
+`pr-gate.sh`, `approve.sh`, `record-panel.sh`, `check-review-threads.sh` — and a
+change to those is **owner-approved only**. The reason is the shape of the loop:
+it takes text written by a third party on a public PR and turns it into an edit
+of the thing that gates this repo, in a directory outside it. The audit receipt
+hashes this repo's HEAD and worktree, so such an edit leaves no artifact
+anywhere and nothing can notice it. Findings about the gates themselves get
+raised with the owner, not applied.
+
 ## Task completion report
 
 **Whenever you finish working on a task, end your reply with a short completion summary.** This is mandatory — it's how the owner knows what shipped and how to verify it by hand. Give it every time you wrap a task (whether the work merged, is awaiting merge, or is a WIP hand-off), not only at PR time. Format:
@@ -189,8 +200,8 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
     STOPPED — not that it failed.** Never pipe the run through `tail`/`grep` to find out: the
     pipeline's exit status is the pipe's, not composer's.
   - **Pass Pest flags after `--`** (`composer test -- --filter=X`). That works
-    only because the `test` script guards its first entry with
-    `@no_additional_args`; without it every flag also hits `artisan config:clear`,
+    only because the `test` script guards its first COMMAND entry (`config:clear`
+    — entry 0 is the `disableProcessTimeout` static call) with `@no_additional_args`; without it every flag also hits `artisan config:clear`,
     which exits 1 before Pest starts. That was true, loudly and unread, until
     2026-09-07. For coverage use `composer test:coverage` — same guard, and a
     time bound sized for an instrumented run rather than for CI.

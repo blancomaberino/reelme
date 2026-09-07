@@ -12,8 +12,9 @@
  * bound on one and not the other, or drop a guard from one, and nothing else
  * in the project would notice.
  *
- * Every assertion here is a bug that actually shipped on the branch that added
- * these bounds, caught by review rather than by a gate.
+ * Most of these assertions correspond to a defect that actually occurred on the
+ * branch that added these bounds, caught by review rather than by a gate; the
+ * rest (exactly-one-Pest-entry, the setup-entry identity pin) are prophylactic.
  */
 it('keeps both test scripts bounded, guarded, and in step', function () {
     /** @var array{scripts: array<string, list<string>>} $composer */
@@ -41,8 +42,10 @@ it('keeps both test scripts bounded, guarded, and in step', function () {
 
     foreach (['test' => $test, 'test:coverage' => $coverage] as $name => $script) {
         foreach (array_slice($script, 1) as $i => $entry) {
+            // $i counts from the sliced array, so name the composer.json index.
+            $at = $i + 1;
             expect($entry)->toMatch('/^timeout -k \d+s \d+ /',
-                "every command entry of `$name` needs its own time bound (entry $i)");
+                "every command entry of `$name` needs its own time bound (entry $at)");
         }
     }
 
@@ -51,9 +54,12 @@ it('keeps both test scripts bounded, guarded, and in step', function () {
     expect($test[1])->toContain('@no_additional_args');
 
     // Find the Pest entry by CONTENT, never by index. Pinning it to $script[2]
-    // would keep passing if someone inserted a fourth command ahead of it — the
-    // 60s config:clear bound would satisfy "<= 750" and the suite bound would go
-    // unchecked. A false PASS in the test written to stop false passes.
+    // keeps passing if a command is inserted BETWEEN config:clear and Pest: that
+    // entry's 60s bound satisfies the ceiling below, the suite bound goes
+    // unchecked, and the coverage-vs-plain comparison compares two setup
+    // entries. A false PASS in the test written to stop false passes. (An entry
+    // inserted before config:clear cannot do it — the identity pin above
+    // catches that one.)
     $pestBound = function (array $script, string $name): int {
         $entries = array_values(array_filter(
             $script,
@@ -69,11 +75,27 @@ it('keeps both test scripts bounded, guarded, and in step', function () {
         return (int) $m[1];
     };
 
-    // The suite bound must stay under CI's budget; coverage is not run by CI
-    // and is deliberately roomier.
+    // The suite bound must stay under what CI would actually allow, which is
+    // NOT the job's 15 minutes: `ci.yml`'s api job spends ~130s on checkout,
+    // setup-php, an apt ffmpeg install, composer install, lint, stan and migrate
+    // before Pest starts (measured across three runs: 268-285s total, 149-155s
+    // in the Pest step). So the residual is ~770s, and a local bound above it
+    // would pass here and be killed by GitHub — which emits no 124, no 137 and
+    // no summary line, i.e. the one kill shape this project cannot read. 750
+    // keeps a margin against that overhead drifting.
     $plain = $pestBound($test, 'test');
     $instrumented = $pestBound($coverage, 'test:coverage');
 
     expect($plain)->toBeLessThanOrEqual(750)
         ->and($instrumented)->toBeGreaterThan($plain);
+
+    // Coverage must actually measure coverage. Without this the flag can be
+    // dropped and every other assertion here still passes — the script would
+    // simply be a slower duplicate of `test`, and CLAUDE.md mandates it.
+    $coverageEntry = array_values(array_filter(
+        $coverage,
+        fn ($entry) => is_string($entry) && str_contains($entry, 'vendor/bin/pest'),
+    ))[0];
+    expect($coverageEntry)->toContain('--coverage');
+    expect($test[count($test) - 1])->not->toContain('--coverage');
 });
