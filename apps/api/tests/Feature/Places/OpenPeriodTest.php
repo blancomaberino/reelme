@@ -448,7 +448,14 @@ it('refuses open_now without a point on the public index, and only there', funct
 
     $user = User::factory()->create();
     $open = placeWithHours([period(2, '11:00', 2, '23:00')]);
-    PlaceList::factory()->create(['user_id' => $user->id])->items()->create(['place_id' => $open->id]);
+    // A place that is CLOSED at the travelled instant, saved and mapped
+    // alongside the open one. Without it the 200 cases below would pass with the
+    // filter removed entirely — one fixture cannot tell "it filtered" from "it
+    // returned everything".
+    $closed = placeWithHours([period(2, '08:00', 2, '15:00')]);
+    $list = PlaceList::factory()->create(['user_id' => $user->id]);
+    $list->items()->create(['place_id' => $open->id]);
+    $list->items()->create(['place_id' => $closed->id]);
 
     // The filter is a correlated EXISTS with nothing to bound it: on the public
     // index a point is the only thing that cuts the candidate set before the
@@ -478,16 +485,38 @@ it('refuses open_now without a point on the public index, and only there', funct
     }
 
     // Not just a 200: the flag still FILTERS on the surfaces that accept it
-    // without a point, so this cannot pass by the parameter being ignored.
+    // without a point. Both halves are load-bearing — dropping `openNow()` from
+    // these two paths keeps the `toContain` green and turns the `not->toContain`
+    // red, which is the mutation this pair exists to catch.
     $ids = collect(data_get($response->json(), $surface === 'map' ? 'data.pins' : 'data'))
         ->pluck('id')->map(intval(...))->all();
 
-    expect($ids)->toContain($open->id);
+    expect($ids)->toContain($open->id)
+        ->and($ids)->not->toContain($closed->id);
 })->with([
     'public index' => ['public index', 422],
     'map' => ['map', 200],
     'my places' => ['my places', 200],
 ]);
+
+it('indexes the columns the default sort pages by', function () {
+    // A schema pin, not a plan assertion: EXPLAIN output depends on statistics
+    // and row counts a test database does not have, so asserting "it uses the
+    // index" here would assert the planner's mood. What must not silently
+    // disappear is the index itself — `sort=recent` orders by
+    // `created_at DESC, id DESC` and its cursor compares that same tuple, and
+    // without it every filtered listing sorts its whole candidate set before the
+    // LIMIT applies. That is the only bound `?open_now=1` has that does not
+    // depend on how much the geography happened to remove.
+    $columns = DB::table('pg_indexes')
+        ->where('tablename', 'places')
+        ->where('indexname', 'places_created_at_id_index')
+        ->value('indexdef');
+
+    expect($columns)->toBeString()
+        ->and(preg_replace('/\s+/', '', (string) $columns))
+        ->toContain('(created_at,id)');
+});
 
 it('accepts open_now on the public index once a point rides with it', function () {
     $this->travelTo(new DateTimeImmutable('2026-09-08 20:00', new DateTimeZone(MONTEVIDEO)));

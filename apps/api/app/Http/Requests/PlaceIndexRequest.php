@@ -90,16 +90,34 @@ class PlaceIndexRequest extends FormRequest
             // `open_now` has to ride a point, for the same reason `sort=distance`
             // does — except here the reason is cost, not meaning. The filter is a
             // correlated EXISTS over `place_open_periods`, and without
-            // `ST_DWithin` to cut the candidate set first there is nothing to
-            // bound it: an unauthenticated `?open_now=1` would probe the periods
-            // of every publicly visible place, and there is no index on
-            // `created_at` for the default `sort=recent` to early-exit on, so the
-            // whole filtered set is evaluated before the LIMIT applies. The map
-            // requires a bbox and the personal listings are scoped to one user;
-            // this was the one surface with no bound at all. Nothing loses a
-            // capability: the parameter ships in this release, and the question
-            // it answers is "open near ME".
-            if ($this->boolean('open_now') && ! is_string($this->query('near'))) {
+            // `ST_DWithin` to cut the candidate set first there is nothing at all
+            // between an unauthenticated `?open_now=1` and the opening periods of
+            // every publicly visible place. The personal listings are scoped to
+            // one user; this was the only surface with no bound whatsoever.
+            //
+            // Be precise about how much this buys, because the honest answer is
+            // "less than it looks". `radius_m` tops out at 50km — around 7,850
+            // km², some fifteen times Montevideo — so for the corpus we actually
+            // have, a point inside the city still encloses nearly all of it, and
+            // at that selectivity the planner drops the GiST bound for a
+            // sequential scan. What genuinely caps the work is the
+            // `(created_at, id)` index added in the same release: it lets
+            // `sort=recent` walk rows in order and stop at the LIMIT instead of
+            // sorting everything the filters left. This rule is the cheap half.
+            //
+            // The map is NOT covered by this and is not comparably bounded: its
+            // bbox is capped at 90° of span, which is a sanity check rather than
+            // a viewport, so a hostile caller can ask for the same set there.
+            // Left alone deliberately — narrowing the map's span is a product
+            // decision about how far a user may zoom out, not a validation fix.
+            //
+            // Guarded on the base rule so the two messages under this key cannot
+            // contradict each other: `?open_now=yes` fails `boolean` above, and
+            // `boolean()` here (filter_var) would read the same value as true and
+            // add a second, unrelated complaint about `near`.
+            if (! $v->errors()->has('open_now')
+                && $this->boolean('open_now')
+                && ! is_string($this->query('near'))) {
                 $v->errors()->add('open_now', 'open_now requires the near parameter.');
             }
         });

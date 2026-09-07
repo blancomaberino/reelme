@@ -121,10 +121,16 @@ return new class extends Migration
     {
         // Roll the CODE back with this, not after it. The read path depends on
         // this table the moment it exists — `?open_now=1` is a correlated EXISTS
-        // against it — so a schema-only rollback under time pressure leaves a
-        // deployed build 500ing on a public endpoint (the write path is softer:
-        // PlaceObserver swallows and logs). `scripts/deploy.sh` ships both in one
-        // artifact, which is what keeps this from being a live foot-gun.
+        // against it — so a schema-only rollback leaves a deployed build 500ing
+        // on a public endpoint. The write path is softer: PlaceObserver catches,
+        // reports and logs, so saves keep working while the projection silently
+        // stops.
+        //
+        // NOTHING IN THIS REPOSITORY PREVENTS THAT. `scripts/deploy.sh` only ever
+        // migrates forward; it never calls `migrate:rollback`, so it offers no
+        // protection against a human running one by hand against a box still
+        // serving the new code. That is exactly the scenario this comment is
+        // about, and the only thing standing in its way is whoever reads this.
         Schema::dropIfExists('place_open_periods');
     }
 };
