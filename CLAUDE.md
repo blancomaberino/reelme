@@ -77,7 +77,11 @@ Pick whichever surface(s) actually exercise the change — don't invent an admin
   - `assertTrue(true)` / `expect(true)->toBeTrue()` and other no-op tests.
   - "Asserts 200 but never checks the body / side effects."
   - Snapshot-only tests, or tests that just mirror the implementation without exercising behavior.
-  - Tests that pass whether or not the feature works.
+  - Tests that pass whether or not the feature works. **A single fixture cannot
+    tell "it filtered" from "it returned everything"** — any test of a filter
+    needs a row that must be EXCLUDED, and an assertion that it was. *(observed —
+    T-158, where the 200 branches of a new test proved only that the endpoint
+    answered.)*
 - **Coverage is required.** Run coverage (`composer test -- --coverage` / Pest `--coverage`; mobile: `jest --coverage`) and do not regress it. New/changed code paths must be covered; call out any deliberate gap in the PR and why.
 - **E2E is required for user-facing flows.**
   - API: full-pipeline / end-to-end feature tests driven by fakes+fixtures (e.g. share → published, redeem → verify → ledger).
@@ -124,6 +128,14 @@ So, before any UI task is called done:
    - **Navigate:** `~/.maestro/bin/maestro test` with `launchApp` + `tapOn`. A plain launch carries no URL, so nothing is left behind.
    - **`openurl` is only acceptable** to reach a screen that genuinely has no in-app path (deep-link handling itself). When you must, finish with `terminate` + plain `launch` — a URL-less launch is what actually clears it (verified: Cmd+R afterwards lands on home).
    - Other residue to restore: `simctl location set` persists until overwritten (**`clear` is a no-op**) — put it back to Montevideo `-34.9011,-56.1645`; and flying the map persists the viewport.
+   - **To test a DENIED permission, use Maestro, not `simctl privacy`.** *(observed — T-158)*
+     `xcrun simctl privacy booted revoke location <bundle>` does **not** reach the
+     app: the screen came up with the ordinary granted-state view, so a flow built
+     on it passes while asserting nothing. Set it at launch instead —
+     `launchApp: { permissions: { location: never } }` (the values are
+     `always|inuse|never`; `deny` is rejected) — and restore with a second
+     `launchApp` granting `inuse` **inside the same flow**, so a run that dies
+     half-way does not leave the simulator denied for every later flow.
    - **Verify the restore, don't assert it.** Send Cmd+R yourself and screenshot where it lands. Twice this was reported "fixed" without that check, and twice it wasn't.
 
 8. **Never describe a path you haven't walked.** The [task completion report](#task-completion-report) click-path is a claim about the running app. Walk it on the device before writing it down. If a state couldn't be reached (no fix, no seed data, a control that won't take a synthetic tap), say so explicitly — an unverified step reported as verified is worse than an admitted gap.
@@ -146,6 +158,23 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
 
 - **Local PHP is 8.2 — too old for Laravel 13.** Run all API tooling inside Docker (PHP 8.4+, Laravel Sail). The API is exposed on **`:8080`** locally (MAMP holds `:80`).
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
+- **The API suite takes ~8 minutes, and two ways of running it lie about the result.** *(observed — T-158)*
+  - Composer's default `process-timeout` is 300s, so `composer test` used to die
+    mid-suite with a `ProcessTimedOutException`. `apps/api/composer.json` now sets
+    `"process-timeout": 1800`. If you ever see "exceeded the timeout of 300
+    seconds", that setting is gone — the suite did not fail, it was killed. Piping
+    the run through `tail`/`grep` hides it further, because the pipeline's exit
+    status is the pipe's, not composer's.
+    - **1800, not 0.** The setting is global to every composer script, and one of
+      them is `composer install` in `scripts/deploy.sh`, which runs inside the
+      maintenance window. With no timeout, an install that hangs on a stalled
+      connection never returns, so the script never exits, so the `EXIT` trap
+      never lifts maintenance mode — the site stays down until a human notices.
+      A finite bound keeps that a 30-minute worst case. CI is separately capped
+      by `timeout-minutes: 15` on the `api` job.
+  - **Run it serially.** Two suites against the shared `testing` database deadlock
+    each other on migration DDL (`SQLSTATE[40P01]`), which reads as a real failure
+    in an unrelated test. Re-run the named test alone before believing it.
 - The **build plan and task queue live in `~/Sites/plans/reelmap`** (`tasks/tasks.json` is the source of truth); application code lives here. Follow the plan; record deviations as ADRs in the plan, never by editing the spec to match code.
 
 ### Automation in `.claude/` (checked in — shared, not personal)
