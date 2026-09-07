@@ -56,6 +56,22 @@ Agent Teams is enabled on this machine (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
      `REELMAP_SKIP_AUDIT=1` is the escape hatch, and it is **owner-approved only** — unlike the receipt path it leaves no artifact, so say in the commit or PR body why the audit did not apply. Reaching for it because the audit is slow is how the check becomes decoration.
   4. **Open the PR** (`gh pr create`) with: summary, the `T-###` task id, and test evidence (what you tested and the results). Wait for CI green + review before merge.
 
+  5. **When the PR comes back with CodeRabbit comments, feed every miss back into `/coderabbit`.** *(owner instruction)*
+
+     The bot reviewing the same diff is the only independent measure of whether
+     the local pass is still worth running. So for each finding it posts, ask
+     **"would `/coderabbit` have caught this?"** — and where the answer is no,
+     fix the skill in the same session: a new shape goes into
+     `references/review-checklist.md` marked `(observed — PR #N)`; a shape that
+     was covered but unlooked-at means the wrong specialist lane was seated; a
+     shape a grounding pattern should have hit means `ground.sh` needs the
+     pattern. Findings it already caught need nothing — only the misses teach.
+
+     Read the review **bodies**, not just the threads: a finding whose line falls
+     outside the diff range has no thread to gate on. And confirm a real review
+     ran before reading silence as agreement — a rate-limited or skipped round
+     leaves a green check and zero comments, which looks identical to clean.
+
   > `/coderabbit`, its scripts, and the gate hook are a **local, user-level** setup under `~/.claude` — they cover Claude Code sessions on this machine, not CI or PRs opened from the GitHub UI. (There is currently no server-side CI gate; add GitHub branch protection + a required status check when the project gains collaborators.)
 
 ## Task completion report
