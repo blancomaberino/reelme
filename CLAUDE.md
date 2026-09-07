@@ -160,42 +160,28 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
 
 - **Local PHP is 8.2 — too old for Laravel 13.** Run all API tooling inside Docker (PHP 8.4+, Laravel Sail). The API is exposed on **`:8080`** locally (MAMP holds `:80`).
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
-- **The API suite takes ~8 minutes, and three ways of running it lie about the result.** *(observed — T-158, and the audit of the commit that wrote this bullet)*
-  - **It used to be killed, not failed.** Composer's default `process-timeout` is
-    300s, so `composer test` died mid-suite with a `ProcessTimedOutException`.
-    The `test` script in `apps/api/composer.json` now opens with
-    `Composer\Config::disableProcessTimeout` — the line `dev` has always carried.
-    Piping the run through `tail`/`grep` hides the death further: the pipeline's
-    exit status is the pipe's, not composer's.
-    - **Per-script, not `config.process-timeout`.** The config key applies to
-      every composer invocation in the package, including the `composer install`
-      that `scripts/deploy.sh` runs inside the maintenance window — whose
-      `post-autoload-dump` boots Laravel twice (`package:discover`,
-      `filament:upgrade`). A global bound generous enough for the suite would let
-      a boot blocked on an unreachable Redis sit there silently for the rest of
-      it; `deploy.sh`'s `EXIT` trap fires on exit, and a hung process does not
-      exit. Uncapping the one script leaves that path at the 300s default, where
-      `lint` (1.1s) and `stan` (21s cold) have margin to spare.
-    - `process-timeout` bounds composer's **spawned children** — VCS clones and
-      script commands — and nothing else. HTTP downloads are bounded separately
-      by curl (`CURLOPT_CONNECTTIMEOUT` 10s, `CURLOPT_TIMEOUT` ≥300s), so a
-      stalled download is not the case this setting was ever about.
-    - Uncapping removed this caller's only bound, so `.claude/skills/gates/run-gates.sh`
-      wraps the suite in `timeout 1800` (GNU `timeout`, run inside the container —
-      macOS ships none). Exit **124** there means the bound was hit, not a red
-      suite. CI is bounded by `timeout-minutes: 15` on the `api` job.
-  - **`composer test -- --coverage` silently ran nothing until 2026-09-07.**
-    Composer appends `--` args to **every** command in a multi-entry script, so
-    `--coverage` landed on `artisan config:clear` first and the script aborted
-    with `The "--coverage" option does not exist` before Pest started. The
-    `config:clear` entry now carries `@no_additional_args`, so flags reach Pest
-    only. Any flag was affected — `--filter` and `--parallel` too.
+- **The API suite takes ~8 minutes, and three ways of running it lied about the result.** *(observed — T-158, and the audit of the commit that wrote this bullet)* Mechanisms and measurements in [`apps/api/README.md`](apps/api/README.md#running-the-suite-without-being-lied-to); the rules:
+  - **Prefer `/gates`** — `.claude/skills/gates/run-gates.sh` is the only caller
+    that bounds the suite (a `timeout` sized to CI's budget; exit 124 there means
+    the bound fired, not a red suite). A bare `docker compose exec … composer test`
+    has no bound at all, so a suite wedged on a lock waits forever.
+  - **A `ProcessTimedOutException`, or "exceeded the timeout of 300 seconds",
+    means the suite was KILLED — not that it failed.** Never pipe the run through
+    `tail`/`grep` to find out: the pipeline's exit status is the pipe's, not
+    composer's.
+  - **Flags need `composer test -- --coverage`, and that only works because the
+    `test` script guards its first entry with `@no_additional_args`** (composer
+    ≥2.7). Composer appends `--` args to *every* command in a multi-entry script,
+    so before that guard `--coverage` hit `artisan config:clear`, which exited 1
+    with `The "--coverage" option does not exist` and the suite never started.
+    It said so loudly and went unread for months — which is the lesson, not the
+    silence. `--filter` and `--parallel` were equally dead.
   - **Run it serially.** Two suites against the shared `testing` database both run
-    `migrate:fresh` (`tests/Pest.php` puts `RefreshDatabase` on `Feature` and `Load`), and
-    the drop/create sequences interleave: each sees tables the other just dropped
-    or already created. It surfaces as `SQLSTATE[42P01]` (undefined table) or
-    `42P07` (duplicate table) in an unrelated test, and reads as a real failure.
-    Re-run the named test alone before believing it.
+    `migrate:fresh` (`tests/Pest.php` puts `RefreshDatabase` on `Feature` and
+    `Load`), and the drop/create sequences interleave: each sees tables the other
+    just dropped or already created. It surfaces as `SQLSTATE[42P01]` (undefined
+    table) or `42P07` (duplicate table) in an unrelated test, and reads as a real
+    failure. Re-run the named test alone before believing it.
 - The **build plan and task queue live in `~/Sites/plans/reelmap`** (`tasks/tasks.json` is the source of truth); application code lives here. Follow the plan; record deviations as ADRs in the plan, never by editing the spec to match code.
 
 ### Automation in `.claude/` (checked in — shared, not personal)

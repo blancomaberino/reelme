@@ -16,6 +16,59 @@ composer test    # pest
 
 All three must be green before committing. CI runs the same three (T-006).
 
+### Running the suite without being lied to
+
+The Pest suite takes ~8 minutes (measured 469s, 2160 tests). Three separate
+mechanisms have made a run report something other than what happened; each is
+fixed here, and each is written down because the fix is invisible from the
+outside.
+
+**1. Composer used to kill the suite at 300s.** `process-timeout` defaults to
+300 seconds, so `composer test` died mid-run with a `ProcessTimedOutException` —
+which reads like a failure and is not one. The `test` script now opens with
+`Composer\Config::disableProcessTimeout`, the line the `dev` script has always
+carried one entry above.
+
+*Why per-script and not `config.process-timeout`.* That config key applies to
+every composer invocation in the package, including the `composer install` that
+`scripts/deploy.sh` runs inside the maintenance window — whose
+`post-autoload-dump` boots Laravel twice (`package:discover`, `filament:upgrade`).
+A global bound generous enough for the suite would let a boot blocked on an
+unreachable Redis sit there for the rest of it: `deploy.sh`'s `EXIT` trap fires
+on exit, and a hung process does not exit. Uncapping the one script leaves the
+deploy at the 300s default, where `lint` (1.1s) and `stan` (21s cold) have margin
+to spare.
+
+*What `process-timeout` actually bounds:* composer's spawned children — VCS
+clones and script commands — and nothing else. HTTP downloads are bounded
+separately by curl (`CURLOPT_CONNECTTIMEOUT` 10s, `CURLOPT_TIMEOUT` ≥300s), so a
+stalled download was never the case this setting was about.
+
+**2. Uncapping removed the only bound the local gate had.** The `testing`
+database runs with `lock_timeout = 0`, so a migration waiting on a lock another
+suite holds waits forever — silently, with no output and no exit. So
+`.claude/skills/gates/run-gates.sh` wraps the suite in `timeout -k 30s 900`
+(GNU `timeout`, run inside the container; macOS ships none). 900 rather than
+something roomier because that script promises a green run locally means a green
+`api` job in CI, and CI's `timeout-minutes: 15` covers install, lint, stan and
+migrate too — leaving the suite ~700–750s there. The script reports exit 124
+distinctly, as a bound that fired rather than a suite that failed.
+
+**3. `composer test -- --coverage` ran nothing at all until 2026-09-07.**
+Composer appends `--` arguments to *every* command in a multi-entry script, so
+`--coverage` landed on `@php artisan config:clear` first; that exits 1 with
+`The "--coverage" option does not exist`, and composer aborts the script before
+Pest starts. Every flag was affected — `--filter`, `--parallel`. The
+`config:clear` entry now carries `@no_additional_args` (composer ≥2.7), so flags
+reach Pest and only Pest. The entry itself must stay: `phpunit.xml` sets
+`DB_DATABASE=testing` through `<env>`, and a stale `bootstrap/cache/config.php`
+would make `RefreshDatabase` run `migrate:fresh` against the **dev** database.
+
+**4. Never run two suites at once.** Both call `migrate:fresh` against the same
+`testing` database (`tests/Pest.php` applies `RefreshDatabase` to `Feature` and
+`Load`), and the drop/create sequences interleave — surfacing as
+`SQLSTATE[42P01]` or `42P07` in a test that has nothing to do with either run.
+
 ## Local environment
 
 ### Option A — Laravel Sail (reference environment)

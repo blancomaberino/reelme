@@ -81,13 +81,20 @@ fi
 declare -a passed=() failed=()
 
 gate() { # gate <label> <command...>
-  local label=$1; shift
+  local label=$1 rc=0; shift
   printf '\n\033[1m▶ %s\033[0m\n' "$label"
-  if "$@"; then
+  "$@" || rc=$?
+  if [ $rc -eq 0 ]; then
     passed+=("$label")
   else
     failed+=("$label")
-    printf '\033[31m✗ %s FAILED\033[0m\n' "$label"
+    # Print the code: 124 is `timeout` firing, which looks exactly like a red
+    # suite in the summary otherwise — truncated output and a generic FAILED.
+    if [ $rc -eq 124 ]; then
+      printf '\033[31m✗ %s TIMED OUT (exit 124) — the bound fired; the suite did not fail\033[0m\n' "$label"
+    else
+      printf '\033[31m✗ %s FAILED (exit %d)\033[0m\n' "$label" "$rc"
+    fi
   fi
 }
 
@@ -101,11 +108,18 @@ if [ $run_api -eq 1 ]; then
     gate "API · Pint (composer lint)"   sail composer lint
     gate "API · PHPStan (composer stan)" sail composer stan
     # `composer test` disables composer's own process timeout (the suite runs ~8
-    # minutes; the 300s default killed it mid-run). That leaves this caller with
-    # no bound at all — CI has `timeout-minutes: 15`, this script had nothing —
-    # so put one back. GNU timeout runs INSIDE the container; the host is macOS,
-    # which ships no `timeout`. Exit 124 means the bound was hit, not a red suite.
-    gate "API · Pest (composer test)"    sail timeout 1800 composer test
+    # minutes; the 300s default killed it mid-run), which left this caller with
+    # no bound at all — CI has `timeout-minutes: 15`, this script had nothing.
+    #
+    # 900, not more: this script promises at the top that a green run here means
+    # a green `api` job there, and that job's 15 minutes cover install, lint,
+    # stan and migrate as well — so the suite's real CI budget is ~700-750s. A
+    # local bound above that would pass a suite CI then kills. Measured: 469s.
+    #
+    # GNU timeout, run INSIDE the container: the host is macOS, which ships none.
+    # `-k 30s` follows an ignored SIGTERM with SIGKILL, so a wedged pest cannot
+    # keep holding the `testing` database against the next run.
+    gate "API · Pest (composer test)"    sail timeout -k 30s 900 composer test
   fi
 fi
 
