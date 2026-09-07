@@ -54,6 +54,8 @@ describe('navigation wiring', () => {
     // exists in this harness. Being in the pressable set is the strongest claim
     // available without replacing the mock, and it is the one that catches the
     // failure the rule exists for — a screen reachable only by deep link.
+    // The press itself lives on a device: `.maestro/tonight-reach.yaml` taps the
+    // tab and asserts the screen, which is the half this harness cannot reach.
     expect(mockRouter.tabNames).toEqual(['map', 'tonight', 'places', 'search', 'profile']);
     expect(mockRouter.initialRouteName).toBe('map');
   });
