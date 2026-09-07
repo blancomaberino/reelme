@@ -55,8 +55,8 @@ status is non-zero if anything failed.
 
 - **API gates need the stack up.** If `laravel.test` isn't running the script says
   so and points at `./scripts/dev.sh backend` — start it, then re-run.
-- **Re-run after `/simplify`.** Simplify rewrites code; the gates it was green
-  against no longer apply. The pre-PR checklist in `CLAUDE.md` requires this.
-- This does **not** replace `/coderabbit`. Gates are step one of the pre-PR pass;
-  `/coderabbit` runs them plus `/simplify`, `/security-review`, and the grounded
-  line-by-line review, and records the receipt the PR gate hook checks.
+- **Order is `/simplify` → gates → review** (CLAUDE.md §2). Simplify first so the
+  full run happens once, on the code the reviewers will read; after a review's
+  fix commit, re-run only the areas the fix touched.
+- This does **not** replace `/coderabbit`, which reuses a green run on an
+  unchanged tree and records the approval the PR gate hook checks.

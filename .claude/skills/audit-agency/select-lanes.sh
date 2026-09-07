@@ -2,10 +2,12 @@
 # select-lanes.sh — which agency seats THIS diff needs, decided from the files
 # it touches rather than from habit.
 #
-# Usage:  select-lanes.sh [BASE]          (default: main, then origin/main)
-# Output: a LANES block (one agent per line, with the reason) or "LANES: none",
-#         followed by the exact record-receipt.sh invocation to use.
-# Exit:   0 always — advisory; the hook (guard-pr-audit.py) only checks that a
+# Usage:  select-lanes.sh [BASE]          (default: origin/main, then main)
+# Output: a LANES block (one agent per line, with the reason), or
+#         "LANES: none — documentation only …", or "LANES: unknown …" (exit 1).
+#         Then the exact record-receipt.sh invocation to use.
+# Exit:   0 when a decision was made; 1 when it could not be (no base ref).
+#         Advisory either way — the hook (guard-pr-audit.py) only checks that a
 #         receipt exists for HEAD + tree, never which seats were filled.
 #
 # The diff considered is the WORKING TREE against the merge-base with BASE —
@@ -13,24 +15,41 @@
 # what the receipt certifies.
 #
 # Rules (owner decision, 2026-09-07):
-#   - Pure documentation (*.md, docs/) outside .claude/ and CLAUDE.md needs no
-#     panel. Prose cannot introduce the defects the panel looks for.
-#   - .claude/**, CLAUDE.md, .github/**, scripts/** are the guard: Security +
-#     Architecture always, because a weakened hook or escape hatch ships looking
-#     audited otherwise.
+#   - Documentation is an ALLOWLIST, not a suffix: docs/ trees, README.md, and
+#     top-level *.md. A .md under apps/ or packages/ is never "just docs" — the
+#     API loads resources/prompts/*.md as an LLM system prompt.
+#   - The guard — .claude/**, any CLAUDE.md or AGENTS.md at any depth, .github/,
+#     scripts/ — always seats Security + Architecture (+ Code Reviewer): a
+#     weakened hook or escape hatch would otherwise ship looking audited.
 #   - Any other change: Security + Architecture (mandatory), plus the lanes the
 #     paths select. A lane is added by a path; nothing is added "to be safe".
+#     Files no rule knows are listed as UNMATCHED so the gap is visible.
 set -uo pipefail
 
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "LANES: none — not a git repo"; exit 0; }
-cd "$ROOT" || exit 0
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "LANES: unknown — not a git repo"; exit 1; }
+cd "$ROOT" || exit 1
 AGENTS_DIR="$ROOT/.claude/agents"
 
-BASE="${1:-main}"
-git rev-parse --verify -q "$BASE" >/dev/null 2>&1 || BASE=origin/main
-MB="$(git merge-base "$BASE" HEAD 2>/dev/null)" || MB="$BASE"
+# quotePath=off: with it on, a non-ASCII path arrives as "\"se\\303\\261al.php\""
+# and the leading quote defeats every ^-anchored rule below.
+g() { git -c core.quotePath=off "$@"; }
 
-FILES="$( { git diff --name-only "$MB" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } \
+BASE="${1:-}"
+if [ -z "$BASE" ]; then
+  for ref in origin/main main; do
+    git rev-parse --verify -q "$ref" >/dev/null 2>&1 && { BASE="$ref"; break; }
+  done
+fi
+MB="$(git merge-base "${BASE:-HEAD}" HEAD 2>/dev/null)"
+if [ -z "$BASE" ] || [ -z "$MB" ]; then
+  # Fail CLOSED: an empty file list would read as "nothing changed" and a
+  # docs-only receipt would be accepted on a code diff.
+  echo "LANES: unknown — no base ref (${BASE:-origin/main, main}) resolves, so the diff cannot be read."
+  echo "RECEIPT: none — fetch main first."
+  exit 1
+fi
+
+FILES="$( { g diff --name-only "$MB" 2>/dev/null; g ls-files --others --exclude-standard 2>/dev/null; } \
           | grep -v '^\.claude/state/' | sort -u )"
 
 if [ -z "$FILES" ]; then
@@ -41,22 +60,28 @@ fi
 
 has()   { printf '%s\n' "$FILES" | grep -qE  "$1"; }
 hasi()  { printf '%s\n' "$FILES" | grep -qiE "$1"; }
+only()  { ! printf '%s\n' "$FILES" | grep -vE "$1" | grep -q .; }
 count() { printf '%s\n' "$FILES" | grep -c .; }
 
-GUARD_RE='^(\.claude/|CLAUDE\.md$|\.github/|scripts/)'
-DOCS_RE='(\.md$|^docs/)'
+GUARD_RE='^(\.claude/|\.github/|scripts/)|(^|/)(CLAUDE|AGENTS)(\.local)?\.md$'
+DOCS_RE='^(docs/|[^/]+\.md$)|/(docs/|README\.md$)'
+KNOWN_RE="$GUARD_RE|$DOCS_RE|"'^(apps/api|apps/mobile|packages/contracts)/|^(package\.json|package-lock\.json|\.gitignore|\.mcp\.json)$'
 
 # --- docs only ---------------------------------------------------------------
-# Every file is documentation AND none of it is the guard.
-if ! printf '%s\n' "$FILES" | grep -vE "$DOCS_RE" | grep -q . && ! has "$GUARD_RE"; then
-  echo "LANES: none — documentation only ($(count) file(s): *.md / docs/, none under .claude/ or CLAUDE.md)."
+if only "$DOCS_RE" && ! has "$GUARD_RE"; then
+  echo "LANES: none — documentation only ($(count) file(s): docs/, README.md, top-level *.md; nothing under .claude/, no CLAUDE.md)."
   echo "RECEIPT: .claude/skills/audit-agency/record-receipt.sh docs-only"
   exit 0
 fi
 
 # --- seats -------------------------------------------------------------------
 declare -a NAME REASON
-want() { NAME+=("$1"); REASON+=("$2"); }
+SEEN=$'\n'
+want() {  # first call wins; a seat selected by two rules is listed once
+  case "$SEEN" in *$'\n'"$1"$'\n'*) return ;; esac
+  SEEN="$SEEN$1"$'\n'
+  NAME+=("$1"); REASON+=("$2")
+}
 
 want "Senior SecOps Engineer" "security — mandatory on every non-docs diff"
 want "Software Architect"     "architecture — mandatory on every non-docs diff"
@@ -72,10 +97,10 @@ has 'database/migrations/|\.sql$' && want "Database Optimizer" "migration / SQL 
 
 if has '^apps/mobile/'; then
   want "Mobile App Builder" "apps/mobile changed — device crash risk, native rebuild, i18n parity"
-  has '^apps/mobile/(app|src/components|src/screens|src/features)/.*\.tsx$' && {
+  if has '^apps/mobile/(app|src/components|src/screens|src/features)/.*\.tsx$'; then
     want "UX Architect" "a screen or component changed — states, reachability, a11y"
     want "UI Designer"  "a screen or component changed — tokens, duplication, dark mode, overflow"
-  }
+  fi
   has '^apps/mobile/(app\.config|package\.json)' && want "native-rebuild-checker" "app.config / dependencies changed — JS-only or full rebuild?"
 fi
 
@@ -90,34 +115,36 @@ sensitive=""
 hasi "$SENSITIVE_RE" && sensitive=1
 if [ -z "$sensitive" ]; then
   set +o pipefail  # grep -q SIGPIPEs its producer; under pipefail a big diff read as "no match"
-  git diff "$MB" -- . ':(exclude)*.md' 2>/dev/null | grep -E '^[+-]' | grep -qiE "$SENSITIVE_RE" && sensitive=1
-  # Untracked files are not in `git diff`; read them directly (non-markdown only).
-  git ls-files --others --exclude-standard 2>/dev/null | grep -vE "$DOCS_RE" | grep -v '^\.claude/state/' \
-    | xargs -I{} grep -liE "$SENSITIVE_RE" {} 2>/dev/null | grep -q . && sensitive=1
+  g diff "$MB" -- . ':(exclude)*.md' 2>/dev/null | grep -E '^[+-]' | grep -qiE "$SENSITIVE_RE" && sensitive=1
+  # Untracked files are not in `git diff`; read them directly. NUL-separated:
+  # a quote or non-ASCII byte in a name made xargs drop the file, or abort the
+  # whole scan, so a new file could carry a password check past this line.
+  g ls-files -z --others --exclude-standard 2>/dev/null | grep -zvE "$DOCS_RE" | grep -zv '^\.claude/state/' \
+    | xargs -0 grep -liE "$SENSITIVE_RE" -- 2>/dev/null | grep -q . && sensitive=1
   set -o pipefail
 fi
 [ -n "$sensitive" ] && want "Application Security Engineer" "auth / money / secrets in the change — a second, code-level security reading"
 hasi 'payment|billing|ledger|payout|mercado|stripe' && want "Payments & Billing Engineer" "money moves — idempotency, reconciliation, webhooks"
 
-# --- emit, deduplicated, only agents that exist ---------------------------------
+# --- emit --------------------------------------------------------------------
 exists() { [ -d "$AGENTS_DIR" ] && grep -qxF "name: $1" "$AGENTS_DIR"/*.md 2>/dev/null; }
 
-declare -a SEEN
 echo "LANES ($(count) changed file(s) vs $BASE):"
-missing=0
 for i in "${!NAME[@]}"; do
   n="${NAME[$i]}"
-  dup=""
-  for s in "${SEEN[@]:-}"; do [ "$s" = "$n" ] && dup=1; done
-  [ -n "$dup" ] && continue
-  SEEN+=("$n")
   if exists "$n"; then
     printf '  - %-32s — %s\n' "$n" "${REASON[$i]}"
   else
     printf '  - %-32s — %s  (NOT INSTALLED under .claude/agents — spawn general-purpose and adopt the persona)\n' "$n" "${REASON[$i]}"
-    missing=$((missing + 1))
   fi
 done
+
+unmatched="$(printf '%s\n' "$FILES" | grep -vE "$KNOWN_RE")"
+if [ -n "$unmatched" ]; then
+  echo
+  echo "UNMATCHED — no rule knows these paths; they get only the mandatory seats. Add a rule (with a test) if this is a new area:"
+  printf '%s\n' "$unmatched" | sed 's/^/  /'
+fi
 echo
 echo "Launch every seat in ONE message (one Agent call each) over the same diff."
 echo "RECEIPT: .claude/skills/audit-agency/record-receipt.sh <clean|findings-fixed> \"<note>\"   (after the fix commit)"

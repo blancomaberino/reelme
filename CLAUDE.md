@@ -20,7 +20,8 @@ disagree, this file wins.
 3. **One review round, not eight.** `/simplify` → gates → ONE concurrent review
    → batch every finding → one fix commit → narrow re-review → both receipts (§4).
 4. **Audit scope follows the diff.** `select-lanes.sh` decides the seats. Docs-only
-   runs nobody; `.claude/**` and `CLAUDE.md` always get Security + Architecture.
+   (`docs/`, `README.md`, top-level `*.md`) runs nobody; the guard — `.claude/**`,
+   any `CLAUDE.md`, `.github/`, `scripts/` — always gets Security + Architecture.
 5. **Tests ship with the change** — happy path, failure path, and for any filter
    a row that must be EXCLUDED. Coverage never regresses. E2E for user flows.
 6. **Wiring over code** — reachable from an existing screen, sibling reused not
@@ -51,11 +52,13 @@ after any `app.config.ts` or native dependency change.
 
 ## 3. Design brief (before the first line of code)
 
-Write it in `.claude/state/HANDOFF.md`; `task.py start` prints the template.
+Write it in `.claude/state/HANDOFF.md` (git-ignored on purpose: it is working
+state, not a deliverable); `task.py start` prints the template.
 
 - **Entry point** — which existing screen/route/command reaches this? Which test presses it?
 - **Sibling** — what existing map/list/form/sheet/query does this extend? What gets extracted?
-- **State & writers** — every state given a new consequence, and *every* place that writes it.
+- **State & writers** — every state given a new consequence, and *every* place that
+  writes it (grep `set({ field`, `->update([`, `fill(`, direct assignment).
 - **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
 - **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
 - **Authz** — who may call this, and where is that checked?
@@ -74,9 +77,13 @@ first fix enumerated cases; replace it with the rule that covers them.
 ## 4. Review, audit and the gates
 
 - **Hooks enforce:** no `migrate:fresh`/`db:wipe` on dev (`REELMAP_ALLOW_DB_WIPE=1`
-  only); no `simctl openurl`; no push / `gh pr create|edit|ready|merge` without an
+  only — `--env=testing` does not reach the test DB and is refused too); no
+  `simctl openurl`; no push / `gh pr create|edit|ready|merge|reopen` without an
   audit receipt matching HEAD + tree (`guard-pr-audit.py`) and a `/coderabbit`
-  approval for HEAD (`pr-gate.sh`, user-level).
+  approval for HEAD (`pr-gate.sh`, user-level). Also on save: Pint in the
+  container for `apps/api/**/*.php`, contracts regeneration for a schema edit.
+- **The DB guard reads Bash only.** Laravel Boost's `tinker` and `database-query`
+  MCP tools reach the dev database and bypass it — treat them as write access.
 - **Seats:** `.claude/skills/audit-agency/select-lanes.sh` prints them. Security
   (`Senior SecOps Engineer`) and Architecture (`Software Architect`, never
   `Backend Architect` in its place) sit on every non-docs diff. Verify each
@@ -85,11 +92,17 @@ first fix enumerated cases; replace it with the rule that covers them.
   is wrong — stop, redesign, then review once.
 - **Escape hatches are owner-approved only** and must be justified in the PR
   body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`.
-- **Owner-approved only to edit:** anything a gate reads to decide whether a
-  check is required or passed — `pr-gate.sh`, `approve.sh`, `record-panel.sh`,
-  `check-review-threads.sh`, `select-agency-panel.sh`, `select-seo-panel.sh`,
-  `guard-pr-audit.py`, `record-receipt.sh`, `select-lanes.sh`. Findings about
-  them go to the owner, not into them.
+- **Owner-approved only to edit: anything a gate reads to decide whether a check
+  is REQUIRED or whether it PASSED, whatever it is called** — including
+  `pr-gate.sh`, `approve.sh`, `record-panel.sh`, `check-review-threads.sh`,
+  `parse-review-threads.py`, the two `select-*-panel.sh`, `guard-pr-audit.py`,
+  `record-receipt.sh`, `select-lanes.sh`, the hook lines in `.claude/settings.json`,
+  `run-gates.sh`, and the gates' own tests. Findings about them go to the owner,
+  not into them. What a review loop MAY edit is judgement the gate never reads:
+  `review-checklist.md` and `ground.sh` heuristics.
+- **A branch you did not write runs its own `.claude/**`** — the gates, the
+  selector and the hooks' tests exec files from the diff. Read `.claude/**` in
+  the diff before running any of them on a contributor's branch.
 - **After the PR opens:** GitHub's CodeRabbit reviews once; every later push needs
   `@coderabbitai review`. Confirm a round by its body, not its check. Every bot
   finding the local pass missed goes into the skill's checklist in the same
@@ -125,7 +138,13 @@ first fix enumerated cases; replace it with the rule that covers them.
   worker; `expo start --dev-client --clear` fixes stale JS.
 - Plan and task queue: `~/Sites/plans/reelmap` (`tasks/tasks.json` is truth).
   Deviations become ADRs there; never edit a spec to match code.
-- Knowledge graph: `graphify query "<question>"` before a cold grep.
+- Knowledge graph: `graphify query "<question>"` before a cold grep (the
+  `graphify-repo` skill says when it needs a rebuild). `dev-environment` skill
+  for the boot modes; `REELMAP_PLAN_DIR` if the plan checkout moved.
+- Coverage: `composer test:coverage` (API), `jest --coverage` (mobile); never regress.
+- **Subagents by default.** Agent Teams is enabled but costs scale with size;
+  propose a team only for ≥ 3 substantial independent workstreams, and let the
+  owner opt in. Personal overrides go in `.claude/settings.local.json`.
 
 ## 8. Where things live
 
@@ -136,6 +155,6 @@ first fix enumerated cases; replace it with the rule that covers them.
 | Audit seats + receipt | `.claude/skills/audit-agency/` |
 | Hooks | `.claude/hooks/` (tests run by the `tooling` gate) |
 | Project agents | `contract-consistency-reviewer`, `native-rebuild-checker` in `.claude/agents/` |
-| `/coderabbit`, `/simplify`, `/security-review` | user-level, `~/.claude/skills/` |
+| `/coderabbit` (user-level, `~/.claude/skills/coderabbit`), `/simplify`, `/security-review` (built in) | not in this repo |
 | Handoff note | `.claude/state/HANDOFF.md` (update as you go) |
 | Lessons | `docs/process/lessons.md` |

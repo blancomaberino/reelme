@@ -25,7 +25,7 @@ script refuses that verdict on anything else). Rules it applies:
 | Diff touches | Seats added |
 | --- | --- |
 | anything but docs | `Senior SecOps Engineer`, `Software Architect` (always) |
-| `.claude/`, `CLAUDE.md`, `.github/`, `scripts/` | + `Code Reviewer` (the guard is prose; a check that cannot fail is the bug) |
+| `.claude/`, any `CLAUDE.md`/`AGENTS.md`, `.github/`, `scripts/` | + `Code Reviewer` (the guard is prose; a check that cannot fail is the bug) |
 | `apps/api/` | + `Backend Architect`; app/routes/database → + `Code Reviewer` |
 | migrations / `.sql` | + `Database Optimizer` |
 | `apps/mobile/` | + `Mobile App Builder`; a screen/component → + `UX Architect`, `UI Designer`; app.config/package.json → + `native-rebuild-checker` |
@@ -33,8 +33,11 @@ script refuses that verdict on anything else). Rules it applies:
 | Filament / views | + `UX Architect` |
 | auth / money / secrets in the content | + `Application Security Engineer`; money → + `Payments & Billing Engineer` |
 
-Nothing is added "to be safe". If a seat the diff obviously needs is missing,
-add it to the script (owner-approved, with a test case) — not to your prompt.
+Docs means `docs/`, `README.md` and top-level `*.md` only — a `.md` under
+`apps/` can be an LLM prompt the API executes. Files no rule knows are printed
+as `UNMATCHED`; add a rule (owner-approved, with a test) rather than a seat to
+your prompt. **The selector is a script from the branch under review** — on a
+branch you did not write, read `.claude/**` in the diff before running it.
 
 ## 2. Launch every seat in ONE message
 
@@ -66,7 +69,7 @@ not three stages. Give every seat the same frame:
    every seat's findings, apply them together, then re-seat once.
 5. **Prove each fix bites.** Mutate it, watch the test fail, restore with an
    absolute path.
-6. **Re-run the gates** (`.claude/skills/gates/run-gates.sh`); fixes are code.
+6. **Re-run the gates for the areas the fix touched** (`run-gates.sh api`, …); fixes are code.
 7. **Re-review, narrowly:** Security and Architecture always, plus only the lanes
    whose code the fix commit touched. **Round limit: two.** A third round of
    findings in the same file means the design is wrong — stop, redesign, review once.
@@ -89,7 +92,7 @@ It still cannot tell which seats you filled — that stays on you.
   through, accepted. `REELMAP_SKIP_AUDIT=1` is owner-approved only and is
   justified in the PR body.
 - Tests: `bash .claude/skills/audit-agency/tests/select-lanes.test.sh` (the
-  selector) and `tests/guard.test.sh` (the hook, 23 cases). The `tooling` gate
+  selector) and `tests/guard.test.sh` (the hook's own suite). The `tooling` gate
   runs both on any `.claude/` change.
 - Findings converging from two lanes are the ones to trust most; a lone finding
   deserves the hardest look before you act.

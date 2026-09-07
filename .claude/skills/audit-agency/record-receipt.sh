@@ -35,11 +35,19 @@ esac
 # says what was required, and a `docs-only` receipt on a code diff is refused
 # rather than written. The hook still checks only HEAD + tree; this is the one
 # place the lane decision leaves an artifact.
-lanes="$(.claude/skills/audit-agency/select-lanes.sh 2>/dev/null | sed -n '/^LANES/,/^$/p' | sed '/^$/d')"
-if [ "$verdict" = docs-only ] && ! printf '%s' "$lanes" | grep -q '^LANES: none'; then
+# `|| true`: the selector exits 1 on "unknown", and under set -e + pipefail that
+# killed this script before the refusal below could say why.
+lanes="$({ .claude/skills/audit-agency/select-lanes.sh 2>/dev/null || true; } | sed -n '/^LANES/,/^$/{/^$/d;p;}')"
+# Fail CLOSED on an empty or unknown selection: a selector that crashed, or a
+# base ref that did not resolve, must not become a receipt of any verdict.
+if [ -z "$lanes" ] || printf '%s' "$lanes" | grep -q '^LANES: unknown'; then
+  echo "refused: select-lanes.sh could not read the diff — no receipt written:" >&2
+  printf '%s\n' "${lanes:-(no output)}" >&2
+  exit 2
+fi
+if [ "$verdict" = docs-only ] && ! printf '%s' "$lanes" | grep -q '^LANES: none — documentation only'; then
   echo "refused: 'docs-only' but the diff selects seats:" >&2
-  printf '%s
-' "$lanes" >&2
+  printf '%s\n' "$lanes" >&2
   exit 2
 fi
 
@@ -47,6 +55,7 @@ mkdir -p .claude/state
 
 VERDICT="$verdict" NOTE="${2:-}" LANES="$lanes" python3 - <<'PY'
 import importlib.util, json, os, pathlib, subprocess
+from datetime import datetime, timezone
 
 spec = importlib.util.spec_from_file_location("guard", ".claude/hooks/guard-pr-audit.py")
 guard = importlib.util.module_from_spec(spec)
@@ -76,9 +85,7 @@ pathlib.Path(".claude/state/audit-receipt.json").write_text(
                 for l in os.environ["LANES"].splitlines()
                 if l.strip().startswith("- ")
             ],
-            "recorded_at": subprocess.run(
-                ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"], capture_output=True, text=True
-            ).stdout.strip(),
+            "recorded_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
         indent=2,
     )

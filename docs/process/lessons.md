@@ -4,7 +4,7 @@
 behind it, so the rule stays short and the evidence stays checkable. Add a case
 here when a rule is added or a bug ships green; never delete one to save space.
 
-## Wiring & seams (T-047, 2026-08-03)
+## Wiring & seams (T-047, 2026-08-04)
 
 Four foundational bugs shipped green in one task. Every one lived in the seam
 between the new code and the app, while the tests only looked inside the new code:
@@ -41,7 +41,7 @@ So: grep for every writer before adding a rule; test over the writers with an
 The 200 branches of a new filter test proved only that the endpoint answered.
 Any test of a filter needs a row that must be EXCLUDED and an assertion that it was.
 
-## Eight audit rounds (T-156, 2026-09-07)
+## Eight audit rounds (T-156, reviewed 2026-09-03 → 09-07)
 
 Every finding after round four was in `SentryScrubber`, which was not part of the
 task's acceptance. Rounds 1–4 each added one more getter after a reviewer found
@@ -80,7 +80,7 @@ that makes a claim about it.
 
 Full mechanics: `apps/api/README.md` → "Running the suite without being lied to".
 
-## The simulator is the owner's environment (T-047, 2026-08-03; T-158)
+## The simulator is the owner's environment (T-047, 2026-08-04; T-158)
 
 - `simctl openurl` sets the app's launch URL; Expo Router replays it on every
   reload, so the owner's next Cmd+R lands on the screen you were testing.
@@ -90,7 +90,10 @@ Full mechanics: `apps/api/README.md` → "Running the suite without being lied t
 - `simctl location clear` is a no-op; overwrite with Montevideo `-34.9011,-56.1645`.
 - Flying the map persists the viewport.
 - `simctl privacy revoke location` does not reach the app; use
-  `launchApp: { permissions: { location: never } }` and restore in the same flow.
+  `launchApp: { permissions: { location: never } }` (values `always|inuse|never`;
+  `deny` is rejected) and restore in the same flow — Maestro has no `finally`,
+  so a flow that dies before the restore leaves the state; check where the app
+  comes up afterwards.
 - Synthetic clicks (`osascript`) do not register as touches; keystrokes do.
 - The habitually booted sim is the 932 pt Pro Max, which hides every clipping
   bug — check an SE-sized screen (~608 pt usable) before calling a layout verified.
