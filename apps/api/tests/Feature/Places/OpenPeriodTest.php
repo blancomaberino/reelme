@@ -508,14 +508,17 @@ it('indexes the columns the default sort pages by', function () {
     // without it every filtered listing sorts its whole candidate set before the
     // LIMIT applies. That is the only bound `?open_now=1` has that does not
     // depend on how much the geography happened to remove.
-    $columns = DB::table('pg_indexes')
+    // Matched by COLUMNS, not by name: renaming an index in a later migration
+    // changes nothing about the invariant, and a pin that goes red for a rename
+    // teaches the next author to delete pins. `tablename` still scopes it, so an
+    // index created on the wrong table does not satisfy this.
+    $matching = DB::table('pg_indexes')
         ->where('tablename', 'places')
-        ->where('indexname', 'places_created_at_id_index')
-        ->value('indexdef');
+        ->pluck('indexdef')
+        ->map(fn ($definition) => (string) preg_replace('/\s+/', '', (string) $definition))
+        ->filter(fn (string $definition) => str_contains($definition, '(created_at,id)'));
 
-    expect($columns)->toBeString()
-        ->and(preg_replace('/\s+/', '', (string) $columns))
-        ->toContain('(created_at,id)');
+    expect($matching)->not->toBeEmpty();
 });
 
 it('accepts open_now on the public index once a point rides with it', function () {
@@ -571,6 +574,22 @@ it('reads every spelling of the flag the way the caller meant it', function (str
     'open_now=true is REFUSED, not read as true' => ['?open_now=true', null],
     'open_now=on is REFUSED' => ['?open_now=on', null],
 ]);
+
+it('refuses a mis-spelled flag without a point too, and says so once', function () {
+    // The guard on the near-requirement reads the flag with `boolean()`
+    // (filter_var), which is looser than the `boolean` RULE — so "yes" is a value
+    // the rule rejects and the guard would have read as true. Without the
+    // `errors()->has()` check it produced two messages under one key: "must be
+    // true or false" and "requires the near parameter", which contradict each
+    // other about what is wrong. The request still 422s either way; this pins
+    // WHICH complaint it makes.
+    $response = $this->getJson('/api/v1/places?open_now=yes');
+
+    $response->assertStatus(422);
+
+    expect($response->json('error.details.open_now'))->toHaveCount(1)
+        ->and($response->json('error.details.open_now.0'))->not->toContain('near');
+});
 
 // ---------------------------------------------------------------------------
 // The bypass the observer cannot see.

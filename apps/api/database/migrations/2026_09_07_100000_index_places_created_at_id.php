@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\Places\Tables\PlacesTable;
 use App\Http\Controllers\Api\V1\PlaceController;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -24,11 +25,24 @@ use Illuminate\Support\Facades\Schema;
  * essentially all of it, and at that selectivity the planner abandons the GiST
  * bound for a sequential scan anyway.
  *
- * With this index the plan can walk rows in sort order and stop at the LIMIT,
+ * With this index the plan CAN walk rows in sort order and stop at the LIMIT,
  * which is the one bound that does not depend on how much the filters happened
- * to remove. Column order matters and DESC does not: a btree is scanned
- * backwards for `ORDER BY … DESC` at no cost, and `(created_at, id)` is exactly
- * the tuple the cursor compares.
+ * to remove. "Can", not "does": whether the planner takes that path depends on
+ * how selective `?open_now=1` turns out to be over a real corpus, and the dev
+ * database has twenty rows, so nothing here has been measured — it is reasoned.
+ * The claim that is safe either way is that the worst case is unchanged: without
+ * the index the sort was mandatory, with it the sort is optional.
+ *
+ * Column order matters and DESC does not: a btree is scanned backwards for
+ * `ORDER BY … DESC` at no cost, and `(created_at, id)` is exactly the tuple the
+ * cursor compares. Both columns are immutable after insert, so the index is paid
+ * for on INSERT only — enrichment, merges and admin edits never touch it.
+ *
+ * NOT a partial index over `publiclyVisible()`, tempting as that is: Filament's
+ * places table sorts by `created_at` over EVERY place including hidden, removed
+ * and merged ones ({@see PlacesTable}),
+ * so a partial index would quietly stop serving the admin and send it back to a
+ * full sort.
  */
 return new class extends Migration
 {
