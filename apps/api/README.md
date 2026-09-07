@@ -9,16 +9,17 @@ Laravel 13 REST API (scaffolded in T-002). Sanctum auth, Horizon queues, Postgre
 ## Quality gates
 
 ```bash
-composer lint    # pint --test  (code style, Laravel preset)
-composer stan    # phpstan analyse (Larastan, level 6)
-composer test    # pest
+composer lint          # pint --test  (code style, Laravel preset)
+composer stan          # phpstan analyse (Larastan, level 6)
+composer test          # pest
+composer test:coverage # pest --coverage (its own, roomier time bound)
 ```
 
 All three must be green before committing. CI runs the same three (T-006).
 
 ### Running the suite without being lied to
 
-The Pest suite takes ~8 minutes (2160 tests; 482s and 493s on two runs of this branch). Three separate
+The Pest suite takes ~8 minutes (2160 tests; 482s and 493s on two runs of this branch). Four separate
 mechanisms have made a run report something other than what happened; each is
 fixed here, and each is written down because the fix is invisible from the
 outside.
@@ -64,6 +65,13 @@ so the suite's real budget there is under 750s. `run-gates.sh` promises that a
 green run locally means a green `api` job in CI; a local bound above CI's own
 would break that promise quietly. Measured suite: 482–493s, so 700 leaves ~1.4×. If a run ever gets near it,
 the answer is a faster suite, not a bigger number — CI's ceiling does not move.
+
+*Coverage gets its own bound.* Instrumented, the suite runs 552s against 493s
+plain — comfortably inside 700, but 700 exists to match CI's ceiling, and CI runs
+`coverage: none` (`ci.yml:150`), so coverage has no business being sized by it.
+`composer test:coverage` carries `timeout -k 30s 1200`. `composer test -- --coverage`
+still works and still gets the tighter 700s, which is fine today and would be the
+first thing to break if the suite grew — prefer the dedicated script.
 
 Exit **124** from `composer test` is that bound firing, not a red suite, and
 `run-gates.sh` says so in its summary — mutation-tested in

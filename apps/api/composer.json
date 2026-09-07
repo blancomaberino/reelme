@@ -69,6 +69,11 @@
             "@php artisan config:clear --ansi @no_additional_args",
             "timeout -k 30s 700 php vendor/bin/pest"
         ],
+        "test:coverage": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan config:clear --ansi @no_additional_args",
+            "timeout -k 30s 1200 php vendor/bin/pest --coverage"
+        ],
         "lint": "pint --test",
         "stan": "phpstan analyse --memory-limit=1G",
         "post-autoload-dump": [

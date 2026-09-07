@@ -47,6 +47,17 @@ out=$(cat "$tmp")
 check "inline: a real failure shows its code" "(exit 3)" "$out"
 check "summary: a real failure shows its code" "red-suite (exit 3)" "${failed[1]}"
 
+# Render the ACTUAL summary block, don't just read the array. Asserting on
+# `failed[]` would stay green if the summary loop were changed to print, say,
+# "${g%% —*}" — which strips the annotation and restores the exact regression
+# this file exists to catch. So extract that loop from the script too and run it.
+summary_body=$(sed -n '/^for g in "${failed\[@\]:-}"/p' "$script")
+[ -n "$summary_body" ] || { echo "FAIL: could not extract the failed-summary loop"; exit 1; }
+summary=$(eval "$summary_body" 2>&1)
+
+check "summary render: names the fired bound" "TIMED OUT (exit 124)" "$summary"
+check "summary render: names a real failure's code" "red-suite (exit 3)" "$summary"
+
 # The whole point: the two must not read alike where the reader acts.
 if [ "${failed[0]}" = "${failed[1]}" ]; then
   echo "FAIL  [a fired bound and a red suite are indistinguishable in the summary]"

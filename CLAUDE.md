@@ -82,7 +82,7 @@ Pick whichever surface(s) actually exercise the change — don't invent an admin
     needs a row that must be EXCLUDED, and an assertion that it was. *(observed —
     T-158, where the 200 branches of a new test proved only that the endpoint
     answered.)*
-- **Coverage is required.** Run coverage (`composer test -- --coverage`; mobile: `jest --coverage`) and do not regress it. New/changed code paths must be covered; call out any deliberate gap in the PR and why.
+- **Coverage is required.** Run coverage (`composer test:coverage`; mobile: `jest --coverage`) and do not regress it. New/changed code paths must be covered; call out any deliberate gap in the PR and why.
 - **E2E is required for user-facing flows.**
   - API: full-pipeline / end-to-end feature tests driven by fakes+fixtures (e.g. share → published, redeem → verify → ledger).
   - Mobile: Maestro flows (see task T-053).
@@ -164,10 +164,12 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
   - **A `ProcessTimedOutException`, or exit 124, means the suite was STOPPED — not
     that it failed.** Never pipe the run through `tail`/`grep` to find out: the
     pipeline's exit status is the pipe's, not composer's.
-  - **Pass Pest flags as `composer test -- --coverage`.** That works only because
-    the `test` script guards its first entry with `@no_additional_args`; without
-    it every flag also hits `artisan config:clear`, which exits 1 before Pest
-    starts. That was true, loudly and unread, until 2026-09-07.
+  - **Pass Pest flags after `--`** (`composer test -- --filter=X`). That works
+    only because the `test` script guards its first entry with
+    `@no_additional_args`; without it every flag also hits `artisan config:clear`,
+    which exits 1 before Pest starts. That was true, loudly and unread, until
+    2026-09-07. For coverage use `composer test:coverage` — same guard, and a
+    time bound sized for an instrumented run rather than for CI.
   - **Never run two suites at once.** Both `migrate:fresh` the shared `testing`
     database and the DDL interleaves, surfacing as `SQLSTATE[42P01]` or `42P07`
     in an unrelated test. Re-run the named test alone before believing it.
