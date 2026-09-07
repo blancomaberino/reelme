@@ -100,7 +100,12 @@ if [ $run_api -eq 1 ]; then
   else
     gate "API · Pint (composer lint)"   sail composer lint
     gate "API · PHPStan (composer stan)" sail composer stan
-    gate "API · Pest (composer test)"    sail composer test
+    # `composer test` disables composer's own process timeout (the suite runs ~8
+    # minutes; the 300s default killed it mid-run). That leaves this caller with
+    # no bound at all — CI has `timeout-minutes: 15`, this script had nothing —
+    # so put one back. GNU timeout runs INSIDE the container; the host is macOS,
+    # which ships no `timeout`. Exit 124 means the bound was hit, not a red suite.
+    gate "API · Pest (composer test)"    sail timeout 1800 composer test
   fi
 fi
 

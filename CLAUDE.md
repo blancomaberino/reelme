@@ -82,7 +82,7 @@ Pick whichever surface(s) actually exercise the change — don't invent an admin
     needs a row that must be EXCLUDED, and an assertion that it was. *(observed —
     T-158, where the 200 branches of a new test proved only that the endpoint
     answered.)*
-- **Coverage is required.** Run coverage (`composer test -- --coverage` / Pest `--coverage`; mobile: `jest --coverage`) and do not regress it. New/changed code paths must be covered; call out any deliberate gap in the PR and why.
+- **Coverage is required.** Run coverage (`composer test -- --coverage`; mobile: `jest --coverage`) and do not regress it. New/changed code paths must be covered; call out any deliberate gap in the PR and why.
 - **E2E is required for user-facing flows.**
   - API: full-pipeline / end-to-end feature tests driven by fakes+fixtures (e.g. share → published, redeem → verify → ledger).
   - Mobile: Maestro flows (see task T-053).
@@ -160,30 +160,42 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
 
 - **Local PHP is 8.2 — too old for Laravel 13.** Run all API tooling inside Docker (PHP 8.4+, Laravel Sail). The API is exposed on **`:8080`** locally (MAMP holds `:80`).
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
-- **The API suite takes ~8 minutes, and two ways of running it lie about the result.** *(observed — T-158)*
-  - Composer's default `process-timeout` is 300s, so `composer test` used to die
-    mid-suite with a `ProcessTimedOutException` — the suite did not fail, it was
-    **killed**. The `test` script in `apps/api/composer.json` now opens with
-    `Composer\Config::disableProcessTimeout`, the line the `dev` script has always
-    carried; if you see "exceeded the timeout of 300 seconds", that line is gone.
-    Piping the run through `tail`/`grep` hides the death further, because the
-    pipeline's exit status is the pipe's, not composer's.
+- **The API suite takes ~8 minutes, and three ways of running it lie about the result.** *(observed — T-158, and the audit of the commit that wrote this bullet)*
+  - **It used to be killed, not failed.** Composer's default `process-timeout` is
+    300s, so `composer test` died mid-suite with a `ProcessTimedOutException`.
+    The `test` script in `apps/api/composer.json` now opens with
+    `Composer\Config::disableProcessTimeout` — the line `dev` has always carried.
+    Piping the run through `tail`/`grep` hides the death further: the pipeline's
+    exit status is the pipe's, not composer's.
     - **Per-script, not `config.process-timeout`.** The config key applies to
-      every composer invocation in the package — including `composer install` at
-      `scripts/deploy.sh:148`, which runs inside the maintenance window and whose
+      every composer invocation in the package, including the `composer install`
+      that `scripts/deploy.sh` runs inside the maintenance window — whose
       `post-autoload-dump` boots Laravel twice (`package:discover`,
-      `filament:upgrade`). Raising the global bound to keep the suite alive would
-      also let a boot blocking on an unreachable Redis or database sit there
-      25 minutes longer, silently: `deploy.sh`'s `EXIT` trap fires on exit, and a
-      hung process does not exit. Uncapping the one script leaves that path at
-      300s. (CI is separately capped by `timeout-minutes: 15` on the `api` job.)
-    - It bounds composer's **spawned children** — VCS clones and script commands
-      — and nothing else. HTTP downloads are bounded independently by curl
-      (`CURLOPT_CONNECTTIMEOUT` 10s, `CURLOPT_TIMEOUT` ≥300s), so a stalled
-      download is not the case this setting was ever about.
-  - **Run it serially.** Two suites against the shared `testing` database deadlock
-    each other on migration DDL (`SQLSTATE[40P01]`), which reads as a real failure
-    in an unrelated test. Re-run the named test alone before believing it.
+      `filament:upgrade`). A global bound generous enough for the suite would let
+      a boot blocked on an unreachable Redis sit there silently for the rest of
+      it; `deploy.sh`'s `EXIT` trap fires on exit, and a hung process does not
+      exit. Uncapping the one script leaves that path at the 300s default, where
+      `lint` (1.1s) and `stan` (21s cold) have margin to spare.
+    - `process-timeout` bounds composer's **spawned children** — VCS clones and
+      script commands — and nothing else. HTTP downloads are bounded separately
+      by curl (`CURLOPT_CONNECTTIMEOUT` 10s, `CURLOPT_TIMEOUT` ≥300s), so a
+      stalled download is not the case this setting was ever about.
+    - Uncapping removed this caller's only bound, so `.claude/skills/gates/run-gates.sh`
+      wraps the suite in `timeout 1800` (GNU `timeout`, run inside the container —
+      macOS ships none). Exit **124** there means the bound was hit, not a red
+      suite. CI is bounded by `timeout-minutes: 15` on the `api` job.
+  - **`composer test -- --coverage` silently ran nothing until 2026-09-07.**
+    Composer appends `--` args to **every** command in a multi-entry script, so
+    `--coverage` landed on `artisan config:clear` first and the script aborted
+    with `The "--coverage" option does not exist` before Pest started. The
+    `config:clear` entry now carries `@no_additional_args`, so flags reach Pest
+    only. Any flag was affected — `--filter` and `--parallel` too.
+  - **Run it serially.** Two suites against the shared `testing` database both run
+    `migrate:fresh` (`tests/Pest.php` puts `RefreshDatabase` on `Feature` and `Load`), and
+    the drop/create sequences interleave: each sees tables the other just dropped
+    or already created. It surfaces as `SQLSTATE[42P01]` (undefined table) or
+    `42P07` (duplicate table) in an unrelated test, and reads as a real failure.
+    Re-run the named test alone before believing it.
 - The **build plan and task queue live in `~/Sites/plans/reelmap`** (`tasks/tasks.json` is the source of truth); application code lives here. Follow the plan; record deviations as ADRs in the plan, never by editing the spec to match code.
 
 ### Automation in `.claude/` (checked in — shared, not personal)

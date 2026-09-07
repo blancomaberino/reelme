@@ -100,9 +100,11 @@ architecture; on a docs-only diff, say so in one line and move on.
    exactly the code nobody has reviewed. So every fix commit costs a full round:
    T-158 ran five. Collect every seat's findings, apply them together, re-seat
    the panel once. Narrow the lanes for a later round only when that round
-   changed nothing but prose — a round that touched code, tests included, gets
-   the seats that code belongs to, since a fix is the least-reviewed thing on
-   the branch and no receipt records which seats you filled.
+   changed neither code nor any comment asserting how other code behaves — the
+   defect above is prose, and it lives in whichever lane owns the code it lies
+   about. Otherwise the seats that code belongs to stay, tests included: a fix
+   is the least-reviewed thing on the branch, and no receipt records which seats
+   you filled.
 
    (The two receipts: this skill's `record-receipt.sh`, enforced by
    `.claude/hooks/guard-pr-audit.py`; and `/coderabbit`'s, written by
