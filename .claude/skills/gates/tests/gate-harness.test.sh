@@ -46,8 +46,12 @@ check "summary: 124 keeps the code" "TIMED OUT (exit 124)" "${failed[0]}"
 # and that path reports 128+9. Both are the bound firing and must read alike.
 gate "killed-hard" bash -c 'exit 137' >"$tmp" 2>&1
 out=$(cat "$tmp")
-check "inline: 137 also names the bound" "TIMED OUT (exit 137)" "$out"
-check "summary: 137 keeps the code" "TIMED OUT (exit 137)" "${failed[1]}"
+check "inline: 137 reads as a signal, not a red suite" "KILLED (exit 137)" "$out"
+check "summary: 137 keeps the code" "(exit 137)" "${failed[1]}"
+# 137 has two causes and the message must not assert only ours: a container
+# OOM-kill exits 137 too, and sending someone to raise a time bound when they
+# are out of memory costs them the hour.
+check "137 does not blame the bound alone" "OOM" "${failed[1]}"
 
 gate "red-suite" bash -c 'exit 3' >"$tmp" 2>&1
 out=$(cat "$tmp")

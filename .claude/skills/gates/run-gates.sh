@@ -99,10 +99,16 @@ gate() { # gate <label> <command...>
     local msg
     # 124 AND 137: `timeout -k` sends SIGTERM, then SIGKILL if that is ignored,
     # and only the first path exits 124 — the second reports 128+9. A pest
-    # `--parallel` worker or a debugger-attached process reaches it, which is
-    # exactly the run someone is most likely to be doing when this fires.
-    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-      msg="$label — TIMED OUT (exit $rc): the bound fired, the suite did not fail"
+    # `--parallel` worker or a debugger-attached process reaches it.
+    #
+    # 137 is NOT only ours: a container OOM-kill exits 137 too. So the message
+    # says "killed by a signal" and names both causes, rather than asserting the
+    # bound fired — telling someone to raise a time bound when they are out of
+    # memory is the wrong hour to hand them.
+    if [ "$rc" -eq 124 ]; then
+      msg="$label — TIMED OUT (exit 124): the bound fired, the suite did not fail"
+    elif [ "$rc" -eq 137 ]; then
+      msg="$label — KILLED (exit 137): a signal, not a red suite — the time bound escalating, or an OOM kill"
     else
       msg="$label (exit $rc)"
     fi

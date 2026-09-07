@@ -22,9 +22,9 @@ CLAUDE.md requires it for changed code paths — run it locally.
 ### Running the suite without being lied to
 
 The Pest suite takes ~8 minutes (2160 tests; 482s and 493s on two runs of this branch). Four separate
-mechanisms can make a run report something other than what happened — three of
-them did, and the fourth is a hazard the fix for the first one introduced; each
-is closed here, and each is written down because the fix is invisible from the
+mechanisms can make a run report something other than what happened. Three of
+them did (§1, §3, §4); §2 is a hazard §1's own fix introduced and then bounded.
+Each is closed here, and each is written down because the fix is invisible from the
 outside.
 
 **1. Composer used to kill the suite at 300s.** `process-timeout` defaults to
@@ -81,14 +81,25 @@ number. `composer test -- --coverage` still works and still gets the tighter
 700s, which is fine today and would be the first thing to break if the suite
 grew — prefer the dedicated script.
 
-Exit **124** from either script is that bound firing, not a red suite — and so is
-**137**, which is what you get when the process ignores the SIGTERM and `-k`
-escalates to SIGKILL (a `--parallel` worker, or anything with a debugger
-attached). `run-gates.sh` names both in its summary; mutation-tested in
+*Both entries are bounded, for different reasons.* `config:clear` gets
+`timeout -k 5s 60`. That is not sized to the work — it measures 0.55s cold — but
+to "obviously hung": the entry boots the framework, so an unreachable Redis or
+database blocks it forever, and `disableProcessTimeout` is process-wide, so
+adding it for Pest silently removed this entry's old 300s ceiling too. 60s is
+~100× the real cost and still fails fast against a hang.
+
+Exit **124** from either script is a bound firing, not a red suite. Exit **137**
+means a signal killed it: usually `-k` escalating to SIGKILL because the process
+ignored the SIGTERM (a `--parallel` worker, or anything with a debugger
+attached) — but a container OOM-kill is also 137, so check memory before
+assuming the clock. Which bound fired is in the output above it: a `config:clear`
+timeout produces no Pest output at all, which is the tell that no test ran. `run-gates.sh` names both
+codes in its summary; mutation-tested in
 `.claude/skills/gates/tests/gate-harness.test.sh`.
 
-*One thing not to "fix".* That entry is `timeout … php vendor/bin/pest`, not
-composer's `@php` prefix, because an `@php` entry cannot be wrapped in anything.
+*One thing not to "fix".* Neither entry carries composer's `@php` prefix any
+more — an `@php` entry cannot be wrapped in anything, so bounding them meant
+dropping it from both.
 The cost is that `php` and `timeout` resolve from PATH rather than from
 composer's own detection — correct in the container (`/usr/bin/php8.5`) and in CI
 (`setup-php` owns PATH), and irrelevant on the macOS host, where PATH would find
@@ -97,7 +108,7 @@ drop the bound.
 
 **3. `composer test -- --coverage` ran nothing at all until 2026-09-07.**
 Composer appends `--` arguments to *every* command in a multi-entry script, so
-`--coverage` landed on `@php artisan config:clear` first; that exits 1 with
+`--coverage` landed on the `artisan config:clear` entry first; that exits 1 with
 `The "--coverage" option does not exist`, and composer aborts the script before
 Pest starts. Every flag was affected — `--filter`, `--parallel`. The
 `config:clear` entry now carries `@no_additional_args` (composer ≥2.7), so flags

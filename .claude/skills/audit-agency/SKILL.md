@@ -84,7 +84,8 @@ security hole is usually an absence, and an architecture problem is usually
 somewhere the diff does not touch. Fitting lanes to the diff means dropping
 *mobile* from a backend branch, never dropping these two because the change
 "looks small". On a mobile-only diff the architecture seat reads the mobile
-architecture; on a docs-only diff, say so in one line and move on.
+architecture; on a docs-only diff the seat is still FILLED — it may report in
+one line, but it is not skipped. Under `.claude/`, docs are the guard.
 
 ## After they report
 
