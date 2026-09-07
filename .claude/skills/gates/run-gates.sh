@@ -8,9 +8,9 @@
 #   ./run-gates.sh --all      # every gate, regardless of the diff
 #   ./run-gates.sh api mobile # only the named areas (api | contracts | mobile | tooling)
 #
-# `tooling` runs the .claude/ test suites — and runs them by executing repo
-# shell, so it is the one area that should be read before it is run on a branch
-# you did not write.
+# Running this script runs the BRANCH'S shell, with your privileges — this file
+# included, plus .claude/lib/use-node.sh below and the hooks the tooling tests
+# exec. On a branch you did not write, read .claude/** in the diff first.
 #
 # Every selected gate runs even after an earlier one fails — one invocation
 # surfaces the full list of problems instead of just the first.
@@ -167,29 +167,24 @@ if [ $run_tooling -eq 1 ]; then
   # `.claude/*` change, which means reviewing a contributor's branch by running
   # the gates would execute their file before anyone read it.
   #
-  # So provenance decides, not the path: a test file identical to the one on
-  # `main` has been reviewed and runs; one this branch ADDS or MODIFIES has not,
-  # and is listed and skipped unless you opt in. Narrowing the glob instead would
-  # be theatre — a hostile file is as easily named `.claude/hooks/tests/x.test.sh`,
-  # which this matrix has always swept up.
-  untrusted=""
+  # There is NO in-script control here, deliberately, and the reason matters more
+  # than the warning: you are running THIS script, from the branch under review.
+  # It is a `.claude/*` file arriving in the same PR, `:27` sources
+  # `.claude/lib/use-node.sh` before any area is even selected, and each test
+  # execs the hook it tests. A guard added below is one the same diff can delete.
+  # An earlier attempt gated each `*.test.sh` on `git diff main`; it was defeated
+  # three ways (untracked files report no diff and run; a PR editing only a HOOK
+  # leaves every test byte-identical; and the runner itself is unchecked) while
+  # turning the owner's own gates red by default, which makes the bypass routine
+  # and the control inert. Reviewed and removed rather than left as decoration.
+  #
+  # So the rule is procedural and it is the only one that holds:
+  #   READ .claude/** IN THE DIFF BEFORE RUNNING THE GATES ON A BRANCH YOU DID
+  #   NOT WRITE. Running them is running that branch's code, all of it.
   for t in .claude/hooks/tests/*.test.sh .claude/skills/*/tests/*.test.sh; do
     [ -e "$t" ] || continue
-    if [ "${REELMAP_GATES_RUN_REPO_SHELL:-0}" = "1" ] \
-       || git diff --quiet main -- "$t" 2>/dev/null; then
-      gate "Tooling · $(basename "$t")" bash "$t"
-    else
-      untrusted="$untrusted  $t"$'\n'
-    fi
+    gate "Tooling · $(basename "$t")" bash "$t"
   done
-
-  if [ -n "$untrusted" ]; then
-    printf '\n\033[33m⚠ Tooling: %d test file(s) differ from main and were NOT run.\033[0m\n' \
-      "$(printf '%s' "$untrusted" | grep -c .)"
-    printf '%s' "$untrusted"
-    printf '  Read them, then re-run with REELMAP_GATES_RUN_REPO_SHELL=1 to execute them.\n'
-    failed+=("Tooling · unreviewed test files skipped (see above)")
-  fi
 fi
 
 # -------------------------------------------------------------------- summary

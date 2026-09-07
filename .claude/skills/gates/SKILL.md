@@ -28,7 +28,9 @@ That is the whole skill. The script mirrors the `changes` path-filter job in
 - **api** → `composer lint` (Pint), `composer stan` (PHPStan level 6), `composer test` (Pest on Postgres) — all **inside the Sail container**. Local PHP is 8.2 and cannot run this codebase; the script refuses rather than falling back to the host.
 - **contracts** → regenerate + `git diff --exit-code` drift check, `typecheck`, Jest. Editing a schema without committing the regenerated `src/generated` is the single most common red build.
 - **mobile** → ESLint, `tsc --noEmit`, Jest. A `packages/contracts` change selects **both** contracts and mobile, exactly as CI does.
-- **tooling** → every `.test.sh` under `.claude/hooks/tests/` and `.claude/skills/*/tests/` — the guards (destructive-DB, simulator deep-link) and this script's own `gate()` reporting. Selected by any `.claude/*` change, and not part of CI, so this is the only thing that runs them. It works by running repo shell with your privileges: on a branch you did not write, read the new test files before running this area.
+- **tooling** → every `.test.sh` under `.claude/hooks/tests/` and `.claude/skills/*/tests/` — the guards (destructive-DB, simulator deep-link) and this script's own `gate()` reporting. Selected by any `.claude/*` change, and not part of CI, so this is the only thing that runs them.
+
+  ⚠️ **Running the gates on a branch runs that branch's shell, with your privileges — and not only in this area.** `run-gates.sh` is itself a `.claude/*` file that arrives in the PR you are reviewing, it sources `.claude/lib/use-node.sh` before any area is selected, and each tooling test execs the hook it tests. This repo is public, so **read `.claude/**` in the diff before running the gates on a branch you did not write.** There is deliberately no in-script guard: one was written, defeated three ways (untracked files, a PR touching only a hook, and the unchecked runner), and removed rather than left as decoration — a check the same diff can delete is worse than the honest warning, because it stops people looking.
 
 ## Reading the result
 
