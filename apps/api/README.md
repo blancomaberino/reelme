@@ -15,7 +15,9 @@ composer test          # pest
 composer test:coverage # pest --coverage (its own, roomier time bound)
 ```
 
-All three must be green before committing. CI runs the same three (T-006).
+`lint`, `stan` and `test` must be green before committing; CI runs those three
+(T-006). `test:coverage` is not part of CI (`ci.yml` sets `coverage: none`) but
+CLAUDE.md requires it for changed code paths — run it locally.
 
 ### Running the suite without being lied to
 
@@ -69,11 +71,15 @@ the answer is a faster suite, not a bigger number — CI's ceiling does not move
 *Coverage gets its own bound.* Instrumented, the suite runs 552s against 493s
 plain — comfortably inside 700, but 700 exists to match CI's ceiling, and CI runs
 `coverage: none` (`ci.yml:150`), so coverage has no business being sized by it.
-`composer test:coverage` carries `timeout -k 30s 1200`. `composer test -- --coverage`
-still works and still gets the tighter 700s, which is fine today and would be the
-first thing to break if the suite grew — prefer the dedicated script.
+`composer test:coverage` carries `timeout -k 30s 1200` — the same ~2× headroom
+over its own measurement that 700 gives the plain run, anchored to nothing but
+that, since no CI job bounds it. If a coverage run ever approaches 1200s the
+answer is the same as for the plain suite: make it faster, do not raise the
+number. `composer test -- --coverage` still works and still gets the tighter
+700s, which is fine today and would be the first thing to break if the suite
+grew — prefer the dedicated script.
 
-Exit **124** from `composer test` is that bound firing, not a red suite, and
+Exit **124** from either script is that bound firing, not a red suite, and
 `run-gates.sh` says so in its summary — mutation-tested in
 `.claude/skills/gates/tests/gate-harness.test.sh`.
 
