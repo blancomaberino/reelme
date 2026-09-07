@@ -3,7 +3,7 @@
 /**
  * Pins the invariants of the `test` / `test:coverage` composer scripts.
  *
- * Both are hand-maintained near-copies: four entries, differing only in the
+ * Both are hand-maintained near-copies: three entries, differing only in the
  * Pest flags and the time bound. Composer script arrays have no composition
  * primitive that survives this file's constraints — a delegating `@test` entry
  * would re-propagate `--` arguments into every entry of the delegated script,
@@ -50,10 +50,30 @@ it('keeps both test scripts bounded, guarded, and in step', function () {
     // on artisan, where it exits 1 before Pest ever starts.
     expect($test[1])->toContain('@no_additional_args');
 
+    // Find the Pest entry by CONTENT, never by index. Pinning it to $script[2]
+    // would keep passing if someone inserted a fourth command ahead of it — the
+    // 60s config:clear bound would satisfy "<= 750" and the suite bound would go
+    // unchecked. A false PASS in the test written to stop false passes.
+    $pestBound = function (array $script, string $name): int {
+        $entries = array_values(array_filter(
+            $script,
+            fn ($entry) => is_string($entry) && str_contains($entry, 'vendor/bin/pest'),
+        ));
+
+        expect($entries)->toHaveCount(1, "`$name` must run Pest exactly once");
+        expect($entries[0])->toMatch('/^timeout -k \d+s \d+ /',
+            "`$name`'s Pest entry must carry its own time bound");
+
+        preg_match('/^timeout -k \d+s (\d+) /', $entries[0], $m);
+
+        return (int) $m[1];
+    };
+
     // The suite bound must stay under CI's budget; coverage is not run by CI
     // and is deliberately roomier.
-    preg_match('/^timeout -k \d+s (\d+) /', $test[2], $plain);
-    preg_match('/^timeout -k \d+s (\d+) /', $coverage[2], $instrumented);
-    expect((int) $plain[1])->toBeLessThanOrEqual(750)
-        ->and((int) $instrumented[1])->toBeGreaterThan((int) $plain[1]);
+    $plain = $pestBound($test, 'test');
+    $instrumented = $pestBound($coverage, 'test:coverage');
+
+    expect($plain)->toBeLessThanOrEqual(750)
+        ->and($instrumented)->toBeGreaterThan($plain);
 });
