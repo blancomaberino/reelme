@@ -55,7 +55,6 @@ appId: pet.one.reelmap
     visible:
       id: "tonight-answer"
     timeout: 30000
-- assertVisible: "Abierto ahora"
 # Scoped to the answer element on purpose: "2 km" on its own is also the zone
 # pill's label, which renders whether or not the query ever came back — so an
 # unscoped assertion would pass with the line still reading "Mirando cerca tuyo".

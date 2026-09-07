@@ -87,6 +87,21 @@ class PlaceIndexRequest extends FormRequest
             if (is_string($this->query('near')) && ! $this->has('nearLat')) {
                 $v->errors()->add('near', 'near must be "lat,lng".');
             }
+            // `open_now` has to ride a point, for the same reason `sort=distance`
+            // does — except here the reason is cost, not meaning. The filter is a
+            // correlated EXISTS over `place_open_periods`, and without
+            // `ST_DWithin` to cut the candidate set first there is nothing to
+            // bound it: an unauthenticated `?open_now=1` would probe the periods
+            // of every publicly visible place, and there is no index on
+            // `created_at` for the default `sort=recent` to early-exit on, so the
+            // whole filtered set is evaluated before the LIMIT applies. The map
+            // requires a bbox and the personal listings are scoped to one user;
+            // this was the one surface with no bound at all. Nothing loses a
+            // capability: the parameter ships in this release, and the question
+            // it answers is "open near ME".
+            if ($this->boolean('open_now') && ! is_string($this->query('near'))) {
+                $v->errors()->add('open_now', 'open_now requires the near parameter.');
+            }
         });
     }
 

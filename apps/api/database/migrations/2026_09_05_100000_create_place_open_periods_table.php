@@ -119,6 +119,12 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Roll the CODE back with this, not after it. The read path depends on
+        // this table the moment it exists — `?open_now=1` is a correlated EXISTS
+        // against it — so a schema-only rollback under time pressure leaves a
+        // deployed build 500ing on a public endpoint (the write path is softer:
+        // PlaceObserver swallows and logs). `scripts/deploy.sh` ships both in one
+        // artifact, which is what keeps this from being a live foot-gun.
         Schema::dropIfExists('place_open_periods');
     }
 };

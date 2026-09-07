@@ -418,7 +418,10 @@ it('filters on every surface that takes the faceted filters', function (string $
     }
 
     $url = match ($surface) {
-        'public index' => '/api/v1/places?open_now=1',
+        // The public index requires a point alongside the flag — see the
+        // 422 test below for why — so this URL carries one. The map's bound is
+        // its bbox and "my places" is scoped to the caller, so neither needs one.
+        'public index' => '/api/v1/places?open_now=1&near=-34.90,-56.16&radius_m=50000',
         'map' => '/api/v1/map/places?open_now=1&bbox=-56.3,-35.0,-56.0,-34.8&zoom=13',
         'my places' => '/api/v1/me/places?open_now=1',
     };
@@ -440,12 +443,75 @@ it('filters on every surface that takes the faceted filters', function (string $
         ->and($ids)->not->toContain($unknown->id);
 })->with(['public index', 'map', 'my places']);
 
+it('refuses open_now without a point on the public index, and only there', function (string $surface, int $status) {
+    $this->travelTo(new DateTimeImmutable('2026-09-08 20:00', new DateTimeZone(MONTEVIDEO)));
+
+    $user = User::factory()->create();
+    $open = placeWithHours([period(2, '11:00', 2, '23:00')]);
+    PlaceList::factory()->create(['user_id' => $user->id])->items()->create(['place_id' => $open->id]);
+
+    // The filter is a correlated EXISTS with nothing to bound it: on the public
+    // index a point is the only thing that cuts the candidate set before the
+    // periods of every visible place are probed. The map is bounded by its
+    // required bbox and "my places" by the caller's own list, so the SAME flag
+    // is accepted there without one — which is the half of this that a rule
+    // copied onto all three request classes would have broken.
+    $url = match ($surface) {
+        'public index' => '/api/v1/places?open_now=1',
+        'map' => '/api/v1/map/places?open_now=1&bbox=-56.3,-35.0,-56.0,-34.8&zoom=13',
+        'my places' => '/api/v1/me/places?open_now=1',
+    };
+
+    $response = $surface === 'my places'
+        ? $this->actingAs($user)->getJson($url)
+        : $this->getJson($url);
+
+    $response->assertStatus($status);
+
+    if ($status === 422) {
+        // The envelope is this API's own (`error.details`), not Laravel's
+        // default `errors` — asserting the wrong shape is how a 422 test comes
+        // to pass on any 422 at all.
+        expect($response->json('error.details'))->toHaveKey('open_now');
+
+        return;
+    }
+
+    // Not just a 200: the flag still FILTERS on the surfaces that accept it
+    // without a point, so this cannot pass by the parameter being ignored.
+    $ids = collect(data_get($response->json(), $surface === 'map' ? 'data.pins' : 'data'))
+        ->pluck('id')->map(intval(...))->all();
+
+    expect($ids)->toContain($open->id);
+})->with([
+    'public index' => ['public index', 422],
+    'map' => ['map', 200],
+    'my places' => ['my places', 200],
+]);
+
+it('accepts open_now on the public index once a point rides with it', function () {
+    $this->travelTo(new DateTimeImmutable('2026-09-08 20:00', new DateTimeZone(MONTEVIDEO)));
+
+    $open = placeWithHours([period(2, '11:00', 2, '23:00')]);
+    $closed = placeWithHours([period(2, '08:00', 2, '15:00')]);
+
+    $ids = collect(data_get($this->getJson(
+        '/api/v1/places?open_now=1&near=-34.90,-56.16&radius_m=50000'
+    )->assertOk()->json(), 'data'))->pluck('id')->map(intval(...))->all();
+
+    expect($ids)->toContain($open->id)->and($ids)->not->toContain($closed->id);
+});
+
 it('reads every spelling of the flag the way the caller meant it', function (string $query, ?bool $filtered) {
     $this->travelTo(new DateTimeImmutable('2026-09-08 20:00', new DateTimeZone(MONTEVIDEO)));
 
     $closed = placeWithHours([period(2, '08:00', 2, '15:00')]);
 
-    $response = $this->getJson('/api/v1/places'.$query);
+    // Every row carries a point, because the public index refuses `open_now`
+    // without one; the flag's SPELLING is what this table is about, and mixing
+    // in the missing-point 422 would make three rows fail for two reasons.
+    $response = $this->getJson('/api/v1/places?near=-34.90,-56.16&radius_m=50000'
+        .str_replace('?', '&', $query));
 
     if ($filtered === null) {
         $response->assertStatus(422);
