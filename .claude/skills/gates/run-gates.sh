@@ -87,14 +87,19 @@ gate() { # gate <label> <command...>
   if [ $rc -eq 0 ]; then
     passed+=("$label")
   else
-    failed+=("$label")
-    # Print the code: 124 is `timeout` firing, which looks exactly like a red
-    # suite in the summary otherwise — truncated output and a generic FAILED.
-    if [ $rc -eq 124 ]; then
-      printf '\033[31m✗ %s TIMED OUT (exit 124) — the bound fired; the suite did not fail\033[0m\n' "$label"
+    # Carry the code into the label, so the SUMMARY says it too. Inline-only was
+    # not enough: under --all, a dozen screens of later gate output sit between
+    # the failure and the summary block a reader actually acts on, and there a
+    # fired bound and a red suite were byte-identical. (A local, not
+    # `${failed[-1]}` — macOS ships bash 3.2, which has no negative index.)
+    local msg
+    if [ "$rc" -eq 124 ]; then
+      msg="$label — TIMED OUT (exit 124): the bound fired, the suite did not fail"
     else
-      printf '\033[31m✗ %s FAILED (exit %d)\033[0m\n' "$label" "$rc"
+      msg="$label (exit $rc)"
     fi
+    failed+=("$msg")
+    printf '\033[31m✗ %s\033[0m\n' "$msg"
   fi
 }
 
@@ -107,19 +112,12 @@ if [ $run_api -eq 1 ]; then
   else
     gate "API · Pint (composer lint)"   sail composer lint
     gate "API · PHPStan (composer stan)" sail composer stan
-    # `composer test` disables composer's own process timeout (the suite runs ~8
-    # minutes; the 300s default killed it mid-run), which left this caller with
-    # no bound at all — CI has `timeout-minutes: 15`, this script had nothing.
-    #
-    # 900, not more: this script promises at the top that a green run here means
-    # a green `api` job there, and that job's 15 minutes cover install, lint,
-    # stan and migrate as well — so the suite's real CI budget is ~700-750s. A
-    # local bound above that would pass a suite CI then kills. Measured: 469s.
-    #
-    # GNU timeout, run INSIDE the container: the host is macOS, which ships none.
-    # `-k 30s` follows an ignored SIGTERM with SIGKILL, so a wedged pest cannot
-    # keep holding the `testing` database against the next run.
-    gate "API · Pest (composer test)"    sail timeout -k 30s 900 composer test
+    # No `timeout` wrapper here on purpose: the bound lives in the `test` script
+    # itself (apps/api/composer.json), beside the `disableProcessTimeout` that
+    # removed it, so it covers CI and a bare `docker compose exec … composer test`
+    # too — not just the one caller someone remembered to edit. Exit 124 from
+    # this gate is that bound firing; `gate()` says so.
+    gate "API · Pest (composer test)"    sail composer test
   fi
 fi
 
@@ -147,7 +145,9 @@ fi
 # Not part of CI (ci.yml has no tooling job yet) — this is the only thing that
 # runs them, so keep it in the local gate matrix.
 if [ $run_tooling -eq 1 ]; then
-  for t in .claude/hooks/tests/*.test.sh; do
+  # Both trees: the hooks' tests, and the skills' own (this script's `gate()`
+  # reporting has one — a test nothing runs is not a test).
+  for t in .claude/hooks/tests/*.test.sh .claude/skills/*/tests/*.test.sh; do
     [ -e "$t" ] || continue
     gate "Tooling · $(basename "$t")" bash "$t"
   done

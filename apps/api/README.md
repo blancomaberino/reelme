@@ -18,7 +18,7 @@ All three must be green before committing. CI runs the same three (T-006).
 
 ### Running the suite without being lied to
 
-The Pest suite takes ~8 minutes (measured 469s, 2160 tests). Three separate
+The Pest suite takes ~8 minutes (2160 tests; 482s and 493s on two runs of this branch). Three separate
 mechanisms have made a run report something other than what happened; each is
 fixed here, and each is written down because the fix is invisible from the
 outside.
@@ -44,15 +44,30 @@ clones and script commands — and nothing else. HTTP downloads are bounded
 separately by curl (`CURLOPT_CONNECTTIMEOUT` 10s, `CURLOPT_TIMEOUT` ≥300s), so a
 stalled download was never the case this setting was about.
 
-**2. Uncapping removed the only bound the local gate had.** The `testing`
-database runs with `lock_timeout = 0`, so a migration waiting on a lock another
-suite holds waits forever — silently, with no output and no exit. So
-`.claude/skills/gates/run-gates.sh` wraps the suite in `timeout -k 30s 900`
-(GNU `timeout`, run inside the container; macOS ships none). 900 rather than
-something roomier because that script promises a green run locally means a green
-`api` job in CI, and CI's `timeout-minutes: 15` covers install, lint, stan and
-migrate too — leaving the suite ~700–750s there. The script reports exit 124
-distinctly, as a bound that fired rather than a suite that failed.
+**2. Uncapping removed the only bound there was.** The `testing` database leaves
+`lock_timeout` at Postgres's default of `0`, so a migration waiting on a lock
+another suite holds waits forever — silently, with no output and no exit. So the
+`test` script wraps Pest in `timeout -k 30s 700` (GNU `timeout`; it runs wherever
+`composer test` does — the Sail container and CI's `ubuntu-latest` both have it,
+and macOS ships none but cannot run this suite anyway on PHP 8.2).
+
+*Why in the script and not in `.claude/skills/gates/run-gates.sh`.* Three things
+invoke `composer test` — that script, `.github/workflows/ci.yml`, and the bare
+`docker compose exec` the pre-PR checklist prescribes. A bound added to the one
+being edited is the failure CLAUDE.md's "a new rule needs every writer" names:
+it passes its own test and leaves the other two unbounded. In the script it
+covers all three, and sits beside the `disableProcessTimeout` that removed it.
+
+*Why 700.* CI's `api` job is `timeout-minutes: 15` covering checkout, `setup-php`,
+an `apt-get install ffmpeg`, `composer install`, lint, stan and migrate as well,
+so the suite's real budget there is under 750s. `run-gates.sh` promises that a
+green run locally means a green `api` job in CI; a local bound above CI's own
+would break that promise quietly. Measured suite: 482–493s, so 700 leaves ~1.4×. If a run ever gets near it,
+the answer is a faster suite, not a bigger number — CI's ceiling does not move.
+
+Exit **124** from `composer test` is that bound firing, not a red suite, and
+`run-gates.sh` says so in its summary — mutation-tested in
+`.claude/skills/gates/tests/gate-harness.test.sh`.
 
 **3. `composer test -- --coverage` ran nothing at all until 2026-09-07.**
 Composer appends `--` arguments to *every* command in a multi-entry script, so

@@ -160,28 +160,17 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
 
 - **Local PHP is 8.2 — too old for Laravel 13.** Run all API tooling inside Docker (PHP 8.4+, Laravel Sail). The API is exposed on **`:8080`** locally (MAMP holds `:80`).
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
-- **The API suite takes ~8 minutes, and three ways of running it lied about the result.** *(observed — T-158, and the audit of the commit that wrote this bullet)* Mechanisms and measurements in [`apps/api/README.md`](apps/api/README.md#running-the-suite-without-being-lied-to); the rules:
-  - **Prefer `/gates`** — `.claude/skills/gates/run-gates.sh` is the only caller
-    that bounds the suite (a `timeout` sized to CI's budget; exit 124 there means
-    the bound fired, not a red suite). A bare `docker compose exec … composer test`
-    has no bound at all, so a suite wedged on a lock waits forever.
-  - **A `ProcessTimedOutException`, or "exceeded the timeout of 300 seconds",
-    means the suite was KILLED — not that it failed.** Never pipe the run through
-    `tail`/`grep` to find out: the pipeline's exit status is the pipe's, not
-    composer's.
-  - **Flags need `composer test -- --coverage`, and that only works because the
-    `test` script guards its first entry with `@no_additional_args`** (composer
-    ≥2.7). Composer appends `--` args to *every* command in a multi-entry script,
-    so before that guard `--coverage` hit `artisan config:clear`, which exited 1
-    with `The "--coverage" option does not exist` and the suite never started.
-    It said so loudly and went unread for months — which is the lesson, not the
-    silence. `--filter` and `--parallel` were equally dead.
-  - **Run it serially.** Two suites against the shared `testing` database both run
-    `migrate:fresh` (`tests/Pest.php` puts `RefreshDatabase` on `Feature` and
-    `Load`), and the drop/create sequences interleave: each sees tables the other
-    just dropped or already created. It surfaces as `SQLSTATE[42P01]` (undefined
-    table) or `42P07` (duplicate table) in an unrelated test, and reads as a real
-    failure. Re-run the named test alone before believing it.
+- **The API suite takes ~8 minutes, and three ways of running it lied about the result.** *(observed — T-158, and the audit of the commit that wrote this bullet)* Mechanisms, measurements and the reasoning behind every number are in [`apps/api/README.md`](apps/api/README.md#running-the-suite-without-being-lied-to) — kept there, once, so a correction is one edit. The rules:
+  - **A `ProcessTimedOutException`, or exit 124, means the suite was STOPPED — not
+    that it failed.** Never pipe the run through `tail`/`grep` to find out: the
+    pipeline's exit status is the pipe's, not composer's.
+  - **Pass Pest flags as `composer test -- --coverage`.** That works only because
+    the `test` script guards its first entry with `@no_additional_args`; without
+    it every flag also hits `artisan config:clear`, which exits 1 before Pest
+    starts. That was true, loudly and unread, until 2026-09-07.
+  - **Never run two suites at once.** Both `migrate:fresh` the shared `testing`
+    database and the DDL interleaves, surfacing as `SQLSTATE[42P01]` or `42P07`
+    in an unrelated test. Re-run the named test alone before believing it.
 - The **build plan and task queue live in `~/Sites/plans/reelmap`** (`tasks/tasks.json` is the source of truth); application code lives here. Follow the plan; record deviations as ADRs in the plan, never by editing the spec to match code.
 
 ### Automation in `.claude/` (checked in — shared, not personal)
