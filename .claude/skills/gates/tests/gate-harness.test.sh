@@ -77,6 +77,9 @@ summary_body=$(sed -n '/^for g in "${failed\[@\]:-}"/p' "$script")
 summary=$(eval "$summary_body" 2>&1)
 
 check "summary render: names the fired bound" "TIMED OUT (exit 124)" "$summary"
+# 137 renders through the same loop but a DIFFERENT message, so 124 passing here
+# says nothing about it — a 137-specific rendering change could otherwise slip.
+check "summary render: names the signal kill" "KILLED (exit 137)" "$summary"
 check "summary render: names a real failure's code" "red-suite (exit 3)" "$summary"
 
 # The whole point: the two must not read alike where the reader acts.

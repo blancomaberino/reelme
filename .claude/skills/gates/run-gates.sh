@@ -162,16 +162,34 @@ if [ $run_tooling -eq 1 ]; then
   # Both trees: the hooks' tests, and the skills' own (this script's `gate()`
   # reporting has one — a test nothing runs is not a test).
   #
-  # Note what this is: `bash` on every matching file, with your privileges. This
-  # repo is PUBLIC, so anyone can open a PR adding `.claude/*/tests/*.test.sh` —
-  # and `tooling` auto-selects on any `.claude/*` change, so running the gates
-  # before reading the diff executes it. Read new test files on a branch you did
-  # not write. (Narrowing the glob would be theatre: a hostile file is as easily
-  # named `.claude/hooks/tests/x.test.sh`, which has always been swept up.)
+  # This runs `bash` on every matching file, with your privileges — and the repo
+  # is PUBLIC, so anyone can open a PR adding one. `tooling` auto-selects on any
+  # `.claude/*` change, which means reviewing a contributor's branch by running
+  # the gates would execute their file before anyone read it.
+  #
+  # So provenance decides, not the path: a test file identical to the one on
+  # `main` has been reviewed and runs; one this branch ADDS or MODIFIES has not,
+  # and is listed and skipped unless you opt in. Narrowing the glob instead would
+  # be theatre — a hostile file is as easily named `.claude/hooks/tests/x.test.sh`,
+  # which this matrix has always swept up.
+  untrusted=""
   for t in .claude/hooks/tests/*.test.sh .claude/skills/*/tests/*.test.sh; do
     [ -e "$t" ] || continue
-    gate "Tooling · $(basename "$t")" bash "$t"
+    if [ "${REELMAP_GATES_RUN_REPO_SHELL:-0}" = "1" ] \
+       || git diff --quiet main -- "$t" 2>/dev/null; then
+      gate "Tooling · $(basename "$t")" bash "$t"
+    else
+      untrusted="$untrusted  $t"$'\n'
+    fi
   done
+
+  if [ -n "$untrusted" ]; then
+    printf '\n\033[33m⚠ Tooling: %d test file(s) differ from main and were NOT run.\033[0m\n' \
+      "$(printf '%s' "$untrusted" | grep -c .)"
+    printf '%s' "$untrusted"
+    printf '  Read them, then re-run with REELMAP_GATES_RUN_REPO_SHELL=1 to execute them.\n'
+    failed+=("Tooling · unreviewed test files skipped (see above)")
+  fi
 fi
 
 # -------------------------------------------------------------------- summary

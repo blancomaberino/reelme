@@ -65,7 +65,10 @@ Give every one of them the same frame:
 - **A clean dimension gets one line, not padding.** Without this they invent
   work to look useful.
 - Cap the reply (~600–700 words) and forbid file dumps.
-- **Tell every seat to check each new COMMENT against the file it names.** A
+- **Tell every seat to check each new COMMENT against every file it rests on** —
+  not only the one it cites. A claim about how other code behaves usually
+  names one file and depends on several; checking the cited line and stopping
+  is how a false premise survives its own review. A
   comment that asserts how other code behaves is the one claim no gate can test,
   and this project keeps producing them: T-168 shipped one whose premise was
   false, and T-158 produced five in a single branch — including one crediting

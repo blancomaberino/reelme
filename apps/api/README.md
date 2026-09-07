@@ -113,7 +113,7 @@ Composer appends `--` arguments to *every* command in a multi-entry script, so
 `--coverage` landed on the `artisan config:clear` entry first; that exits 1 with
 `The "--coverage" option does not exist`, and composer aborts the script before
 Pest starts. Every flag was affected — `--filter`, `--parallel`. The
-`config:clear` entry now carries `@no_additional_args` (composer ≥2.7), so flags
+`config:clear` entry now carries `@no_additional_args` (composer ≥2.8 — the feature landed 2024-09-18, after 2.7.9 and before 2.8.0), so flags
 reach Pest and only Pest. The entry itself must stay: `phpunit.xml` sets
 `DB_DATABASE=testing` through `<env>`, and a stale `bootstrap/cache/config.php`
 would make `RefreshDatabase` run `migrate:fresh` against the **dev** database.

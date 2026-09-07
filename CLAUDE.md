@@ -212,8 +212,10 @@ Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compos
 - **Local PHP is 8.2 — too old for Laravel 13.** Run all API tooling inside Docker (PHP 8.4+, Laravel Sail). The API is exposed on **`:8080`** locally (MAMP holds `:80`).
 - Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
 - **The API suite takes ~8 minutes, and three ways of running it lied about the result.** *(observed — T-158, and the audit of the commit that wrote this bullet)* Mechanisms, measurements and the reasoning behind every number are in [`apps/api/README.md`](apps/api/README.md#running-the-suite-without-being-lied-to) — kept there, once, so a correction is one edit. The rules:
-  - **A `ProcessTimedOutException`, or exit 124 or 137, means the suite was
-    STOPPED — not that it failed.** Never pipe the run through `tail`/`grep` to find out: the
+  - **Exit 124, or a `ProcessTimedOutException`, means the suite was STOPPED —
+    not that it failed. Exit 137 means SIGKILL**, which is a time bound
+    escalating *or* a container OOM kill: check the output and memory before
+    blaming the clock. Never pipe the run through `tail`/`grep` to find out: the
     pipeline's exit status is the pipe's, not composer's.
   - **Pass Pest flags after `--`** (`composer test -- --filter=X`). That works
     only because the `test` script guards its first COMMAND entry (`config:clear`
