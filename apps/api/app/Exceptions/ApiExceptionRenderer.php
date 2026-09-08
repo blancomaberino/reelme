@@ -53,6 +53,23 @@ class ApiExceptionRenderer
     }
 
     /**
+     * The status this renderer would return for `$e`.
+     *
+     * Exposed so the report closure in bootstrap/app.php can ask ONE question —
+     * "is this a client error?" — instead of keeping a second, parallel list of
+     * expected exception classes. That list drifted: every domain exception
+     * carrying its own `status()` (age gate, email-not-verified, claim,
+     * redemption, payout, quota) is a 4xx here and was reported as a server
+     * error there, because it is neither a ValidationException nor an
+     * HttpExceptionInterface. The mapping is the single source of truth for
+     * what an exception MEANS; asking it is what keeps the next one in step.
+     */
+    public static function statusFor(Throwable $e): int
+    {
+        return self::map($e)[0];
+    }
+
+    /**
      * @return array{0: int, 1: string, 2: string, 3: array<string, mixed>}
      */
     private static function map(Throwable $e): array

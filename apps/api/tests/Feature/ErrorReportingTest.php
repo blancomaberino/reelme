@@ -1,5 +1,8 @@
 <?php
 
+use App\Exceptions\AgeRestrictedException;
+use App\Exceptions\DailyQuotaExceeded;
+use App\Exceptions\PayoutFailed;
 use App\Models\Share;
 use App\Support\Observability\ErrorReporter;
 use Illuminate\Bus\Queueable;
@@ -9,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -70,6 +74,40 @@ it('does NOT capture expected client errors (a 404 is normal flow)', function ()
     $this->getJson('/api/v1/__missing')->assertStatus(404);
 
     expect($reporter->captures)->toBe([]);
+});
+
+it('does NOT report a domain exception that renders as a client error', function () {
+    // The regression this pins: these carry their own `status()` and are not
+    // ValidationException or HttpExceptionInterface, so a rule that lists
+    // CLASSES misses every one of them and files normal flow as a server error.
+    // Asking the renderer for the status is what covers the next one too.
+    $reporter = fakeReporter();
+    Route::get('/api/v1/__too_young', fn () => throw new AgeRestrictedException(18));
+    Route::get('/api/v1/__over_quota', fn () => throw new DailyQuotaExceeded('Daily quota reached.'));
+
+    // The tracker is not the only writer: a reported exception ALSO gets the
+    // framework's ERROR line, with a stack trace. For the age gate that line is
+    // a record of a check that did not pass, which the privacy policy says we
+    // do not keep — so the log is asserted here, not just the capture.
+    Log::spy();
+
+    $this->getJson('/api/v1/__too_young')->assertStatus(422);
+    $this->getJson('/api/v1/__over_quota')->assertStatus(429);
+
+    expect($reporter->captures)->toBe([]);
+    Log::shouldNotHaveReceived('error');
+});
+
+it('still captures a domain exception that renders as a server error', function () {
+    // The other side of the same rule: "has a status() of its own" must not
+    // become "is never reported". 5xx is still 5xx, whoever threw it.
+    $reporter = fakeReporter();
+    Route::get('/api/v1/__payout_broke', fn () => throw new PayoutFailed('provider_unreachable', 'The payout provider is unreachable.', 502));
+
+    $this->getJson('/api/v1/__payout_broke')->assertStatus(502);
+
+    expect($reporter->captures)->toHaveCount(1)
+        ->and($reporter->captures[0]['exception'])->toBeInstanceOf(PayoutFailed::class);
 });
 
 it('captures a failed queue job with its share_id and request id', function () {

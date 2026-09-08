@@ -81,7 +81,7 @@ analytics, and no data shared with data brokers.
 > screen* — checked and discarded, never written to any column, asserted by a
 > test that walks every field of the row. Apple's definition of "collect" is
 > transmitting data off the device and retaining it beyond servicing the
-> request, and nothing is retained but a timestamp saying a check happened. So
+> request, and nothing is retained but a timestamp saying a check was passed. So
 > date of birth stays what the row says it is: optional profile personalization
 > the user fills in themselves.
 >

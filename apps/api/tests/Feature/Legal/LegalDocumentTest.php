@@ -248,11 +248,36 @@ it('discloses the signup age check, and that the date is not kept', function () 
      */
     $this->get('/privacy/es')->assertOk()
         ->assertSee('fecha de nacimiento para verificar', false)
-        ->assertSee('Esa fecha no se guarda.', false);
+        ->assertSee('Esa fecha no se guarda.', false)
+        ->assertSee('la verificación se superó', false);
 
     $this->get('/privacy/en')->assertOk()
         ->assertSee('date of birth to check', false)
-        ->assertSee('That date is not stored.', false);
+        ->assertSee('That date is not stored.', false)
+        ->assertSee('that a check was passed, and when', false);
+});
+
+it('claims only a PASSED check is kept, which is the only outcome anything records', function () {
+    /*
+     * The prose and the behaviour, tied together the way LogRetentionTest ties
+     * the retention sentence to `LOG_DAILY_DAYS`.
+     *
+     * "A check was made" and "a check was passed" are different promises. The
+     * second is the true one — `AgeCheck::enforce()` throws before the user row
+     * exists, so a refusal persists nothing — but only because a refused signup
+     * is not reported either (bootstrap/app.php: a client error writes no
+     * tracker event and no ERROR line). ErrorReportingTest guards that half.
+     * This half guards the sentence: soften it back to the outcome-neutral
+     * wording, in either language, and this goes red instead of quietly
+     * publishing a weaker claim than the system actually honours.
+     */
+    $this->get('/privacy/en')->assertOk()
+        ->assertSee('only the fact that a check passed is kept', false)
+        ->assertDontSee('that a check was made', false);
+
+    $this->get('/privacy/es')->assertOk()
+        ->assertSee('solo queda el registro de que la verificación se superó', false)
+        ->assertDontSee('la verificación se hizo', false);
 });
 
 it('states the same media retention window the pipeline actually enforces', function () {
