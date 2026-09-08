@@ -91,6 +91,15 @@ it('prunes a file the LOGGER wrote, not just one this test named', function () {
 
     touch($written[0], now()->subDays(30)->getTimestamp());
 
+    // Spy AFTER the channel has written, and before the command runs: the
+    // command ends with its own `Log::info('logs.pruned')`, and the default
+    // stack is `daily` — the very channel pointed at this directory. Without
+    // this the summary line RECREATES the file the command just deleted, and
+    // the assertion below reads that as "not pruned". It passed locally only
+    // because a local .env pointed the stack elsewhere; CI, which takes the
+    // config default, is the honest environment here.
+    Log::spy();
+
     $this->artisan('reelmap:logs:prune')->assertSuccessful();
 
     expect(File::exists($written[0]))->toBeFalse();
