@@ -76,7 +76,14 @@ class ApiExceptionRenderer
      */
     public static function statusFor(Throwable $e): int
     {
-        return self::map($e)[0];
+        // An ApiError is asked directly rather than routed through `map()`,
+        // which builds the whole envelope — message and `details()` included —
+        // to return element [0]. `details()` is implementor-supplied and this
+        // runs on the REPORT path for every handled exception, so a future
+        // implementation that lazy-loads a relation would put a query behind
+        // every 4xx. Asking `status()` removes the constraint instead of
+        // documenting it.
+        return $e instanceof ApiError ? $e->status() : self::map($e)[0];
     }
 
     /**

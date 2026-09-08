@@ -29,9 +29,7 @@ interface ApiError
     public function errorCode(): string;
 
     /**
-     * Structured context the client branches on. Must be a pure accessor: it is
-     * called on the REPORT path too, where a query or an I/O call would run on
-     * every handled exception.
+     * Structured context the client branches on.
      *
      * @return array<string, mixed>
      */

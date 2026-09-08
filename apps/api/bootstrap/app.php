@@ -41,8 +41,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->throttleApi('api');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Through `handles()` like the two rules below it: if the API prefix ever
+        // moves, JSON rendering and error classification must not disagree —
+        // which is exactly what a third hand-written copy of this test would do.
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => ApiExceptionRenderer::handles($request),
         );
 
         /*

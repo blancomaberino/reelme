@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\RetentionWindow;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
@@ -152,17 +153,18 @@ it('is scheduled on every machine, and holds no fleet-wide lock', function () {
         ->and($events->first()->expression)->toBe('0 * * * *');
 });
 
-it('prunes failed_jobs on the same window as the files', function () {
+it('prunes failed_jobs on the window RetentionWindow owns', function () {
     // The other sink holding request data: `failed_jobs.exception` carries a
-    // stack trace and `payload` the job's arguments. 336 hours = the 14 days
-    // the policy publishes; a window true of the files and false of the
-    // database is not a window.
-    // Derived, not typed: a literal here would stay green while LOG_DAILY_DAYS
-    // moved the files to 7 days and left the database on 14.
-    $hours = 24 * (int) config('logging.channels.daily.days');
+    // stack trace and `payload` the job's arguments. A window true of the files
+    // and false of the database is not a window.
+    //
+    // Compared against the owner, not against a literal 336 — and NOT against
+    // a re-derivation of the same arithmetic, which is the mistake the schedule
+    // test above was written to stop making. RetentionWindowTest is where the
+    // flooring itself is proven, because the schedule is built at boot and this
+    // test cannot move the config it was built from.
     $events = scheduledEvents('queue:prune-failed');
 
-    expect($hours)->toBe(336)
-        ->and($events)->toHaveCount(1)
-        ->and($events->first()->command)->toContain("--hours={$hours}");
+    expect($events)->toHaveCount(1)
+        ->and($events->first()->command)->toContain('--hours='.RetentionWindow::hours());
 });

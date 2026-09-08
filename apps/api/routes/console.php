@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\RetentionWindow;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
@@ -101,7 +102,15 @@ Schedule::command('reelmap:logs:prune')
 // the job's arguments — the same request data the 14-day window covers, in a
 // table nothing prunes and `DELETE /me` never reaches. A window that is true of
 // the files and false of the database is not a window.
-Schedule::command('queue:prune-failed', ['--hours' => 24 * (int) config('logging.channels.daily.days')])
+//
+// RetentionWindow rather than the config, because the two sinks INVERT its
+// meaning at zero: Monolog reads `days=0` as keep-forever, artisan reads
+// `--hours=0` as delete-everything-before-now. An empty `LOG_DAILY_DAYS=`
+// casts to 0, so deriving this from the raw value would have left the files
+// untouched and silently emptied the failed-job table — the record an incident
+// is reconstructed from — while reporting success. The floor lives with the
+// conversion so there is no second site to forget it at.
+Schedule::command('queue:prune-failed', ['--hours' => RetentionWindow::hours()])
     ->dailyAt('04:55')
     ->onOneServer()
     ->withoutOverlapping();

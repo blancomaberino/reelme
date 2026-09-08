@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\RetentionWindow;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -28,7 +29,10 @@ use Illuminate\Support\Facades\Log;
  *
  * A deletion that FAILS is the dangerous case, because the failure is quiet. A
  * run that could not delete anything must not look like a run that found
- * nothing, so failures are counted, logged, and returned as a non-zero exit.
+ * nothing, so per-file failures are counted, logged, and returned as a non-zero
+ * exit. A failure to READ the directory at all is left to throw: the child
+ * process dies non-zero, `onFailure` fires, and the tracker gets it — louder
+ * than a counter, which is what an unreadable log directory deserves.
  *
  * On a box idle for the whole window the CURRENT file is itself past the cutoff
  * and is unlinked while php-fpm still holds the stream open; writes go to the
@@ -43,7 +47,10 @@ class PruneLogFiles extends Command
 
     public function handle(): int
     {
-        $days = (int) config('logging.channels.daily.days');
+        // The RAW value, not RetentionWindow::days(): a misconfigured window must
+        // make this sweep fail loudly rather than quietly act on a substituted
+        // one. The floored value is for the consumer that cannot refuse.
+        $days = RetentionWindow::configuredDays();
 
         // A misconfigured window must not be read as "delete everything". Zero
         // or negative would make the cutoff now-or-later and take today's file
@@ -98,6 +105,12 @@ class PruneLogFiles extends Command
                 $reason = $e->getMessage();
             }
 
+            // Every path that reaches here assigned `$reason` — PHPStan proves
+            // it, which is why there is no `??` fallback. It is function-scoped,
+            // so a future branch inside the try that falls through WITHOUT
+            // assigning would log the previous file's reason under this path;
+            // the analyser is what stops that, not a default value that would
+            // hide it.
             $failed++;
             Log::warning('logs.prune_failed', ['path' => basename($path), 'reason' => $reason]);
         }

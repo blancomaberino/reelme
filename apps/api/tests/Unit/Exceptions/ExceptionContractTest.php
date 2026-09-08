@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\AgeRestrictedException;
 use App\Exceptions\Contracts\ApiError;
 use Illuminate\Support\Collection;
 
@@ -40,8 +41,17 @@ it('requires every exception that states a status to declare the contract', func
 });
 
 it('finds the exceptions it is meant to be checking', function () {
-    // A scan that silently matched nothing would pass forever. Six is the set
-    // the renderer used to enumerate by hand.
-    expect(exceptionClasses()->filter(fn (string $class) => is_subclass_of($class, ApiError::class)))
-        ->toHaveCount(6);
+    // A scan that silently matched nothing would pass forever, so anchor it —
+    // but on the SCAN, not on a count. An exact number would re-create the
+    // registration step this interface exists to delete: the seventh domain
+    // exception is supposed to need no edit anywhere, and `expected 7 to be 6`
+    // is that edit wearing a different hat.
+    //
+    // Two anchors, one per thing that can break: a nested file (the interface
+    // itself lives in Contracts/) and a top-level one.
+    expect(exceptionClasses())
+        ->toContain(ApiError::class)
+        ->toContain(AgeRestrictedException::class)
+        ->and(exceptionClasses()->filter(fn (string $class) => is_subclass_of($class, ApiError::class)))
+        ->not->toBeEmpty();
 });

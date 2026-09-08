@@ -248,11 +248,17 @@ it('discloses the signup age check, and that the date is not kept', function () 
      */
     $this->get('/privacy/es')->assertOk()
         ->assertSee('fecha de nacimiento para verificar', false)
-        ->assertSee('Esa fecha no se guarda.', false);
+        ->assertSee('Esa fecha no se guarda.', false)
+        // The PARAGRAPH, not the table row the test below pins: different
+        // sentence, different line, neither contains the other. Dropping this
+        // as "subsumed" left the timestamp disclosure — the actual subject of
+        // T-156 — asserted by nothing.
+        ->assertSee('queda registrado es que la verificación se superó, y cuándo', false);
 
     $this->get('/privacy/en')->assertOk()
         ->assertSee('date of birth to check', false)
-        ->assertSee('That date is not stored.', false);
+        ->assertSee('That date is not stored.', false)
+        ->assertSee('that a check was passed, and when', false);
 });
 
 it('claims only a PASSED check is kept, which is the only outcome anything records', function () {
