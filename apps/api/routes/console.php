@@ -77,10 +77,36 @@ Schedule::command('reelmap:gdpr:prune-exports')->dailyAt('04:30')->onOneServer()
 // T-156: enforce the log window the privacy policy publishes. Monolog's daily
 // driver prunes only when it rotates, i.e. on the first write of a new day — an
 // idle deployment holds a user's `?near=` coordinates past the stated 14 days,
-// and never touches a `single`-era `laravel.log` at all. NOT onOneServer():
-// logs are per-machine files, so every box must run this, unlike the DB sweeps
-// above where one runner is the point.
-Schedule::command('reelmap:logs:prune')->dailyAt('04:50')->withoutOverlapping();
+// and never touches a `single`-era `laravel.log` at all.
+//
+// NEITHER onOneServer() NOR withoutOverlapping(), and the second is the subtle
+// one: logs are per-machine FILES, so every box must sweep its own — but the
+// overlap mutex is keyed on sha1(expression + command) in the SHARED cache
+// store, with no host component, so it is `onOneServer()` wearing a different
+// name. One box would take the lock and the rest would skip the night. The
+// command is a glob plus unlinks and idempotent, so two overlapping runs on one
+// box are harmless; a fleet where only one box prunes is not.
+//
+// Hourly, because a window is only as tight as the sweep that enforces it: a
+// daily pass makes the published "14 days" mean up to 15.
+Schedule::command('reelmap:logs:prune')
+    ->hourly()
+    // The command exits non-zero when a file it should have deleted survived —
+    // a permission error that `File::delete()` swallows. Without this line that
+    // exit code goes to /dev/null and the retention promise fails silently,
+    // every hour, while every other signal stays green.
+    ->onFailure(fn () => Log::error('logs.prune_failed_run', [
+        'command' => 'reelmap:logs:prune',
+    ]));
+
+// T-156: `failed_jobs.exception` holds a full stack trace and `payload` holds
+// the job's arguments — the same request data the 14-day window covers, in a
+// table nothing prunes and `DELETE /me` never reaches. A window that is true of
+// the files and false of the database is not a window.
+Schedule::command('queue:prune-failed --hours=336')
+    ->dailyAt('04:55')
+    ->onOneServer()
+    ->withoutOverlapping();
 
 // T-045 / 06 §4.3: the monthly payout run, first business day. One earner's
 // failed KYC must never stop the others being paid — the command catches per

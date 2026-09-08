@@ -53,7 +53,10 @@ class ApiExceptionRenderer
     }
 
     /**
-     * The status this renderer would return for `$e`.
+     * How this exception is CLASSIFIED, expressed as the status an API response
+     * would carry. Not what `render()` returns for a given request — that is
+     * null outside `api/*` — so a caller outside the API must say what it means
+     * by asking (see the `api/*` guard on the report rule in bootstrap/app.php).
      *
      * Exposed so the report closure in bootstrap/app.php can ask ONE question —
      * "is this a client error?" — instead of keeping a second, parallel list of

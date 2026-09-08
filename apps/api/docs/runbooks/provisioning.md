@@ -87,10 +87,18 @@ effectively infinite — a compliance failure that produces no error anywhere.
 The same cron carries the GDPR deletion sweep, which is the *fail-safe* behind
 account erasure (the delayed job is the fast path, not the guarantee).
 
-**Every scheduled command uses `onOneServer()`**, which takes a lock in the
-**cache** store. On more than one app server with `CACHE_STORE=file`, each box
-holds its own lock and every job runs once per server — the payout run being the
-one where that is expensive.
+**Every scheduled command uses `onOneServer()` except `reelmap:logs:prune`**,
+which takes a lock in the **cache** store. On more than one app server with
+`CACHE_STORE=file`, each box holds its own lock and every job runs once per
+server — the payout run being the one where that is expensive.
+
+`reelmap:logs:prune` is the deliberate exception, because it sweeps per-machine
+FILES: every box must prune its own. It therefore carries neither
+`onOneServer()` nor `withoutOverlapping()` — the overlap mutex is keyed on
+`sha1(expression + command)` in the same shared store, with no host component,
+so it would silently do what `onOneServer()` does. Two overlapping runs on one
+box are harmless (a glob and some unlinks); a fleet where only one box prunes
+is not.
 
 Horizon runs as a daemon (`php artisan horizon`) under a process supervisor.
 Its supervisors and queues are already defined in `config/horizon.php`; a
@@ -151,8 +159,17 @@ php artisan schedule:list | grep logs:prune   # the sweep that ENFORCES the wind
 # to, then check that specific file — a rule matching some other vhost's log is
 # not a rule for this one, and a server logging to stdout is journald's problem,
 # not logrotate's.
-ACCESS_LOG=$(nginx -T 2>/dev/null | awk '$1=="access_log" && $2!="off" {print $2; exit}')
-ACCESS_LOG=${ACCESS_LOG:-$(caddy environ 2>/dev/null | grep -o '/var/log/caddy/[^ ]*')}
+# "No web server here" and "logs to stdout" are different answers, so establish
+# which box you are on BEFORE interpreting anything below. `nginx -T` needs root.
+command -v nginx >/dev/null || command -v caddy >/dev/null \
+  || echo "NO WEB SERVER BINARY HERE — run this on the box that terminates TLS"
+
+# `access_log /var/log/nginx/access.log;` — strip the directive's semicolon, or
+# every grep below searches for a filename that cannot exist.
+ACCESS_LOG=$(sudo nginx -T 2>/dev/null | awk '$1=="access_log" && $2!="off" {sub(/;$/,"",$2); print $2; exit}')
+# Caddy keeps it in the adapted config, not the environment.
+ACCESS_LOG=${ACCESS_LOG:-$(caddy adapt --config /etc/caddy/Caddyfile 2>/dev/null \
+  | grep -o '"filename":"[^"]*"' | head -1 | cut -d'"' -f4)}
 echo "access log: ${ACCESS_LOG:-stdout/journald}"
 
 case "$ACCESS_LOG" in
@@ -160,9 +177,10 @@ case "$ACCESS_LOG" in
         || echo "NO LOGROTATE RULE FOR $ACCESS_LOG — the policy claim is false here" ;;
   *)  # journald: MaxRetentionSec is the retention, and unset means "until the
       # disk cap", which is not a period. Anything longer than LOG_DAILY_DAYS
-      # outlives what the policy publishes.
+      # outlives what the policy publishes. Read the drop-in directory too —
+      # that is where systemd expects the override to live.
       journalctl --disk-usage
-      grep -E '^ *MaxRetentionSec=' /etc/systemd/journald.conf* \
+      grep -rE '^ *MaxRetentionSec=' /etc/systemd/journald.conf /etc/systemd/journald.conf.d/ 2>/dev/null \
         || echo "NO JOURNALD RETENTION LIMIT — coordinates are kept until the disk cap" ;;
 esac
 

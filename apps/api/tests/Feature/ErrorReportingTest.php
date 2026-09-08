@@ -110,6 +110,20 @@ it('still captures a domain exception that renders as a server error', function 
         ->and($reporter->captures[0]['exception'])->toBeInstanceOf(PayoutFailed::class);
 });
 
+it('still reports a client error OUTSIDE the API, where that mapping does not apply', function () {
+    // The scope guard. `ApiExceptionRenderer` returns null for a non-api/*
+    // request, so its classification is not the reporting policy there: letting
+    // it silence Filament, the legal pages and artisan would trade the privacy
+    // fix for the only trace a failed admin action leaves.
+    $reporter = fakeReporter();
+    Route::get('/__admin_ish', fn () => throw new DailyQuotaExceeded('Daily quota reached.'));
+
+    $this->get('/__admin_ish');
+
+    expect($reporter->captures)->toHaveCount(1)
+        ->and($reporter->captures[0]['exception'])->toBeInstanceOf(DailyQuotaExceeded::class);
+});
+
 it('captures a failed queue job with its share_id and request id', function () {
     $reporter = fakeReporter();
     Context::add('request_id', 'req_JOB_CAPTURE');

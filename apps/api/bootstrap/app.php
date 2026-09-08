@@ -46,7 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         /*
-         * A client error is not a fault, so it is not reported AT ALL — no
+         * An API client error is not a fault, so it is not reported AT ALL — no
          * tracker event, and no framework ERROR line with a stack trace.
          *
          * The rule asks the renderer what the exception MEANS instead of
@@ -60,11 +60,23 @@ return Application::configure(basePath: dirname(__DIR__))
          * log line (and, with a DSN set, a Sentry event) saying one did not.
          *
          * `dontReportWhen` rather than a `return` inside the callback below,
-         * because the callback is not the only writer: Laravel logs a reported
-         * exception whether or not anything of ours captured it.
+         * because the callback is not the only writer and it is the OTHER
+         * writer that held the trace: a report callback returning null skips
+         * our capture, and Laravel still writes its own ERROR line.
+         *
+         * Scoped to `api/*` for exactly that reason. The classification comes
+         * from a renderer that returns null for every other request, so letting
+         * it silence Filament, the legal pages, artisan and the queue would
+         * trade a privacy fix for the only record a failed admin authorization
+         * leaves. Registration is an API route, so the age gate is covered.
+         *
+         * Not the whole surface, deliberately: the queue's `JobFailed` hook in
+         * ObservabilityServiceProvider is a separate writer and still captures
+         * every failed job, whatever it maps to.
          */
         $exceptions->dontReportWhen(
-            fn (Throwable $e) => ApiExceptionRenderer::statusFor($e) < 500,
+            fn (Throwable $e) => request()->is('api/*')
+                && ApiExceptionRenderer::statusFor($e) < 500,
         );
 
         // What is left is a genuine server error: forward it to the tracker
