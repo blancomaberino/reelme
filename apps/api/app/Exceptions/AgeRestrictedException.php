@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Exceptions;
 
+use App\Exceptions\Contracts\ApiError;
 use Exception;
 
 /**
@@ -22,7 +23,7 @@ use Exception;
  * it into the mobile bundle where the two would silently drift the first time
  * it changed.
  */
-class AgeRestrictedException extends Exception
+class AgeRestrictedException extends Exception implements ApiError
 {
     public function __construct(private readonly int $minimumAge)
     {

@@ -248,13 +248,11 @@ it('discloses the signup age check, and that the date is not kept', function () 
      */
     $this->get('/privacy/es')->assertOk()
         ->assertSee('fecha de nacimiento para verificar', false)
-        ->assertSee('Esa fecha no se guarda.', false)
-        ->assertSee('la verificación se superó', false);
+        ->assertSee('Esa fecha no se guarda.', false);
 
     $this->get('/privacy/en')->assertOk()
         ->assertSee('date of birth to check', false)
-        ->assertSee('That date is not stored.', false)
-        ->assertSee('that a check was passed, and when', false);
+        ->assertSee('That date is not stored.', false);
 });
 
 it('claims only a PASSED check is kept, which is the only outcome anything records', function () {

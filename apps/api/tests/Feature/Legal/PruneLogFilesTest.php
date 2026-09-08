@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 
@@ -131,13 +132,19 @@ it('reports something it could not delete instead of counting a silent success',
     expect(File::isDirectory($stuck))->toBeTrue();
 });
 
+/** The scheduled events whose command mentions $needle. */
+function scheduledEvents(string $needle): Collection
+{
+    return collect(app(Schedule::class)->events())
+        ->filter(fn ($e) => str_contains((string) $e->command, $needle));
+}
+
 it('is scheduled on every machine, and holds no fleet-wide lock', function () {
     // A command nobody runs is not a retention mechanism. Neither flag may be
     // set: `onOneServer()` obviously prunes one box, and `withoutOverlapping()`
     // does the same thing quietly, because the mutex is sha1(expression +
     // command) in the SHARED cache store with no host component.
-    $events = collect(app(Schedule::class)->events())
-        ->filter(fn ($e) => str_contains((string) $e->command, 'reelmap:logs:prune'));
+    $events = scheduledEvents('reelmap:logs:prune');
 
     expect($events)->toHaveCount(1)
         ->and($events->first()->onOneServer)->toBeFalse()
@@ -150,9 +157,12 @@ it('prunes failed_jobs on the same window as the files', function () {
     // stack trace and `payload` the job's arguments. 336 hours = the 14 days
     // the policy publishes; a window true of the files and false of the
     // database is not a window.
-    $events = collect(app(Schedule::class)->events())
-        ->filter(fn ($e) => str_contains((string) $e->command, 'queue:prune-failed'));
+    // Derived, not typed: a literal here would stay green while LOG_DAILY_DAYS
+    // moved the files to 7 days and left the database on 14.
+    $hours = 24 * (int) config('logging.channels.daily.days');
+    $events = scheduledEvents('queue:prune-failed');
 
-    expect($events)->toHaveCount(1)
-        ->and($events->first()->command)->toContain('--hours=336');
+    expect($hours)->toBe(336)
+        ->and($events)->toHaveCount(1)
+        ->and($events->first()->command)->toContain("--hours={$hours}");
 });

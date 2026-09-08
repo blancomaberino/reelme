@@ -75,7 +75,7 @@ return Application::configure(basePath: dirname(__DIR__))
          * every failed job, whatever it maps to.
          */
         $exceptions->dontReportWhen(
-            fn (Throwable $e) => request()->is('api/*')
+            fn (Throwable $e) => ApiExceptionRenderer::handles(request())
                 && ApiExceptionRenderer::statusFor($e) < 500,
         );
 

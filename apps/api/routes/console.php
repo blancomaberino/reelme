@@ -74,16 +74,14 @@ Schedule::command('reelmap:sources:prune-payloads')->dailyAt('04:10')->onOneServ
 // multi-day retention, and each run is a directory listing plus a few unlinks.
 Schedule::command('reelmap:gdpr:prune-exports')->dailyAt('04:30')->onOneServer()->withoutOverlapping();
 
-// T-156: enforce the log window the privacy policy publishes. Monolog's daily
-// driver prunes only when it rotates, i.e. on the first write of a new day — an
-// idle deployment holds a user's `?near=` coordinates past the stated 14 days,
-// and never touches a `single`-era `laravel.log` at all.
+// T-156: enforce the log window the privacy policy publishes; PruneLogFiles
+// says why rotation alone does not.
 //
 // NEITHER onOneServer() NOR withoutOverlapping(), and the second is the subtle
 // one: logs are per-machine FILES, so every box must sweep its own — but the
 // overlap mutex is keyed on sha1(expression + command) in the SHARED cache
 // store, with no host component, so it is `onOneServer()` wearing a different
-// name. One box would take the lock and the rest would skip the night. The
+// name. One box would take the lock and the rest would skip the run. The
 // command is a glob plus unlinks and idempotent, so two overlapping runs on one
 // box are harmless; a fleet where only one box prunes is not.
 //
@@ -103,7 +101,7 @@ Schedule::command('reelmap:logs:prune')
 // the job's arguments — the same request data the 14-day window covers, in a
 // table nothing prunes and `DELETE /me` never reaches. A window that is true of
 // the files and false of the database is not a window.
-Schedule::command('queue:prune-failed --hours=336')
+Schedule::command('queue:prune-failed', ['--hours' => 24 * (int) config('logging.channels.daily.days')])
     ->dailyAt('04:55')
     ->onOneServer()
     ->withoutOverlapping();

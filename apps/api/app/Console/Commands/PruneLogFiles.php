@@ -24,15 +24,11 @@ use Illuminate\Support\Facades\Log;
  *   other: untouched for the whole window means it holds nothing recent.
  *
  * Age is the file's last WRITE, not the date in its name: a file appended to
- * today is today's data whatever it is called. Run HOURLY, not daily — the
- * window is only ever as tight as the interval that enforces it, and "14 days"
- * with a daily sweep means up to 15.
+ * today is today's data whatever it is called.
  *
- * A deletion that FAILS is the dangerous case, because the failure is quiet:
- * `File::delete()` swallows the permission error and returns false. A run that
- * could not delete anything must not look like a run that found nothing, so
- * failures are counted, logged, and returned as a non-zero exit that the
- * schedule's `onFailure` turns into an alert.
+ * A deletion that FAILS is the dangerous case, because the failure is quiet. A
+ * run that could not delete anything must not look like a run that found
+ * nothing, so failures are counted, logged, and returned as a non-zero exit.
  *
  * On a box idle for the whole window the CURRENT file is itself past the cutoff
  * and is unlinked while php-fpm still holds the stream open; writes go to the
@@ -81,15 +77,7 @@ class PruneLogFiles extends Command
         $deleted = 0;
         $failed = 0;
 
-        try {
-            $paths = File::glob($directory.'/'.$prefix.'*.log') ?: [];
-        } catch (\Throwable $e) {
-            Log::error('logs.prune_unreadable', ['reason' => $e->getMessage()]);
-
-            return self::FAILURE;
-        }
-
-        foreach ($paths as $path) {
+        foreach (File::glob($directory.'/'.$prefix.'*.log') ?: [] as $path) {
             try {
                 if (File::lastModified($path) >= $cutoff) {
                     continue;
@@ -102,20 +90,16 @@ class PruneLogFiles extends Command
                 }
 
                 // `File::delete()` is `@unlink()` inside a catch that returns
-                // false — a permission error never reaches the catch below, and
-                // an uncounted false would leave a cron that prunes NOTHING,
-                // every night, reporting success.
-                $failed++;
-                Log::warning('logs.prune_failed', ['path' => basename($path)]);
+                // false, so a permission error never reaches the catch below.
+                $reason = 'delete refused — permissions, or not a regular file';
             } catch (\Throwable $e) {
                 // A file can vanish between the glob and the stat (a concurrent
                 // rotation). One unreadable path must not strand the rest.
-                $failed++;
-                Log::warning('logs.prune_failed', [
-                    'path' => basename($path),
-                    'reason' => $e->getMessage(),
-                ]);
+                $reason = $e->getMessage();
             }
+
+            $failed++;
+            Log::warning('logs.prune_failed', ['path' => basename($path), 'reason' => $reason]);
         }
 
         // Unconditional, so "found nothing to do" and "could not do it" are
