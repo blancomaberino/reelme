@@ -74,6 +74,14 @@ Schedule::command('reelmap:sources:prune-payloads')->dailyAt('04:10')->onOneServ
 // multi-day retention, and each run is a directory listing plus a few unlinks.
 Schedule::command('reelmap:gdpr:prune-exports')->dailyAt('04:30')->onOneServer()->withoutOverlapping();
 
+// T-156: enforce the log window the privacy policy publishes. Monolog's daily
+// driver prunes only when it rotates, i.e. on the first write of a new day — an
+// idle deployment holds a user's `?near=` coordinates past the stated 14 days,
+// and never touches a `single`-era `laravel.log` at all. NOT onOneServer():
+// logs are per-machine files, so every box must run this, unlike the DB sweeps
+// above where one runner is the point.
+Schedule::command('reelmap:logs:prune')->dailyAt('04:50')->withoutOverlapping();
+
 // T-045 / 06 §4.3: the monthly payout run, first business day. One earner's
 // failed KYC must never stop the others being paid — the command catches per
 // user and continues, so this schedule is safe to leave unattended.

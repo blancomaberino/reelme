@@ -44,7 +44,14 @@ function openAllWeek(): array
 it('omits the viewer-relative pair entirely when no position is given', function () use ($bbox) {
     placeAt(-34.90, -56.16, openAllWeek());
 
-    $pin = $this->getJson("/api/v1/map/places?{$bbox}")->assertOk()->json('data.pins.0');
+    // Frozen for the same reason every other open/closed assertion in this file
+    // is: the fixture opens 09:00-23:00 Montevideo, so a wall-clock run of this
+    // test is red between 23:00 and 09:00 local — a nightly CI job would find it
+    // and nothing else would.
+    $pin = $this->travelTo(
+        '2026-09-07 18:00:00', // 15:00 in Montevideo — open.
+        fn () => $this->getJson("/api/v1/map/places?{$bbox}")->assertOk()->json('data.pins.0'),
+    );
 
     // ABSENT, not null and not zero. `array_key_exists` on purpose: a
     // `toBeNull()` assertion passes for a key that is present and null, which is

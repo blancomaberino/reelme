@@ -143,8 +143,28 @@ php artisan tinker --execute="dd(DB::select('select postgis_version()'));"
 # the coordinates are in the web server's access log as well as the app's.
 # `LogRetentionTest` covers the app side; nothing in this repo can see the other.
 php artisan tinker --execute="dd(config('logging.channels.stack.channels'));"  # expect ["daily"]
-ls storage/logs/laravel.log 2>/dev/null && echo "PRUNE ME: pre-daily file, never rotated"
-grep -rl "$(php -r 'echo "access";')" /etc/logrotate.d/ || echo "NO LOGROTATE FOR THE ACCESS LOG — the policy claim is false here"
+php artisan schedule:list | grep logs:prune   # the sweep that ENFORCES the window
+
+# The app side is now enforced by `reelmap:logs:prune` (dated files and the
+# pre-daily `laravel.log` alike), so what is left to check by hand is the sink
+# this repository cannot see. Find the destination the RUNNING web server writes
+# to, then check that specific file — a rule matching some other vhost's log is
+# not a rule for this one, and a server logging to stdout is journald's problem,
+# not logrotate's.
+ACCESS_LOG=$(nginx -T 2>/dev/null | awk '$1=="access_log" && $2!="off" {print $2; exit}')
+ACCESS_LOG=${ACCESS_LOG:-$(caddy environ 2>/dev/null | grep -o '/var/log/caddy/[^ ]*')}
+echo "access log: ${ACCESS_LOG:-stdout/journald}"
+
+case "$ACCESS_LOG" in
+  /*) grep -rlF "$ACCESS_LOG" /etc/logrotate.d/ \
+        || echo "NO LOGROTATE RULE FOR $ACCESS_LOG — the policy claim is false here" ;;
+  *)  # journald: MaxRetentionSec is the retention, and unset means "until the
+      # disk cap", which is not a period. Anything longer than LOG_DAILY_DAYS
+      # outlives what the policy publishes.
+      journalctl --disk-usage
+      grep -E '^ *MaxRetentionSec=' /etc/systemd/journald.conf* \
+        || echo "NO JOURNALD RETENTION LIMIT — coordinates are kept until the disk cap" ;;
+esac
 
 # The scheduler is registered and its next runs look sane.
 php artisan schedule:list
