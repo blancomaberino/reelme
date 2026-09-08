@@ -1,245 +1,160 @@
 # CLAUDE.md — Reelmap
 
-Guidance for any agent (or human) working in this repository. These rules are **mandatory**, not aspirational.
+Rules for every agent working in this repo. **Mandatory.** Each rule is one line;
+the procedure lives in the named skill, the evidence in
+[`docs/process/lessons.md`](docs/process/lessons.md). If a skill and this file
+disagree, this file wins.
 
-## Golden rules
+## 0. Talking to the owner
 
-1. **Nothing reaches `main` without a pull request.** Never commit, push, or merge directly to `main`.
-2. **Before opening any PR**, run **`/coderabbit`** — it orchestrates the full pre-PR pass (quality gates → **`/simplify`** → **`/security-review`** → a grounded line-by-line review) and records the approval the PR gate requires. Fix every 🔴/🟡 it surfaces before the PR goes up.
-3. **Before creating a PR *and before every push that updates one*, audit the diff with the `/audit-agency` panel** — independent specialist reviewers over `main...HEAD`, launched in one message so they run concurrently. **The security and architecture seats are mandatory and are never the ones you drop** when fitting lanes to the diff. Fix every 🔴/🟡, or get an explicit waiver from the owner.
-4. **Any UI/frontend work uses the `/frontend-design` skill** — mobile screens, Filament customizations, any web UI.
-5. **Every change ships with meaningful tests + coverage + E2E.** No trivial or placeholder tests.
-6. **Check the wiring, not just the code** — see [Wiring & seams](#wiring--seams-enforced--this-is-where-the-real-bugs-are). A screen nobody can reach, a second copy of an existing component, an interaction that never re-queries, and a mock that hides a crash all pass their own tests. Restore the dev environment before reporting.
-7. **Finish every task with a completion summary** — see [Task completion report](#task-completion-report). Whenever you finish working on a task, end with: what task, what it's about, and how to manually test it (admin dashboard or simulator).
+- **Answer first, in ≤ 10 lines.** Result, decision, what they must do. No
+  reasoning, no narration, no survey of options you did not take — unless asked.
+- Detail goes in the commit message or PR body, never the chat.
+- The completion report (§6) is ≤ 8 lines. Bullets over prose. No walls of text.
 
-## Agent orchestration (teams vs subagents)
+## 1. Golden rules
 
-Agent Teams is enabled on this machine (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`), but it is **not** the default way to work — a team's token cost scales with its size, so it must earn its keep.
+1. **`main` moves only by reviewed PR.** Never commit, push, or merge to `main`.
+2. **Think before code.** Every task starts with the design brief (§3) — the
+   reviewers' questions answered *before* the code exists, when they are free.
+3. **One review round, not eight.** `/simplify` → gates → ONE concurrent review
+   → batch every finding → one fix commit → narrow re-review → both receipts (§4).
+4. **Audit scope follows the diff.** `select-lanes.sh` decides the seats. Docs-only
+   (`.md` files in `docs/`, `apps/*/docs/`, a `README.md`, or the top level) runs nobody; the guard — `.claude/**`,
+   any `CLAUDE.md`/`AGENTS.md`, `.github/`, `scripts/` — always gets Security + Architecture.
+5. **Tests ship with the change** — happy path, failure path, and for any filter
+   a row that must be EXCLUDED. Coverage never regresses. E2E for user flows.
+6. **Wiring over code** — reachable from an existing screen, sibling reused not
+   re-implemented, the interaction re-asks, no mock that silences a crash, and a
+   rule on state covers *every* writer of that state.
+7. **UI work uses `/frontend-design`.**
+8. **Verify on the device, then restore it.** Maestro drives the simulator;
+   `simctl openurl` never navigates (a hook denies it); location back to
+   Montevideo `-34.9011,-56.1645`; screenshot where Cmd+R lands.
+9. **End every task with the completion report** (§6). Never describe a
+   click-path you have not walked.
 
-- **Default to the subagent architecture** — the `Task`/`Agent` tool, Workflows, or just doing the work inline. Use it for the everyday case: single-task changes, focused searches, sequential edits, one-off reviews, and most `T-###` tasks.
-- **Reserve a team of teammates for genuinely team-worthy work** — large, parallelizable efforts where independent agents *coordinating with each other* adds real value that outweighs the cost:
-  - a multi-workstream epic that splits cleanly across layers (e.g. backend + mobile + web in parallel),
-  - a broad migration / audit / sweep across many files,
-  - design or architecture explored via competing approaches in parallel (proposer + skeptic).
-- **Bar for forming a team:** the work decomposes into **≥3 substantial, independent workstreams** that run in parallel with low coordination overhead. If one agent — or a couple of sequential subagents — can do it, do **not** form a team.
-- When unsure, prefer subagents. **Propose** a team (one-line rationale + rough scope) and let the user opt in, rather than forming one silently.
+## 2. Workflow per task
 
-## Branching & PR workflow
+| Step | Do | Done when |
+| --- | --- | --- |
+| Pick | `python3 .claude/skills/task/task.py next` → `start T-###` → branch `feat/t-###-…` from `main` | brief read, acceptance = definition of done |
+| Brief | fill the design brief `start` prints, into `.claude/state/HANDOFF.md` | every question answered or marked n/a; plan review run if §3 says so |
+| Build | code + tests together; iterate with `composer test -- --filter=X` / `jest <path>` | acceptance met on the device or by curl |
+| Polish | `/simplify`, then `.claude/skills/gates/run-gates.sh` (full suite, **once**) | gates green on the final tree |
+| Review | `/coderabbit` — one round: grounding + coverage + specialists + the `select-lanes.sh` seats + `/security-review`, **all launched in one message** | every 🔴/🟡 verified against the code |
+| Fix | batch all findings → **one** commit → gates → re-seat only Security, Architecture and the lanes whose code changed | round ≤ 2 (§4) |
+| Receipts | `record-receipt.sh` (audit) and `approve.sh` (coderabbit), together, on the final commit | both match HEAD + tree |
+| PR | `gh pr create` with summary, `T-###`, test evidence | CI green; bot findings fed back to the skill checklist |
 
-- Always branch from `main`: `feat/…`, `fix/…`, `chore/…`. Prefer one task (`T-###`) per branch; put the task id in the branch name and PR title.
-- Never `git push origin main`, never fast-forward/merge your own work into `main` locally. `main` only advances through a reviewed, green PR.
-- **Pre-PR checklist — all steps, in this order:**
-  1. **Run `/coderabbit`** on the branch. It runs the whole pass end to end:
-     - **Quality gates green** — API in the Sail container (`docker compose exec -T laravel.test composer lint && … stan && … test`); mobile / contracts (`npm run lint && npx tsc --noEmit && npm test`).
-     - **`/simplify`** — apply the cleanups, then re-run the gates (simplify changes code).
-     - **`/security-review`** — review the final, simplified code; fix anything it surfaces, re-run gates.
-     - A grounded (gitleaks / semgrep / shellcheck) line-by-line review over every changed file.
+Mobile tasks add: `native-rebuild-checker` before "done"; `prebuild --clean`
+after any `app.config.ts` or native dependency change.
 
-     Fix every 🔴 Blocking finding (address 🟡 too, or justify), commit, and let it re-run until clean. You can still invoke `/simplify` and `/security-review` on their own, but `/coderabbit` is the one command that covers the checklist.
-  2. **Run `/audit-agency`** over `main...HEAD` — the specialist panel, in ONE message so the agents run concurrently. It asks what the gates and the line-by-line review structurally cannot: *can a user reach this*, *is this a second implementation of something we already have*, *does this test pass whether or not the feature works* — the [Wiring & seams](#wiring--seams-enforced--this-is-where-the-real-bugs-are) questions, which is where this project's shipped bugs have actually lived.
+## 3. Design brief (before the first line of code)
 
-     **Two seats are non-negotiable, on every diff:**
-     - **Security** (`Senior SecOps Engineer`) — authz/IDOR, mass assignment, injection, SSRF, data exposure, secrets, and anything a test environment can reach that production shouldn't.
-     - **Architecture** (`Software Architect`) — boundaries and contracts, a seam duplicated or bypassed, god objects, migration and rollout safety, and the change's blast radius beyond the files it touches. Not the same seat as `Backend Architect`, which reads for correctness, N+1 and edge cases; reusing one as the other collapses two independent readings into one.
+Write it in `.claude/state/HANDOFF.md` (git-ignored on purpose: it is working
+state, not a deliverable); `task.py start` prints the template.
 
-     The remaining lanes (mobile, UX, UI, test quality) are fitted to what the diff touches, and a diff touching payments or auth deserves a seat the table does not list.
+- **Entry point** — which existing screen/route/command reaches this? Which test presses it?
+- **Sibling** — what existing map/list/form/sheet/query does this extend? What gets extracted?
+- **State & writers** — every state given a new consequence, and *every* place that
+  writes it (grep `set({ field`, `->update([`, `fill(`, direct assignment).
+- **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
+- **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
+- **Authz** — who may call this, and where is that checked?
+- **Tests** — the failure cases and the excluded-row case, named now.
+- **Native** — new module or plugin? Then a rebuild is part of the task.
+- **Out of scope** — what you will *not* do, so the review does not expand it.
 
-     **Verify each finding against the cited lines before applying it** — agents are confidently wrong sometimes, and a finding contradicted by the code costs more to apply than to check. Then fix every 🔴/🟡 or get an explicit owner waiver, and prove each fix bites by mutating it and watching the test fail.
+**Plan review before code** (2 agents, one message, `Software Architect` +
+`Senior SecOps Engineer`, over the brief) when the task touches auth, money,
+a migration, a public contract, or ≥ 3 layers. Ten minutes here replaces the
+rounds that T-156 spent on a file the task never named.
 
-     > **Why two security passes?** `/coderabbit`'s `/security-review` is a tooling pass over the diff — gitleaks, semgrep, a line-by-line read. The Security seat here is a domain-aware reading of the same change: authz reachability, what a hostile input reaches, what a test environment can touch. They catch different things.
-  3. **Both approvals are enforced.** `~/.claude/skills/coderabbit/scripts/pr-gate.sh` blocks the PR-mutating `gh` subcommands until `/coderabbit` has approved the **current** commit — and a push onto a branch that already has an open PR, since that updates the PR too. `.claude/hooks/guard-pr-audit.py` blocks every push and those same subcommands until an `/audit-agency` receipt matches HEAD **and** the working tree. Any new commit invalidates both → re-review.
+**Fix the shape, not the instance.** A second finding in the same file means the
+first fix enumerated cases; replace it with the rule that covers them.
 
-     Neither receipt records **which seats you filled** — both hash the commit and the tree, nothing else. So the mandatory seats above are enforced by you, not by the hook.
+## 4. Review, audit and the gates
 
-     **Both are process gates against forgetting, not security boundaries** — the audit hook says so in its own docstring, and anything with a subshell, an alias or an env indirection gets through by design. That is exactly why routing around one is a decision, not a technicality: nothing else will catch it. Fix the findings instead.
+- **Hooks enforce:** no `migrate:fresh`/`db:wipe` on dev (`REELMAP_ALLOW_DB_WIPE=1`
+  only — `--env=testing` does not reach the test DB and is refused too); no
+  `simctl openurl`; no push / `gh pr create|edit|ready|merge|reopen` without an
+  audit receipt matching HEAD + tree (`guard-pr-audit.py`) and a `/coderabbit`
+  approval for HEAD (`pr-gate.sh`, user-level). Also on save: Pint in the
+  container for `apps/api/**/*.php`, contracts regeneration for a schema edit.
+- **The DB guard reads Bash only.** Laravel Boost's `tinker` and `database-query`
+  MCP tools reach the dev database and bypass it — treat them as write access.
+- **Seats:** `.claude/skills/audit-agency/select-lanes.sh` prints them. Security
+  (`Senior SecOps Engineer`) and Architecture (`Software Architect`, never
+  `Backend Architect` in its place) sit on every non-docs diff. Verify each
+  finding against the cited lines before applying it.
+- **Rounds:** at most two. A third round of findings in one file means the design
+  is wrong — stop, redesign, then review once.
+- **Escape hatches are owner-approved only** and must be justified in the PR
+  body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`.
+- **Owner-approved only to edit: anything a gate reads to decide whether a check
+  is REQUIRED or whether it PASSED, whatever it is called** — including
+  `pr-gate.sh`, `approve.sh`, `record-panel.sh`, `check-review-threads.sh`,
+  `parse-review-threads.py`, the two `select-*-panel.sh`, `guard-pr-audit.py`,
+  `record-receipt.sh`, `select-lanes.sh`, the hook lines in `.claude/settings.json`,
+  `run-gates.sh`, and the gates' own tests. Findings about them go to the owner,
+  not into them. What a review loop MAY edit is judgement the gate never reads:
+  `review-checklist.md` and `ground.sh` heuristics.
+- **A branch you did not write runs its own `.claude/**`** — the gates, the
+  selector and the hooks' tests exec files from the diff. Read `.claude/**` in
+  the diff before running any of them on a contributor's branch.
+- **After the PR opens:** GitHub's CodeRabbit reviews once; every later push needs
+  `@coderabbitai review`. Confirm a round by its body, not its check. Every bot
+  finding the local pass missed goes into the skill's checklist in the same
+  session (`~/.claude/skills/coderabbit/references/review-checklist.md`).
 
-     `REELMAP_SKIP_AUDIT=1` is the escape hatch, and it is **owner-approved only** — unlike the receipt path it leaves no artifact, so say in the commit or PR body why the audit did not apply. Reaching for it because the audit is slow is how the check becomes decoration.
-  4. **Open the PR** (`gh pr create`) with: summary, the `T-###` task id, and test evidence (what you tested and the results). Wait for CI green + review before merge.
+## 5. Testing standards
 
-  > `/coderabbit`, its scripts, and the gate hook are a **local, user-level** setup under `~/.claude` — they cover Claude Code sessions on this machine, not CI or PRs opened from the GitHub UI. (There is currently no server-side CI gate; add GitHub branch protection + a required status check when the project gains collaborators.)
+- Banned: `assertTrue(true)`, status-only assertions, snapshot-only tests, tests
+  that pass with the feature deleted, mocks that invent an id/testID/route.
+- Prove a guard bites: mutate it, watch the test fail, restore with an absolute path.
+- Tests run without network — fakes, fixtures, recorded responses.
+- API: Pest on Postgres, never sqlite. Mobile: Jest + Maestro flows.
 
-### After the PR is open: the bot's findings are homework for the skill
+## 6. Completion report (mandatory, ≤ 8 lines)
 
-*(owner instruction — this is not a pre-PR step; it happens once GitHub's
-CodeRabbit has reviewed.)*
+> **✅ Task:** `T-###` — title
+> **What it is:** one sentence, user- or operator-facing effect.
+> **How to test:** the exact path on the surface that exercises it —
+> Filament (`http://localhost:8080/admin` → resource → action → expected),
+> simulator (screen → tap → expected; note worker/device/seed needs), or
+> `curl http://localhost:8080/api/v1/…` / artisan → expected result.
+> No manual surface? Say so and give the command that proves it works.
 
-The bot reviewing the same diff is the only independent measure of whether the
-local `/coderabbit` pass is still worth running. So when its comments land, read
-each finding against **"would `/coderabbit` have caught this?"** — and where the
-answer is no, fix the skill in the same session, before the context is gone. The
-skill's own "Learnings" section holds the mechanics (which file, which lane,
-which pattern) because it lives at `~/.claude`, outside this repo, and only that
-copy can be edited. Findings the local pass already caught need nothing; only the
-misses teach.
+## 7. Dev environment (hard facts)
 
-Two things that decide whether you are reading real signal:
+- Start everything with `./scripts/dev.sh` (`backend` / `run` / `start` / `stop`).
+- Local PHP is 8.2; **all API tooling runs in the Sail container**
+  (`docker compose exec -T laravel.test composer lint|stan|test`). API on `:8080`.
+- Pest flags after `--`. Exit 124 = stopped by a bound, 137 = SIGKILL or OOM,
+  neither is "failed". Never pipe the run through `tail`/`grep`. **Never run two
+  suites at once.** Full suite ≈ 8 min: run it once, on the final tree.
+- Queue worker and Metro cache code in memory: `dev.sh backend` cycles the
+  worker; `expo start --dev-client --clear` fixes stale JS.
+- Plan and task queue: `~/Sites/plans/reelmap` (`tasks/tasks.json` is truth).
+  Deviations become ADRs there; never edit a spec to match code.
+- Knowledge graph: `graphify query "<question>"` before a cold grep (the
+  `graphify-repo` skill says when it needs a rebuild). `dev-environment` skill
+  for the boot modes; `REELMAP_PLAN_DIR` if the plan checkout moved.
+- Coverage: `composer test:coverage` (API), `jest --coverage` (mobile); never regress.
+- **Subagents by default.** Agent Teams is enabled but costs scale with size;
+  propose a team only for ≥ 3 substantial independent workstreams, and let the
+  owner opt in. Personal overrides go in `.claude/settings.local.json`.
 
-- **Read the review BODIES, not just the threads.** A finding whose line falls
-  outside the diff range has no thread, no `isResolved` flag, and nothing for a
-  thread check to gate on.
-- **Confirm a review actually ran before reading silence as agreement.** A
-  rate-limited or skipped round leaves a green check and zero comments, which is
-  indistinguishable from clean. Merging does not postpone that review — the bot
-  will not review a closed PR — it forfeits it.
+## 8. Where things live
 
-**What this loop may edit, and what it may not.** State it as a property, not a
-file list, because a list is only ever right until the next script:
-
-> **Anything the gate reads to decide whether a check is REQUIRED — or whether
-> it passed — is owner-approved only, whatever it is called.**
-
-That covers `pr-gate.sh`, `approve.sh`, `record-panel.sh` and
-`check-review-threads.sh`, and everything they invoke or read:
-`parse-review-threads.py` decides what counts as an unresolved thread, and
-`select-agency-panel.sh` / `select-seo-panel.sh` decide whether a panel is
-required at all — `approve.sh` reads the selector's output to set
-`PANEL_REQUIRED`, and refuses `--panel-skipped` only when it is set. So dropping
-one term from that selector's `RISK_RE` makes `--panel-skipped="docs only"`
-acceptable on a payments diff, with an identical receipt and no artifact
-anywhere. Enumerating four filenames would have permitted exactly that, by
-omission.
-
-What the loop MAY edit is the skill's *judgement* — the prose and patterns the
-gate does not consult: `references/review-checklist.md` and `ground.sh`'s
-heuristics.
-
-Why the line is drawn at all: this loop takes text written by a third party on a
-public PR and turns it into an edit of the thing that gates this repo, in a
-directory outside it. The audit receipt hashes this repo's HEAD and worktree, so
-such an edit leaves no artifact anywhere and nothing can notice it. Findings
-about the gates themselves get raised with the owner, not applied.
-
-## Task completion report
-
-**Whenever you finish working on a task, end your reply with a short completion summary.** This is mandatory — it's how the owner knows what shipped and how to verify it by hand. Give it every time you wrap a task (whether the work merged, is awaiting merge, or is a WIP hand-off), not only at PR time. Format:
-
-> **✅ Task:** `T-###` — <title>
-> **What it is:** 1–2 sentences on what changed and why (the user-facing / operator-facing effect, not the file list).
-> **How to test it manually:**
-> - **Admin dashboard (Filament, http://localhost:8080/admin):** the exact click-path — which resource/page, what to enter, what you should see. Use this for anything with an admin/moderation/data surface.
-> - **Simulator / device (Expo dev client):** the exact in-app steps — which screen, what to tap/share, what should appear. Use this for any mobile-facing flow. Note when a step needs the queue worker running (`./scripts/dev.sh backend`), a physical device (share sheet, push tokens), or seeded data.
-> - **Backend-only / no UI surface:** give the concrete artisan/tinker/`curl http://localhost:8080/api/v1/…` command and the expected result (e.g. a Mailpit email at http://localhost:8025, a DB row, a 200 body).
-
-Pick whichever surface(s) actually exercise the change — don't invent an admin path for a mobile-only feature or vice-versa. If a change genuinely has no manual surface (pure refactor, config, test-only), say so explicitly and give the command that demonstrates it still works (the relevant gate, a migration check, etc.) instead of pretending there's a click-path.
-
-## Testing standards (enforced)
-
-- **Meaningful only.** Tests must assert real behavior across the **happy path AND failure/edge paths**. Banned:
-  - `assertTrue(true)` / `expect(true)->toBeTrue()` and other no-op tests.
-  - "Asserts 200 but never checks the body / side effects."
-  - Snapshot-only tests, or tests that just mirror the implementation without exercising behavior.
-  - Tests that pass whether or not the feature works. **A single fixture cannot
-    tell "it filtered" from "it returned everything"** — any test of a filter
-    needs a row that must be EXCLUDED, and an assertion that it was. *(observed —
-    T-158, where the 200 branches of a new test proved only that the endpoint
-    answered.)*
-- **Coverage is required.** Run coverage (`composer test:coverage`; mobile: `jest --coverage`) and do not regress it. New/changed code paths must be covered; call out any deliberate gap in the PR and why.
-- **E2E is required for user-facing flows.**
-  - API: full-pipeline / end-to-end feature tests driven by fakes+fixtures (e.g. share → published, redeem → verify → ledger).
-  - Mobile: Maestro flows (see task T-053).
-  - A feature is not "done" until its end-to-end path is green.
-- Tests must run in **CI without network** — use fakes, fixtures, and recorded responses, never live third-party calls.
-
-## Wiring & seams (enforced — this is where the real bugs are)
-
-Every foundational bug that has shipped green on this project shared one shape: **it lived in the seam between the new code and the rest of the app, while the tests only ever looked inside the new code.** A screen with no way to reach it. A second map that shared nothing with the first. A map that never re-queried when panned. A native permission missing because `ios/` was stale. A hook that crashed on device, hidden by a stub written to make the test pass. Each rendered perfectly in isolation.
-
-So, before any UI task is called done:
-
-1. **Reachability.** A new screen is not done until a user can reach it from a screen they are already on, and a test presses that control. A deep link is not an entry point, and `render(<Screen/>)` in a test bypasses navigation entirely — neither is evidence anyone can get there.
-
-2. **Sibling first.** Before building a second map / list / form / sheet / picker, find the existing one and reuse it. If it can't be reused as-is, **extract the shared part** — never re-implement. Two implementations of the same thing always diverge, and the newer one is always the worse one.
-
-3. **Test the loop, not the first paint.** For anything with a viewport, a query, a cursor, or a filter: assert that the primary interaction (pan, scroll, type, refresh, toggle) actually **re-asks**. "It rendered" is not "it works" — a screen pinned to its initial query looks completely correct in a screenshot.
-
-4. **A mock that silences a problem IS the problem.** If a test needs a stub to stop something throwing, find out why it throws on device *first*. Never stub a hook the app cannot legally call. Never let a mock invent an identity (testID, id, route) the real component doesn't have — that makes the real one dead and hides every behaviour behind it.
-
-5. **A new rule needs every writer, and a test at the invariant — not at the setter you happened to write.** *(observed — T-168)*
-
-   When you give a piece of state a consequence ("changing the locale must re-ask for places", "publishing must recount", "locking must stop enrichment"), the rule belongs at the **one place that state changes**, and the test must enumerate **every way it can change** — not the path you were editing.
-
-   The failure has a fixed shape and it passes everything:
-   - a rule is added to one setter, and something else writes the same field directly;
-   - the test drives that setter, so it proves the guard fires — and cannot notice a second writer exists;
-   - mutation testing agrees, because it only shows the assertion bites on the path it already visits;
-   - **and a diff-scoped review cannot see it**, because the other writer is unchanged code whose *meaning* your diff changed. The reviewer is looking at your commit; the bug is in the file you didn't touch.
-
-   So, concretely:
-   - **Grep for other writers before you add the rule.** `set({ field:` , `->update([`, `fill(`, direct assignment. If there is more than one, route them through a single function and say in a comment that both go through it.
-   - **Write the test over the writers, not over the setter** — a table/`it.each` of "every way this changes", plus an assertion that the list is complete (enumerate the store's mutators, the model's fillable, the callers), so the next writer added makes it red instead of silently joining the gap.
-   - **When briefing a reviewer, name the surface, not just the diff.** "Review `git show <sha>`" structurally excludes the code the change reassigns meaning to. Say: *"this commit makes X mean Y — find everything that already writes X."*
-   - **Distrust a comment that justifies a guard by asserting how other code behaves.** T-168's said "this setter runs on every hydrate". It didn't. Nothing checks a comment, and a false premise beside the code is what stops the next reader looking.
-
-6. **Generated native dirs are stale until proven otherwise.** `ios/` and `android/` are git-ignored build output, and `expo run:*` does **not** re-run prebuild over an existing one. Any change to `app.config.ts` plugins or permissions needs `npx expo prebuild --clean` before anything observed on the device means a thing.
-
-7. **Do NOT use `simctl openurl` to navigate. Navigate with Maestro.** *(enforced — `.claude/hooks/guard-simulator-deeplink.sh` denies it)*
-
-   `simctl openurl` sets the app's *launch URL*, and Expo Router replays it on every reload — so the owner's next **Cmd+R lands on whatever screen you were testing**, not home. This has been reported three separate times ("stuck in offers", "stuck in new offer", "STUCK ON THE WRONG PAGE"), each time caused by an agent's own verification. Remembering to clean up afterwards demonstrably does not work; the fix is to stop creating the state.
-
-   - **Navigate:** `~/.maestro/bin/maestro test` with `launchApp` + `tapOn`. A plain launch carries no URL, so nothing is left behind.
-   - **`openurl` is only acceptable** to reach a screen that genuinely has no in-app path (deep-link handling itself). When you must, finish with `terminate` + plain `launch` — a URL-less launch is what actually clears it (verified: Cmd+R afterwards lands on home).
-   - Other residue to restore: `simctl location set` persists until overwritten (**`clear` is a no-op**) — put it back to Montevideo `-34.9011,-56.1645`; and flying the map persists the viewport.
-   - **To test a DENIED permission, use Maestro, not `simctl privacy`.** *(observed — T-158)*
-     `xcrun simctl privacy booted revoke location <bundle>` does **not** reach the
-     app: the screen came up with the ordinary granted-state view, so a flow built
-     on it passes while asserting nothing. Set it at launch instead —
-     `launchApp: { permissions: { location: never } }` (the values are
-     `always|inuse|never`; `deny` is rejected). Put the restoring `launchApp`
-     (`inuse`) **in the same flow** so it cannot be forgotten in a separate file
-     — but Maestro has no `finally`, so a flow that dies at the denied-state
-     assertion never reaches it. Denied is sticky state like the others here:
-     check where the app comes up afterwards, don't assume the restore ran.
-   - **Verify the restore, don't assert it.** Send Cmd+R yourself and screenshot where it lands. Twice this was reported "fixed" without that check, and twice it wasn't.
-
-8. **Never describe a path you haven't walked.** The [task completion report](#task-completion-report) click-path is a claim about the running app. Walk it on the device before writing it down. If a state couldn't be reached (no fix, no seed data, a control that won't take a synthetic tap), say so explicitly — an unverified step reported as verified is worse than an admitted gap.
-
-## UI / frontend
-
-- Invoke **`/frontend-design`** for any screen, component, or visual change. Match the product's design system; do not ship generic, AI-looking UI.
-
-## Dev environment (details in `apps/api/README.md`)
-
-### Starting the local environment
-
-Always use **`./scripts/dev.sh`** (repo root) — never hand-roll `docker compose` + worker + expo commands. For the mode reference (`backend` / `run` / `start` / `stop` / `android`), what each one boots, and the device caveats, see the **`dev-environment`** skill.
-
-> ⚠️ **Never run `php artisan migrate:fresh` (or `db:wipe`) against the dev DB** — artisan's default connection is the dev Postgres, so it **wipes dev data**. Use plain `migrate` on dev; the Pest suite uses a separate testing database. Only wipe dev when the user explicitly asks (e.g. "clear the DB").
->
-> This rule is **enforced**, not advisory: a `PreToolUse` hook blocks those commands outright. Neither `--env=testing` nor `--database=testing` gets around it — verified, neither points at the test database. The only override is `REELMAP_ALLOW_DB_WIPE=1`.
-
-### Other
-
-- **Local PHP is 8.2 — too old for Laravel 13.** Run all API tooling inside Docker (PHP 8.4+, Laravel Sail). The API is exposed on **`:8080`** locally (MAMP holds `:80`).
-- Gates: `composer lint` (Pint), `composer stan` (PHPStan level 6 / Larastan), `composer test` (Pest, against Postgres — never sqlite, so citext/PostGIS are exercised).
-- **The API suite takes ~8 minutes, and three ways of running it lied about the result.** *(observed — T-158, and the audit of the commit that wrote this bullet)* Mechanisms, measurements and the reasoning behind every number are in [`apps/api/README.md`](apps/api/README.md#running-the-suite-without-being-lied-to) — kept there, once, so a correction is one edit. The rules:
-  - **Exit 124, or a `ProcessTimedOutException`, means the suite was STOPPED —
-    not that it failed. Exit 137 means SIGKILL**, which is a time bound
-    escalating *or* a container OOM kill: check the output and memory before
-    blaming the clock. Never pipe the run through `tail`/`grep` to find out: the
-    pipeline's exit status is the pipe's, not composer's.
-  - **Pass Pest flags after `--`** (`composer test -- --filter=X`). That works
-    only because the `test` script guards its first COMMAND entry (`config:clear`
-    — entry 0 is the `disableProcessTimeout` static call) with `@no_additional_args`; without it every flag also hits `artisan config:clear`,
-    which exits 1 before Pest starts. That was true, loudly and unread, until
-    2026-09-07. For coverage use `composer test:coverage` — same guard, and a
-    time bound sized for an instrumented run rather than for CI.
-  - **Never run two suites at once.** Both `migrate:fresh` the shared `testing`
-    database and the DDL interleaves, surfacing as `SQLSTATE[42P01]` or `42P07`
-    in an unrelated test. Re-run the named test alone before believing it.
-- The **build plan and task queue live in `~/Sites/plans/reelmap`** (`tasks/tasks.json` is the source of truth); application code lives here. Follow the plan; record deviations as ADRs in the plan, never by editing the spec to match code.
-
-### Automation in `.claude/` (checked in — shared, not personal)
-
-Unlike `/coderabbit` and graphify (user-level setups on one machine), the following live in the repo and apply to everyone:
-
-- **`/gates`** — runs the gate matrix for the areas the branch touches, mirroring the path filters in `.github/workflows/ci.yml`. Use it as you work; it does **not** replace `/coderabbit`, which is still the mandatory pre-PR pass.
-- **`/task`** — drives the `T-###` lifecycle over the plan queue (`next` / `show` / `start` / `note` / `done`) and carries the completion-report template. Set `REELMAP_PLAN_DIR` if your plan checkout isn't at `~/Sites/plans/reelmap`.
-- **Agents** — `contract-consistency-reviewer` (a payload shape must agree across the API Resource, the JSON Schema, and the mobile TS; `tsc` and Pest each see only one seam) and `native-rebuild-checker` (JS-only vs full dev-client rebuild, so mobile work isn't called done on green Jest alone).
-- **Hooks** (`.claude/settings.json`) — the dev-DB guard above; Pint-on-save for `apps/api/**/*.php` (run in the container, since local PHP is 8.2); and contract regeneration when a `packages/contracts` schema is edited, because stale generated output is an automatic CI failure.
-- **`.mcp.json`** wires **Laravel Boost** over `docker exec`. Boost's `tinker` tool reaches the dev database and is **not** covered by the Bash guard above — it inspects shell commands only.
-
-`.claude/settings.local.json` is git-ignored: put personal overrides there.
-
-### Codebase knowledge graph (graphify)
-
-This repo is mapped with **graphify**, a local (git-ignored, never checked in) knowledge graph of the codebase. For **"how does X work / what connects to Y / trace the flow through Z"** questions, prefer **`graphify query "<question>"`** over a cold grep — it already knows the cross-cutting bridges. See the **`graphify-repo`** skill for how it's built, when it auto-refreshes, and when you must rebuild it by hand.
+| Thing | Path |
+| --- | --- |
+| Gates runner | `.claude/skills/gates/run-gates.sh` |
+| Task lifecycle | `.claude/skills/task/` |
+| Audit seats + receipt | `.claude/skills/audit-agency/` |
+| Hooks | `.claude/hooks/` (tests run by the `tooling` gate) |
+| Project agents | `contract-consistency-reviewer`, `native-rebuild-checker` in `.claude/agents/` |
+| `/coderabbit` (user-level, `~/.claude/skills/coderabbit`), `/simplify`, `/security-review` (built in) | not in this repo |
+| Handoff note | `.claude/state/HANDOFF.md` (update as you go) |
+| Lessons | `docs/process/lessons.md` |
