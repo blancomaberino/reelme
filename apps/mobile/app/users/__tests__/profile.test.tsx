@@ -40,7 +40,7 @@ function placeRow(id: string, name: string, over: Record<string, unknown> = {}) 
   return {
     id, name, slug: `p-${id}`, status: 'active', lat: -34.9, lng: -56.16, category: 'ramen',
     price_range: 2, city: 'Montevideo', country_code: 'UY', thumbnail_url: null,
-    source_count: 1, rating: { google: { value: null, count: 0 } }, distance_m: null, created_at: null, ...over,
+    source_count: 1, rating: { google: { value: null, count: 0 } }, distance_m: null, open_state: null, created_at: null, ...over,
   };
 }
 

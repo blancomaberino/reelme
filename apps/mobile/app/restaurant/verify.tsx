@@ -11,7 +11,7 @@ import type { VerifyOutcome } from '@/api/redemptions';
 import { Button } from '@/components/button';
 import { ScreenHeader } from '@/components/screen-header';
 import { useT } from '@/i18n';
-import { getLocationPermission, getUserRegion } from '@/lib/location';
+import { positionIfGranted } from '@/lib/location';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
@@ -86,8 +86,7 @@ export default function VerifyScreen() {
         // `getCurrentPositionAsync` takes no timeout — indoors it simply never
         // returns. The server records an unknown location and lets the
         // verification through (06 §3).
-        const region =
-          (await getLocationPermission()).state === 'granted' ? await getUserRegion(FIX_BUDGET_MS) : null;
+        const region = await positionIfGranted(FIX_BUDGET_MS);
 
         const result = await verify.mutateAsync({
           code: code.trim(),

@@ -1,10 +1,12 @@
 import * as Location from 'expo-location';
 
 import {
+  CENTER_ON_VIEWER_RADIUS_M,
   DEFAULT_REGION,
   locateUser,
   regionFromParams,
   resolveInitialRegion,
+  shouldCenterOnViewer,
   syncInitialRegion,
 } from '../initial-region';
 
@@ -233,5 +235,57 @@ describe('locateUser', () => {
     watchEmits(null);
 
     expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
+  });
+});
+
+describe('shouldCenterOnViewer', () => {
+  // T-156: the map re-frames onto the viewer when they are near their own
+  // places, and leaves them where they were when they are not. Both branches,
+  // because the failure modes are opposite and equally bad: never re-framing
+  // strands a user who moved across town on last night's viewport, and always
+  // re-framing yanks a traveller onto an empty map 200 km from every pin.
+  const anchor = { latitude: -34.9011, longitude: -56.1645, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+
+  /** A point `metres` due NORTH of the anchor — latitude only, so no cos() term. */
+  const northOf = (metres: number) => ({
+    latitude: anchor.latitude + metres / 111_320,
+    longitude: anchor.longitude,
+  });
+
+  it('centers on a viewer inside the radius (they moved across town)', () => {
+    expect(shouldCenterOnViewer({ viewer: northOf(4_000), anchor, source: 'saved' })).toBe(true);
+  });
+
+  it('keeps the saved viewport for a viewer outside it (they travelled)', () => {
+    expect(shouldCenterOnViewer({ viewer: northOf(220_000), anchor, source: 'saved' })).toBe(false);
+  });
+
+  it('flips just inside and just outside the radius', () => {
+    // Pins the decision to the CONSTANT rather than to a hard-coded 30 km, so a
+    // radius someone changes has to change these too. Fifty metres either side,
+    // not the radius exactly: `northOf` is a flat-earth step and the code
+    // measures a great circle, so an exact-boundary case would be deciding a
+    // tie between two different approximations — a flaky test dressed as a
+    // precise one. Which side of `<=` the exact value falls on is not a
+    // behaviour anybody can observe.
+    expect(shouldCenterOnViewer({ viewer: northOf(CENTER_ON_VIEWER_RADIUS_M - 50), anchor, source: 'saved' }))
+      .toBe(true);
+    expect(shouldCenterOnViewer({ viewer: northOf(CENTER_ON_VIEWER_RADIUS_M + 50), anchor, source: 'saved' }))
+      .toBe(false);
+  });
+
+  it('never overrides a rung that already knows better', () => {
+    const viewer = northOf(1_000);
+    // `param` is an explicit "show me THIS" push; `user` is already the viewer;
+    // `default` has no anchor worth being near. Each must stay put even though
+    // the viewer is a kilometre away and would otherwise qualify.
+    expect(shouldCenterOnViewer({ viewer, anchor, source: 'param' })).toBe(false);
+    expect(shouldCenterOnViewer({ viewer, anchor, source: 'user' })).toBe(false);
+    expect(shouldCenterOnViewer({ viewer, anchor, source: 'default' })).toBe(false);
+  });
+
+  it('does nothing without a fix or without an anchor', () => {
+    expect(shouldCenterOnViewer({ viewer: null, anchor, source: 'saved' })).toBe(false);
+    expect(shouldCenterOnViewer({ viewer: northOf(100), anchor: null, source: 'saved' })).toBe(false);
   });
 });

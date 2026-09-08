@@ -151,7 +151,7 @@ const placeFixture = {
   mine: { share_id: '9', saved: false },
   source_count: 1,
   rating: { google: { value: 4.6, count: 80 } },
-  distance_m: null,
+  distance_m: null, open_state: null,
   created_at: null,
 } satisfies ContractPlaceSummary;
 

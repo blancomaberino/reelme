@@ -6,31 +6,101 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "id", "name", "slug", "status", "lat", "lng", "category", "price_range",
-    "city", "country_code", "source_count", "rating", "distance_m", "created_at"
+    "id",
+    "name",
+    "slug",
+    "status",
+    "lat",
+    "lng",
+    "category",
+    "price_range",
+    "city",
+    "country_code",
+    "source_count",
+    "rating",
+    "distance_m",
+    "open_state",
+    "created_at"
   ],
   "properties": {
-    "id": { "type": "string" },
-    "name": { "type": "string" },
-    "slug": { "type": "string" },
-    "status": { "type": "string", "enum": ["pending", "active"] },
-    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
-    "lng": { "type": "number", "minimum": -180, "maximum": 180 },
-    "category": { "type": ["string", "null"] },
-    "price_range": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
-    "city": { "type": ["string", "null"] },
-    "country_code": { "type": "string" },
-    "thumbnail_url": { "type": ["string", "null"] },
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active"
+      ]
+    },
+    "lat": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "lng": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "category": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "price_range": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 4
+    },
+    "city": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "country_code": {
+      "type": "string"
+    },
+    "thumbnail_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "mine": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["share_id", "saved"],
+      "required": [
+        "share_id",
+        "saved"
+      ],
       "properties": {
-        "share_id": { "type": ["string", "null"] },
-        "saved": { "type": "boolean" }
+        "share_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "saved": {
+          "type": "boolean"
+        }
       }
     },
-    "source_count": { "type": "integer", "minimum": 0 },
+    "source_count": {
+      "type": "integer",
+      "minimum": 0
+    },
     "has_active_offer": {
       "type": "boolean",
       "description": "Whether the place has an offer redeemable RIGHT NOW (T-047). Present only on listings that selected it (my-places, map pins); absent — not false — elsewhere, since a listing that never looked must not claim there is nothing. Gated on the active() scope, never the status column, which nothing rewrites when a window closes."
@@ -38,22 +108,61 @@
     "rating": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["google"],
+      "required": [
+        "google"
+      ],
       "properties": {
-        "google": { "$ref": "#/definitions/ratingBlock" }
+        "google": {
+          "$ref": "#/definitions/ratingBlock"
+        }
       }
     },
-    "distance_m": { "type": ["number", "null"], "minimum": 0 },
-    "created_at": { "type": ["string", "null"], "format": "date-time" }
+    "distance_m": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "open_state": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "open-state.json"
+        }
+      ]
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
   },
   "definitions": {
     "ratingBlock": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["value", "count"],
+      "required": [
+        "value",
+        "count"
+      ],
       "properties": {
-        "value": { "type": ["number", "null"], "minimum": 0, "maximum": 5 },
-        "count": { "type": "integer", "minimum": 0 }
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 5
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     }
   }

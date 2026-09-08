@@ -26,11 +26,16 @@
   {{-- One alternate per OTHER locale, derived from the list rather than a
        hardcoded pair: with a third language the pair would silently advertise
        only one of them. --}}
+  {{-- SELF-REFERENTIAL, and with an x-default. Google's rule is that every
+       version lists ALL versions including itself; a non-reciprocal set is
+       liable to be dropped whole, which would leave the two languages competing
+       as near-duplicates and could serve the English policy to a Spanish
+       reader. The `@if ($code !== $locale)` that used to be here is what made
+       it non-reciprocal. --}}
   @foreach ($locales as $code)
-    @if ($code !== $locale)
-      <link rel="alternate" hreflang="{{ $code }}" href="{{ url("/{$doc}/{$code}") }}">
-    @endif
+    <link rel="alternate" hreflang="{{ $code }}" href="{{ url("/{$doc}/{$code}") }}">
   @endforeach
+  <link rel="alternate" hreflang="x-default" href="{{ url("/{$doc}") }}">
   <style>
     :root {
       --bg: #f6f7f9; --card: #ffffff; --ink: #14181f; --muted: #66707d;

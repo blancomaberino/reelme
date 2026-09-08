@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import type { Region } from '@/lib/geo';
+import { nearParam, type Region } from '@/lib/geo';
 
 import { api } from '../client';
 import { queryKeys } from '../keys';
@@ -27,11 +27,12 @@ export const MAX_RADIUS_M = 50_000;
  * rewrites the column when a date passes — and a diner walks to a restaurant
  * for a promotion that ended.
  *
- * The key is quantized to 4 decimals (~11m) so a hand-held phone's GPS jitter
- * does not refetch the whole list every time the fix wobbles.
+ * The key is quantized by `nearParam` (~11 m) so a hand-held phone's GPS jitter
+ * does not refetch the whole list every time the fix wobbles — the same rounding
+ * the map sends, so one `near` cannot mean two precisions.
  */
 export function useNearbyOffers(at: Pick<Region, 'latitude' | 'longitude'> | null, radiusM = BROWSE_RADIUS_M) {
-  const near = at ? `${at.latitude.toFixed(4)},${at.longitude.toFixed(4)}` : '';
+  const near = nearParam(at) ?? '';
   const radius = Math.min(Math.max(Math.round(radiusM), 1), MAX_RADIUS_M);
 
   return useQuery({

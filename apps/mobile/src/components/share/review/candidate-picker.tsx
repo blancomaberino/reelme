@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PendingCandidate } from '@/api/shares';
 import { useT } from '@/i18n';
+import { useFormat } from '@/lib/use-format';
 import { fonts, type Palette, useColors } from '@/theme/colors';
 
 /**
@@ -23,6 +24,7 @@ export function CandidatePicker({
 }) {
   const c = useColors();
   const t = useT();
+  const fmt = useFormat();
   const styles = useMemo(() => makeStyles(c), [c]);
 
   if (candidates.length === 0) return null;
@@ -35,6 +37,21 @@ export function CandidatePicker({
         {candidates.map((cand) => {
           const id = Number(cand.place_id);
           const on = selectedId === id;
+          // NO age gate here, unlike the map's pin sheet — deliberately. That
+          // sheet renders pins from `['places','map',…]` scoped to the viewer's
+          // OWN places, which `query-persist.ts` keeps on disk for 24h, so its
+          // distance can outlive the viewer's position. These candidates come
+          // from the pending-share review response, and `isPersistableKey`
+          // denies by default — the `shares` head reaches no branch. That is
+          // enforced, not asserted here: `query-persist.test.ts` enumerates
+          // every surface and goes red if someone allowlists it.
+          //
+          // Formatted once and guarded on the FORMATTED value, not the raw one:
+          // `distanceLabel` returns '' for null, NaN and negatives, which would
+          // otherwise render a dangling " away". Formatting it twice — once
+          // unlocalized to test emptiness, once through `fmt` to show — was two
+          // answers to "is there a distance", in two different locales.
+          const distance = fmt.distance(cand.distance_m);
           return (
             <Row
               key={cand.place_id}
@@ -42,7 +59,7 @@ export function CandidatePicker({
               title={cand.name ?? t('share.pending.unnamed')}
               sub={
                 cand.address ??
-                (cand.distance_m != null ? t('review.candidate.distance', { meters: Math.round(cand.distance_m) }) : null)
+                (distance !== '' ? t('review.candidate.distance', { distance }) : null)
               }
               onPress={() => onSelect(on ? null : id)}
               styles={styles}

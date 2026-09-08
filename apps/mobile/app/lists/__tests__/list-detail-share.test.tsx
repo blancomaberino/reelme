@@ -23,7 +23,7 @@ function place(id: string, name: string): PlaceSummary {
   return {
     id, name, slug: `${name.toLowerCase()}-${id}`, status: 'active', lat: -34.9, lng: -56.16,
     category: 'modern', price_range: 2, city: 'Montevideo', country_code: 'UY', source_count: 1,
-    rating: { google: { value: null, count: 0 } }, distance_m: null, created_at: null,
+    rating: { google: { value: null, count: 0 } }, distance_m: null, open_state: null, created_at: null,
   };
 }
 

@@ -136,6 +136,16 @@
         <td>Consent (system permission)</td>
       </tr>
       <tr>
+        <td>Showing how far away each place is</td>
+        {{-- "rounded to about 10 metres", NOT "approximate": 10 m is PRECISE
+             location under Apple's and Google's definitions (their coarse tier
+             is 1–3 km), so reusing the word from the rows above would make this
+             row disagree with the Location bullet below — and would be the
+             evidence against a store privacy label that claimed coarse. --}}
+        <td>Device location, rounded to about 10 metres</td>
+        <td>Consent (system permission)</td>
+      </tr>
+      <tr>
         <td>Telling you about things that concern you</td>
         <td>Push token</td>
         <td>Consent (system permission)</td>
@@ -180,10 +190,13 @@
   <p>All three permissions are optional, and the app works without them.</p>
   <ul>
     <li>
-      <strong>Location.</strong> Only while you are using the app, never in the background, to centre the map
-      where you are and to power the "locate me" button. <strong>Your location is not stored against your
-      account</strong> — it is used in the moment and not recorded. If you decline, the map opens on a
-      default region.
+      <strong>Location.</strong> Only while you are using the app, never in the background: to centre the map
+      where you are, to power the "locate me" button, and to work out how far away each place is. Distances
+      are calculated on our servers, so we round your position to roughly 10&nbsp;metres and send that with
+      the request. <strong>It is never saved to your account, and never shared with anyone else for their
+      own purposes</strong>; like every other request it passes through our hosting provider and may appear
+      in our server logs for a limited time before they are discarded. If you decline, the map opens on a
+      default region and no distances are shown.
     </li>
     <li>
       <strong>Camera.</strong> Solely to scan a redemption QR code at the venue. We do not request photo
@@ -228,6 +241,7 @@
     <li><strong>Your data export:</strong> the archive is deleted after 7 days and the download link expires after 24 hours.</li>
     <li><strong>Account and content:</strong> for as long as your account exists. If you delete it, the next section applies.</li>
     <li><strong>Redemption, payout and ledger records:</strong> retained even after you delete your account, as a legal and accounting obligation.</li>
+    <li><strong>Server logs:</strong> 14 days. This is the "limited time" referred to above; after it, the daily log file that may contain a request of yours is deleted.</li>
   </ul>
 
   <h2 id="rights">Your rights</h2>

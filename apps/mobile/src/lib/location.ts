@@ -109,12 +109,21 @@ export async function requestLocationPermission(): Promise<PermissionOutcome> {
  *
  * Assumes permission is already granted — callers own the prompt.
  */
-export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise<Region | null> {
+export async function getUserRegion(
+  timeoutMs: number = FIX_TIMEOUT_MS,
+  bounds?: { maxAge?: number; requiredAccuracy?: number },
+): Promise<Region | null> {
   const m = locationModule();
   if (!m) return null;
 
   try {
-    const last = await m.getLastKnownPositionAsync();
+    // `bounds` constrains the CACHED fix, and callers that measure distances
+    // must pass it. Unbounded, `getLastKnownPositionAsync` will happily hand
+    // back a reading from another city hours ago — free when the answer only
+    // has to frame a viewport (what this function was written for), and wrong
+    // once the answer is rendered as "713 m" (T-156). Default stays unbounded
+    // so the viewport path keeps its instant, good-enough answer.
+    const last = await m.getLastKnownPositionAsync(bounds);
     // Only RETURN a usable cached region. A bogus one (`toRegion` → null) must
     // fall through to the fresh fix, not short-circuit it into "no location".
     const cached = last ? toRegion(last.coords) : null;
@@ -124,7 +133,13 @@ export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise
   }
 
   try {
-    return await firstFixWithin(m, timeoutMs);
+    // `requiredAccuracy` has to be applied HERE too, not only to the cached
+    // read. Expo enforces it on `getLastKnownPositionAsync` and nowhere else, so
+    // on iOS with Precise Location off — the exact case the constant exists for
+    // — the coarse cached fix was refused, a fresh, equally coarse one was
+    // fetched at radio cost, and the sheet rendered "713 m" off a ±2 km reading
+    // anyway. The guard cost battery and prevented nothing.
+    return await firstFixWithin(m, timeoutMs, bounds?.requiredAccuracy);
   } catch {
     return null;
   }
@@ -141,7 +156,11 @@ export async function getUserRegion(timeoutMs: number = FIX_TIMEOUT_MS): Promise
  * Beyond the leak, a still-pending Expo async call is destroyed against a dead
  * JS runtime on teardown, which is a native crash rather than an exception.
  */
-function firstFixWithin(m: LocationModule, timeoutMs: number): Promise<Region | null> {
+function firstFixWithin(
+  m: LocationModule,
+  timeoutMs: number,
+  requiredAccuracy?: number,
+): Promise<Region | null> {
   return new Promise((resolve) => {
     let subscription: { remove: () => void } | null = null;
     let settled = false;
@@ -161,7 +180,28 @@ function firstFixWithin(m: LocationModule, timeoutMs: number): Promise<Region | 
       (location) => {
         // One bogus reading does not end the watch — keep listening for a good
         // fix until the timeout, rather than reporting "no location" because a
-        // flaky provider emitted a single NaN.
+        // flaky provider emitted a single NaN. A reading COARSER than the caller
+        // asked for is the same kind of unusable: keep watching, because a watch
+        // typically narrows as it runs, and report null if it never does. Null
+        // is the honest answer — the caller renders no distance rather than one
+        // measured from a ±2 km guess.
+        //
+        // An UNREPORTED accuracy passes. `LocationObjectCoords.accuracy` is
+        // `number | null` and some Android providers genuinely leave it null;
+        // refusing those would deny distances to real devices in order to guard
+        // against a hypothetical. The case this bound exists for — iOS with
+        // Precise Location off — reports a number, a large one.
+        // No `typeof`/`isFinite` guard: `NaN > 500` is false, so the comparison
+        // alone already lets an unusable reading through. Spelling the checks out
+        // looked more careful and was dead code — a test written to cover it
+        // would have been asserting JS coercion rather than this function.
+        //
+        // The `?? 0` is NOT redundant with that, though: `accuracy` is typed
+        // `number | null`, so it is there for the type checker, and deleting it
+        // on the reasoning above fails `tsc`.
+        if (requiredAccuracy !== undefined && (location.coords.accuracy ?? 0) > requiredAccuracy) {
+          return;
+        }
         const region = toRegion(location.coords);
         if (region) finish(region);
       },
@@ -204,4 +244,38 @@ export async function openLocationSettings(): Promise<void> {
   } catch {
     // Nothing actionable for the user beyond the tap doing nothing.
   }
+}
+
+/**
+ * How stale a cached fix may be before a DISTANCE is measured from it. Two
+ * minutes: long enough that reopening the map is instant, short enough that a
+ * walk across town cannot be reported as "50 m".
+ */
+export const VIEWER_FIX_MAX_AGE_MS = 2 * 60 * 1000;
+
+/**
+ * How coarse a cached fix may be, in metres, for the same purpose. iOS with
+ * Precise Location OFF returns a ~1–3 km reading, and rendering "713 m" from
+ * one is a fabricated precision — the same class of wrong as a fabricated
+ * "Closed". Past this, wait for a fresh fix instead.
+ */
+export const VIEWER_FIX_MAX_ACCURACY_M = 500;
+
+/**
+ * The viewer's position WITHOUT ever prompting, or null.
+ *
+ * Extracted because it existed twice: the redemption screen reads the fix this
+ * way so that a customer at the counter is never blocked by a permission
+ * dialog, and the map needs the identical rule so that a distance label never
+ * costs the app its one location prompt. Two copies of "the position, if we may
+ * already have it" is two places for the next change — coarse location, a
+ * cached-fix fallback — to land in only one of.
+ */
+export async function positionIfGranted(timeoutMs: number = FIX_TIMEOUT_MS): Promise<Region | null> {
+  if ((await getLocationPermission()).state !== 'granted') return null;
+
+  return getUserRegion(timeoutMs, {
+    maxAge: VIEWER_FIX_MAX_AGE_MS,
+    requiredAccuracy: VIEWER_FIX_MAX_ACCURACY_M,
+  });
 }
