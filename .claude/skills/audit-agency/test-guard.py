@@ -143,10 +143,19 @@ def main():
     # and the answer is DENY with or without the bug. A test that cannot fail is
     # the thing this suite exists to catch, and it caught itself.
     with tempfile.TemporaryDirectory() as clean, tempfile.TemporaryDirectory() as bare:
-        subprocess.run(["git", "init", "-q", clean], check=True)
+        subprocess.run(["git", "init", "-q", "-b", "main", clean], check=True)
         subprocess.run(["git", "-C", clean, "config", "user.email", "t@t"], check=True)
         subprocess.run(["git", "-C", clean, "config", "user.name", "t"], check=True)
         (pathlib.Path(clean) / "f.txt").write_text("hello\n")
+        # Both fixtures must CARRY THE GATE, or the scope check allows before it
+        # reads any receipt — so the control passed without ever validating one,
+        # and the laundering assertion never reached receipt lookup. The state
+        # dir must be ignored, or the artifacts invalidate the tree they record.
+        (pathlib.Path(clean) / ".gitignore").write_text(".claude/state/\n")
+        for r in (clean, bare):
+            dst = pathlib.Path(r) / ".claude" / "hooks" / pathlib.Path(HOOK).name
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(pathlib.Path(HOOK).read_text())
         subprocess.run(["git", "-C", clean, "add", "-A"], check=True)
         subprocess.run(["git", "-C", clean, "commit", "-qm", "init"], check=True)
 
@@ -156,6 +165,15 @@ def main():
         head, tree = guard.state(clean)
         rec = pathlib.Path(clean) / ".claude" / "state"
         rec.mkdir(parents=True)
+        # A skip is verified like any other state, so the control needs the
+        # marker too — otherwise it allows for the wrong reason again.
+        (rec / "grounding.log").write_text("skipped\n")
+        (rec / "grounding.json").write_text(json.dumps({
+            "head": head, "tree": tree,
+            "base": guard.run(["git", "merge-base", "main", "HEAD"], clean).strip(),
+            "skipped": True, "leads": 0,
+            "digest": guard.grounding_digest(rec / "grounding.log"),
+        }))
         # `grounding: skipped` because this fixture is about receipt LAUNDERING,
         # not about the grounding pass — skipped is allowed-and-loud, so the
         # control still allows and the case keeps testing what it tested.

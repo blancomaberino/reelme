@@ -146,7 +146,7 @@ home=$(fake_home '#!/usr/bin/env bash
 echo "# Grounding report"
 echo "- Changed files: **1**"
 echo "## Secret scan (gitleaks)"
-echo "_skipped — gitleaks not installed. Install: `brew install gitleaks`_"
+echo "_skipped — gitleaks not installed. Install: \`brew install gitleaks\`_"
 echo "## Static analysis (semgrep)"')
 dir=$(make_repo)
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
@@ -190,7 +190,7 @@ echo "- Changed files: **1**"
 echo "## Secret scan (gitleaks)"
 echo "## Static analysis (semgrep)"
 echo "## Dockerfile lint (hadolint)"
-echo "_skipped — hadolint not installed. Install: `brew install hadolint`_"')
+echo "_skipped — hadolint not installed. Install: \`brew install hadolint\`_"')
 dir=$(make_repo)
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
 check "a tool the diff does NOT need may be missing" "Grounding marker recorded" "$out"
@@ -409,6 +409,43 @@ echo "## Secret scan (gitleaks)"
 echo "## Static analysis (semgrep)"')
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
 check "a .sh in the diff REQUIRES the shell linter" "needs shellcheck" "$out"
+
+# The marker's own `required_tools` is a claim by the writer. Both readers took
+# it, so setting it to [] beside a log saying gitleaks was not installed
+# satisfied every check. They derive it now.
+dir=$(make_repo); home=$(ground_ok)
+(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
+(
+  cd "$dir" || exit 1
+  printf '%s\n' '_skipped — gitleaks not installed. Install: x_' >> .claude/state/grounding.log
+  python3 - <<'PYEOF'
+import importlib.util, json, os
+spec = importlib.util.spec_from_file_location("g", ".claude/hooks/guard-pr-audit.py")
+g = importlib.util.module_from_spec(spec); spec.loader.exec_module(g)
+m = json.load(open(".claude/state/grounding.json"))
+m["required_tools"] = []                       # the writer's claim, emptied
+m["tools_skipped"] = []
+m["digest"] = g.grounding_digest(".claude/state/grounding.log")   # kept consistent
+json.dump(m, open(".claude/state/grounding.json", "w"))
+PYEOF
+)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+check "an emptied required_tools does not hide a skipped scanner" "(out-of-scope)" "$out"
+
+# A lead count that cannot be trusted must fail CLOSED, not become 0.
+# Python literals — `null` is JSON, and writing it here made the edit raise, so
+# the marker kept its real count and the case passed for the wrong reason.
+for bad_leads in 'None' '"many"' '-3' 'True'; do
+  dir=$(make_repo); home=$(ground_ok)
+  (cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
+  (cd "$dir" && python3 -c "
+import json
+m = json.load(open('.claude/state/grounding.json'))
+m['leads'] = $bad_leads
+json.dump(m, open('.claude/state/grounding.json','w'))")
+  out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed 2>&1)
+  check "a lead count of $bad_leads is refused, not read as zero" "not a whole number" "$out"
+done
 
 [ $fails -eq 0 ] && echo "ALL PASS" || echo "$fails FAILED"
 exit $((fails > 0))

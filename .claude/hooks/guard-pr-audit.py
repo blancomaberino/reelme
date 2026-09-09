@@ -32,6 +32,7 @@ repository.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -211,6 +212,68 @@ def grounding_digest(path) -> str:
             return hashlib.sha256(fh.read()).hexdigest()
     except OSError:
         return ""
+
+
+# The grounding pass's own section headers, and the rule for which tools a diff
+# requires. They live HERE, in the file every side already imports, because a
+# marker that names its own `required_tools` is a claim by the writer — and both
+# readers used to take it. Setting `"required_tools": []` beside a log saying
+# `_skipped — gitleaks not installed` satisfied every check.
+SECTION_FOR = {
+    "gitleaks": "Secret scan (gitleaks)",
+    "semgrep": "Static analysis (semgrep)",
+    "osv-scanner": "Dependency vulnerabilities",
+    "actionlint": "GitHub Actions lint (actionlint)",
+    "hadolint": "Dockerfile lint (hadolint)",
+    "shellcheck": "Shell lint (shellcheck)",
+}
+
+# Mirrors the globs ground.sh selects files with. A subset would mean a diff the
+# pass DOES scan, with the scanner missing, recorded as ok.
+LOCKFILE_GLOBS = (
+    "*composer.lock", "*package-lock.json", "*yarn.lock", "*pnpm-lock.yaml",
+    "*Gemfile.lock", "*poetry.lock", "*go.sum", "*go.mod", "*Cargo.lock",
+    "*requirements*.txt",
+)
+
+
+def changed_files(repo: str, base: str) -> list[str]:
+    """The pass's file set: committed range plus working tree, on-disk only.
+
+    `-z`, because git C-QUOTES a path with non-ASCII or control bytes in
+    `--name-only` — and a quoted name is not the name on disk, so the `[ -e ]`
+    filter dropped it and the extension tests read the escapes rather than the
+    suffix. `[ -e ]` itself mirrors ground.sh, which applies it too: without it a
+    file deleted in the working tree makes the two counts disagree.
+    """
+    out = []
+    for args in (
+        ["git", "diff", "-z", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"],
+        ["git", "diff", "-z", "--name-only", "--diff-filter=ACMR", "HEAD"],
+    ):
+        out += [f for f in run(args, repo).split("\0") if f]
+    return sorted({f for f in out if os.path.exists(os.path.join(repo, f))})
+
+
+def required_tools(files) -> set:
+    """Which scanners this diff obliges the pass to have run."""
+    required = {"gitleaks", "semgrep"}
+    for f in files:
+        name = os.path.basename(f)
+        if fnmatch.fnmatch(name, "*.sh") or fnmatch.fnmatch(name, "*.bash"):
+            required.add("shellcheck")
+        if f.startswith(".github/workflows/") and fnmatch.fnmatch(name, "*.y*ml"):
+            required.add("actionlint")
+        if fnmatch.fnmatch(name, "*Dockerfile*") or fnmatch.fnmatch(name, "*.dockerfile"):
+            required.add("hadolint")
+        if any(fnmatch.fnmatch(name, g) for g in LOCKFILE_GLOBS):
+            required.add("osv-scanner")
+    return required
+
+
+def skipped_tools(log_text: str) -> set:
+    """Tools the pass reported as not installed, read from the log itself."""
+    return set(re.findall(r"^_skipped — (\S+) not installed", log_text, re.M))
 
 
 def load_marker(repo: str, action: str) -> dict:
@@ -551,10 +614,20 @@ def main() -> None:
                 "Re-run run-grounding.sh and re-record the receipt.",
                 action,
             )
-        if set(marker.get("required_tools") or []) & set(marker.get("tools_skipped") or []):
+        # DERIVED from the diff and the log, not read from the marker. Both
+        # operands used to come out of the file the writer wrote, so they could
+        # never disagree with it: `"required_tools": []` beside a log saying
+        # gitleaks was not installed passed both readers.
+        try:
+            log_text = open(os.path.join(repo, GROUNDING_LOG), errors="replace").read()
+        except OSError:
+            log_text = ""
+        missing = required_tools(changed_files(repo, marker.get("base") or "")) & skipped_tools(log_text)
+        if missing:
             deny(
-                "The grounding pass skipped a tool this diff required. Install it and re-run "
-                "run-grounding.sh — a pass that skipped what the diff called for certifies nothing.",
+                "The grounding pass skipped " + ", ".join(sorted(missing)) + ", which this diff "
+                "requires. Install and re-run run-grounding.sh — a pass that skipped what the "
+                "diff called for certifies nothing.",
                 action,
             )
     else:

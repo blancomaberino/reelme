@@ -27,7 +27,6 @@ import importlib.util
 import json
 import os
 import pathlib
-import re
 import sys
 
 MARKER = ".claude/state/grounding.json"
@@ -125,8 +124,11 @@ def main() -> int:
     except OSError:
         print("stale")
         return 0
-    skipped_in_log = set(re.findall(r"^_skipped — (\S+) not installed", log_text, re.M))
-    if set(marker.get("required_tools") or []) & skipped_in_log:
+    # DERIVED, both sides. `required_tools` from the marker is the writer's own
+    # claim: setting it to [] beside a log saying gitleaks was not installed
+    # satisfied this check when it read that field.
+    required = guard.required_tools(guard.changed_files(os.getcwd(), marker.get("base") or ""))
+    if required & guard.skipped_tools(log_text):
         print("out-of-scope")
         return 0
 

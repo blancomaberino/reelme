@@ -40,7 +40,11 @@ test_files() {
 # scan <label> <bre-pattern>
 scan() {
   local label="$1" pattern="$2" hits
-  hits=$(test_files | xargs -0 grep -Hn "$pattern" 2>/dev/null)
+  # `--` before the file arguments: a matching path such as
+  # `apps/api/tests/--exclude=*.php` was handed to grep as an OPTION, its error
+  # suppressed, while the count still counted the file — a pass reported over a
+  # file nothing scanned.
+  hits=$(test_files | xargs -0 grep -Hn -e "$pattern" -- 2>/dev/null)
 
   if [ -n "$hits" ]; then
     printf '\033[31m  x %s\033[0m\n' "$label"

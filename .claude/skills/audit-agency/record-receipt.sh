@@ -109,12 +109,23 @@ if [ "$verdict" != docs-only ] && [ -z "${2:-}" ]; then
   # int() inside the Python, not in the shell test: a hand-written marker with
   # "leads": "many" made `[ "$leads" -gt 0 ]` error and evaluate FALSE, which
   # skipped the requirement instead of enforcing it.
+  # A missing, non-numeric or negative `leads` used to become 0 and skip the
+  # requirement — failing OPEN on a malformed marker, in a file whose whole
+  # ethos is the opposite. `-1` is the sentinel for "cannot tell", and the
+  # branch below treats it like a positive count.
   leads="$(python3 -c 'import json
 try:
-    print(int(json.load(open(".claude/state/grounding.json")).get("leads", 0)))
+    v = json.load(open(".claude/state/grounding.json"))["leads"]
+    print(v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else -1)
 except Exception:
-    print(0)' 2>/dev/null || echo 0)"
-  if [ "${leads:-0}" -gt 0 ]; then
+    print(-1)' 2>/dev/null || echo -1)"
+  case "$leads" in ''|*[!0-9-]*) leads=-1 ;; esac
+  if [ "$leads" -ne 0 ]; then
+    if [ "$leads" -lt 0 ]; then
+      echo "refused: the grounding marker's lead count is missing or not a whole number, so this" >&2
+      echo "receipt cannot claim the leads were read. Re-run run-grounding.sh." >&2
+      exit 2
+    fi
     echo "refused: the grounding pass raised $leads lead(s) and this receipt carries no note." >&2
     echo "Say what you checked them against — a count nobody wrote a sentence about is a count nobody read:" >&2
     echo "  record-receipt.sh $verdict \"<what the leads were, and what you did>\"" >&2

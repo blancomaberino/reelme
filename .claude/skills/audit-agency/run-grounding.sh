@@ -133,48 +133,11 @@ text = log.read_text(errors="replace")
 base = os.environ["BASE"]
 skipped = os.environ["SKIPPED"] == "true"
 
-# Which tools does THIS diff require? A section count cannot answer that: most
-# of the pass's sections are grep heuristics that print unconditionally, so "at
-# least one ran" holds with every scanner missing. gitleaks and semgrep are
-# unconditional; the rest are required only when the diff contains what they
-# read.
-#
-# Built EXACTLY the way ground.sh builds its own list — committed range plus the
-# working tree — because the two counts are compared below. A first version used
-# `git diff base HEAD` plus untracked, which saw 0 files on a branch whose work
-# was still uncommitted while the pass itself saw many: two different ideas of
-# "the diff", one of them silently wrong.
-committed = guard.run(
-    ["git", "diff", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"], os.getcwd()
-).splitlines()
-working = guard.run(
-    ["git", "diff", "--name-only", "--diff-filter=ACMR", "HEAD"], os.getcwd()
-).splitlines()
-# `[ -e ]`, because ground.sh applies it too: a file deleted in the working tree
-# is in the diff and not on disk, and without this the two counts disagree on a
-# perfectly legitimate branch — a hard refusal whose only exit is the hatch.
-files = sorted({f for f in committed + working if f.strip() and os.path.exists(f)})
-
-# The patterns mirror the ones ground.sh selects files with — a subset would
-# mean a diff the pass DOES scan, with the scanner missing, recorded as `ok`.
-# Enumerating four of its eleven lockfile globs was exactly that.
-LOCKFILE_GLOBS = (
-    "*composer.lock", "*package-lock.json", "*yarn.lock", "*pnpm-lock.yaml",
-    "*Gemfile.lock", "*poetry.lock", "*go.sum", "*go.mod", "*Cargo.lock",
-    "*requirements*.txt",
-)
-
-required = {"gitleaks", "semgrep"}
-for f in files:
-    name = os.path.basename(f)
-    if fnmatch.fnmatch(name, "*.sh") or fnmatch.fnmatch(name, "*.bash"):
-        required.add("shellcheck")
-    if f.startswith(".github/workflows/") and fnmatch.fnmatch(name, "*.y*ml"):
-        required.add("actionlint")
-    if fnmatch.fnmatch(name, "*Dockerfile*") or fnmatch.fnmatch(name, "*.dockerfile"):
-        required.add("hadolint")
-    if any(fnmatch.fnmatch(name, g) for g in LOCKFILE_GLOBS):
-        required.add("osv-scanner")
+# Asked of the hook, which owns this rule now: the marker's own `required_tools`
+# is a claim by this script, and both readers used to take it at face value.
+# They derive it too, from the diff and the digest-bound log.
+files = guard.changed_files(os.getcwd(), base)
+required = guard.required_tools(files)
 
 result = {
     "head": head,
@@ -234,21 +197,13 @@ if not skipped:
             "It cannot tell a missing tool from one that ran. No marker written."
         )
 
-    result["tools_skipped"] = sorted(set(re.findall(r"^_skipped — (\S+) not installed", text, re.M)))
+    result["tools_skipped"] = sorted(guard.skipped_tools(text))
 
     # A required tool must have a SECTION in the report, not merely no skip
     # line. Absence of a skip line was read as "it ran", so a pass emitting a
     # header and nothing else satisfied every check — which is precisely what
     # the stub in this gate's own test suite does.
-    SECTION_FOR = {
-        "gitleaks": "Secret scan (gitleaks)",
-        "semgrep": "Static analysis (semgrep)",
-        "osv-scanner": "Dependency vulnerabilities",
-        "actionlint": "GitHub Actions lint (actionlint)",
-        "hadolint": "Dockerfile lint (hadolint)",
-        "shellcheck": "Shell lint (shellcheck)",
-    }
-    silent = sorted(t for t in required if SECTION_FOR.get(t, t) not in text)
+    silent = sorted(t for t in required if guard.SECTION_FOR.get(t, t) not in text)
     if silent:
         raise SystemExit(
             "refused: this diff needs " + ", ".join(silent) + ", and the grounding output has\n"
