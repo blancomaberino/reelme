@@ -213,17 +213,28 @@ export default function OffersBrowseScreen() {
     if (mode === 'map') return mapBody();
 
     if (blocked !== null) {
+      // Once, not three times: the previous version called `presentRefusal` in
+      // the copy, in the button title and again in the handler, so the message
+      // and the action it offers were free to disagree.
+      const refusal = presentRefusal(blocked);
+
       return (
         <View style={styles.centered} testID="offers-location-blocked">
           <Ionicons name="location-outline" size={40} color={c.muted} />
           <Text style={styles.emptyText}>
-            {t(presentRefusal(blocked).unavailable ? 'offers.browse.noFix' : 'offers.browse.needLocation')}
+            {t(
+              refusal.tone === 'noFix'
+                ? 'offers.browse.noFix'
+                : refusal.tone === 'imprecise'
+                  ? 'offers.browse.imprecise'
+                  : 'offers.browse.needLocation',
+            )}
           </Text>
           <Button
-            title={t(presentRefusal(blocked).openSettings ? 'offers.browse.openSettings' : 'common.tryAgain')}
+            title={t(refusal.openSettings ? 'offers.browse.openSettings' : 'common.tryAgain')}
             variant="secondary"
             onPress={() => {
-              if (presentRefusal(blocked).openSettings) void openLocationSettings();
+              if (refusal.openSettings) void openLocationSettings();
               else void fix.refetch();
             }}
             testID="offers-location-cta"

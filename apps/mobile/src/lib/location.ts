@@ -146,6 +146,33 @@ export async function getUserRegion(
 }
 
 /**
+ * The device's LAST KNOWN position, or null — never a fresh acquisition.
+ *
+ * Split out so a caller can ask "is there a position at all?" without paying for
+ * a GPS watch. `getUserRegion` falls through to a fresh fix when the cached read
+ * is unusable, which is right for someone who wants a position and wrong for
+ * someone who only wants to know why the bounded read failed: asking it twice
+ * turned one 5 s budget into two, and the map's "couldn't get your location"
+ * alert arrived ten seconds after the tap.
+ *
+ * Bounds are honoured, so passing none means "anything the OS still remembers".
+ */
+export async function lastKnownRegion(bounds?: {
+  maxAge?: number;
+  requiredAccuracy?: number;
+}): Promise<Region | null> {
+  const m = locationModule();
+  if (!m) return null;
+
+  try {
+    const last = await m.getLastKnownPositionAsync(bounds);
+    return last ? toRegion(last.coords) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The first usable fix within `timeoutMs`, or null.
  *
  * Watches rather than calling `getCurrentPositionAsync` because a watch is the
@@ -246,29 +273,48 @@ export async function openLocationSettings(): Promise<void> {
   }
 }
 
+/** Why a screen has no position to work from. */
+export type RefusalReason = 'blocked' | 'denied' | 'unavailable' | 'imprecise';
+
 /**
  * How a screen should present a refusal, given which one it is.
  *
- * The three outcomes are not interchangeable, and collapsing them is a real
- * bug rather than a rough edge: `unavailable` means permission was GRANTED and
- * the fix timed out — indoors, in a tunnel, a simulator with no location set —
- * so sending that person to Settings points them at a switch that is already
- * on, with no way forward.
+ * The outcomes are not interchangeable, and collapsing them is a real bug
+ * rather than a rough edge:
  *
- * The decision lives here, next to {@link PermissionState}, rather than in the
- * screens: two of them need it (the offers browse and Tonight), their CHROME
- * differs legitimately, and it was duplicating this three-way choice that put
- * the wrong answer on the newer screen.
+ *  - `unavailable` — permission GRANTED and the fix timed out: indoors, in a
+ *    tunnel, a simulator with no location set. Sending that person to Settings
+ *    points them at a switch that is already on, with no way forward.
+ *  - `imprecise` — a fix arrived, but coarser than a distance may be measured
+ *    from (iOS with Precise Location off returns ~1–3 km). This one was added
+ *    after review: bounding the fix by `VIEWER_FIX_MAX_ACCURACY_M` is right —
+ *    "a 400 m away" printed off a ±2 km reading is invented — but it turned
+ *    those users' screens into a permanent "try again" that could never
+ *    succeed, each tap paying for another 5 s GPS watch. The setting is in
+ *    Settings, so the CTA goes there; the copy has to name Precise Location,
+ *    because "location is off" is false and the user would go looking for a
+ *    switch that is already on.
+ *  - `blocked` — the OS will not prompt again; Settings is the only fix.
+ *  - `denied` — dismissed but re-askable, so it gets a retry that works.
+ *
+ * `tone` rather than a boolean, because the screens pick their own strings from
+ * it and there are now three messages, not two. The decision lives HERE, beside
+ * {@link PermissionState}, rather than in the screens: both of them need it,
+ * their chrome differs legitimately, and duplicating this choice is what put
+ * the wrong answer on the newer screen once already.
  */
-export type RefusalPresentation = { unavailable: boolean; openSettings: boolean };
+export type RefusalPresentation = {
+  tone: 'noFix' | 'imprecise' | 'needsPermission';
+  openSettings: boolean;
+};
 
-export function presentRefusal(reason: 'blocked' | 'denied' | 'unavailable'): RefusalPresentation {
+export function presentRefusal(reason: RefusalReason): RefusalPresentation {
   return {
-    // A timed-out fix needs "try again in a moment", not "location is off".
-    unavailable: reason === 'unavailable',
-    // Only a permanently blocked permission is fixed in Settings; `denied` can
-    // still be re-requested in-app, so it gets a retry.
-    openSettings: reason === 'blocked',
+    tone: reason === 'unavailable' ? 'noFix' : reason === 'imprecise' ? 'imprecise' : 'needsPermission',
+    // Settings is the only way forward for a permanently blocked permission and
+    // for Precise Location. `denied` can still be re-requested in-app, and
+    // `unavailable` is a retry, so neither goes there.
+    openSettings: reason === 'blocked' || reason === 'imprecise',
   };
 }
 

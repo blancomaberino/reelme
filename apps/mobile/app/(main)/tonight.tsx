@@ -16,7 +16,7 @@ import { MyPlaceCard } from '@/components/place/my-place-card';
 import { useT } from '@/i18n';
 import { useDebounced } from '@/lib/use-debounced';
 import { useFormat } from '@/lib/use-format';
-import { openLocationSettings, presentRefusal } from '@/lib/location';
+import { openLocationSettings, presentRefusal, type RefusalReason } from '@/lib/location';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
@@ -177,7 +177,7 @@ function TonightBody({
   styles,
   c,
 }: {
-  blocked: 'blocked' | 'denied' | 'unavailable' | null;
+  blocked: RefusalReason | null;
   list: ReturnType<typeof useTonight>;
   places: PlaceSummary[];
   onRetryLocation: () => void;
@@ -191,12 +191,18 @@ function TonightBody({
     // The three-way decision lives in `lib/location` beside the enum that
     // produces it — this screen and the offers browse both need it, and it was
     // duplicating the choice that put the wrong answer on the newer one.
-    const { unavailable, openSettings } = presentRefusal(blocked);
+    const { tone, openSettings } = presentRefusal(blocked);
 
     return (
       <View style={styles.state} testID="tonight-location">
         <Text style={styles.stateText}>
-          {t(unavailable ? 'tonight.noFix' : 'tonight.needsLocation')}
+          {t(
+            tone === 'noFix'
+              ? 'tonight.noFix'
+              : tone === 'imprecise'
+                ? 'tonight.imprecise'
+                : 'tonight.needsLocation',
+          )}
         </Text>
         <Button
           title={t(openSettings ? 'map.location.blocked.cta' : 'common.tryAgain')}

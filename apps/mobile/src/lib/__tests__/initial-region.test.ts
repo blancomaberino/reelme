@@ -237,6 +237,60 @@ describe('locateUser', () => {
     expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
   });
 
+  it('refuses a STALE cached fix and takes the fresh one instead', async () => {
+    // The other half of the bound, and it was unguarded until review said so:
+    // the test below covers `requiredAccuracy`, nothing covered `maxAge`, and
+    // deleting it from the call left the suite green.
+    //
+    // The mock plays Expo's part — the real `getLastKnownPositionAsync` applies
+    // `maxAge` itself — so what is asserted is still the observable: which
+    // position comes back, not which options object went in.
+    lastKnown.mockImplementation(async (options?: { maxAge?: number }) =>
+      // A reading from an hour ago. Returned only to a caller that asked for no
+      // bound; refused for anything under an hour, as the device would.
+      options?.maxAge !== undefined && options.maxAge < 3_600_000
+        ? null
+        : ({ coords: { latitude: 1, longitude: 2, accuracy: 5 } } as never),
+    );
+    watchEmits({ latitude: FIX_LAT, longitude: FIX_LNG });
+
+    // Not (1, 2): an hour-old position is where the phone WAS, and every caller
+    // of locateUser renders metres from what it returns.
+    expect(await locateUser()).toMatchObject({
+      ok: true,
+      region: { latitude: FIX_LAT, longitude: FIX_LNG },
+    });
+  });
+
+  it('reports a coarse-only fix as "imprecise", not as "no fix at all"', async () => {
+    // iOS with Precise Location OFF returns ~1-3 km forever, so the bound
+    // refuses every reading the device can produce. Calling that `unavailable`
+    // renders "try again in a moment" plus a retry button that is guaranteed to
+    // fail on every tap, at 5s of GPS each — which is what shipped until review
+    // caught it. `imprecise` is the reason that sends them to Settings instead.
+    //
+    // The classification probe is the unbounded read, so the cached fix has to
+    // be coarse rather than absent: present, and refused for its accuracy.
+    lastKnown.mockImplementation(async (options?: { requiredAccuracy?: number }) =>
+      options?.requiredAccuracy !== undefined
+        ? null
+        : ({ coords: { latitude: 1, longitude: 2, accuracy: 2_000 } } as never),
+    );
+    watchEmits(null);
+
+    expect(await locateUser()).toEqual({ ok: false, reason: 'imprecise' });
+  });
+
+  it('still reports "unavailable" when there is no fix to be had at any precision', async () => {
+    // The other side of that branch, because the two must not collapse: nothing
+    // cached, nothing from the watch. A retry here CAN succeed — step outside —
+    // so this one keeps its retry button.
+    lastKnown.mockResolvedValue(null);
+    watchEmits(null);
+
+    expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
   it('refuses a fix too coarse to measure a distance from, and waits for a better one', async () => {
     // Unlike `resolveInitialRegion` above, every caller of `locateUser` MEASURES
     // from the answer: the locate-me button moves the camera to it, and the

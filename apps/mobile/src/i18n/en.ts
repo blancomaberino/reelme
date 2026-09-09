@@ -37,6 +37,8 @@ export const en = {
   'tonight.answer.openMore': '{{count}}+ places open within {{km}} km',
   'tonight.answer.anyMore': '{{count}}+ places within {{km}} km',
   'tonight.noFix': "We couldn't get your location. Try again in a moment.",
+  'tonight.imprecise':
+    'Reelmap needs your exact location to measure distances. Turn on Precise Location in Settings.',
   'tonight.answer.locating': 'Finding where you are',
   'tonight.answer.looking': 'Looking around you',
   'tonight.openNow': 'Open now',
@@ -781,6 +783,8 @@ export const en = {
   'offers.browse.empty': 'No offers running within {{km}} km right now.',
   'offers.browse.needLocation': 'Turn on location to see what is on offer around you.',
   'offers.browse.noFix': "We couldn't get your location. Try again in a moment.",
+  'offers.browse.imprecise':
+    'Reelmap needs your exact location to measure distances. Turn on Precise Location in Settings.',
   'offers.browse.openSettings': 'Open settings',
   'offers.browse.notMapped': '{{count}} offers have no map location.',
   'offers.browse.notMapped_one': '{{count}} offer has no map location.',

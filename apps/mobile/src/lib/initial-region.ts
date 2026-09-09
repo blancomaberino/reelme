@@ -4,6 +4,8 @@ import { distanceM, type Region } from './geo';
 import {
   getLocationPermission,
   getUserRegion,
+  lastKnownRegion,
+  type RefusalReason,
   requestLocationPermission,
   VIEWER_FIX_MAX_ACCURACY_M,
   VIEWER_FIX_MAX_AGE_MS,
@@ -130,7 +132,7 @@ export async function resolveInitialRegion(input: {
  * the one position path that had no bound on it.
  */
 export async function locateUser(): Promise<
-  { ok: true; region: Region } | { ok: false; reason: 'blocked' | 'denied' | 'unavailable' }
+  { ok: true; region: Region } | { ok: false; reason: RefusalReason }
 > {
   const current = await getLocationPermission();
   const outcome = current.state === 'granted' ? current : await requestLocationPermission();
@@ -144,12 +146,26 @@ export async function locateUser(): Promise<
     maxAge: VIEWER_FIX_MAX_AGE_MS,
     requiredAccuracy: VIEWER_FIX_MAX_ACCURACY_M,
   });
+  if (region) return { ok: true, region };
 
-  // `unavailable`, not a silent fallback to a stale fix: the screens present
-  // this as "we could not get your position, try again", which is true and
-  // recoverable. Showing a distance measured from where the phone was two hours
-  // ago is neither.
-  return region ? { ok: true, region } : { ok: false, reason: 'unavailable' };
+  // Nothing usable. Now separate "no fix at all" from "a fix we refused",
+  // because the screens give opposite advice and only one of them can work: a
+  // timeout is a retry, and iOS with Precise Location off is a Settings trip
+  // that a retry can never substitute for. Without this branch those users got
+  // a "try again" button that was guaranteed to fail, forever, at 5 s a tap.
+  //
+  // `lastKnownRegion`, NOT `getUserRegion`: the probe must read the cache and
+  // stop there. `getUserRegion` falls through to a fresh 5 s watch when the
+  // cached read is empty, so using it here spent the budget twice and pushed the
+  // map's "couldn't get your location" alert to ten seconds after the tap — a
+  // regression a screen test caught immediately. Unbounded, so it answers "is
+  // there a position at all", and instant on both paths.
+  //
+  // Its result CLASSIFIES, and is never returned: a position refused as too
+  // coarse must not reach a caller about to render metres from it.
+  const anyFix = await lastKnownRegion();
+
+  return { ok: false, reason: anyFix ? 'imprecise' : 'unavailable' };
 }
 
 /**

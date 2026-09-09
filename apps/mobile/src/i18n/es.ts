@@ -33,6 +33,8 @@ export const es: Record<MessageKey, string> = {
   'tonight.answer.openMore': 'Más de {{count}} lugares abiertos a menos de {{km}} km',
   'tonight.answer.anyMore': 'Más de {{count}} lugares a menos de {{km}} km',
   'tonight.noFix': 'No pudimos obtener tu ubicación. Probá de nuevo en un momento.',
+  'tonight.imprecise':
+    'Reelmap necesita tu ubicación exacta para medir distancias. Activá Ubicación precisa en Ajustes.',
   'tonight.answer.locating': 'Buscando dónde estás',
   'tonight.answer.looking': 'Mirando cerca tuyo',
   'tonight.openNow': 'Abierto ahora',
@@ -768,6 +770,8 @@ export const es: Record<MessageKey, string> = {
   'offers.browse.empty': 'No hay ofertas activas a menos de {{km}} km ahora mismo.',
   'offers.browse.needLocation': 'Activá la ubicación para ver qué hay en oferta cerca de vos.',
   'offers.browse.noFix': 'No pudimos obtener tu ubicación. Probá de nuevo en un momento.',
+  'offers.browse.imprecise':
+    'Reelmap necesita tu ubicación exacta para medir distancias. Activá Ubicación precisa en Ajustes.',
   'offers.browse.openSettings': 'Abrir ajustes',
   'offers.browse.notMapped': '{{count}} ofertas sin ubicación en el mapa.',
   'offers.browse.notMapped_one': '{{count}} oferta sin ubicación en el mapa.',

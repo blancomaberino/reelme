@@ -60,8 +60,22 @@ export const queryKeys = {
   quotas: () => ['me', 'quotas'] as const,
   /** Accounts the viewer has blocked (T-054). */
   blocks: () => ['me', 'blocks'] as const,
-  place: (slug: string) => ['places', slug] as const,
-  placeSources: (slug: string) => ['places', slug, 'sources'] as const,
+  // `detail` is a NAMESPACE, not decoration, and it is what lets
+  // `isPersistableKey` be an allowlist instead of a deny-list. Place details are
+  // the only thing under `places` that may be written to disk; every other key
+  // here is a public discovery slice that must not be. While details were
+  // `['places', <slug>]`, "is this a detail?" could only be answered as "the
+  // second segment is a string that is not one of the names we remembered to
+  // exclude" — and T-158's Tonight key was the second discovery slice to be
+  // forgotten in that list. Under this namespace the question is `key[1] ===
+  // 'detail'`, which no new key can accidentally satisfy.
+  //
+  // Prefix relationships are unchanged: `place(slug)` still prefixes
+  // `placeSources(slug)`, so the four call sites that invalidate a place by it
+  // still take its sources with it, and `LOCALIZED_KEY_PREFIXES`' `['places']`
+  // still covers both.
+  place: (slug: string) => ['places', 'detail', slug] as const,
+  placeSources: (slug: string) => ['places', 'detail', slug, 'sources'] as const,
   // Quantized bbox + banded zoom keep tiny pans on one cache entry (T-032).
   //
   // The viewer's position (T-156) is deliberately NOT part of this key, and that

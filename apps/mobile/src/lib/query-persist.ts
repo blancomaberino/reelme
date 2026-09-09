@@ -114,31 +114,26 @@ export function isPersistableKey(key: readonly unknown[]): boolean {
     // filter object the key was built from.
     if (second === 'map') return isOwnMapScope(key[4]);
 
-    // Everything else under this head is allowed by SHAPE, not by name, and
-    // that is a fix rather than a style choice. This used to deny-list the
-    // public slices by their second segment (`'tag'`, `'payment-cards'`) and
-    // let everything else through as `typeof second === 'string'` — so
-    // `['places','tonight', near, radiusM, dish, openNow]` (T-158) matched the
-    // branch written for `['places', <slug>]` and persisted a discovery slice
-    // keyed by the viewer's own coordinate, in plaintext, for the cache's 24h.
-    // An enumeration of the queries we happened to have is not a rule; the next
-    // one to be added inherits the wrong answer, silently, exactly as this one
-    // did through four review rounds.
+    // An ALLOWLIST, and the third attempt at this branch — which is the reason
+    // it is now shaped this way rather than patched again. It began as "any
+    // string second segment is a place slug", with the public slices subtracted
+    // by name (`'tag'`, `'payment-cards'`). That is a list of the queries we
+    // happened to have, so every query added later inherited PERSIST by default:
+    // T-158's `['places','tonight', near, …]` did exactly that, and shipped a
+    // discovery slice keyed by the viewer's own coordinate to plaintext storage
+    // for 24h. Replacing the list with a rule about key LENGTH fixed that one
+    // and still left `['places','tag','sources']` passing and any future
+    // parameterless list — `['places','trending']` — inheriting persist again.
     //
-    // A place DETAIL is two segments, or three ending in `sources`. A discovery
-    // QUERY carries its parameters, so it is always longer. Length is the thing
-    // that actually distinguishes them.
-    if (key.length === 3) return key[2] === 'sources';
-    if (key.length !== 2) return false;
+    // So the detail keys were moved under a `detail` namespace (see
+    // `queryKeys.place`) and this asks the only question that cannot be
+    // inherited by accident: is it a detail? Everything else under this head is
+    // denied because it is not on the list, not because someone remembered it.
+    if (second !== 'detail') return false;
 
-    // One name still has to be reserved: `['places','payment-cards']` is a
-    // public list shaped exactly like a slug, and no structural rule can tell
-    // them apart. It is listed here rather than inferred, and it is the only
-    // one — a second entry appearing under this line means the shapes have
-    // drifted and this branch, not the list, is what needs revisiting.
-    return typeof second === 'string' && second !== 'payment-cards';
+    // `['places','detail', slug]` and `['places','detail', slug, 'sources']`.
+    return key.length === 3 || (key.length === 4 && key[3] === 'sources');
   }
-
   return false;
 }
 

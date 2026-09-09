@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { locateUser } from '@/lib/initial-region';
+import { VIEWER_FIX_MAX_AGE_MS } from '@/lib/location';
 
 import { queryKeys } from '../keys';
 
@@ -20,7 +21,14 @@ export function useDeviceLocation() {
   const fix = useQuery({
     queryKey: queryKeys.deviceLocation(),
     queryFn: locateUser,
-    staleTime: 5 * 60_000,
+    // The SAME bound `locateUser` refuses a stale fix with, not a number of its
+    // own. It was five minutes against a two-minute bound, which reopened at the
+    // cache exactly what the bound closes at acquisition: remount Tonight three
+    // minutes after the fix and a three-minute-old position is re-served without
+    // a refetch, and the walk across town is reported as "50 m" after all. One
+    // rule, every reader of the state it governs — `use-viewer-position` already
+    // keys off this constant, and this hook was the writer that did not.
+    staleTime: VIEWER_FIX_MAX_AGE_MS,
     retry: false,
   });
 
