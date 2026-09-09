@@ -6,7 +6,11 @@
 #
 #   ./run-gates.sh            # gates for areas changed vs main (+ working tree)
 #   ./run-gates.sh --all      # every gate, regardless of the diff
-#   ./run-gates.sh api mobile # only the named areas (api | contracts | mobile)
+#   ./run-gates.sh api mobile # only the named areas (api | contracts | mobile | tooling)
+#
+# Running this script runs the BRANCH'S shell, with your privileges — this file
+# included, plus .claude/lib/use-node.sh below and the hooks the tooling tests
+# exec. On a branch you did not write, read .claude/** in the diff first.
 #
 # Every selected gate runs even after an earlier one fails — one invocation
 # surfaces the full list of problems instead of just the first.
@@ -81,13 +85,35 @@ fi
 declare -a passed=() failed=()
 
 gate() { # gate <label> <command...>
-  local label=$1; shift
+  local label=$1 rc=0; shift
   printf '\n\033[1m▶ %s\033[0m\n' "$label"
-  if "$@"; then
+  "$@" || rc=$?
+  if [ $rc -eq 0 ]; then
     passed+=("$label")
   else
-    failed+=("$label")
-    printf '\033[31m✗ %s FAILED\033[0m\n' "$label"
+    # Carry the code into the label, so the SUMMARY says it too. Inline-only was
+    # not enough: under --all, a dozen screens of later gate output sit between
+    # the failure and the summary block a reader actually acts on, and there a
+    # fired bound and a red suite were byte-identical. (A local, not
+    # `${failed[-1]}` — macOS ships bash 3.2, which has no negative index.)
+    local msg
+    # 124 AND 137: `timeout -k` sends SIGTERM, then SIGKILL if that is ignored,
+    # and only the first path exits 124 — the second reports 128+9. A pest
+    # `--parallel` worker or a debugger-attached process reaches it.
+    #
+    # 137 is NOT only ours: a container OOM-kill exits 137 too. So the message
+    # says "killed by a signal" and names both causes, rather than asserting the
+    # bound fired — telling someone to raise a time bound when they are out of
+    # memory is the wrong hour to hand them.
+    if [ "$rc" -eq 124 ]; then
+      msg="$label — TIMED OUT (exit 124): a bound fired, not a red suite — check the output above for WHICH entry (no Pest output at all means the setup entry died and no test ran)"
+    elif [ "$rc" -eq 137 ]; then
+      msg="$label — KILLED (exit 137): a signal, not a red suite — a time bound escalating, or an OOM kill"
+    else
+      msg="$label (exit $rc)"
+    fi
+    failed+=("$msg")
+    printf '\033[31m✗ %s\033[0m\n' "$msg"
   fi
 }
 
@@ -100,6 +126,11 @@ if [ $run_api -eq 1 ]; then
   else
     gate "API · Pint (composer lint)"   sail composer lint
     gate "API · PHPStan (composer stan)" sail composer stan
+    # No `timeout` wrapper here on purpose: the bound lives in the `test` script
+    # itself (apps/api/composer.json), beside the `disableProcessTimeout` that
+    # removed it, so it covers CI and a bare `docker compose exec … composer test`
+    # too — not just the one caller someone remembered to edit. Exit 124 from
+    # this gate is that bound firing; `gate()` says so.
     gate "API · Pest (composer test)"    sail composer test
   fi
 fi
@@ -128,11 +159,45 @@ fi
 # Not part of CI (ci.yml has no tooling job yet) — this is the only thing that
 # runs them, so keep it in the local gate matrix.
 if [ $run_tooling -eq 1 ]; then
-  for t in .claude/hooks/tests/*.test.sh; do
+  # Both trees: the hooks' tests, and the skills' own (this script's `gate()`
+  # reporting has one — a test nothing runs is not a test).
+  #
+  # This runs `bash` on every matching file, with your privileges — and the repo
+  # is PUBLIC, so anyone can open a PR adding one. `tooling` auto-selects on any
+  # `.claude/*` change, which means reviewing a contributor's branch by running
+  # the gates would execute their file before anyone read it.
+  #
+  # There is NO in-script control here, deliberately, and the reason matters more
+  # than the warning: you are running THIS script, from the branch under review.
+  # It is a `.claude/*` file arriving in the same PR, `:27` sources
+  # `.claude/lib/use-node.sh` before any area is even selected, and each test
+  # execs the hook it tests. A guard added below is one the same diff can delete.
+  # An earlier attempt gated each `*.test.sh` on `git diff main`; it was defeated
+  # three ways (untracked files report no diff and run; a PR editing only a HOOK
+  # leaves every test byte-identical; and the runner itself is unchecked) while
+  # turning the owner's own gates red by default, which makes the bypass routine
+  # and the control inert. Reviewed and removed rather than left as decoration.
+  #
+  # So the rule is procedural and it is the only one that holds:
+  #   READ .claude/** IN THE DIFF BEFORE RUNNING THE GATES ON A BRANCH YOU DID
+  #   NOT WRITE. Running them is running that branch's code, all of it.
+  for t in .claude/hooks/tests/*.test.sh .claude/skills/*/tests/*.test.sh; do
     [ -e "$t" ] || continue
     gate "Tooling · $(basename "$t")" bash "$t"
   done
 fi
+
+# ------------------------------------------------------------------- quality
+# UNGUARDED, and that is the point. These scan the whole repo with git rather
+# than an area's toolchain, so gating them on `tooling` meant the only diffs
+# that ran them were the ones touching `.claude/*` — never the test files they
+# police. A branch adding `assertTrue(true)` to apps/api/tests got green gates
+# and the check never printed. Reachable only when SOME area was selected,
+# because a docs-only run exits well above this line.
+for c in .claude/skills/gates/checks/*.sh; do
+  [ -e "$c" ] || continue
+  gate "Quality · $(basename "$c" .sh)" bash "$c"
+done
 
 # -------------------------------------------------------------------- summary
 printf '\n\033[1m── Gate summary ──\033[0m\n'

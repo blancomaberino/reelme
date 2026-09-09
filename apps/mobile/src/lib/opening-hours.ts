@@ -109,7 +109,12 @@ export const OPEN_STATE_MAX_AGE_MS = 5 * 60 * 1000;
  */
 export function openStateLabel(
   state: OpenState | null | undefined,
-  ageMs = 0,
+  // REQUIRED, not defaulted to 0. A default means "brand new", so a caller that
+  // forgets to pass an age renders a twelve-hour-old "Abierto" and every test it
+  // writes passes. The staleness rule below is the point of this function; a
+  // parameter that can be silently omitted is a rule that can be silently
+  // skipped. `AGE_UNKNOWN` is how a caller says it does not know.
+  ageMs: number,
 ): { key: MessageKey; vars?: { time: string }; open: boolean } | null {
   if (!state || typeof state.open_now !== 'boolean') return null;
 

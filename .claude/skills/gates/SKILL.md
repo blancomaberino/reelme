@@ -21,13 +21,29 @@ That is the whole skill. The script mirrors the `changes` path-filter job in
 | --- | --- |
 | `run-gates.sh` | gates for areas changed vs `main`, including uncommitted work |
 | `run-gates.sh --all` | every gate regardless of the diff |
-| `run-gates.sh api mobile` | only the named areas (`api`, `contracts`, `mobile`) |
+| `run-gates.sh api mobile` | only the named areas (`api`, `contracts`, `mobile`, `tooling`) |
 
 ## What runs where
 
 - **api** → `composer lint` (Pint), `composer stan` (PHPStan level 6), `composer test` (Pest on Postgres) — all **inside the Sail container**. Local PHP is 8.2 and cannot run this codebase; the script refuses rather than falling back to the host.
 - **contracts** → regenerate + `git diff --exit-code` drift check, `typecheck`, Jest. Editing a schema without committing the regenerated `src/generated` is the single most common red build.
 - **mobile** → ESLint, `tsc --noEmit`, Jest. A `packages/contracts` change selects **both** contracts and mobile, exactly as CI does.
+- **tooling** → every `.test.sh` under `.claude/hooks/tests/` and `.claude/skills/*/tests/` — the guards (destructive-DB, simulator deep-link) and this script's own `gate()` reporting. Selected by any `.claude/*` change, and not part of CI, so this is the only thing that runs them.
+
+  ⚠️ **Running the gates on a branch runs that branch's shell, with your privileges — and not only in this area.** `run-gates.sh` is itself a `.claude/*` file that arrives in the PR you are reviewing, it sources `.claude/lib/use-node.sh` before any area is selected, and each tooling test execs the hook it tests. This repo is public, so **read `.claude/**` in the diff before running the gates on a branch you did not write.** There is deliberately no in-script guard: one was written, defeated three ways (untracked files, a PR touching only a hook, and the unchecked runner), and removed rather than left as decoration — a check the same diff can delete is worse than the honest warning, because it stops people looking.
+
+## When to run the full thing
+
+The API suite takes ~8 minutes. Run it **once**, on the final tree, after
+`/simplify` — not after every edit and not inside every review round. While
+building, run only what you touched:
+
+```bash
+docker compose -f apps/api/compose.yaml exec -T laravel.test composer test -- --filter=PlaceController
+npm test -w apps/mobile -- --ci --forceExit apps/mobile/src/lib/__tests__/tags.test.ts
+```
+
+`/coderabbit` reuses a green run on an unchanged tree instead of repeating it.
 
 ## Reading the result
 
@@ -39,8 +55,8 @@ status is non-zero if anything failed.
 
 - **API gates need the stack up.** If `laravel.test` isn't running the script says
   so and points at `./scripts/dev.sh backend` — start it, then re-run.
-- **Re-run after `/simplify`.** Simplify rewrites code; the gates it was green
-  against no longer apply. The pre-PR checklist in `CLAUDE.md` requires this.
-- This does **not** replace `/coderabbit`. Gates are step one of the pre-PR pass;
-  `/coderabbit` runs them plus `/simplify`, `/security-review`, and the grounded
-  line-by-line review, and records the receipt the PR gate hook checks.
+- **Order is `/simplify` → gates → review** (CLAUDE.md §2). Simplify first so the
+  full run happens once, on the code the reviewers will read; after a review's
+  fix commit, re-run only the areas the fix touched.
+- This does **not** replace `/coderabbit`, which reuses a green run on an
+  unchanged tree and records the approval the PR gate hook checks.

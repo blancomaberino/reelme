@@ -159,7 +159,7 @@ class UserDataExporter
             'birthdate' => $user->birthdate?->toDateString(),
             // The outcome of the signup age check (T-113). Included because an
             // access request should show everything held about the person —
-            // including that a check was made, and when. The date it was made
+            // including that a check was passed, and when. The date it was checked
             // against is not here because it is not held anywhere.
             'age_verified_at' => $user->age_verified_at?->toIso8601String(),
             'favorite_topics' => $user->favorite_topics,

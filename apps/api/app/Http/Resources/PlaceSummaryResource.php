@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\Resources\Concerns\ResolvesRequestInstant;
 use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Place;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class PlaceSummaryResource extends JsonResource
 {
+    use ResolvesRequestInstant;
     use ResolvesThumbnail;
 
     /**
@@ -78,6 +80,15 @@ class PlaceSummaryResource extends JsonResource
             'distance_m' => $this->getAttribute('distance') !== null
                 ? round((float) $this->getAttribute('distance'), 1)
                 : null,
+            // The other half of the "can I go there, now" pair (T-156), through
+            // the one accessor that answers it — see {@see Place::openState()}
+            // for why this is not three inline calls.
+            //
+            // The instant is memoized ON THE REQUEST, so every row of a listing
+            // is measured against the same clock. A bare `now()` per row lets a
+            // page served across a minute boundary report two venues with
+            // identical hours as one open and one closed.
+            'open_state' => $this->resource->openState(self::instant($request)),
             'created_at' => $this->created_at?->toIso8601ZuluString(),
         ];
     }

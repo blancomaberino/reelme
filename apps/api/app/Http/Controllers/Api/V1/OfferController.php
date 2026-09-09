@@ -112,10 +112,7 @@ class OfferController extends Controller
             $radius = $request->radiusM();
             $query->whereHas('place', function ($q) use ($near, $radius): void {
                 /** @var PlaceQueryBuilder $q */
-                $q->whereRaw(
-                    'ST_DWithin(location, ST_MakePoint(?, ?)::geography, ?)',
-                    [$near['lng'], $near['lat'], $radius],
-                );
+                $q->withinRadiusOf($near, $radius);
             });
         }
 

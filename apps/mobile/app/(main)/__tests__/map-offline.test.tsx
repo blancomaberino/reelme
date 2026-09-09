@@ -16,14 +16,22 @@ import MapScreen from '../map';
  * no saved places" — and one of those is the user's fault to fix.
  */
 
-const query: { current: { data: MapData | undefined; isError: boolean } } = {
-  current: { data: { pins: [], clusters: [], truncated: false }, isError: false },
+// The viewer point (T-156) lives in the query cache, and this file renders the
+// screen without a QueryClientProvider — the same reason every other hook here
+// is mocked. Its own contract (never prompts; null unless already granted) is
+// pinned in src/lib/__tests__/use-viewer-position.test.ts.
+jest.mock('@/lib/use-viewer-position', () => ({
+  useViewerPosition: () => null,
+  useRefreshViewerPosition: () => () => {},
+}));
+const mockQuery: { current: { data: MapData | undefined; isError: boolean } } = {
+  current: { data: { pins: [], clusters: [], truncated: false, fetchedAt: Date.now() }, isError: false },
 };
 const mockRefetch = jest.fn();
 jest.mock('@/api/hooks/useMapPlaces', () => ({
   useMapPlaces: () => ({
-    data: query.current.data,
-    isError: query.current.isError,
+    data: mockQuery.current.data,
+    isError: mockQuery.current.isError,
     isFetching: false,
     refetch: mockRefetch,
   }),
@@ -60,7 +68,7 @@ function pin(id: string): MapPin {
 
 beforeEach(() => {
   mockRefetch.mockClear();
-  query.current = { data: { pins: [], clusters: [], truncated: false }, isError: false };
+  mockQuery.current = { data: { pins: [], clusters: [], truncated: false, fetchedAt: Date.now() }, isError: false };
   useMapStore.setState({
     selected: null,
     filters: { cuisine: null, price_range: null, tags: [], list: null, filter: null },
@@ -76,7 +84,7 @@ it('shows nothing extra when the map is simply empty', () => {
 });
 
 it('says the fetch failed, with a retry, when the map has no pins to show', () => {
-  query.current = { data: { pins: [], clusters: [], truncated: false }, isError: true };
+  mockQuery.current = { data: { pins: [], clusters: [], truncated: false, fetchedAt: Date.now() }, isError: true };
 
   render(<MapScreen />);
 
@@ -87,7 +95,7 @@ it('says the fetch failed, with a retry, when the map has no pins to show', () =
 
 it('stays quiet when a failed refetch still has cached pins on screen', () => {
   // The offline/stale case: showing the pins beats shouting about the request.
-  query.current = { data: { pins: [pin('1')], clusters: [], truncated: false }, isError: true };
+  mockQuery.current = { data: { pins: [pin('1')], clusters: [], truncated: false, fetchedAt: Date.now() }, isError: true };
 
   render(<MapScreen />);
 

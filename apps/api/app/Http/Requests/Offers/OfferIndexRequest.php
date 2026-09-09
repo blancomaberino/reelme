@@ -2,20 +2,22 @@
 
 namespace App\Http\Requests\Offers;
 
-use App\Http\Requests\PlaceIndexRequest;
+use App\Http\Requests\Concerns\ParsesNearPoint;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Validator;
 
 /**
  * Validates the public offer browse (T-042, 03 §2.12):
  * `?place_id=&near=lat,lng&radius_m=&active=1`.
  *
- * `near` arrives comma-joined and is split into range-checked fields exactly as
- * in {@see PlaceIndexRequest} — same wire format, same
- * failure message, so a client that got one right gets the other right too.
+ * `near` arrives comma-joined and is split into range-checked fields by
+ * {@see ParsesNearPoint} — the same object `/places` and `/map/places` use, so
+ * one wire format cannot mean three things. It was a third hand-written copy
+ * until T-156, and the copy had the hole the other two were fixed for.
  */
 class OfferIndexRequest extends FormRequest
 {
+    use ParsesNearPoint;
+
     public const DEFAULT_RADIUS_M = 2000;
 
     public function authorize(): bool
@@ -23,24 +25,9 @@ class OfferIndexRequest extends FormRequest
         return true;
     }
 
-    /**
-     * `is_string`, not `!== null`: this runs BEFORE the rules, so the
-     * `'near' => ['string']` rule does not protect it. `?near[]=1&near[]=2`
-     * hands back an array, and casting one to string raises a PHP warning that
-     * Laravel promotes to an ErrorException — a 500 on a public, unauthenticated
-     * route where a 422 belongs. Non-strings fall through untouched and the
-     * `string` rule rejects them properly.
-     */
     protected function prepareForValidation(): void
     {
-        $near = $this->query('near');
-
-        if (is_string($near)) {
-            $parts = array_map('trim', explode(',', $near));
-            if (count($parts) === 2) {
-                $this->merge(['nearLat' => $parts[0], 'nearLng' => $parts[1]]);
-            }
-        }
+        $this->mergeNearPoint();
     }
 
     /**
@@ -50,9 +37,7 @@ class OfferIndexRequest extends FormRequest
     {
         return [
             'place_id' => ['nullable', 'integer', 'min:1'],
-            'near' => ['nullable', 'string'],
-            'nearLat' => ['required_with:near', 'numeric', 'between:-90,90'],
-            'nearLng' => ['required_with:near', 'numeric', 'between:-180,180'],
+            ...$this->nearRules(),
             'radius_m' => ['nullable', 'integer', 'between:1,50000'],
             'active' => ['nullable', 'boolean'],
             // The operator's management view: every offer, every state, for the
@@ -69,34 +54,7 @@ class OfferIndexRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
-            'nearLat.required_with' => 'near must be "lat,lng".',
-            'nearLng.required_with' => 'near must be "lat,lng".',
-        ];
-    }
-
-    public function withValidator(Validator $validator): void
-    {
-        $validator->after(function (Validator $v): void {
-            if (is_string($this->query('near')) && ! $this->has('nearLat')) {
-                $v->errors()->add('near', 'near must be "lat,lng".');
-            }
-        });
-    }
-
-    /**
-     * @return array{lat: float, lng: float}|null
-     */
-    public function nearPoint(): ?array
-    {
-        if (! is_string($this->query('near'))) {
-            return null;
-        }
-
-        return [
-            'lat' => (float) $this->validated('nearLat'),
-            'lng' => (float) $this->validated('nearLng'),
-        ];
+        return $this->nearMessages();
     }
 
     public function radiusM(): int

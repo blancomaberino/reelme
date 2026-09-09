@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use App\Enums\Platform;
+use App\Exceptions\Contracts\ApiError;
 use Exception;
 
 /**
@@ -12,7 +13,7 @@ use Exception;
  * Thrown from the API claim paths and mapped by ApiExceptionRenderer to the
  * standard error envelope (status + code + details.reason).
  */
-class ClaimException extends Exception
+class ClaimException extends Exception implements ApiError
 {
     /**
      * @param  array<string, mixed>  $details

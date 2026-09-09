@@ -116,7 +116,7 @@
       </tr>
       <tr>
         <td>Verificar que tenés la edad mínima para tener una cuenta</td>
-        <td>Fecha de nacimiento — se verifica al registrarte y <strong>no se guarda</strong>; solo queda el registro de que la verificación se hizo</td>
+        <td>Fecha de nacimiento — se verifica al registrarte y <strong>no se guarda</strong>; solo queda el registro de que la verificación se superó</td>
         <td>Obligación legal</td>
       </tr>
       <tr>
@@ -132,6 +132,13 @@
       <tr>
         <td>Centrar el mapa donde estás</td>
         <td>Ubicación aproximada del dispositivo</td>
+        <td>Consentimiento (permiso del sistema)</td>
+      </tr>
+      <tr>
+        <td>Mostrar a qué distancia queda cada lugar</td>
+        {{-- Ver en.blade.php: 10 m es ubicación PRECISA para Apple y Google,
+             no «aproximada». --}}
+        <td>Ubicación del dispositivo, redondeada a unos 10 metros</td>
         <td>Consentimiento (permiso del sistema)</td>
       </tr>
       <tr>
@@ -182,10 +189,13 @@
   </p>
   <ul>
     <li>
-      <strong>Ubicación.</strong> Solo mientras usás la aplicación (nunca en segundo plano), para centrar el
-      mapa donde estás y para el botón de «ubicarme». <strong>Tu ubicación no se guarda asociada a tu
-      cuenta</strong>: se usa en el momento y no queda registrada. Si rechazás el permiso, el mapa arranca
-      en una región por defecto.
+      <strong>Ubicación.</strong> Solo mientras usás la aplicación (nunca en segundo plano): para centrar el
+      mapa donde estás, para el botón de «ubicarme» y para calcular a qué distancia queda cada lugar. Las
+      distancias se calculan en nuestros servidores: redondeamos tu posición a unos 10&nbsp;metros y enviamos
+      eso con el pedido. <strong>Nunca se guarda asociada a tu cuenta ni se comparte con terceros para sus
+      propios fines</strong>; como todo pedido, pasa por nuestro proveedor de hosting y puede quedar un
+      tiempo acotado en los registros del servidor antes de que se descarten. Si rechazás el permiso, el
+      mapa arranca en una región por defecto y no se muestran distancias.
     </li>
     <li>
       <strong>Cámara.</strong> Únicamente para escanear el código QR de un canje en el local. No pedimos
@@ -232,6 +242,7 @@
     <li><strong>Copia de tus datos (exportación):</strong> el archivo se borra a los 7 días y el enlace de descarga vence a las 24 horas.</li>
     <li><strong>Cuenta y contenido:</strong> mientras tu cuenta exista. Al borrarla, se aplica lo que dice la sección siguiente.</li>
     <li><strong>Registros de canjes, pagos y asientos contables:</strong> se conservan aunque borres tu cuenta, por obligación legal y contable.</li>
+    <li><strong>Registros del servidor:</strong> 14 días. Ese es el «tiempo acotado» que se menciona más arriba: pasado ese plazo se borra el archivo diario que puede contener un pedido tuyo.</li>
   </ul>
 
   <h2 id="derechos">Tus derechos</h2>
@@ -306,7 +317,7 @@
       Al crear una cuenta te pedimos tu fecha de nacimiento para verificar que
       cumplís con esa edad mínima. <strong>Esa fecha no se guarda.</strong> Se
       usa en el momento para hacer la verificación y se descarta: lo único que
-      queda registrado es que la verificación se hizo, y cuándo. Es distinta de
+      queda registrado es que la verificación se superó, y cuándo. Es distinta de
       la fecha de nacimiento opcional que podés cargar en tu perfil, que sí se
       guarda porque vos elegís ponerla y podés borrarla cuando quieras.
     </p>

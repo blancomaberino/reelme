@@ -30,7 +30,7 @@ function place(id: string, over: Partial<PlaceSummary> = {}): PlaceSummary {
     mine: { share_id: id, saved: false },
     source_count: 1,
     rating: { google: { value: null, count: 0 } },
-    distance_m: null,
+    distance_m: null, open_state: null,
     created_at: null,
     ...over,
   };

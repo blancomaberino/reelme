@@ -1,9 +1,11 @@
 <?php
 
+use App\Support\SentryScrubber;
+
 /**
  * Sentry Laravel SDK configuration (T-052).
  *
- * Published from the vendor default and then narrowed in four places, each
+ * Published from the vendor default and then narrowed in six places, each
  * marked REELMAP below. Nothing is sent at all unless `SENTRY_LARAVEL_DSN` is
  * set AND `OBSERVABILITY_ERROR_REPORTER=sentry` — see ObservabilityServiceProvider.
  *
@@ -21,7 +23,7 @@ return [
     // 'logger' => Sentry\Logger\DebugFileLogger::class, // By default this will log to `storage_path('logs/sentry.log')`
 
     /*
-     * REELMAP (1/4) — release tagging.
+     * REELMAP (1/6) — release tagging.
      *
      * Set by the deploy script from the commit being deployed (see
      * docs/observability.md). Falls back to the Forge/CI-provided SHA
@@ -65,7 +67,7 @@ return [
     'logs_channel_level' => env('SENTRY_LOG_LEVEL', env('SENTRY_LOGS_LEVEL', env('LOG_LEVEL', 'debug'))),
 
     /*
-     * REELMAP (2/4) — PII stays out, and not behind an env flag.
+     * REELMAP (2/6) — PII stays out, and not behind an env flag.
      *
      * `send_default_pii` attaches request bodies, cookies, headers and the
      * authenticated user to every event. This app holds exactly the data T-050
@@ -79,6 +81,62 @@ return [
      * SentryErrorReporter as tags, which is more useful and carries no PII.
      */
     'send_default_pii' => false,
+
+    /*
+     * REELMAP (5/6) — the viewer's coordinates never reach Sentry, whatever
+     * `send_default_pii` says.
+     *
+     * `send_default_pii` does NOT cover this. Sentry's RequestIntegration sets
+     * `request.url` and `request.query_string` BEFORE the PII branch (see
+     * vendor/sentry/sentry/src/Integration/RequestIntegration.php), so the flag
+     * above gates cookies, headers and REMOTE_ADDR and lets the URL through
+     * untouched. T-156 puts `?near=lat,lng` — a ~11 m fix on a real person's
+     * position — on the app's busiest endpoint, sent automatically on every map
+     * open and every pan. One unhandled 500 on that route would export a home
+     * address to a processor that `DELETE /me` cannot reach, which is precisely
+     * what (2/4) above exists to prevent.
+     *
+     * Two carriers, both closed here:
+     *   1. `request.url` / `request.query_string`.
+     *   2. The EXCEPTION MESSAGE. A QueryException formats its bindings into
+     *      the message, and the coordinates are bound into
+     *      `ST_MakePoint(?, ?)` — so a database failure on the map route puts
+     *      them in the message text, which no `sql_bindings` setting governs.
+     *
+     * Redacting rather than dropping the event: the stack trace is the whole
+     * point of the report, and the position is never what makes it debuggable.
+     *
+     * BOTH hooks, and that is not belt-and-braces. `Client::prepareEvent()`
+     * dispatches by event TYPE — `before_send` fires for errors only, and a
+     * transaction goes to `before_send_transaction`. But `RequestIntegration`
+     * attaches `request.url` and `request.query_string` through a global
+     * processor with no type gate, so a transaction carries the same query
+     * string. Registering only the error hook meant that setting
+     * `SENTRY_TRACES_SAMPLE_RATE` above 0 — an ordinary thing to do during an
+     * incident — silently began exporting the coordinates this exists to keep
+     * in. The callable ignores its type, so one method serves both.
+     */
+    /*
+     * REELMAP (6/6) — the request BODY never leaves at all.
+     *
+     * `RequestIntegration` attaches the decoded body whenever this is not
+     * `none`, and the default is `medium` — outside the `send_default_pii`
+     * branch, so that flag does not govern it. Two endpoints take the viewer's
+     * position in the body rather than the query string
+     * (`POST /redemptions/verify`, `PATCH /shares/{share}`), and there the
+     * coordinates are FLOATS, which no text scrubber can pattern-match. One 500
+     * on either would export a position — the same leak the query-string work
+     * exists to stop, through the one door a scrubber structurally cannot cover.
+     *
+     * Dropping it wholesale rather than redacting: a body is the field least
+     * likely to be what makes a stack trace debuggable, and an allowlist here
+     * would be one more thing to keep in step with the routes.
+     */
+    'max_request_body_size' => 'none',
+
+    'before_send' => [SentryScrubber::class, 'scrub'],
+
+    'before_send_transaction' => [SentryScrubber::class, 'scrub'],
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#ignore_exceptions
     // 'ignore_exceptions' => [],
@@ -104,7 +162,7 @@ return [
         'sql_queries' => env('SENTRY_BREADCRUMBS_SQL_QUERIES_ENABLED', true),
 
         /*
-         * REELMAP (3/4) — query BINDINGS are PII by another route.
+         * REELMAP (3/6) — query BINDINGS are PII by another route.
          *
          * The vendor default is already false; pinned here so a future
          * `vendor:publish --force` cannot quietly re-open it. Bindings are the
@@ -138,7 +196,7 @@ return [
         'sql_queries' => env('SENTRY_TRACE_SQL_QUERIES_ENABLED', true),
 
         /*
-         * REELMAP (4/4) — the same, for TRACING spans.
+         * REELMAP (4/6) — the same, for TRACING spans.
          *
          * Closing this was the whole point of pinning the breadcrumb version
          * above, and pinning only that left the door open: bound values reach

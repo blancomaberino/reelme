@@ -29,7 +29,6 @@ export type TonightQuery = {
 
 async function fetchPage(q: TonightQuery, cursor: string | null): Promise<Paginated<PlaceSummary>> {
   const params: Record<string, string | number> = {
-    near: nearParam(q.at),
     radius_m: q.radiusM,
     // Distance, not recency: the screen's question is "here, now", and a place
     // that was shared this morning is not a better answer than one 200m away.
@@ -41,6 +40,13 @@ async function fetchPage(q: TonightQuery, cursor: string | null): Promise<Pagina
   // for the FIRST one — an infinite list of the same twenty places, which looks
   // like a working list until you scroll.
   if (cursor) params.cursor = cursor;
+
+  // `nearParam` returns null for a viewer with no fix. The hook below refuses to
+  // run in that case, so this is belt-and-braces — but it is the belt that keeps
+  // a literal `near=null` out of the query string if a caller ever fetches the
+  // page directly.
+  const near = nearParam(q.at);
+  if (near !== null) params.near = near;
 
   const dish = q.dish.trim();
   if (dish.length > 0) params.dish = dish;
@@ -74,11 +80,11 @@ export function useTonight(q: TonightQuery) {
   const near = nearParam(q.at);
 
   return useInfiniteQuery({
-    queryKey: queryKeys.tonight(near, q.radiusM, dish, q.openNow),
+    queryKey: queryKeys.tonight(near ?? '', q.radiusM, dish, q.openNow),
     queryFn: ({ pageParam }) => fetchPage(effective, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.meta.pagination.next_cursor,
-    enabled: near !== '',
+    enabled: near !== null,
     staleTime: 60_000,
   });
 }

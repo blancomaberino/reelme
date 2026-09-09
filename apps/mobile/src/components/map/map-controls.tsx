@@ -30,6 +30,14 @@ export function useMapCamera(input: {
   initialUserRegion?: Region | null;
   /** Called on every programmatic move, so a screen can persist the viewport. */
   onInteraction?: () => void;
+  /**
+   * Called when "locate me" successfully obtains a fix — which is also the
+   * moment a first-time grant happens. A screen that measures distances from
+   * the viewer's position uses this to re-ask for it; without it, granting here
+   * flies the map to the user and leaves every pin distance-less until the app
+   * restarts (T-156).
+   */
+  onLocated?: () => void;
 }) {
   const t = useT();
   const mapRef = useRef<MapView>(null);
@@ -41,11 +49,22 @@ export function useMapCamera(input: {
   const [locating, setLocating] = useState(false);
   const [locateBlocked, setLocateBlocked] = useState(false);
 
-  const { onInteraction } = input;
+  const { onInteraction, onLocated } = input;
 
+  /**
+   * Move the camera. Every programmatic move goes through here, including the
+   * ones that must NOT be remembered.
+   *
+   * `persist: false` is for a move the USER did not ask for — the one-time
+   * re-frame onto a viewer's own position at startup (T-156). Marking that as an
+   * interaction persists a viewport nobody chose, so the next cold start opens
+   * on a box the app picked for itself and then treats as the user's answer.
+   * Bypassing `moveMap` for those was the alternative, and it made the screen a
+   * second owner of the camera; the flag keeps this hook the only one.
+   */
   const moveMap = useCallback(
-    (region: Region, duration: number) => {
-      onInteraction?.();
+    (region: Region, duration: number, options?: { persist?: boolean }) => {
+      if (options?.persist !== false) onInteraction?.();
       regionRef.current = region;
       mapRef.current?.animateToRegion(region, duration);
     },
@@ -93,6 +112,7 @@ export function useMapCamera(input: {
         userRegionRef.current = result.region;
         moveMap(result.region, 350);
         setLocateBlocked(false);
+        onLocated?.();
         return;
       }
       if (result.reason === 'blocked') {
@@ -107,7 +127,7 @@ export function useMapCamera(input: {
     } finally {
       setLocating(false);
     }
-  }, [moveMap, t]);
+  }, [moveMap, onLocated, t]);
 
   /** Record a region the map settled on itself (a pan), without animating. */
   const rememberRegion = useCallback((region: Region) => {

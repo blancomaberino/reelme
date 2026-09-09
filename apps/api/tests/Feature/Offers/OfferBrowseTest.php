@@ -97,6 +97,47 @@ describe('GET /offers', function () {
         $this->getJson('/api/v1/offers?near=38.7223')->assertStatus(422);
     });
 
+    it('ignores caller-supplied nearLat/nearLng — the THIRD surface, same rule', function () {
+        // `/offers` was the copy nobody remembered. T-156 hardened `/map/places`,
+        // then `/places` when review found the second one — and this stayed on
+        // the old conditional merge, so the identical input got a 422 from two
+        // endpoints and a confident 200 from this one, geofencing from a point
+        // `near` never named. All three parse through ParsesNearPoint now.
+        $near = Place::factory()->active()->atPoint(38.7223, -9.1393)->create();
+        Offer::factory()->active()->create(['place_id' => $near->id, 'title' => 'Lisbon']);
+
+        $this->getJson('/api/v1/offers?near=1,2,3&nearLat=38.7223&nearLng=-9.1393&radius_m=5000')
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'validation_failed');
+    });
+
+    it('geofences from a position it has ROUNDED, like every other surface', function () {
+        // The privacy policy's "rounded to about ten metres" is a claim about the
+        // SYSTEM. It was true of two endpoints out of three: this one took nine
+        // decimals straight into the access log.
+        //
+        // Placed so the rounding CHANGES the answer, which a gentler offset does
+        // not: 38.72235 rounds up to 38.7224, putting the caller 0.0001°
+        // (~11.1 m) from the place, while the raw value is ~5.6 m away. At an
+        // 8 m radius those are opposite results, with ~2.5 m of margin on each
+        // side. Two earlier versions were worse: one used a sub-metre offset
+        // inside the radius and passed with the rounding deleted; the next left
+        // 9 mm of margin and a comment naming a radius (10.5) that `radius_m`,
+        // being an integer rule, cannot even express.
+        $place = Place::factory()->active()->atPoint(38.72230, -9.13930)->create();
+        Offer::factory()->active()->create(['place_id' => $place->id, 'title' => 'Lisbon']);
+
+        $rounded = $this->getJson('/api/v1/offers?near=38.72235,-9.13930&radius_m=8')
+            ->assertOk()->json('data');
+        // The control: at 4 dp exactly, the same request finds it. Without this,
+        // deleting the offer entirely would satisfy the assertion above.
+        $inside = $this->getJson('/api/v1/offers?near=38.72230,-9.13930&radius_m=8')
+            ->assertOk()->json('data');
+
+        expect($rounded)->toHaveCount(0)
+            ->and($inside)->toHaveCount(1);
+    });
+
     it('never surfaces an offer on a hidden or merged place', function () {
         $survivor = Place::factory()->active()->create();
         $tombstone = Place::factory()->create([

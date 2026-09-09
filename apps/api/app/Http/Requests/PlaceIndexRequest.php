@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ParsesNearPoint;
 use App\Models\Dish;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -14,6 +15,8 @@ use Illuminate\Validation\Validator;
  */
 class PlaceIndexRequest extends FormRequest
 {
+    use ParsesNearPoint;
+
     public const DEFAULT_RADIUS_M = 2000;
 
     public function authorize(): bool
@@ -23,17 +26,7 @@ class PlaceIndexRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        // `is_string`, not `!== null`: this runs before the rules, so
-        // `?near[]=1&near[]=2` would cast an array to string — a PHP warning
-        // Laravel promotes to a 500 on a public route (found by review on T-042).
-        $near = $this->query('near');
-
-        if (is_string($near)) {
-            $parts = array_map('trim', explode(',', $near));
-            if (count($parts) === 2) {
-                $this->merge(['nearLat' => $parts[0], 'nearLng' => $parts[1]]);
-            }
-        }
+        $this->mergeNearPoint();
     }
 
     /**
@@ -56,9 +49,7 @@ class PlaceIndexRequest extends FormRequest
             // not: a place with no structured hours or no timezone is EXCLUDED,
             // never assumed open — {@see PlaceQueryBuilder::openNow()}.
             'open_now' => ['nullable', 'boolean'],
-            'near' => ['nullable', 'string'],
-            'nearLat' => ['required_with:near', 'numeric', 'between:-90,90'],
-            'nearLng' => ['required_with:near', 'numeric', 'between:-180,180'],
+            ...$this->nearRules(),
             'radius_m' => ['nullable', 'integer', 'between:1,50000'],
             'influencer_id' => ['nullable', 'integer', 'min:1'],
             'sort' => ['nullable', Rule::in(['recent', 'popular', 'distance'])],
@@ -72,10 +63,7 @@ class PlaceIndexRequest extends FormRequest
      */
     public function messages(): array
     {
-        return [
-            'nearLat.required_with' => 'near must be "lat,lng".',
-            'nearLng.required_with' => 'near must be "lat,lng".',
-        ];
+        return $this->nearMessages();
     }
 
     public function withValidator(Validator $validator): void
@@ -83,9 +71,6 @@ class PlaceIndexRequest extends FormRequest
         $validator->after(function ($v) {
             if ($this->input('sort') === 'distance' && ! is_string($this->query('near'))) {
                 $v->errors()->add('sort', 'sort=distance requires the near parameter.');
-            }
-            if (is_string($this->query('near')) && ! $this->has('nearLat')) {
-                $v->errors()->add('near', 'near must be "lat,lng".');
             }
             // `open_now` has to ride a point, for the same reason `sort=distance`
             // does — except here the reason is cost, not meaning. The filter is a
@@ -121,23 +106,6 @@ class PlaceIndexRequest extends FormRequest
                 $v->errors()->add('open_now', 'open_now requires the near parameter.');
             }
         });
-    }
-
-    /**
-     * The validated near point, if given.
-     *
-     * @return array{lat: float, lng: float}|null
-     */
-    public function nearPoint(): ?array
-    {
-        if (! is_string($this->query('near'))) {
-            return null;
-        }
-
-        return [
-            'lat' => (float) $this->validated('nearLat'),
-            'lng' => (float) $this->validated('nearLng'),
-        ];
     }
 
     public function radiusM(): int

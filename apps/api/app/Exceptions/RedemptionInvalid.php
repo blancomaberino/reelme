@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use App\Exceptions\Contracts\ApiError;
 use Exception;
 
 /**
@@ -17,7 +18,7 @@ use Exception;
  * Mapped to the standard error envelope by {@see ApiExceptionRenderer}, exactly
  * like {@see ClaimException}.
  */
-class RedemptionInvalid extends Exception
+class RedemptionInvalid extends Exception implements ApiError
 {
     /**
      * @param  array<string, mixed>  $details
