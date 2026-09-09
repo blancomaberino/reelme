@@ -119,8 +119,12 @@ return new class extends Migration
         // test is trivially true, and the row matches every instant. Exactly the
         // failure the paragraph above describes, through the operand it did not
         // constrain. The scope's own comment asserts "the addend keeps the
-        // dividend positive"; that is only true while `open_minute <= 10080`,
-        // and now it is enforced rather than assumed.
+        // dividend positive"; that was only true while `open_minute` stayed
+        // inside the week, and now it is enforced rather than assumed.
+        //
+        // Strictly `< 10080`, not `<= 10080`, and the extra reason is worth
+        // stating: 10080 is a SECOND encoding of Sunday 00:00, so admitting it
+        // would let the unique key hold the same span twice for one place.
         DB::statement(
             'ALTER TABLE place_open_periods ADD CONSTRAINT place_open_periods_span_check '
             .'CHECK (open_minute >= 0 AND open_minute < 10080 '

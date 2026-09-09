@@ -334,18 +334,32 @@ class PlaceController extends Controller
                     // smaller than the row it came from, and that row would
                     // repeat at the top of the next page.
                     //
-                    // It cannot happen here: PostGIS `ST_Distance` on geography,
-                    // read back through this driver, yields values whose shortest
-                    // exact form is at most 14 significant digits. Measured over
-                    // 500 geodesic distances spanning ~800 km — max 14 digits,
-                    // zero round-trip mismatches — and a `%.17G` + `::double
+                    // It cannot happen HERE, and the reason is a validation rule
+                    // rather than anything about floats. Significant digits scale
+                    // with magnitude — roughly 8 fractional digits plus the
+                    // integer ones — and `radius_m` is capped at 50_000 by
+                    // `PlaceIndexRequest`. Five integer digits means at most 13
+                    // significant, comfortably inside PHP's `precision=14`:
+                    // measured over 3000 geodesics inside 50 km, max 13, zero
+                    // round-trip mismatches, and a `%.17G` + `?::double
                     // precision` version of this line could not be made to differ
                     // on any of them. A guard nothing can make bite is not a
                     // guard, so it was not kept.
                     //
-                    // What WOULD reopen it: `extra_float_digits` moving, or the
-                    // distance expression changing to one with a wider range
-                    // (the `<->` KNN follow-up below is such a change).
+                    // THE RADIUS CAP IS THE LOAD-BEARING INVARIANT, and an
+                    // earlier version of this note missed that — it credited
+                    // `ST_Distance` itself, which is wrong: at 6983 km the same
+                    // expression returns 15 significant digits through this same
+                    // driver, and the boundary row demonstrably repeats. So what
+                    // reopens this is raising the `radius_m` ceiling, or adding a
+                    // distance-sorted surface that does not go through
+                    // `withinRadiusOf()` — not some subtlety of the driver.
+                    //
+                    // Also reopens it: php.ini `precision` dropping below 14, or
+                    // the ordering expression changing (the `<->` follow-up in
+                    // the index migration is such a change). The fix, if any of
+                    // that happens, is `%.17G` into a `?::double precision`
+                    // binding, and it is in this branch's history.
                     $query->whereRaw("({$dist}, id) > (?, ?)", [...$point, (float) $cursor[0], KeysetCursor::intKey($cursor[1])]);
                 }
                 break;

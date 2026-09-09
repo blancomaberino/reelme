@@ -109,7 +109,15 @@ export default function TonightScreen() {
     ? t('tonight.answer.noLocation')
     : !at
       ? t('tonight.answer.locating')
-      : list.isPending
+      : // `isPlaceholderData` as well as `isPending`, because of
+        // `keepPreviousData`: the previous page stays on screen through a
+        // refetch, which is what stops the list blinking on every dial tap — and
+        // it means `places` still holds the OLD answer while `zone` already
+        // holds the new one. Without this the header reads "12 places open
+        // within 5 km" over the 2 km results for one round trip, and
+        // `hasNextPage` is stale in the same way. The list may lag; the sentence
+        // counting it may not.
+        list.isPending || list.isPlaceholderData
         ? t('tonight.answer.looking')
         : t(answerKey, { count: places.length, km: zone / 1000 });
 

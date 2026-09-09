@@ -8,10 +8,12 @@ use App\Services\Places\OpenPeriodMaterializer;
 use App\Services\Places\PlaceEditor;
 use App\Support\OpeningSchedule;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Mockery;
 
 uses(RefreshDatabase::class);
 
@@ -422,41 +424,50 @@ it('never fails the write that produced the hours, and says so in the log', func
 });
 
 it('does NOT swallow a failure that left the caller transaction unusable', function () {
-    // The other side of the swallow, and the case review found in the framework
-    // rather than in this file. `handleTransactionException()` takes an early
-    // branch for a concurrency error inside a NESTED transaction: it decrements
-    // the counter and rethrows without issuing `ROLLBACK TO SAVEPOINT`. The
-    // savepoint that makes swallowing safe never happens, so the caller's
-    // transaction is aborted, and swallowing turned that into a 25P02 on the
-    // caller's next statement with the real cause hidden in a log line.
+    // Through the REAL framework path, which the first version of this test did
+    // not reach: it called `DB::beginTransaction()` by hand, so
+    // `handleTransactionException()` never ran and the test pinned a mechanism
+    // the actual failure does not produce. It passed against a guard that could
+    // not fire.
     //
-    // Simulated at the seam that matters — a materializer that opens a
-    // transaction, throws, and leaves the depth raised — because the assertion
-    // is about the DEPTH not returning, not about which exception class caused
-    // it. A framework that starts classifying a new error the same way is then
-    // covered by this test without anyone editing a list.
+    // What genuinely happens: the materializer opens a nested transaction, a
+    // statement aborts the Postgres transaction, and the error is one
+    // `causedByConcurrencyError()` matches. Laravel then takes its early branch
+    // — decrement the counter, rethrow, NO `ROLLBACK TO SAVEPOINT` — so the
+    // depth is restored while the connection is still poisoned. Both halves are
+    // reproduced here: the `1/0` does the real aborting, the message makes
+    // Laravel classify it, and neither is decoration.
     Log::spy();
 
     $this->mock(OpenPeriodMaterializer::class, function ($mock) {
         $mock->shouldReceive('materialize')->andReturnUsing(function () {
-            DB::beginTransaction();
+            DB::transaction(function () {
+                try {
+                    DB::statement('select 1/0');
+                } catch (Throwable) {
+                    // Swallowed on purpose: the point is the ABORTED connection
+                    // it leaves behind, not this exception.
+                }
 
-            throw new RuntimeException('deadlock detected');
+                throw new RuntimeException('deadlock detected');
+            });
         });
     });
 
-    expect(fn () => placeWithHours([period(1, '11:00', 1, '23:00')]))
-        ->toThrow(RuntimeException::class, 'deadlock detected');
+    // A caller transaction, which is the only context where any of this matters.
+    // `DeadlockException` is what Laravel's early branch rethrows, and what the
+    // observer must let past rather than turn into a warning.
+    expect(fn () => DB::transaction(fn () => placeWithHours([period(1, '11:00', 1, '23:00')])))
+        ->toThrow(DeadlockException::class, 'deadlock detected');
 
-    // And it is not ALSO reported as a survivable projection failure: the write
-    // did not survive, and a warning saying otherwise is what sent the last
-    // reader looking in the wrong place.
-    Log::shouldNotHaveReceived('warning', ['open_periods.materialize_failed']);
-
-    // Leave the connection as this test found it.
-    while (DB::transactionLevel() > 0) {
-        DB::rollBack();
-    }
+    // And NOT reported as a survivable projection failure: the write did not
+    // survive. The NO-ARGUMENT form, deliberately. Mockery's second parameter is
+    // `withArgs()`, so any argument list here has to match the real two-argument
+    // call exactly — and the place id is a sequence value that a full-suite run
+    // never makes 1. A `never()` expectation whose arguments cannot match passes
+    // whatever the code does, which is how this assertion first shipped green
+    // against an observer that was still logging.
+    Log::shouldNotHaveReceived('warning');
 });
 
 // ---------------------------------------------------------------------------
@@ -847,6 +858,63 @@ it('repairs rows that went STALE, not only rows that went missing', function () 
     expect(PlaceOpenPeriod::query()->where('place_id', $place->id)->value('open_minute'))->toBe(1 * 1440 + 9 * 60);
 });
 
+it('says nothing when the projection is already in step', function () {
+    // Half of the signal, and the half a "always warn" implementation would
+    // fail. In a healthy system the observer keeps every place materialized, so
+    // the nightly pass finds nothing to do and must be quiet — an alert that
+    // fires every night is one nobody reads.
+    //
+    // Its own test rather than the first half of the one below: asserting both
+    // polarities of the same spied method in one test makes Mockery verify a
+    // `never()` and an `atLeast()` against the same call log.
+    Log::spy();
+
+    placeWithHours([period(1, '11:00', 1, '23:00')]);
+
+    $this->artisan('reelmap:open-periods:backfill --fail-on-drift')->assertExitCode(0);
+
+    Log::shouldNotHaveReceived('warning');
+});
+
+it('reports the drift it repaired instead of quietly fixing it', function () {
+    // The other half, and the reason the nightly pass exists at all. A swallowed
+    // observer failure leaves drift neither surface can show — the place keeps
+    // rendering a correct "Open" cue from its own jsonb while being absent from
+    // every `?open_now=1` listing. A pass that repaired that and printed the
+    // same sentence either way would HIDE the broken writer, which is the rule
+    // `reelmap:offers:reconcile-quotas` states one screen above this one in
+    // `console.php`.
+    Log::spy();
+
+    $place = placeWithHours([period(1, '11:00', 1, '23:00')]);
+
+    // Exactly what a swallowed failure leaves behind: rows missing while the
+    // place's own hours are intact.
+    PlaceOpenPeriod::query()->where('place_id', $place->id)->delete();
+
+    $this->artisan('reelmap:open-periods:backfill')->assertExitCode(0);
+
+    Log::shouldHaveReceived('warning')->with('open_periods.drift_repaired', Mockery::on(
+        fn (array $ctx) => $ctx['places'] === 1 && $ctx['sample'] === [$place->id]
+    ));
+
+    // Repaired, not merely reported.
+    expect(PlaceOpenPeriod::query()->where('place_id', $place->id)->count())->toBe(1);
+});
+
+it('fails the SCHEDULED run when it had to repair, and only then', function () {
+    // `--fail-on-drift` is what makes the nightly exit code mean "the observer
+    // dropped something". Both directions, because a flag that always fails is
+    // as useless as one that never does.
+    $place = placeWithHours([period(1, '11:00', 1, '23:00')]);
+
+    $this->artisan('reelmap:open-periods:backfill --fail-on-drift')->assertExitCode(0);
+
+    PlaceOpenPeriod::query()->where('place_id', $place->id)->delete();
+
+    $this->artisan('reelmap:open-periods:backfill --fail-on-drift')->assertExitCode(1);
+});
+
 it('rebuilds the projection on a schedule, not only at deploy', function () {
     // The observer swallows a materialize failure so the enrichment that
     // produced the hours still succeeds — which leaves drift with no way back:
@@ -873,7 +941,12 @@ it('rebuilds the projection on a schedule, not only at deploy', function () {
     expect($events)->toHaveCount(1)
         ->and($events->first()->onOneServer)->toBeTrue()
         ->and($events->first()->withoutOverlapping)->toBeTrue()
-        ->and($events->first()->expression)->toBe('0 4 * * *');
+        ->and($events->first()->expression)->toBe('45 4 * * *')
+        // `--fail-on-drift` is the half that makes the run mean something: it is
+        // what turns "the observer dropped places" into a non-zero exit, which
+        // the `onFailure` alert then carries somewhere. Scheduled without it,
+        // the pass repairs drift silently and reports the same thing either way.
+        ->and($events->first()->command)->toContain('--fail-on-drift');
 });
 
 it('refuses a span that would match every instant', function () {

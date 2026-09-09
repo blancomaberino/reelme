@@ -82,36 +82,69 @@ class PlaceObserver
             // materializer on every Place save and discard it at the guard above.
             app(OpenPeriodMaterializer::class)->materialize($place, $isInsert);
         } catch (Throwable $e) {
-            // Derived data with a rebuild path (`reelmap:open-periods:backfill`)
-            // must never fail the enrichment or edit that produced the hours.
-            // The materializer wraps both paths in its own transaction, so an
-            // ordinary failure rolls back to a SAVEPOINT and the caller's
-            // transaction survives — which is what makes swallowing safe.
+            // Derived data with a rebuild path (`reelmap:open-periods:backfill`,
+            // nightly) must never fail the enrichment or edit that produced the
+            // hours. The materializer wraps both paths in its own transaction, so
+            // an ordinary failure rolls back to a SAVEPOINT and the caller's
+            // transaction survives — that is what makes swallowing safe.
             //
-            // It is NOT safe for every failure, and this guard is the difference.
-            // `ManagesTransactions::handleTransactionException()` takes an early
-            // branch for a concurrency error inside a nested transaction: it
-            // decrements the counter and rethrows WITHOUT issuing `ROLLBACK TO
-            // SAVEPOINT`. So a deadlock — or a dropped connection, which that
-            // helper also classifies as concurrency — leaves the caller's
-            // Postgres transaction in the aborted state, and swallowing meant the
-            // next statement died with a 25P02 whose real cause was in a log line
-            // nobody was reading. Precisely the poisoning the paragraph above
-            // claims to prevent, arriving through the one path that skips the
-            // savepoint.
+            // It is not safe for every failure, and this guard is the difference.
+            // `ManagesTransactions::handleTransactionException()` has an early
+            // branch for a concurrency error inside a nested transaction that
+            // rethrows WITHOUT issuing `ROLLBACK TO SAVEPOINT`, so the caller's
+            // Postgres transaction stays aborted and its next statement dies with
+            // a 25P02 whose real cause is only in a log line.
             //
-            // The transaction depth is the honest test, rather than a list of
-            // exception classes to keep in step with the framework: if it did not
-            // come back to where it started, the savepoint did not do its job and
-            // this failure is not ours to swallow.
-            if (DB::transactionLevel() !== $depth) {
+            // ASK THE CONNECTION, do not infer. The first version of this guard
+            // compared transaction depth, which review showed cannot fire on the
+            // very path it named: that branch does `$this->transactions--` before
+            // it throws, so the depth is already back where it started. A cheap
+            // statement is the actual invariant — "can the caller still use this
+            // transaction?" — and it stays true whatever the framework does to
+            // its counter or to which errors it calls concurrency errors.
+            if (! $this->callerCanContinue($place, $depth)) {
                 throw $e;
             }
 
             // The log line is the load-bearing half: a retry only heals this by
             // accident, when the next write happens to touch the same columns.
+            // The nightly backfill is what actually closes the gap.
             report($e);
             Log::warning('open_periods.materialize_failed', ['place_id' => $place->id]);
+        }
+    }
+
+    /**
+     * Whether the caller's transaction is still usable after a failed projection.
+     *
+     * At depth 0 there is nothing to poison, so the question does not arise. Any
+     * deeper, a trivial statement answers it: Postgres refuses everything but
+     * ROLLBACK once a transaction is aborted, so this either returns or tells us
+     * the failure was not ours to swallow.
+     */
+    private function callerCanContinue(Place $place, int $depth): bool
+    {
+        // A depth that did not come back is its own answer, and the probe cannot
+        // see it: a materializer that leaked an open transaction leaves the
+        // connection perfectly able to run `select 1` while the caller is now
+        // committing inside a frame it did not open.
+        if (DB::transactionLevel() !== $depth) {
+            return false;
+        }
+
+        if ($depth === 0) {
+            return true;
+        }
+
+        try {
+            // The PLACE's connection, not the default one: the materializer
+            // transacted on that, and probing a different connection would come
+            // back healthy while the poisoned one is the caller's.
+            $place->getConnection()->select('select 1');
+
+            return true;
+        } catch (Throwable) {
+            return false;
         }
     }
 }

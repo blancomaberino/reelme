@@ -55,13 +55,17 @@ class OpenPeriodMaterializer
      *                          recomputing it here from `wasRecentlyCreated`
      *                          would be wrong.
      */
-    public function materialize(Place $place, bool $isInsert = false): void
+    /**
+     * @return bool whether the stored projection actually CHANGED — the signal
+     *              the nightly pass reports on, see the note at the comparison
+     */
+    public function materialize(Place $place, bool $isInsert = false): bool
     {
         if ($isInsert) {
             $rows = $this->rows($place);
 
             if ($rows === []) {
-                return;
+                return false;
             }
 
             // Still a transaction, but no lock and no DELETE: a fresh id cannot
@@ -72,10 +76,10 @@ class OpenPeriodMaterializer
             // fails every later statement with the cause hidden.
             DB::transaction(fn () => PlaceOpenPeriod::query()->insert($rows));
 
-            return;
+            return true;
         }
 
-        DB::transaction(function () use ($place): void {
+        return (bool) DB::transaction(function () use ($place): bool {
             // Serialize concurrent materializations of the SAME place, and
             // re-read the hours HERE, under the lock, rather than trusting the
             // `$place` we were handed. Locking the WRITE while the READ stayed
@@ -94,17 +98,71 @@ class OpenPeriodMaterializer
             if ($locked === null) {
                 // Deleted between hydration and the lock. The FK cascade already
                 // took its rows; writing now would resurrect them as orphans.
-                return;
+                return false;
             }
 
             $rows = $this->rows($locked);
+
+            // Compare before rewriting, and RETURN whether anything differed.
+            //
+            // Two things depend on this, and the second is the important one.
+            // The cheap one: in a healthy system the nightly pass finds every
+            // place already correct, so an unconditional DELETE + INSERT would
+            // rewrite the whole projection every night — a full table's worth of
+            // dead tuples and WAL for no change.
+            //
+            // The one that matters: a repair that reports the same thing whether
+            // it fixed nothing or fixed four thousand places HIDES the broken
+            // writer it exists to compensate for. `reelmap:offers:reconcile-quotas`
+            // already states this rule for the same shape of problem — silently
+            // correcting drift every night hides the bug rather than surfacing
+            // it. The observer is the writer here; if it is dropping places, the
+            // count of differences is the only thing that says so.
+            if ($this->matches($locked->id, $rows)) {
+                return false;
+            }
 
             PlaceOpenPeriod::query()->where('place_id', $locked->id)->delete();
 
             if ($rows !== []) {
                 PlaceOpenPeriod::query()->insert($rows);
             }
+
+            return true;
         });
+    }
+
+    /**
+     * Whether the stored rows for a place are already exactly `$rows`.
+     *
+     * Compared as SETS of the three columns that make a period, because that is
+     * what the read predicate uses: `place_id` to enter, `open_minute` and
+     * `close_minute` for containment, and `timezone` to place them. Row order is
+     * not meaningful — there is no ordering column — and comparing ids would
+     * make every row differ from itself, since a rewrite mints new ones.
+     *
+     * Called under the same lock as the write, so the answer cannot go stale
+     * between the check and the DELETE.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function matches(int $placeId, array $rows): bool
+    {
+        $stored = PlaceOpenPeriod::query()
+            ->where('place_id', $placeId)
+            ->get(['open_minute', 'close_minute', 'timezone'])
+            ->map(fn (PlaceOpenPeriod $p) => [(int) $p->open_minute, (int) $p->close_minute, (string) $p->timezone])
+            ->all();
+
+        $wanted = array_map(
+            fn (array $r) => [(int) $r['open_minute'], (int) $r['close_minute'], (string) $r['timezone']],
+            $rows,
+        );
+
+        sort($stored);
+        sort($wanted);
+
+        return $stored === $wanted;
     }
 
     /**

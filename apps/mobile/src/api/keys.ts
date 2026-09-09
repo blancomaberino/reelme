@@ -90,6 +90,12 @@ export const queryKeys = {
   // Freshness is handled where it belongs instead: `useMapPlaces` refetches when
   // the viewer point changes. Same result, and the cache entry stays addressable
   // by a device that does not know where it is yet.
+  //
+  // Keeping the position out of the KEY does not keep it off the disk, and this
+  // is the spot where a reader would conclude otherwise. The persisted payload
+  // carries each pin's `lat`/`lng` beside its `distance_m`, which locates the
+  // viewer by trilateration even though no key segment mentions them. See the
+  // "what this function can and cannot promise" note in `lib/query-persist.ts`.
   mapPlaces: (quantizedBbox: string, zoomBand: number, filters: MapFilters) =>
     ['places', 'map', quantizedBbox, zoomBand, filters] as const,
   feed: (scope: string) => ['feed', scope] as const,

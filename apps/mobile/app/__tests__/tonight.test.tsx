@@ -192,6 +192,10 @@ it('tells the three location outcomes apart, and queries on none of them', async
     { reason: 'denied' as const, text: /needs your location/i, cta: 'Try again' },
     { reason: 'blocked' as const, text: /needs your location/i, cta: 'Open Settings' },
     { reason: 'unavailable' as const, text: /couldn.t get your location/i, cta: 'Try again' },
+    // The fourth: a fix arrived and was refused for its precision. A retry can
+    // never improve it, so this one goes to Settings like `blocked` — but with
+    // copy naming Precise Location, because "location is off" is false here.
+    { reason: 'imprecise' as const, text: /Precise Location/i, cta: 'Open Settings' },
   ];
 
   for (const c of cases) {
@@ -202,6 +206,11 @@ it('tells the three location outcomes apart, and queries on none of them', async
     await waitFor(() => expect(view.getByTestId('tonight-location')).toBeTruthy());
     expect(view.getByText(c.text)).toBeTruthy();
     expect(view.getByText(c.cta)).toBeTruthy();
+    // The HEADER too, not only the body. `at` is null for every refusal, so
+    // branching on it alone had the title line saying "Finding where you are"
+    // above a body that had already given up and was offering Settings — the
+    // screen claiming to be doing something it had stopped doing.
+    expect(view.getByTestId('tonight-answer')).toHaveTextContent('Nothing to show yet');
     view.unmount();
   }
 

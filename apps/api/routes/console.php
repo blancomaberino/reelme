@@ -74,10 +74,22 @@ Schedule::command('reelmap:offers:reconcile-quotas')
 // Same nightly window as the two audits above and the same `onFailure` line, for
 // the same reason: `schedule:run` discards the exit code, so without it a
 // backfill that failed reaches nobody.
-Schedule::command('reelmap:open-periods:backfill')
-    ->dailyAt('04:00')
+Schedule::command('reelmap:open-periods:backfill --fail-on-drift')
+    // 04:45, after `gdpr:prune-exports`, not 04:00 beside the audits: this is
+    // the only O(corpus) job in the nightly cluster — one short transaction per
+    // place — so it is the one that would still be running when
+    // `sources:prune-payloads` starts at 04:10. The window stays serial.
+    ->dailyAt('04:45')
     ->onOneServer()
-    ->withoutOverlapping()
+    // An explicit expiry, unlike its neighbours. The default is 1440 minutes,
+    // which for a daily job means a SIGKILL or an OOM leaves a lock that expires
+    // at the same minute the next run fires — and `releaseOnTerminationSignals`
+    // covers SIGTERM, not 137. This is the longest-running job on the schedule
+    // and therefore the likeliest to be killed.
+    ->withoutOverlapping(120)
+    // `--fail-on-drift` makes the exit code mean "the observer dropped
+    // something", and this line is what carries that anywhere: `schedule:run`
+    // throws exit codes away.
     ->onFailure(fn () => Log::error('open_periods.backfill_failed', [
         'command' => 'reelmap:open-periods:backfill',
     ]));

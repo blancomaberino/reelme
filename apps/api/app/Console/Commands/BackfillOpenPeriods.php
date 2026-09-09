@@ -6,6 +6,7 @@ use App\Models\Place;
 use App\Services\Places\OpenPeriodMaterializer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -22,7 +23,7 @@ use Throwable;
  */
 class BackfillOpenPeriods extends Command
 {
-    protected $signature = 'reelmap:open-periods:backfill';
+    protected $signature = 'reelmap:open-periods:backfill {--fail-on-drift : exit non-zero if any place had to be repaired}';
 
     protected $description = 'Materialize open-period rows from existing places (pre-T-158 rows)';
 
@@ -31,14 +32,29 @@ class BackfillOpenPeriods extends Command
         $places = 0;
         /** @var list<int> $failed */
         $failed = [];
+        /** @var list<int> $repaired */
+        $repaired = [];
 
         // A place that cannot produce rows is cleared in ONE statement rather
         // than one transaction each. `materialize()` on such a place costs a
         // lock, a DELETE and a BEGIN/COMMIT to do nothing, and the great
         // majority of the corpus has no structured hours at all — T-155 shipped
         // them with no backfill, so a place only has periods once it has been
-        // re-enriched since. This runs inside the deploy's maintenance window,
-        // so that time is downtime.
+        // re-enriched since.
+        //
+        // This USED to say "runs inside the deploy's maintenance window, so that
+        // time is downtime", and that stopped being true when T-158 scheduled
+        // the command nightly: it now also runs at 04:00 against live traffic.
+        // The justification has to stand on its own, and it does, but for a
+        // different reason. The statement takes row locks on
+        // `place_open_periods` ONLY — `USING places` reads the join side without
+        // locking it — so it cannot invert lock order against the materializer,
+        // which takes `places` first and then rewrites that place's periods. The
+        // worst case is a brief wait on the rows of one place, not a deadlock.
+        //
+        // What keeps it small in steady state: after the first run this deletes
+        // only rows whose place has LOST its hours since the last pass. The
+        // unbounded shape is a first-run cost.
         //
         // `jsonb_typeof(...) = 'array'` rather than a bare
         // `jsonb_array_length`, which RAISES on a key that is present and not an
@@ -64,13 +80,19 @@ class BackfillOpenPeriods extends Command
             // Only the key: `materialize()` re-reads the row under its lock
             // anyway (deliberately — see there), so hydrating 37 columns and
             // five jsonb blobs here is a wide-row read per place, discarded one
-            // line later. This walk runs inside the maintenance window.
+            // line later. That matters more now than when it was written for the
+            // maintenance window: since T-158 this walk also runs nightly beside
+            // live traffic, one short transaction per place, which is why it is
+            // chunked and why each place's failure is recorded rather than
+            // aborting the pass.
             ->select('places.id')
             ->whereRaw($carriesHours)
-            ->chunkById(200, function ($chunk) use ($materializer, &$places, &$failed): void {
+            ->chunkById(200, function ($chunk) use ($materializer, &$places, &$failed, &$repaired): void {
                 foreach ($chunk as $place) {
                     try {
-                        $materializer->materialize($place);
+                        if ($materializer->materialize($place)) {
+                            $repaired[] = $place->id;
+                        }
                         $places++;
                     } catch (Throwable $e) {
                         // A place deleted or re-enriched by a worker mid-run is a
@@ -83,7 +105,38 @@ class BackfillOpenPeriods extends Command
                 }
             });
 
-        $this->components->info("Materialized open periods for {$places} places.");
+        $this->components->info("Checked open periods for {$places} places.");
+
+        // Say what was REPAIRED, not just what was visited. The nightly run
+        // exists because a swallowed observer failure leaves drift that neither
+        // surface can show — the place keeps rendering a correct "Open" cue from
+        // the jsonb while being absent from every `?open_now=1` listing. A pass
+        // that silently fixed that and printed the same sentence either way
+        // would hide the broken writer instead of surfacing it, which is the
+        // rule `reelmap:offers:reconcile-quotas` already states for the same
+        // shape of problem.
+        //
+        // In a healthy system this is zero every night: the observer keeps the
+        // projection in step, so anything found here is a place it dropped.
+        if ($repaired !== []) {
+            $this->components->warn('Repaired drift on '.count($repaired).' place(s).');
+
+            // Structured, and the ids are BOUNDED — a first run repairs the
+            // whole corpus by definition, and a log record carrying 200k ids is
+            // one nobody can read and a payload that can fill a disk.
+            Log::warning('open_periods.drift_repaired', [
+                'places' => count($repaired),
+                'sample' => array_slice($repaired, 0, 20),
+            ]);
+        }
+
+        // `--fail-on-drift` only for the SCHEDULED run, which is the one where a
+        // non-zero count means something is wrong. The deploy pass repairs the
+        // whole corpus on purpose — it is the migration — and failing there
+        // would make every release's backfill red for doing its job.
+        if ($this->option('fail-on-drift') && $repaired !== []) {
+            return self::FAILURE;
+        }
 
         if ($failed !== []) {
             // Reported AND non-zero exit: a partial run that looks successful is
