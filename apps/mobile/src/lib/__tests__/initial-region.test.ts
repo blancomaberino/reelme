@@ -50,6 +50,15 @@ const staleOrCoarse = (
     ? null
     : ({ coords: { latitude: FIX_LAT, longitude: FIX_LNG, accuracy: fix.accuracy } } as never);
 
+// Real timers restored HERE rather than at the end of each test that installs
+// them: an `expect` that fails skips every line after it, so a per-test restore
+// leaks fake timers into whatever runs next and the real failure gets a
+// confusing second one behind it. `afterEach` runs either way, and calling it
+// when no fake timers are installed is a no-op.
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 const SAVED = { latitude: 51.5, longitude: -0.12, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
 // Madrid — the fix jest.setup hands back by default.
@@ -262,7 +271,6 @@ describe('locateUser', () => {
     await jest.advanceTimersByTimeAsync(5_000);
 
     expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
-    jest.useRealTimers();
   });
 
   it('refuses a STALE cached fix and takes the fresh one instead', async () => {
@@ -314,7 +322,6 @@ describe('locateUser', () => {
     await jest.advanceTimersByTimeAsync(5_000);
 
     expect(await pending).toEqual({ ok: false, reason: 'imprecise' });
-    jest.useRealTimers();
   });
 
   it('reports a STALE but precise fix as "unavailable", so the retry stays', async () => {
@@ -345,7 +352,6 @@ describe('locateUser', () => {
     await jest.advanceTimersByTimeAsync(5_000);
 
     expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
-    jest.useRealTimers();
   });
 
   it('refuses a fix too coarse to measure a distance from, and waits for a better one', async () => {

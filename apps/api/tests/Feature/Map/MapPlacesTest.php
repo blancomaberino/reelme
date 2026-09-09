@@ -9,6 +9,7 @@ use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\Tag;
 use App\Models\User;
+use Carbon\Carbon;
 use DateTimeImmutable;
 use DateTimeZone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,35 +33,71 @@ it('answers the whole map response from ONE instant', function () {
     // counted a place the rows omitted, or a pin whose `open_state` read
     // "Abierto" while `?open_now=1` had just stopped selecting it.
     //
-    // Asserted through the OBSERVABLE agreement of the three numbers rather
-    // than by counting `now()` calls: any implementation that reaches the same
-    // instant everywhere keeps this green.
+    // Two earlier versions of this test did not bite, and both failures are
+    // worth naming because they are the usual ones:
     //
-    // The fixture sits ON the boundary — it closes at 21:00 and the request is
-    // made in the last second before it — so a second `now()` taken a moment
-    // later lands after closing and the two halves disagree.
-    $this->travelTo(new DateTimeImmutable('2026-09-08 20:59:59', new DateTimeZone('America/Montevideo')));
+    //  1. `travelTo` FREEZES Carbon. Under a frozen clock four `now()` calls are
+    //     indistinguishable from one, so the test guarded the `open_now` filter
+    //     rather than the instant (caught in review).
+    //  2. A clock that advanced once, at a chosen call number, depends on how
+    //     many `now()` calls the middleware happens to make first — so the
+    //     boundary landed before the handler and everything read "closed",
+    //     which is self-consistent and green.
+    //
+    // So the fixture alternates instead: one-minute open windows every other
+    // minute, and a clock that advances one minute per call. Now ANY two
+    // distinct instants disagree about this place, wherever the sequence starts
+    // — the test cannot be satisfied by luck, only by every reader sharing one.
+    $periods = [];
+    for ($i = 0; $i < 20; $i++) {
+        $open = 19 * 60 + $i * 2;
+        $periods[] = [
+            'open_day' => 2,
+            'open_time' => sprintf('%02d:%02d', intdiv($open, 60), $open % 60),
+            'close_day' => 2,
+            'close_time' => sprintf('%02d:%02d', intdiv($open + 1, 60), ($open + 1) % 60),
+        ];
+    }
 
-    // Inside BBOX (London), like every other fixture in this file — the
-    // timezone is what puts the place on a Montevideo clock, not its coordinate.
+    // Inside BBOX (London), like every other fixture here — the TIMEZONE is what
+    // puts the place on a Montevideo clock, not its coordinate.
     Place::factory()->active()->atPoint(51.50, -0.12)->create([
         'timezone' => 'America/Montevideo',
-        // Tuesday 19:00-21:00, the shape `OpeningSchedule` reads.
-        'opening_hours_periods_json' => [
-            ['open_day' => 2, 'open_time' => '19:00', 'close_day' => 2, 'close_time' => '21:00'],
-        ],
+        'opening_hours_periods_json' => $periods,
     ]);
+
+    // Installed after the fixture: creating it reads the clock too, and those
+    // reads would otherwise eat the ticks this test is counting on.
+    // A real closure, not an arrow fn: `fn ()` captures by VALUE, so `$calls++`
+    // incremented a copy and the clock never moved — which the counter check at
+    // the end caught, doing its job on its first outing.
+    $calls = 0;
+    Carbon::setTestNow(function () use (&$calls) {
+        return Carbon::instance(
+            new DateTimeImmutable('2026-09-08 19:00:30', new DateTimeZone('America/Montevideo'))
+        )->addMinutes($calls++);
+    });
 
     $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&open_now=1')->assertOk();
 
-    // Selected by the filter, counted by the count, and described as open by the
-    // pin — all three, or the response contradicts itself.
-    expect($res->json('meta.total_in_bbox'))->toBe(1)
-        ->and($res->json('data.pins'))->toHaveCount(1)
-        ->and($res->json('data.pins.0.open_state.open_now'))->toBeTrue()
-        // The closing time the same instant implies — so the pin's own answer,
-        // not just its boolean, comes from the moment the filter used.
-        ->and($res->json('data.pins.0.open_state.closes_at'))->toBe('21:00');
+    $total = $res->json('meta.total_in_bbox');
+    $pins = $res->json('data.pins');
+
+    // The AGREEMENT is the property, not any particular verdict: whichever
+    // minute the one instant landed in, the count, the rows and the pin's own
+    // open/closed answer must describe the same world. With four instants they
+    // describe two.
+    expect($pins)->toHaveCount($total);
+
+    if ($total === 1) {
+        expect($pins[0]['open_state']['open_now'])->toBeTrue();
+    }
+
+    // And the clock really did move — otherwise this is the frozen version
+    // again, passing for the reason review already rejected.
+    expect($calls)->toBeGreaterThan(1);
+
+    Carbon::setTestNow();
 });
 
 it('returns raw pins (no clusters) at high zoom', function () {
