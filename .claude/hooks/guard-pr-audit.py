@@ -190,6 +190,28 @@ def target_dir(cmd_segments: list[list[str]], default: str, upto: int) -> str:
     return cwd
 
 
+GROUNDING_MARKER = ".claude/state/grounding.json"
+GROUNDING_LOG = ".claude/state/grounding.log"
+
+
+def grounding_digest(path) -> str:
+    """sha256 of the grounding log, or "" when it cannot be read.
+
+    Lives here, beside `state()`, because three callers need the SAME number and
+    two copies of a hash calculation drift — and drift here means a marker that
+    validates when it should not. What this proves is narrow and worth stating:
+    it binds the MARKER to the LOG, never the log to an execution that happened.
+    A hand-written pair passes. That is acceptable under this file's threat
+    model (a busy agent taking a shortcut, not an attacker); it is a staleness
+    check, not a tamper control.
+    """
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return ""
+
+
 def state(repo: str) -> tuple[str, str]:
     """(HEAD, a hash of the working tree's CONTENT).
 
@@ -224,6 +246,19 @@ def state(repo: str) -> tuple[str, str]:
         except OSError:
             h.update(b"<unreadable>")
     return head, h.hexdigest()
+
+
+def warn(reason: str) -> None:
+    """Say it loudly and let the push through.
+
+    For the grounding hatch. Refusing there would leave `REELMAP_SKIP_AUDIT=1`
+    as the only exit, which skips this whole gate and leaves no artifact —
+    trading a RECORDED skip for an invisible one. A control that is routinely
+    bypassed is decoration; this one stays used by not being worth bypassing.
+    Printed to stderr rather than as a hook decision, because stdout carries the
+    allow/deny protocol and anything else there reads as a malformed response.
+    """
+    print(f"⚠️  {reason}", file=sys.stderr)
 
 
 def deny(reason: str, action: str) -> None:
@@ -397,6 +432,56 @@ def main() -> None:
         deny(
             "The audit receipt matches HEAD, but the working tree's content has changed since — "
             "those edits are not covered by it.",
+            action,
+        )
+
+    # The grounding half of the review (T-156). `record-receipt.sh` already
+    # refuses to WRITE a receipt without a valid marker, so reading the key
+    # alone would only catch a receipt that script did not write — and a
+    # hand-written one sets "ok" as easily as it omits it. So re-verify the
+    # artifact here, from the values just computed.
+    grounding = receipt.get("grounding")
+    if grounding is None:
+        deny(
+            "The audit receipt predates the grounding check, or was not written by "
+            "record-receipt.sh. Re-record it: .claude/skills/audit-agency/record-receipt.sh",
+            action,
+        )
+    elif grounding == "skipped":
+        # Allowed, and loud. Refusing would leave REELMAP_SKIP_AUDIT=1 as the
+        # only exit — which skips this whole gate and leaves no artifact at all,
+        # trading a recorded skip for an invisible one.
+        warn(
+            "The grounding pass was SKIPPED for this tree, so the scripted half of the review "
+            "(gitleaks, semgrep, osv-scanner, actionlint, hadolint, shellcheck) did not run. "
+            "The PR body must say so."
+        )
+    elif grounding == "ok":
+        try:
+            with open(os.path.join(repo, GROUNDING_MARKER)) as fh:
+                marker = json.load(fh)
+        except (OSError, json.JSONDecodeError, ValueError):
+            deny(
+                "The receipt says the grounding pass ran, but its marker is missing or corrupt. "
+                "Re-run .claude/skills/audit-agency/run-grounding.sh",
+                action,
+            )
+        if marker.get("head") != head or marker.get("tree") != tree:
+            deny(
+                "The grounding marker is for a different commit or tree than the receipt. "
+                "Re-run run-grounding.sh, then re-record the receipt.",
+                action,
+            )
+        if marker.get("digest") != grounding_digest(os.path.join(repo, GROUNDING_LOG)):
+            deny(
+                "The grounding log does not match the digest its marker recorded — the log was "
+                "replaced or removed after the pass. Re-run run-grounding.sh.",
+                action,
+            )
+    else:
+        deny(
+            f"The audit receipt records an unrecognised grounding state {grounding!r}. "
+            "Re-record the receipt.",
             action,
         )
 

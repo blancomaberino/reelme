@@ -50,15 +50,20 @@ if [ -z "$lanes" ] || printf '%s' "$lanes" | grep -q '^LANES: unknown'; then
   exit 2
 fi
 # Say so when the diff changes the very files that produce this receipt.
-# Everything that produces or wires this receipt: the skill, the hooks, and the
-# settings file that installs them. Untracked files count — the tree hash does.
+#
+# `^\.claude/` — the whole directory, not a list. The list version named
+# audit-agency, hooks and settings.json, and missed `skills/gates/` (the runner
+# and its checks), `lib/` (which run-gates SOURCES before any area is selected)
+# and `agents/` (the seats themselves). Three misses in one enumeration is the
+# §3 rule arriving: replace the cases with the rule that covers them. Untracked
+# files count — the tree hash does.
 self_mod=""
 # No fallback to HEAD: a diff against HEAD is empty, and the flag would read
 # false on exactly the branch nobody can audit. Fail closed like the selector.
 _mb="$(git merge-base origin/main HEAD 2>/dev/null || git merge-base main HEAD 2>/dev/null)" \
   || { echo "refused: no base ref (origin/main, main) — no receipt written" >&2; exit 2; }
 if { git diff --name-only "$_mb" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } \
-     | grep -qE '^\.claude/(skills/audit-agency/|hooks/|settings\.json$)'; then
+     | grep -qE '^\.claude/'; then
   self_mod=1
   echo "note: this diff changes the audit skill, a hook, or .claude/settings.json — the receipt is produced by code the diff itself changed; the Code Reviewer seat is mandatory here." >&2
 fi
@@ -68,9 +73,55 @@ if [ "$verdict" = docs-only ] && ! printf '%s' "$lanes" | grep -q '^LANES: none 
   exit 2
 fi
 
+# The grounding pass must have run against THIS tree. CLAUDE.md §2 makes the
+# review step `/coderabbit`, which seats these lanes as one axis alongside a
+# grounding pass that is a script — gitleaks, semgrep, osv-scanner, actionlint,
+# hadolint, shellcheck, and the wrong-reason-assertion heuristics. Seating the
+# lanes without it is half a review, and it is the half that cannot be argued
+# out of a finding. A whole session shipped that way before this check existed.
+grounding_state="$(PYTHONDONTWRITEBYTECODE=1 python3 .claude/skills/audit-agency/check-grounding.py 2>/dev/null || echo missing)"
+case "$grounding_state" in
+  ok) ;;
+  skipped)
+    echo "note: the grounding pass was SKIPPED for this tree — the receipt records it, and the PR body must justify it." >&2
+    ;;
+  *)
+    cat >&2 <<MSG
+refused: no grounding pass for this tree ($grounding_state) — no receipt written.
+
+The lanes are one axis of the review, not the review. Run:
+
+    .claude/skills/audit-agency/run-grounding.sh
+
+then record the receipt again. If the tree changed after the grounding pass, it
+ran against code nobody is shipping — the same reason this receipt is keyed to
+HEAD + tree.
+MSG
+    exit 2
+    ;;
+esac
+
+# The grounding pass records how many leads it raised, and until now nothing
+# read that number — so a `clean` receipt over a log with thirty ⚠️ was
+# well-formed. A lead is not a finding, but it is a thing somebody has to have
+# looked at, and the note is where that shows.
+if [ "$verdict" != docs-only ] && [ -z "${2:-}" ]; then
+  leads="$(python3 -c 'import json,sys
+try:
+    print(json.load(open(".claude/state/grounding.json")).get("leads", 0))
+except Exception:
+    print(0)' 2>/dev/null || echo 0)"
+  if [ "${leads:-0}" -gt 0 ]; then
+    echo "refused: the grounding pass raised $leads lead(s) and this receipt carries no note." >&2
+    echo "Say what you checked them against — a count nobody wrote a sentence about is a count nobody read:" >&2
+    echo "  record-receipt.sh $verdict \"<what the leads were, and what you did>\"" >&2
+    exit 2
+  fi
+fi
+
 mkdir -p .claude/state
 
-VERDICT="$verdict" NOTE="${2:-}" LANES="$lanes" SELF_MOD="$self_mod" python3 - <<'PY'
+VERDICT="$verdict" NOTE="${2:-}" LANES="$lanes" SELF_MOD="$self_mod" GROUNDING="$grounding_state" PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
 import importlib.util, json, os, pathlib, subprocess
 from datetime import datetime, timezone
 
@@ -98,6 +149,7 @@ pathlib.Path(".claude/state/audit-receipt.json").write_text(
             "verdict": os.environ["VERDICT"],
             "note": os.environ["NOTE"],
             "selector_changed_by_this_diff": bool(os.environ["SELF_MOD"]),
+            "grounding": os.environ["GROUNDING"],
             "required_lanes": [
                 l.strip()[2:].split("—")[0].strip()
                 for l in os.environ["LANES"].splitlines()

@@ -187,6 +187,18 @@ if [ $run_tooling -eq 1 ]; then
   done
 fi
 
+# ------------------------------------------------------------------- quality
+# UNGUARDED, and that is the point. These scan the whole repo with git rather
+# than an area's toolchain, so gating them on `tooling` meant the only diffs
+# that ran them were the ones touching `.claude/*` — never the test files they
+# police. A branch adding `assertTrue(true)` to apps/api/tests got green gates
+# and the check never printed. Reachable only when SOME area was selected,
+# because a docs-only run exits well above this line.
+for c in .claude/skills/gates/checks/*.sh; do
+  [ -e "$c" ] || continue
+  gate "Quality · $(basename "$c" .sh)" bash "$c"
+done
+
 # -------------------------------------------------------------------- summary
 printf '\n\033[1m── Gate summary ──\033[0m\n'
 # `${arr[@]:-}` + the -n test, rather than a bare `${arr[@]}`: under `set -u`,

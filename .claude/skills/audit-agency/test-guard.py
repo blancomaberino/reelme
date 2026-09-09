@@ -156,8 +156,11 @@ def main():
         head, tree = guard.state(clean)
         rec = pathlib.Path(clean) / ".claude" / "state"
         rec.mkdir(parents=True)
+        # `grounding: skipped` because this fixture is about receipt LAUNDERING,
+        # not about the grounding pass — skipped is allowed-and-loud, so the
+        # control still allows and the case keeps testing what it tested.
         (rec / "audit-receipt.json").write_text(
-            json.dumps({"head": head, "tree": tree, "verdict": "clean"})
+            json.dumps({"head": head, "tree": tree, "verdict": "clean", "grounding": "skipped"})
         )
 
         # Sanity: the receipt IS valid there, so a push judged against `clean`
@@ -175,6 +178,84 @@ def main():
         print(f"{'PASS' if ok else 'FAIL'}  {'[audit2] trailing cd cannot launder':38s} want=DENY  got={got}")
         if not ok:
             failures.append("trailing cd launder")
+
+    # [T-156] The grounding half of the review. The third reproduced false green
+    # was that the push guard never read this field at all, so a receipt could
+    # say anything — or nothing — about whether the scripted pass ran.
+    with tempfile.TemporaryDirectory() as repo:
+        subprocess.run(["git", "init", "-q", repo], check=True)
+        subprocess.run(["git", "-C", repo, "config", "user.email", "t@t"], check=True)
+        subprocess.run(["git", "-C", repo, "config", "user.name", "t"], check=True)
+        (pathlib.Path(repo) / "f.txt").write_text("hello\n")
+        # The tree hash counts UNTRACKED files, so without this the receipt and
+        # the marker invalidate the very tree they record.
+        (pathlib.Path(repo) / ".gitignore").write_text(".claude/state/\n")
+        # The gate SKIPS any repo that does not carry it — so without this the
+        # temp repo allows everything and every case below passes for the wrong
+        # reason. (That is why the laundering control above allows, too.)
+        hook_dst = pathlib.Path(repo) / ".claude" / "hooks" / pathlib.Path(HOOK).name
+        hook_dst.parent.mkdir(parents=True, exist_ok=True)
+        hook_dst.write_text(pathlib.Path(HOOK).read_text())
+        subprocess.run(["git", "-C", repo, "add", "-A"], check=True)
+        subprocess.run(["git", "-C", repo, "commit", "-qm", "init"], check=True)
+
+        spec = importlib.util.spec_from_file_location("guard", HOOK)
+        guard = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(guard)
+        head, tree = guard.state(repo)
+        state_dir = pathlib.Path(repo) / ".claude" / "state"
+        state_dir.mkdir(parents=True)
+
+        def write_receipt(**extra):
+            body = {"head": head, "tree": tree, "verdict": "clean"}
+            body.update(extra)
+            (state_dir / "audit-receipt.json").write_text(json.dumps(body))
+
+        def write_marker(log_text="grounded\n", **extra):
+            (state_dir / "grounding.log").write_text(log_text)
+            body = {
+                "head": head,
+                "tree": tree,
+                "skipped": False,
+                "digest": guard.grounding_digest(state_dir / "grounding.log"),
+            }
+            body.update(extra)
+            (state_dir / "grounding.json").write_text(json.dumps(body))
+
+        grounding_cases = []
+
+        # A receipt from before this check existed says nothing about grounding.
+        write_receipt()
+        grounding_cases.append(("receipt without the key", decision(PUSH, project_dir=repo), "DENY"))
+
+        # The honest states.
+        write_receipt(grounding="ok")
+        write_marker()
+        grounding_cases.append(("ok + a marker that verifies", decision(PUSH, project_dir=repo), "ALLOW"))
+
+        write_receipt(grounding="skipped")
+        grounding_cases.append(("skipped is allowed, loudly", decision(PUSH, project_dir=repo), "ALLOW"))
+
+        # Claiming `ok` is not the same as having run: the guard re-verifies the
+        # artifact, because record-receipt.sh refusing to WRITE a bad receipt
+        # only ever catches a receipt that record-receipt.sh wrote.
+        write_receipt(grounding="ok")
+        (state_dir / "grounding.json").unlink()
+        grounding_cases.append(("ok with NO marker", decision(PUSH, project_dir=repo), "DENY"))
+
+        write_marker()
+        (state_dir / "grounding.log").write_text("replaced after the run\n")
+        grounding_cases.append(("ok with a log that no longer matches", decision(PUSH, project_dir=repo), "DENY"))
+
+        write_marker()
+        write_receipt(grounding="totally fine, trust me")
+        grounding_cases.append(("an unrecognised state", decision(PUSH, project_dir=repo), "DENY"))
+
+        for name, got, want in grounding_cases:
+            good = got == want
+            print(f"{'PASS' if good else 'FAIL'}  {'[T-156] ' + name:44s} want={want:5s} got={got}")
+            if not good:
+                failures.append(f"grounding: {name}")
 
     # [audit2] A non-dict payload must not crash the hook into silence (which the
     # harness reads as allow).
@@ -316,7 +397,11 @@ def main():
         _, tree = guard.state(sub)
         receipt = pathlib.Path(sub) / guard.RECEIPT
         receipt.parent.mkdir(parents=True, exist_ok=True)
-        receipt.write_text(json.dumps({"head": head, "tree": tree, "verdict": "clean"}))
+        # `grounding: skipped` — allowed and loud. This case is about finding the
+        # receipt from a subdirectory, not about the grounding pass.
+        receipt.write_text(
+            json.dumps({"head": head, "tree": tree, "verdict": "clean", "grounding": "skipped"})
+        )
 
         got = decision("git push", cwd=str(nested), project_dir=sub)
         ok = got == "ALLOW"

@@ -88,10 +88,17 @@ first fix enumerated cases; replace it with the rule that covers them.
   (`Senior SecOps Engineer`) and Architecture (`Software Architect`, never
   `Backend Architect` in its place) sit on every non-docs diff. Verify each
   finding against the cited lines before applying it.
+- **The seats are ONE AXIS of `/coderabbit`, never a substitute for it.** The
+  grounding pass — gitleaks, semgrep, osv-scanner, actionlint, hadolint,
+  shellcheck, the wrong-reason-assertion heuristics — is the half that cannot be
+  argued out of a finding, and agents skip it because seating lanes feels like
+  reviewing. `record-receipt.sh` refuses without a grounding marker for the
+  current tree: run `.claude/skills/audit-agency/run-grounding.sh` (T-156).
 - **Rounds:** at most two. A third round of findings in one file means the design
   is wrong — stop, redesign, then review once.
 - **Escape hatches are owner-approved only** and must be justified in the PR
-  body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`.
+  body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`,
+  `REELMAP_SKIP_GROUNDING=1`.
 - **Owner-approved only to edit: anything a gate reads to decide whether a check
   is REQUIRED or whether it PASSED, whatever it is called** — including
   `pr-gate.sh`, `approve.sh`, `record-panel.sh`, `check-review-threads.sh`,
@@ -112,6 +119,13 @@ first fix enumerated cases; replace it with the rule that covers them.
 
 - Banned: `assertTrue(true)`, status-only assertions, snapshot-only tests, tests
   that pass with the feature deleted, mocks that invent an id/testID/route.
+  The `Quality · vacuous-assertions` gate fails on the detectable ones.
+- **Assert the observable, never the setting that produces it.** `mutexName()`,
+  not `->onOneServer`. A guard that pins the mechanism you had in mind is blind
+  to the one with the same effect (T-156).
+- **A test that computes its expected value must be able to move it.** Put the
+  derivation in production code and drive it from the test; a `beforeEach` that
+  pins the input makes the assertion a tautology (T-156).
 - Prove a guard bites: mutate it, watch the test fail, restore with an absolute path.
 - Tests run without network — fakes, fixtures, recorded responses.
 - API: Pest on Postgres, never sqlite. Mobile: Jest + Maestro flows.
@@ -152,7 +166,7 @@ first fix enumerated cases; replace it with the rule that covers them.
 | --- | --- |
 | Gates runner | `.claude/skills/gates/run-gates.sh` |
 | Task lifecycle | `.claude/skills/task/` |
-| Audit seats + receipt | `.claude/skills/audit-agency/` |
+| Audit seats + receipt + grounding | `.claude/skills/audit-agency/` |
 | Hooks | `.claude/hooks/` (tests run by the `tooling` gate) |
 | Project agents | `contract-consistency-reviewer`, `native-rebuild-checker` in `.claude/agents/` |
 | `/coderabbit` (user-level, `~/.claude/skills/coderabbit`), `/simplify`, `/security-review` (built in) | not in this repo |
