@@ -149,6 +149,22 @@ function scheduledEvents(string $needle): Collection
         ->filter(fn ($e) => str_contains((string) $e->command, $needle));
 }
 
+it('counts a file another run already removed as pruned, not as a failure', function () {
+    // Two hourly runs can select the same file. GONE is the outcome this
+    // command wants, so losing the race is not a failure — counting it fired
+    // `logs.prune_failed_run` on a benign race, and an alert that cries wolf is
+    // an alert nobody reads. Simulated by deleting the file after the glob,
+    // which is what a concurrent run does.
+    $doomed = pruneTestLog('laravel-2026-01-06.log', 40);
+    $survivor = pruneTestLog('laravel-2026-01-07.log', 40);
+
+    File::delete($doomed);
+
+    $this->artisan('reelmap:logs:prune')->assertSuccessful();
+
+    expect(File::exists($survivor))->toBeFalse();
+});
+
 it('is scheduled on every machine, and holds no fleet-wide lock', function () {
     // A command nobody runs is not a retention mechanism. Neither flag may be
     // set: `onOneServer()` obviously prunes one box, and `withoutOverlapping()`
@@ -175,5 +191,7 @@ it('prunes failed_jobs on the window RetentionWindow owns', function () {
     $events = scheduledEvents('queue:prune-failed');
 
     expect($events)->toHaveCount(1)
-        ->and($events->first()->command)->toContain('--hours='.RetentionWindow::hours());
+        ->and($events->first()->command)->toContain('--hours='.RetentionWindow::hours())
+        // Hourly like the log sweep: the two sinks publish the same window.
+        ->and($events->first()->expression)->toBe('0 * * * *');
 });

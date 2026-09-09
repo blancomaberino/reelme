@@ -111,7 +111,11 @@ Schedule::command('reelmap:logs:prune')
 // is reconstructed from — while reporting success. The floor lives with the
 // conversion so there is no second site to forget it at.
 Schedule::command('queue:prune-failed', ['--hours' => RetentionWindow::hours()])
-    ->dailyAt('04:55')
+    // Hourly, matching the log sweep: a daily pass makes the published window
+    // mean up to a day longer, and the two sinks state the same promise.
+    // onOneServer() here, unlike the log sweep, because failed_jobs is one
+    // shared table rather than a file on each box.
+    ->hourly()
     ->onOneServer()
     ->withoutOverlapping();
 

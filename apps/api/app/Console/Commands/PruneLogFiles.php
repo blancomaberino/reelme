@@ -98,10 +98,24 @@ class PruneLogFiles extends Command
 
                 // `File::delete()` is `@unlink()` inside a catch that returns
                 // false, so a permission error never reaches the catch below.
+                // Same race here: unlink also returns false for a path another
+                // run removed a moment ago.
+                if (! File::exists($path)) {
+                    continue;
+                }
+
                 $reason = 'delete refused — permissions, or not a regular file';
             } catch (\Throwable $e) {
-                // A file can vanish between the glob and the stat (a concurrent
-                // rotation). One unreadable path must not strand the rest.
+                // A file can vanish between the glob and the stat — a concurrent
+                // rotation, or the hourly run before this one. GONE is the
+                // outcome this command wants, so it is not a failure: counting
+                // it would fire `logs.prune_failed_run` on a benign race, and an
+                // alert that cries wolf is an alert nobody reads. Only a path
+                // that still EXISTS after we could not remove it is a failure.
+                if (! File::exists($path)) {
+                    continue;
+                }
+
                 $reason = $e->getMessage();
             }
 
