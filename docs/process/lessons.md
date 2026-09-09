@@ -64,6 +64,72 @@ have, one calling the map's 90°-span bbox a bound comparable to a 50 km radius.
 Nothing tests a comment. Reviewers must open the named file for every comment
 that makes a claim about it.
 
+## A guard that pins the flag, not the behaviour (T-156, 2026-09-08)
+
+Four times in one session, a fix introduced a defect that its own new test was
+blind to. The tests were not weak by accident: each one guarded the failure I
+was already picturing, and that is exactly what made it useless.
+
+1. **`withoutOverlapping()` is `onOneServer()`.** A log sweep must run on every
+   box, because logs are per-machine files. The comment said so; the test
+   asserted `$event->onOneServer === false`. But the overlap mutex is
+   `sha1(expression + command)` on the SHARED cache store — no host component —
+   so one box takes the Redis lock and the rest skip. Two of three review seats
+   found it independently. The test pinned the flag I had in mind and was blind
+   to the flag with the same effect.
+2. **`--hours=0` empties `failed_jobs`.** Replacing a hardcoded `336` with
+   `24 * config('logging.channels.daily.days')` looked like removing a literal.
+   It coupled two sinks that INVERT the value at zero: Monolog reads `days=0` as
+   keep-forever, artisan reads `--hours=0` as `prune(now())` — every row. An
+   empty `LOG_DAILY_DAYS=` casts to 0. The sibling command refuses that exact
+   input, in a comment naming the empty env; I gave the second consumer the
+   opposite failure mode.
+3. **The test for (2) could not fail.** `beforeEach` pinned the config to 14,
+   then the test computed `24 * $days` and asserted `336` — 336 against 336,
+   under a comment claiming it was "derived, not typed".
+4. **A `?? 'unknown'` fallback on a variable every path assigns.** PHPStan
+   caught it. A default there would have hidden the bug it looked like it was
+   preventing.
+
+**The rule.** Assert the observable the code must produce, never the setting
+that happens to produce it — `mutexName()`, not `onOneServer`. And if a test
+computes its expected value, the computation belongs in production code where a
+test can drive it: `App\Support\RetentionWindow` exists so `RetentionWindowTest`
+can throw `''`, `0`, `-1`, `'forever'` and `null` at the floor. Deleting the
+floor turns six of seven red; the version that lived in the schedule expression
+could not be driven at all.
+
+**What caught what.** Every one of these was found before a push — by the audit
+seats, twice by two lanes converging, once by PHPStan. None was found by the
+gates, and CodeRabbit never saw the code (it reviews at PR open; this was all
+written after). The gates now carry
+`.claude/skills/gates/checks/vacuous-assertions.sh`, which fails on assertions
+that cannot fail — `assertTrue(true)`, `expect(x)->toBe(x)`, `assertSame($a,$a)`.
+Its own test asserts the blind spot too: a config-pinned tautology like (3) is
+NOT mechanically detectable, and nothing should be trusted to catch it except
+putting the arithmetic where a test can move it.
+
+**The gate written to catch this shipped with three of its own.** A Code Reviewer
+seat reproduced all three: the quality check sat inside the `tooling` area, so it
+never ran on the test files it polices; a grounding pass that CRASHED filled its
+own log with the error, and "the log is non-empty" passed; and an absent
+`skipped` key is falsy, so a hand-written marker with no log at all read `ok` —
+while the honest hatch recorded `skipped`, making the forgery both easier and
+cleaner-looking than the documented path. The push guard never read the field,
+so none of it was visible where it mattered. It was pulled from the PR rather
+than merged: a gate with known false-green paths is worse than no gate, because
+it buys confidence. The redesign records what the pass DID (which tools this
+diff required, and whether any were missing) rather than that a script wrote a
+file, and every one of the three has a case that is red against the version that
+shipped. Two fixtures in the guard's own existing suite turned out to be passing
+for the wrong reason too — their temp repos did not carry the hook, so the gate
+skipped and allowed everything.
+
+**Also:** `git add -A` swept 20 untracked `.claude/agents/*.md` into a commit
+twice in the same session — 6,377 lines, into a guard path that changes which
+audit seats are required. Stage paths explicitly on a branch with untracked
+noise in it.
+
 ## The suite that lied three ways (T-158, 2026-09-07)
 
 - Composer's default 300 s `process-timeout` killed the suite mid-run with a

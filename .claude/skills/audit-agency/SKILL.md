@@ -12,6 +12,24 @@ PR-mutating `gh` command until a receipt matches HEAD **and** the working tree.
 **Authority:** `CLAUDE.md` §4 states the rule; this file is the procedure. When
 they disagree, `CLAUDE.md` wins and this file is corrected.
 
+## 0. Run the grounding pass first — the seats are one axis, not the review
+
+```bash
+.claude/skills/audit-agency/run-grounding.sh
+```
+
+`/coderabbit` (CLAUDE.md §2) seats these lanes as its Phase 3.5, beside a
+grounding pass that is a SCRIPT: gitleaks, semgrep, osv-scanner, actionlint,
+hadolint, shellcheck, and heuristics for wrong-reason assertions, hand-written
+mirrors and check-then-act races. Seating the lanes alone skips the half that
+cannot be argued out of a finding, and it is an easy thing to skip because
+seating lanes feels like reviewing. A 2026-09 session did exactly that across
+five commits (`docs/process/lessons.md`).
+
+`record-receipt.sh` refuses without a marker for the current tree, so the two
+halves cannot come apart. Every ⚠️ it prints is a LEAD to verify against the
+diff, not a finding — the script never fails on findings, only on failing to run.
+
 ## 1. Pick the seats — do not guess
 
 ```bash

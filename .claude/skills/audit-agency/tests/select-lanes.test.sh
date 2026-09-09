@@ -32,7 +32,8 @@ scratch() {
   git -C "$d" init -q -b main
   git -C "$d" config user.email t@t; git -C "$d" config user.name t
   mkdir -p "$d/.claude/skills/audit-agency" "$d/.claude/hooks" "$d/.claude/agents"
-  cp "$SKILL/select-lanes.sh" "$SKILL/record-receipt.sh" "$d/.claude/skills/audit-agency/"
+  cp "$SKILL/select-lanes.sh" "$SKILL/record-receipt.sh" "$SKILL/check-grounding.py" \
+     "$SKILL/run-grounding.sh" "$d/.claude/skills/audit-agency/"
   cp "$ROOT/.claude/hooks/guard-pr-audit.py" "$d/.claude/hooks/"
   local IFS='|'
   for n in $AGENTS; do
@@ -47,7 +48,17 @@ scratch() {
 touchf()  { mkdir -p "$(dirname "$1")"; printf '%s\n' "${2:-x}" > "$1"; }
 lanes()   { (cd "$1" && bash .claude/skills/audit-agency/select-lanes.sh main); }
 seated()  { printf '%s' "$1" | grep -qF -- "- $2"; }
-receipt() { (cd "$1" && git add -A && git commit -qm c && { bash .claude/skills/audit-agency/record-receipt.sh "$2" >/dev/null; } 2>&1); }
+# record-receipt.sh now refuses without a grounding marker for the current tree
+# (the seats are one axis of /coderabbit, not the review). These cases are about
+# LANE SELECTION, not about grounding — grounding.test.sh owns that — so they
+# stub the marker with the documented skip rather than install the user-level
+# script. The skip is recorded in the receipt either way, which is the point.
+# A $HOME with no ground.sh: the hatch is only honoured where the pass CANNOT
+# run, so pointing at the real one would be refused. These cases are about lane
+# SELECTION; grounding.test.sh owns the grounding behaviour.
+NO_PASS_HOME="$(mktemp -d)"
+grounded() { (cd "$1" && HOME="$NO_PASS_HOME" REELMAP_SKIP_GROUNDING=1 bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1); }
+receipt() { (cd "$1" && git add -A && git commit -qm c) >/dev/null 2>&1; grounded "$1"; (cd "$1" && { bash .claude/skills/audit-agency/record-receipt.sh "$2" >/dev/null; } 2>&1); }
 
 echo "select-lanes.sh"
 
@@ -159,12 +170,15 @@ grep -q '"selector_changed_by_this_diff": true' "$d/.claude/state/audit-receipt.
   && ok "a diff that edits the selector is flagged in the receipt and on stderr" || bad "self-mod flag true" "$e"
 
 d="$(scratch)"; touchf "$d/apps/api/app/A.php"; git -C "$d" add -A; git -C "$d" commit -qm c; touchf "$d/.claude/hooks/new-guard.sh" 'x'
+grounded "$d"   # after the untracked file exists: the marker is keyed to the tree
 (cd "$d" && bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null 2>&1)
 grep -q '"selector_changed_by_this_diff": true' "$d/.claude/state/audit-receipt.json" \
   && ok "an UNTRACKED new hook flags the receipt" || bad "self-mod untracked hook" "$(cat "$d/.claude/state/audit-receipt.json")"
 
 d="$(scratch)"; other="$(scratch)"; touchf "$d/apps/api/app/Models/A.php"
-(cd "$d" && git add -A && git commit -qm c && CLAUDE_PROJECT_DIR="$other" bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null 2>&1)
+(cd "$d" && git add -A && git commit -qm c) >/dev/null 2>&1
+grounded "$d"
+(cd "$d" && CLAUDE_PROJECT_DIR="$other" bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null 2>&1)
 [ -f "$d/.claude/state/audit-receipt.json" ] && [ ! -f "$other/.claude/state/audit-receipt.json" ] \
   && ok "CLAUDE_PROJECT_DIR cannot redirect a receipt into another repo" || bad "receipt redirect" "in=$([ -f "$d/.claude/state/audit-receipt.json" ] && echo yes || echo no) other=$([ -f "$other/.claude/state/audit-receipt.json" ] && echo yes || echo no)"
 

@@ -32,6 +32,7 @@ repository.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -40,6 +41,7 @@ import shlex
 import stat
 import subprocess
 import sys
+from typing import NoReturn
 
 RECEIPT = ".claude/state/audit-receipt.json"
 # How this file is addressed inside a repo that carries it — the scope test.
@@ -190,6 +192,153 @@ def target_dir(cmd_segments: list[list[str]], default: str, upto: int) -> str:
     return cwd
 
 
+GROUNDING_MARKER = ".claude/state/grounding.json"
+GROUNDING_LOG = ".claude/state/grounding.log"
+
+
+def grounding_digest(path) -> str:
+    """sha256 of the grounding log, or "" when it cannot be read.
+
+    Lives here, beside `state()`, because three callers need the SAME number and
+    two copies of a hash calculation drift — and drift here means a marker that
+    validates when it should not. What this proves is narrow and worth stating:
+    it binds the MARKER to the LOG, never the log to an execution that happened.
+    A hand-written pair passes. That is acceptable under this file's threat
+    model (a busy agent taking a shortcut, not an attacker); it is a staleness
+    check, not a tamper control.
+    """
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+# The grounding pass's own section headers, and the rule for which tools a diff
+# requires. They live HERE, in the file every side already imports, because a
+# marker that names its own `required_tools` is a claim by the writer — and both
+# readers used to take it. Setting `"required_tools": []` beside a log saying
+# `_skipped — gitleaks not installed` satisfied every check.
+SECTION_FOR = {
+    "gitleaks": "Secret scan (gitleaks)",
+    "semgrep": "Static analysis (semgrep)",
+    "osv-scanner": "Dependency vulnerabilities",
+    "actionlint": "GitHub Actions lint (actionlint)",
+    "hadolint": "Dockerfile lint (hadolint)",
+    "shellcheck": "Shell lint (shellcheck)",
+}
+
+# Mirrors the globs ground.sh selects files with. A subset would mean a diff the
+# pass DOES scan, with the scanner missing, recorded as ok.
+LOCKFILE_GLOBS = (
+    "*composer.lock", "*package-lock.json", "*yarn.lock", "*pnpm-lock.yaml",
+    "*Gemfile.lock", "*poetry.lock", "*go.sum", "*go.mod", "*Cargo.lock",
+    "*requirements*.txt",
+)
+
+
+def changed_files(repo: str, base: str) -> list[str]:
+    """The pass's file set: committed range plus working tree, on-disk only.
+
+    `-z`, because git C-QUOTES a path with non-ASCII or control bytes in
+    `--name-only` — and a quoted name is not the name on disk, so the `[ -e ]`
+    filter dropped it and the extension tests read the escapes rather than the
+    suffix. `[ -e ]` itself mirrors ground.sh, which applies it too: without it a
+    file deleted in the working tree makes the two counts disagree.
+    """
+    out = []
+    for args in (
+        ["git", "diff", "-z", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"],
+        ["git", "diff", "-z", "--name-only", "--diff-filter=ACMR", "HEAD"],
+    ):
+        out += [f for f in run(args, repo).split("\0") if f]
+    return sorted({f for f in out if os.path.exists(os.path.join(repo, f))})
+
+
+def required_tools(files) -> set:
+    """Which scanners this diff obliges the pass to have run."""
+    required = {"gitleaks", "semgrep"}
+    for f in files:
+        name = os.path.basename(f)
+        if fnmatch.fnmatch(name, "*.sh") or fnmatch.fnmatch(name, "*.bash"):
+            required.add("shellcheck")
+        if f.startswith(".github/workflows/") and fnmatch.fnmatch(name, "*.y*ml"):
+            required.add("actionlint")
+        if fnmatch.fnmatch(name, "*Dockerfile*") or fnmatch.fnmatch(name, "*.dockerfile"):
+            required.add("hadolint")
+        if any(fnmatch.fnmatch(name, g) for g in LOCKFILE_GLOBS):
+            required.add("osv-scanner")
+    return required
+
+
+def skipped_tools(log_text: str) -> set:
+    """Tools the pass reported as not installed, read from the log itself."""
+    return set(re.findall(r"^_skipped — (\S+) not installed", log_text, re.M))
+
+
+def load_marker(repo: str, action: str) -> dict:
+    """The grounding marker as a dict, or a denial.
+
+    `isinstance` because a marker that is a JSON list or string reached
+    `.get()` and surfaced as "The audit gate errored (AttributeError…)" — a safe
+    deny with an unactionable sentence.
+    """
+    try:
+        with open(os.path.join(repo, GROUNDING_MARKER)) as fh:
+            marker = json.load(fh)
+    except (OSError, json.JSONDecodeError, ValueError):
+        deny(
+            "The receipt refers to a grounding pass whose marker is missing or corrupt. "
+            "Re-run .claude/skills/audit-agency/run-grounding.sh",
+            action,
+        )
+    if not isinstance(marker, dict):
+        deny(
+            "The grounding marker is not an object. Re-run run-grounding.sh.",
+            action,
+        )
+    return marker
+
+
+def verify_marker_binding(marker: dict, head: str, tree: str, repo: str, action: str) -> None:
+    """Bind the marker to THIS commit, tree, log and range.
+
+    Shared by the `ok` and `skipped` branches on purpose: two copies of this
+    would drift, and the branch that drifted would be the lenient one.
+    """
+    if marker.get("head") != head or marker.get("tree") != tree:
+        deny(
+            "The grounding marker is for a different commit or tree than the receipt. "
+            "Re-run run-grounding.sh, then re-record the receipt.",
+            action,
+        )
+    if marker.get("digest") != grounding_digest(os.path.join(repo, GROUNDING_LOG)):
+        deny(
+            "The grounding log does not match the digest its marker recorded — the log was "
+            "replaced or removed after the pass. Re-run run-grounding.sh.",
+            action,
+        )
+    # The BASE too. A `git fetch` moves origin/main while HEAD and the tree stand
+    # still, so the receipt and the digest still validate over a pass that
+    # covered a different range. Same ref preference as the two sibling scripts.
+    expected_base = ""
+    for ref in ("origin/main", "main"):
+        expected_base = run(["git", "merge-base", ref, "HEAD"], repo).strip()
+        if expected_base:
+            break
+    # When NEITHER ref resolves there is no base to compare against, and this
+    # check does not apply — deliberately lenient where check-grounding.py is
+    # strict, because that one runs at record time (where refusing is
+    # recoverable) and this one runs at push time (where it is not). A receipt
+    # cannot exist without passing the strict one first.
+    if expected_base and marker.get("base") != expected_base:
+        deny(
+            "The grounding pass covered a different range than this branch has now — the base "
+            "moved (a fetch, a rebase). Re-run run-grounding.sh and re-record.",
+            action,
+        )
+
+
 def state(repo: str) -> tuple[str, str]:
     """(HEAD, a hash of the working tree's CONTENT).
 
@@ -226,7 +375,25 @@ def state(repo: str) -> tuple[str, str]:
     return head, h.hexdigest()
 
 
-def deny(reason: str, action: str) -> None:
+def warn(reason: str) -> None:
+    """Say it loudly and let the push through.
+
+    For the grounding hatch. Refusing there would leave `REELMAP_SKIP_AUDIT=1`
+    as the only exit, which skips this whole gate and leaves no artifact —
+    trading a RECORDED skip for an invisible one.
+
+    `systemMessage` on STDOUT, the same channel the not-the-protected-repo skip
+    already uses. A first version printed to stderr, which is surfaced only on a
+    non-zero exit — so "allow loudly" was allow SILENTLY, and `"grounding":
+    "skipped"` became the cheapest path through the entire gate: no marker, no
+    log, no digest, and nothing visible at push time. A control that is
+    routinely bypassed is decoration; one whose bypass is invisible is worse.
+    """
+    json.dump({"systemMessage": f"⚠️  {reason}"}, sys.stdout)
+    sys.exit(0)
+
+
+def deny(reason: str, action: str) -> NoReturn:
     msg = (
         f"Blocked: {reason}\n\n"
         f"Before you {action}, audit it with the agency agents — run the `audit-agency` skill. "
@@ -397,6 +564,76 @@ def main() -> None:
         deny(
             "The audit receipt matches HEAD, but the working tree's content has changed since — "
             "those edits are not covered by it.",
+            action,
+        )
+
+    # The grounding half of the review (T-156). `record-receipt.sh` already
+    # refuses to WRITE a receipt without a valid marker, so reading the key
+    # alone would only catch a receipt that script did not write — and a
+    # hand-written one sets "ok" as easily as it omits it. So re-verify the
+    # artifact here, from the values just computed.
+    grounding = receipt.get("grounding")
+    if grounding is None:
+        deny(
+            "The audit receipt predates the grounding check, or was not written by "
+            "record-receipt.sh. Re-record it: .claude/skills/audit-agency/record-receipt.sh",
+            action,
+        )
+    elif grounding == "skipped":
+        # A skip still leaves a marker — run-grounding.sh writes one on that path
+        # too — so it is verified like any other. Before this, `skipped` needed
+        # nothing but the word: no marker, no log, no digest. That made the
+        # hatch's artifact cheaper to obtain than a real pass AND able to
+        # certify one, which is the false green this rebuild exists to close.
+        marker = load_marker(repo, action)
+        if marker.get("skipped") is not True:
+            deny(
+                "The receipt records a skipped grounding pass, but its marker does not. "
+                "Re-run run-grounding.sh and re-record the receipt.",
+                action,
+            )
+        verify_marker_binding(marker, head, tree, repo, action)
+        # Allowed, and loud. Refusing would leave REELMAP_SKIP_AUDIT=1 as the
+        # only exit — which skips this whole gate and leaves no artifact at all,
+        # trading a recorded skip for an invisible one.
+        warn(
+            "The grounding pass was SKIPPED for this tree, so the scripted half of the review "
+            "(gitleaks, semgrep, osv-scanner, actionlint, hadolint, shellcheck) did not run. "
+            "The PR body must say so."
+        )
+    elif grounding == "ok":
+        marker = load_marker(repo, action)
+        verify_marker_binding(marker, head, tree, repo, action)
+        # Every property check-grounding.py refuses on. Checking fewer here
+        # than there would mean a marker record-receipt.sh would have rejected
+        # still walks past the push guard — and this block exists precisely
+        # because a receipt can claim more than its marker supports.
+        if marker.get("skipped") is not False:
+            deny(
+                "The receipt says the grounding pass ran, but its marker records a skip. "
+                "Re-run run-grounding.sh and re-record the receipt.",
+                action,
+            )
+        # DERIVED from the diff and the log, not read from the marker. Both
+        # operands used to come out of the file the writer wrote, so they could
+        # never disagree with it: `"required_tools": []` beside a log saying
+        # gitleaks was not installed passed both readers.
+        try:
+            log_text = open(os.path.join(repo, GROUNDING_LOG), errors="replace").read()
+        except OSError:
+            log_text = ""
+        missing = required_tools(changed_files(repo, marker.get("base") or "")) & skipped_tools(log_text)
+        if missing:
+            deny(
+                "The grounding pass skipped " + ", ".join(sorted(missing)) + ", which this diff "
+                "requires. Install and re-run run-grounding.sh — a pass that skipped what the "
+                "diff called for certifies nothing.",
+                action,
+            )
+    else:
+        deny(
+            f"The audit receipt records an unrecognised grounding state {str(grounding)[:40]!r}. "
+            "Re-record the receipt.",
             action,
         )
 
