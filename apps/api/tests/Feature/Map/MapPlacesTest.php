@@ -45,11 +45,17 @@ it('answers the whole map response from ONE instant', function () {
     //     which is self-consistent and green.
     //
     // So the fixture alternates instead: one-minute open windows every other
-    // minute, and a clock that advances one minute per call. Now ANY two
-    // distinct instants disagree about this place, wherever the sequence starts
-    // — the test cannot be satisfied by luck, only by every reader sharing one.
+    // minute, and a clock that advances one minute per call. CONSECUTIVE reads
+    // therefore always disagree about this place — and in the broken version the
+    // count's `now()` and the rows' `now()` are consecutive, with nothing
+    // between them that touches the clock, so the starting offset does not
+    // matter. (Readers an even number of calls apart would agree; none are.)
+    //
+    // Fourteen windows, not more: `OpeningSchedule::salvage()` slices to
+    // MAX_PERIODS = 14, so a longer list would be silently truncated and the
+    // fixture would not be what the code below reads.
     $periods = [];
-    for ($i = 0; $i < 20; $i++) {
+    for ($i = 0; $i < 14; $i++) {
         $open = 19 * 60 + $i * 2;
         $periods[] = [
             'open_day' => 2,
@@ -93,9 +99,16 @@ it('answers the whole map response from ONE instant', function () {
         expect($pins[0]['open_state']['open_now'])->toBeTrue();
     }
 
-    // And the clock really did move — otherwise this is the frozen version
-    // again, passing for the reason review already rejected.
-    expect($calls)->toBeGreaterThan(1);
+    // The clock really did move — otherwise this is the frozen version again,
+    // passing for the reason review already rejected.
+    expect($calls)->toBeGreaterThan(1)
+        // ...and it stayed inside the alternating window. The last one opens at
+        // 19:26, so past tick 26 every reader says "closed", all three agree,
+        // and this test would go quietly green against any implementation. That
+        // is the third way a version of this test has managed to stop biting, so
+        // the horizon is asserted rather than assumed: if something upstream
+        // starts reading the clock more, this fails loudly instead.
+        ->and($calls)->toBeLessThan(26);
 
     Carbon::setTestNow();
 });
