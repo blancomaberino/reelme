@@ -42,6 +42,27 @@ use Illuminate\Support\Facades\Schema;
  * distance path is bounded by `near` + `radius_m` alone. Both statements are
  * needed, and only the first one was here.
  *
+ * AND `<->` IS NOT THE DROP-IN THAT PARAGRAPH IMPLIES. A second review measured
+ * it on a 200k-row copy, because the sentence above was going to be the next
+ * reader's starting point:
+ *
+ *  - `ORDER BY location <-> point` alone does get a GiST index scan (3.5 ms vs
+ *    5499 ms for the current plan). Add `, id` — the tiebreaker at
+ *    `PlaceController::applySort()`, which is not optional, since a keyset needs
+ *    a total order — and the planner drops straight back to a full sort.
+ *  - The keyset predicate cannot be an index condition either, so page 2 onward
+ *    is a sequential scan whatever page 1 does.
+ *  - `<->` on geography is a SPHERE distance; `ST_Distance(geog, geog)` is
+ *    SPHEROID. Measured 0.23% apart on real rows. Ordering by one while the
+ *    cursor and the response's `distance_m` carry the other is a keyset
+ *    mismatch — duplicated and skipped rows at page boundaries — and converting
+ *    all three changes the metres the API returns.
+ *
+ * So the follow-up is real but it is a task, not an edit: roughly a 5x win on
+ * page one, against a distance definition change and a cursor migration. Left
+ * out of T-158 deliberately, with the numbers here so the next person starts
+ * from them rather than from the optimism of the paragraph above.
+ *
  * Column order matters and DESC does not: a btree is scanned backwards for
  * `ORDER BY … DESC` at no cost, and `(created_at, id)` is exactly the tuple the
  * cursor compares. Both columns are immutable after insert, so no UPDATE ever

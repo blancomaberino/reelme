@@ -40,6 +40,7 @@ export const en = {
   'tonight.imprecise':
     'Reelmap needs your exact location to measure distances. Turn on Precise Location in Settings.',
   'tonight.answer.locating': 'Finding where you are',
+  'tonight.answer.noLocation': 'Nothing to show yet',
   'tonight.answer.looking': 'Looking around you',
   'tonight.openNow': 'Open now',
   'tonight.zone': '{{km}} km',

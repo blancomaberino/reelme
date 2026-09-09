@@ -99,8 +99,19 @@ export async function clearPersistedQueryCache(): Promise<void> {
  *
  * Everything else — other users' profiles, the feed, search results, the tag
  * catalog, Tonight, share-pipeline status — stays memory-only. The discovery
- * surfaces are memory-only DELIBERATELY, and doubly so for the ones keyed by
- * the viewer's position: a rehydrated "open now" list is a fabricated open.
+ * surfaces are memory-only DELIBERATELY: a rehydrated "open now" list is a
+ * fabricated open.
+ *
+ * What this function can and cannot promise. It reads the KEY, so it keeps a
+ * query whose key carries the viewer's position off disk — that was T-158's bug
+ * and it is closed. It does not read the VALUE, and review found the gap that
+ * leaves: the own-scope map IS persisted, and each pin in that payload carries
+ * `lat`/`lng` at 6 dp beside `distance_m` at 0.1 m, which trilaterates the
+ * viewer's own position out of a payload that never mentions it. Pre-existing —
+ * T-156 added the distances, T-103 the persistence — and not something a rule
+ * about key shapes can see. Recorded rather than fixed here: closing it means
+ * either stripping `distance_m` on dehydrate or dropping `near` from the
+ * mine-scoped map, both of which change what the offline map can show.
  */
 export function isPersistableKey(key: readonly unknown[]): boolean {
   const [head, second] = key;

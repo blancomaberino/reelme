@@ -325,6 +325,27 @@ class PlaceController extends Controller
                 [$dist, $point] = PlaceQueryBuilder::distanceFrom($near);
                 $query->orderByRaw("{$dist} ASC, id ASC", $point);
                 if ($cursor !== null) {
+                    // A float binding, deliberately, and the reasoning is worth
+                    // keeping because review raised the opposite and it took
+                    // measurement to settle. PHP renders a float binding as
+                    // `PDO::PARAM_STR` at `precision=14` while `json_encode`
+                    // wrote the cursor at `serialize_precision=-1` (up to 17), so
+                    // a distance needing 15+ significant digits WOULD come back
+                    // smaller than the row it came from, and that row would
+                    // repeat at the top of the next page.
+                    //
+                    // It cannot happen here: PostGIS `ST_Distance` on geography,
+                    // read back through this driver, yields values whose shortest
+                    // exact form is at most 14 significant digits. Measured over
+                    // 500 geodesic distances spanning ~800 km — max 14 digits,
+                    // zero round-trip mismatches — and a `%.17G` + `::double
+                    // precision` version of this line could not be made to differ
+                    // on any of them. A guard nothing can make bite is not a
+                    // guard, so it was not kept.
+                    //
+                    // What WOULD reopen it: `extra_float_digits` moving, or the
+                    // distance expression changing to one with a wider range
+                    // (the `<->` KNN follow-up below is such a change).
                     $query->whereRaw("({$dist}, id) > (?, ?)", [...$point, (float) $cursor[0], KeysetCursor::intKey($cursor[1])]);
                 }
                 break;

@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\Place;
 use App\Services\Places\OpenPeriodMaterializer;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -73,6 +74,8 @@ class PlaceObserver
 
     private function project(Place $place, bool $isInsert = false): void
     {
+        $depth = DB::transactionLevel();
+
         try {
             // Resolved HERE rather than constructor-injected: Laravel re-resolves
             // an observer on every event dispatch, so autowiring would build a
@@ -81,10 +84,30 @@ class PlaceObserver
         } catch (Throwable $e) {
             // Derived data with a rebuild path (`reelmap:open-periods:backfill`)
             // must never fail the enrichment or edit that produced the hours.
-            // Safe to swallow only because the materializer wraps both paths in
-            // its own transaction, so the failure rolls back to a SAVEPOINT and
-            // the caller's transaction survives.
+            // The materializer wraps both paths in its own transaction, so an
+            // ordinary failure rolls back to a SAVEPOINT and the caller's
+            // transaction survives — which is what makes swallowing safe.
             //
+            // It is NOT safe for every failure, and this guard is the difference.
+            // `ManagesTransactions::handleTransactionException()` takes an early
+            // branch for a concurrency error inside a nested transaction: it
+            // decrements the counter and rethrows WITHOUT issuing `ROLLBACK TO
+            // SAVEPOINT`. So a deadlock — or a dropped connection, which that
+            // helper also classifies as concurrency — leaves the caller's
+            // Postgres transaction in the aborted state, and swallowing meant the
+            // next statement died with a 25P02 whose real cause was in a log line
+            // nobody was reading. Precisely the poisoning the paragraph above
+            // claims to prevent, arriving through the one path that skips the
+            // savepoint.
+            //
+            // The transaction depth is the honest test, rather than a list of
+            // exception classes to keep in step with the framework: if it did not
+            // come back to where it started, the savepoint did not do its job and
+            // this failure is not ours to swallow.
+            if (DB::transactionLevel() !== $depth) {
+                throw $e;
+            }
+
             // The log line is the load-bearing half: a retry only heals this by
             // accident, when the next write happens to touch the same columns.
             report($e);

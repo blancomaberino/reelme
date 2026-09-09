@@ -8,6 +8,7 @@ import {
   type RefusalReason,
   requestLocationPermission,
   VIEWER_FIX_BOUNDS,
+  VIEWER_FIX_MAX_AGE_MS,
 } from './location';
 
 /**
@@ -150,14 +151,25 @@ export async function locateUser(): Promise<
   // that a retry can never substitute for. Without this branch those users got
   // a "try again" button that was guaranteed to fail, forever, at 5 s a tap.
   //
-  // {@link lastKnownRegion} and not `getUserRegion` — see its docblock for why
-  // reading the cache is the whole job here. Unbounded, so the question it
-  // answers is "is there a position at all". Its result CLASSIFIES and is never
-  // returned: a fix refused as too coarse must not reach a caller that is about
-  // to render metres from it.
-  const anyFix = await lastKnownRegion();
+  // Which BOUND failed, not "is there a fix at all". `VIEWER_FIX_BOUNDS` carries
+  // two, and the first version of this probe was unbounded — so it could not
+  // tell a coarse fix from a stale one and called both `imprecise`. Review found
+  // the case: a good fix from ten minutes ago, refused on AGE, with the fresh
+  // read timing out indoors. The unbounded probe handed back that same precise
+  // reading and the screen told a user whose Precise Location is already on to
+  // go and turn it on, hiding the retry that would have worked.
+  //
+  // Keeping `maxAge` and dropping only `requiredAccuracy` asks the exact
+  // question: is there a CURRENT fix that we refused for its precision? Yes is
+  // `imprecise` — Settings, because no retry can improve it. No means there is
+  // no usable current fix at all, which is `unavailable` and a retry that can
+  // genuinely succeed once the user steps outside.
+  //
+  // Its result CLASSIFIES and is never returned: a fix refused as too coarse
+  // must not reach a caller that is about to render metres from it.
+  const currentFix = await lastKnownRegion({ maxAge: VIEWER_FIX_MAX_AGE_MS });
 
-  return { ok: false, reason: anyFix ? 'imprecise' : 'unavailable' };
+  return { ok: false, reason: currentFix ? 'imprecise' : 'unavailable' };
 }
 
 /**

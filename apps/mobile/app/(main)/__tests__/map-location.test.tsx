@@ -417,10 +417,13 @@ describe('locate control', () => {
     // permission is on, and "location is off for Reelmap" sends them hunting for
     // a switch that is already flipped.
     jest.useFakeTimers();
-    // A cached reading exists but is ~2 km — iOS with Precise Location off. The
-    // bounded read refuses it; the unbounded probe sees it and classifies.
-    lastKnown.mockImplementation(async (options?: { requiredAccuracy?: number }) =>
-      options?.requiredAccuracy !== undefined
+    // A CURRENT reading that is ~2 km coarse — iOS with Precise Location off.
+    // The mock applies the accuracy bound the way the device does and leaves the
+    // age bound satisfied; keying it on "any bound at all" would also agree with
+    // a classifier that cannot tell a coarse fix from a stale one, which is the
+    // bug this arm was written after.
+    lastKnown.mockImplementation(async (options?: { maxAge?: number; requiredAccuracy?: number }) =>
+      options?.requiredAccuracy !== undefined && options.requiredAccuracy < 2_000
         ? null
         : ({ coords: { latitude: 1, longitude: 2, accuracy: 2_000 } } as never),
     );

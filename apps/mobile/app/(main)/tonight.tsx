@@ -100,11 +100,18 @@ export default function TonightScreen() {
   // explain the dials change for a reason that has nothing to do with them, so
   // a set with more pages behind it is stated as unbounded.
   const answerKey = `tonight.answer.${openNow ? 'open' : 'any'}${list.hasNextPage ? 'More' : ''}` as const;
-  const answer = !at
-    ? t('tonight.answer.locating')
-    : list.isPending
-      ? t('tonight.answer.looking')
-      : t(answerKey, { count: places.length, km: zone / 1000 });
+  // `blocked` first, for the same reason the body puts it first: `at` is null
+  // for EVERY refusal, not only while we are still looking, so branching on it
+  // alone had the header saying "Finding where you are" beside a body that had
+  // already given up and was offering Settings. The screen must not claim to be
+  // doing something it has stopped doing.
+  const answer = blocked
+    ? t('tonight.answer.noLocation')
+    : !at
+      ? t('tonight.answer.locating')
+      : list.isPending
+        ? t('tonight.answer.looking')
+        : t(answerKey, { count: places.length, km: zone / 1000 });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

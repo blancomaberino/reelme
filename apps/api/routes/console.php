@@ -55,6 +55,33 @@ Schedule::command('reelmap:offers:reconcile-quotas')
         'command' => 'reelmap:offers:reconcile-quotas',
     ]));
 
+// T-158: rebuild the open-hours projection nightly.
+//
+// `PlaceObserver` maintains `place_open_periods` on every write, and on failure
+// it logs `open_periods.materialize_failed` and lets the enrichment succeed —
+// derived data must not take down the write that produced it. That leaves drift
+// with no way back: the observer's own comment concedes "a retry only heals this
+// by accident, when the next write happens to touch the same columns", and the
+// deploy-time backfill only runs at a deploy.
+//
+// The drift is invisible from both ends, which is what makes a schedule the
+// right answer rather than a nicety. The place keeps showing a correct "Open"
+// cue on its detail screen — that is computed in PHP from the jsonb — while
+// being absent from every `?open_now=1` listing. Nobody looking at either
+// surface can tell, and Tonight is exactly the surface that would quietly stop
+// showing a venue that is open.
+//
+// Same nightly window as the two audits above and the same `onFailure` line, for
+// the same reason: `schedule:run` discards the exit code, so without it a
+// backfill that failed reaches nobody.
+Schedule::command('reelmap:open-periods:backfill')
+    ->dailyAt('04:00')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->onFailure(fn () => Log::error('open_periods.backfill_failed', [
+        'command' => 'reelmap:open-periods:backfill',
+    ]));
+
 // T-050: the fail-safe behind account deletion. The delayed PurgeUserData job
 // is the fast path, not the guarantee — a flushed Redis or a failed job is an
 // erasure that silently never happens, and nothing else would ever notice.

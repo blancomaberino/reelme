@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Places\OpenPeriodMaterializer;
 use App\Services\Places\PlaceEditor;
 use App\Support\OpeningSchedule;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -323,7 +324,7 @@ it('agrees with the cue on every shape, because both read one implementation', f
     // A full week, every 30 minutes: 336 instants across all nine shapes.
     $cursor = new DateTimeImmutable('2026-09-06 00:00', $zone); // a Sunday
     for ($i = 0; $i < 336; $i++) {
-        $at = $cursor->modify("+{$i} minutes")->modify('+'.($i * 29).' minutes');
+        $at = $cursor->modify('+'.($i * 30).' minutes');
         $listed = Place::query()->openNow($at)->pluck('id')->all();
 
         foreach ($places as $label => $place) {
@@ -418,6 +419,44 @@ it('never fails the write that produced the hours, and says so in the log', func
     // enrichment down with it.
     expect(Place::query()->whereKey($place->id)->exists())->toBeTrue();
     Log::shouldHaveReceived('warning')->with('open_periods.materialize_failed', ['place_id' => $place->id]);
+});
+
+it('does NOT swallow a failure that left the caller transaction unusable', function () {
+    // The other side of the swallow, and the case review found in the framework
+    // rather than in this file. `handleTransactionException()` takes an early
+    // branch for a concurrency error inside a NESTED transaction: it decrements
+    // the counter and rethrows without issuing `ROLLBACK TO SAVEPOINT`. The
+    // savepoint that makes swallowing safe never happens, so the caller's
+    // transaction is aborted, and swallowing turned that into a 25P02 on the
+    // caller's next statement with the real cause hidden in a log line.
+    //
+    // Simulated at the seam that matters — a materializer that opens a
+    // transaction, throws, and leaves the depth raised — because the assertion
+    // is about the DEPTH not returning, not about which exception class caused
+    // it. A framework that starts classifying a new error the same way is then
+    // covered by this test without anyone editing a list.
+    Log::spy();
+
+    $this->mock(OpenPeriodMaterializer::class, function ($mock) {
+        $mock->shouldReceive('materialize')->andReturnUsing(function () {
+            DB::beginTransaction();
+
+            throw new RuntimeException('deadlock detected');
+        });
+    });
+
+    expect(fn () => placeWithHours([period(1, '11:00', 1, '23:00')]))
+        ->toThrow(RuntimeException::class, 'deadlock detected');
+
+    // And it is not ALSO reported as a survivable projection failure: the write
+    // did not survive, and a warning saying otherwise is what sent the last
+    // reader looking in the wrong place.
+    Log::shouldNotHaveReceived('warning', ['open_periods.materialize_failed']);
+
+    // Leave the connection as this test found it.
+    while (DB::transactionLevel() > 0) {
+        DB::rollBack();
+    }
 });
 
 // ---------------------------------------------------------------------------
@@ -808,6 +847,35 @@ it('repairs rows that went STALE, not only rows that went missing', function () 
     expect(PlaceOpenPeriod::query()->where('place_id', $place->id)->value('open_minute'))->toBe(1 * 1440 + 9 * 60);
 });
 
+it('rebuilds the projection on a schedule, not only at deploy', function () {
+    // The observer swallows a materialize failure so the enrichment that
+    // produced the hours still succeeds — which leaves drift with no way back:
+    // "a retry only heals this by accident", as its own comment says, and the
+    // deploy-time backfill only runs at a deploy.
+    //
+    // Nothing surfaces that drift either: the place keeps rendering a correct
+    // "Open" cue on its detail screen, computed in PHP from the jsonb, while
+    // being absent from every `?open_now=1` listing. So the schedule is the
+    // repair path, and a command nobody runs is not one.
+    //
+    // Asserted on the OBSERVABLE schedule rather than on the line in
+    // `console.php`: both flags matter, because this rewrites the whole table
+    // and two hosts doing it at once is waste at best.
+    //
+    // The `onFailure` alert is deliberately NOT asserted here: it is stored in a
+    // protected `afterCallbacks` with no accessor, and reaching into that would
+    // pin the framework's internals rather than our behaviour — the failure this
+    // repo calls a wrong-reason guard. The sibling audits scheduled beside this
+    // one carry the same alert with the same gap.
+    $events = collect(app(Schedule::class)->events())
+        ->filter(fn ($e) => str_contains((string) $e->command, 'reelmap:open-periods:backfill'));
+
+    expect($events)->toHaveCount(1)
+        ->and($events->first()->onOneServer)->toBeTrue()
+        ->and($events->first()->withoutOverlapping)->toBeTrue()
+        ->and($events->first()->expression)->toBe('0 4 * * *');
+});
+
 it('refuses a span that would match every instant', function () {
     // The predicate `((now - open + 10080) % 10080) < close - open` is only
     // equivalent to "is now inside this span" while the span is at most a week.
@@ -821,6 +889,27 @@ it('refuses a span that would match every instant', function () {
         'place_id' => $place->id,
         'open_minute' => 0,
         'close_minute' => 20000,
+        'timezone' => 'UTC',
+    ]))->toThrow(QueryException::class);
+});
+
+it('refuses an open_minute outside the week, which matches every instant too', function () {
+    // The sibling above bounds the SPAN. This bounds the operand the span check
+    // cannot see, and review found it by inserting exactly this row: span 100,
+    // so the span clause accepts it — and then Postgres's `%` takes the sign of
+    // the dividend, `now - 20000 + 10080` is negative, and the containment test
+    // is trivially true. Same "closed venue in every listing forever" outcome,
+    // through the operand nothing constrained.
+    //
+    // A span of 100 minutes, deliberately: it has to pass the other clause, or
+    // this test would go green against a constraint that never mentions
+    // `open_minute`.
+    $place = placeWithHours(null, null);
+
+    expect(fn () => PlaceOpenPeriod::query()->create([
+        'place_id' => $place->id,
+        'open_minute' => 20000,
+        'close_minute' => 20100,
         'timezone' => 'UTC',
     ]))->toThrow(QueryException::class);
 });

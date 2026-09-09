@@ -30,6 +30,26 @@ const watchEmits = (coords: { latitude: number; longitude: number } | null) =>
   });
 
 
+type FixOptions = { maxAge?: number; requiredAccuracy?: number } | undefined;
+
+/**
+ * `getLastKnownPositionAsync` as the DEVICE implements it: one stored reading,
+ * withheld when it fails a bound the caller asked for.
+ *
+ * Written once because the two classification tests below are only meaningful
+ * against a mock that applies both bounds independently — one that checks only
+ * the bound the test is about will agree with any implementation, including the
+ * broken one.
+ */
+const staleOrCoarse = (
+  fix: { ageMs: number; accuracy: number },
+  options: FixOptions,
+) =>
+  (options?.maxAge !== undefined && fix.ageMs > options.maxAge) ||
+  (options?.requiredAccuracy !== undefined && fix.accuracy > options.requiredAccuracy)
+    ? null
+    : ({ coords: { latitude: FIX_LAT, longitude: FIX_LNG, accuracy: fix.accuracy } } as never);
+
 const SAVED = { latitude: 51.5, longitude: -0.12, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
 // Madrid — the fix jest.setup hands back by default.
@@ -269,16 +289,31 @@ describe('locateUser', () => {
     // fail on every tap, at 5s of GPS each — which is what shipped until review
     // caught it. `imprecise` is the reason that sends them to Settings instead.
     //
-    // The classification probe is the unbounded read, so the cached fix has to
-    // be coarse rather than absent: present, and refused for its accuracy.
-    lastKnown.mockImplementation(async (options?: { requiredAccuracy?: number }) =>
-      options?.requiredAccuracy !== undefined
-        ? null
-        : ({ coords: { latitude: 1, longitude: 2, accuracy: 2_000 } } as never),
+    // The mock honours BOTH bounds, as the device does. Keying it on
+    // `requiredAccuracy` alone — which is what this test did first — encodes the
+    // very assumption under test, that accuracy is the only reason the bounded
+    // read can fail, and makes the stale case below inexpressible.
+    lastKnown.mockImplementation(async (options?: FixOptions) =>
+      staleOrCoarse({ ageMs: 0, accuracy: 2_000 }, options),
     );
     watchEmits(null);
 
     expect(await locateUser()).toEqual({ ok: false, reason: 'imprecise' });
+  });
+
+  it('reports a STALE but precise fix as "unavailable", so the retry stays', async () => {
+    // The mirror of the case above, and the bug the first version of the
+    // classifier shipped: it probed UNBOUNDED, so a good fix from ten minutes
+    // ago — refused on age, with the fresh read timing out indoors — came back
+    // as `imprecise`. The screen then told a user whose Precise Location is
+    // already on to go and turn it on, and took away the retry that would have
+    // worked. Precision is not the failing bound here; recency is.
+    lastKnown.mockImplementation(async (options?: FixOptions) =>
+      staleOrCoarse({ ageMs: 10 * 60_000, accuracy: 5 }, options),
+    );
+    watchEmits(null);
+
+    expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
   });
 
   it('still reports "unavailable" when there is no fix to be had at any precision', async () => {

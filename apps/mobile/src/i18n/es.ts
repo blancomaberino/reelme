@@ -36,6 +36,7 @@ export const es: Record<MessageKey, string> = {
   'tonight.imprecise':
     'Reelmap necesita tu ubicación exacta para medir distancias. Activá Ubicación precisa en Ajustes.',
   'tonight.answer.locating': 'Buscando dónde estás',
+  'tonight.answer.noLocation': 'Todavía no hay nada para mostrar',
   'tonight.answer.looking': 'Mirando cerca tuyo',
   'tonight.openNow': 'Abierto ahora',
   'tonight.zone': '{{km}} km',

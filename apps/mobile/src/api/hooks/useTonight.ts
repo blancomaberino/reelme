@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 
 import { nearParam, type Region } from '@/lib/geo';
 
@@ -59,6 +59,9 @@ async function fetchPage(q: TonightQuery, cursor: string | null): Promise<Pagina
   return data;
 }
 
+/** The API's floor on `?dish=`; below it the filter is dropped rather than sent. */
+export const MIN_DISH_QUERY = 3;
+
 /**
  * "Where do I eat, here, now" (T-158) — zone × dish × open-now, around the
  * viewer, nearest first.
@@ -72,8 +75,6 @@ async function fetchPage(q: TonightQuery, cursor: string | null): Promise<Pagina
  * Disabled without a fix. "Near you" with no position is either an empty screen
  * or a list from somewhere the diner is not, and the second is worse.
  */
-export const MIN_DISH_QUERY = 3;
-
 export function useTonight(q: TonightQuery) {
   const dish = q.dish.trim().length >= MIN_DISH_QUERY ? q.dish.trim() : '';
   const effective: TonightQuery = { ...q, dish };
@@ -85,6 +86,14 @@ export function useTonight(q: TonightQuery) {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.meta.pagination.next_cursor,
     enabled: near !== null,
+    // Every dial is in the key, so every tap switches to a query with no data —
+    // and without this the list unmounts to a spinner on each one, which is an
+    // odd thing for controls whose whole job is to refine the list in place. The
+    // two sibling discovery surfaces already do this and say why (`useMapPlaces`
+    // keeps its pins, `useSearch` its results); Tonight is the third of that
+    // family and the one that did not reuse it. It covers the position too: a
+    // fix that drifts past the ~11 m quantum re-keys the query.
+    placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
 }

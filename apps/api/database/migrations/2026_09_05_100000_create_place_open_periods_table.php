@@ -111,9 +111,20 @@ return new class extends Migration
         // row with a longer span matches EVERY instant, so one bad insert puts a
         // closed venue in every "open now" listing forever. The smallint type
         // bounds these columns at 32767, which is not the same statement.
+        //
+        // `open_minute` needs bounding for the same reason and did not have it,
+        // which review caught by inserting (20000, 20100): span 100, so the
+        // clause above accepts it — and then Postgres's `%` follows the sign of
+        // the DIVIDEND, so `now - 20000 + 10080` is negative, the containment
+        // test is trivially true, and the row matches every instant. Exactly the
+        // failure the paragraph above describes, through the operand it did not
+        // constrain. The scope's own comment asserts "the addend keeps the
+        // dividend positive"; that is only true while `open_minute <= 10080`,
+        // and now it is enforced rather than assumed.
         DB::statement(
             'ALTER TABLE place_open_periods ADD CONSTRAINT place_open_periods_span_check '
-            .'CHECK (close_minute > open_minute AND close_minute - open_minute <= 10080)'
+            .'CHECK (open_minute >= 0 AND open_minute < 10080 '
+            .'AND close_minute > open_minute AND close_minute - open_minute <= 10080)'
         );
     }
 
