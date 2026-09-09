@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use App\Exceptions\Contracts\ApiError;
 use App\Services\AI\Exceptions\QuotaExhausted;
 use Exception;
 use Illuminate\Support\Carbon;
@@ -32,7 +33,7 @@ use Illuminate\Support\Carbon;
  * Mapped to the standard error envelope by {@see ApiExceptionRenderer}, exactly
  * like {@see ClaimException}.
  */
-class DailyQuotaExceeded extends Exception
+class DailyQuotaExceeded extends Exception implements ApiError
 {
     /**
      * @param  array<string, mixed>  $details

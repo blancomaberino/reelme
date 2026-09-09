@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use App\Exceptions\Contracts\ApiError;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -23,9 +24,20 @@ use Throwable;
  */
 class ApiExceptionRenderer
 {
+    /**
+     * Whether this renderer speaks for the given request. Asked, not copied:
+     * the report rule in bootstrap/app.php uses the same classification, and a
+     * second hand-written `is('api/*')` would silence the wrong surface the
+     * first time the prefix moved, with nothing failing.
+     */
+    public static function handles(?Request $request): bool
+    {
+        return $request?->is('api/*') ?? false;
+    }
+
     public static function render(Throwable $e, Request $request): ?JsonResponse
     {
-        if (! $request->is('api/*')) {
+        if (! self::handles($request)) {
             return null;
         }
 
@@ -53,18 +65,40 @@ class ApiExceptionRenderer
     }
 
     /**
+     * How this exception is CLASSIFIED, expressed as the status an API response
+     * would carry — NOT what `render()` returns for a given request, which is
+     * null outside `api/*`. Pair it with `handles()` before treating it as
+     * policy for a surface this renderer does not serve.
+     *
+     * Exposed so the report rule can ask one question of the mapping instead of
+     * keeping a second list of classes beside it; bootstrap/app.php carries the
+     * incident that made that necessary.
+     */
+    public static function statusFor(Throwable $e): int
+    {
+        // An ApiError is asked directly rather than routed through `map()`,
+        // which builds the whole envelope — message and `details()` included —
+        // to return element [0]. `details()` is implementor-supplied and this
+        // runs on the REPORT path for every handled exception, so a future
+        // implementation that lazy-loads a relation would put a query behind
+        // every 4xx. Asking `status()` removes the constraint instead of
+        // documenting it.
+        return $e instanceof ApiError ? $e->status() : self::map($e)[0];
+    }
+
+    /**
      * @return array{0: int, 1: string, 2: string, 3: array<string, mixed>}
      */
     private static function map(Throwable $e): array
     {
         return match (true) {
             $e instanceof ValidationException => [422, 'validation_failed', $e->getMessage(), $e->errors()],
-            $e instanceof EmailNotVerifiedException => [403, 'email_not_verified', $e->getMessage(), $e->details()],
-            $e instanceof AgeRestrictedException => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
-            $e instanceof ClaimException => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
-            $e instanceof RedemptionInvalid => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
-            $e instanceof PayoutFailed => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
-            $e instanceof DailyQuotaExceeded => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
+            // One arm for every exception that states its own meaning. Naming
+            // the classes here is what let a new one be forgotten and rendered
+            // as a 500 — and, once the report rule started asking this mapping,
+            // reported as a fault too. The framework arms below stay explicit:
+            // they are not ours to make implement anything.
+            $e instanceof ApiError => [$e->status(), $e->errorCode(), $e->getMessage(), $e->details()],
             $e instanceof AuthenticationException => [401, 'unauthenticated', 'Unauthenticated.', []],
             $e instanceof AuthorizationException, $e instanceof AccessDeniedHttpException => [403, 'forbidden', 'This action is unauthorized.', []],
             $e instanceof ModelNotFoundException, $e instanceof NotFoundHttpException => [404, 'not_found', 'Resource not found.', []],

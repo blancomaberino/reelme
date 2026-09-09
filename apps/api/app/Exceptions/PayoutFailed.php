@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use App\Exceptions\Contracts\ApiError;
 use Exception;
 
 /**
@@ -12,7 +13,7 @@ use Exception;
  * different instructions, and a single "payout failed" teaches an influencer to
  * keep tapping the button.
  */
-class PayoutFailed extends Exception
+class PayoutFailed extends Exception implements ApiError
 {
     /**
      * @param  array<string, mixed>  $details

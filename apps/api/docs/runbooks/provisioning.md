@@ -87,10 +87,20 @@ effectively infinite — a compliance failure that produces no error anywhere.
 The same cron carries the GDPR deletion sweep, which is the *fail-safe* behind
 account erasure (the delayed job is the fast path, not the guarantee).
 
-**Every scheduled command uses `onOneServer()`**, which takes a lock in the
-**cache** store. On more than one app server with `CACHE_STORE=file`, each box
-holds its own lock and every job runs once per server — the payout run being the
-one where that is expensive.
+**Every scheduled command uses `onOneServer()` except `reelmap:logs:prune`.**
+`onOneServer()` takes a lock in the **cache** store, so on more than one app
+server with `CACHE_STORE=file` each box holds its own lock and every job runs
+once per server — the payout run being the one where that is expensive.
+`reelmap:logs:prune` takes NO lock at all; do not read this paragraph as a
+promise that some other host prunes this one's files.
+
+`reelmap:logs:prune` is the deliberate exception, because it sweeps per-machine
+FILES: every box must prune its own. It therefore carries neither
+`onOneServer()` nor `withoutOverlapping()` — the overlap mutex is keyed on
+`sha1(expression + command)` in the same shared store, with no host component,
+so it would silently do what `onOneServer()` does. Two overlapping runs on one
+box are harmless (a glob and some unlinks); a fleet where only one box prunes
+is not.
 
 Horizon runs as a daemon (`php artisan horizon`) under a process supervisor.
 Its supervisors and queues are already defined in `config/horizon.php`; a
@@ -143,8 +153,60 @@ php artisan tinker --execute="dd(DB::select('select postgis_version()'));"
 # the coordinates are in the web server's access log as well as the app's.
 # `LogRetentionTest` covers the app side; nothing in this repo can see the other.
 php artisan tinker --execute="dd(config('logging.channels.stack.channels'));"  # expect ["daily"]
-ls storage/logs/laravel.log 2>/dev/null && echo "PRUNE ME: pre-daily file, never rotated"
-grep -rl "$(php -r 'echo "access";')" /etc/logrotate.d/ || echo "NO LOGROTATE FOR THE ACCESS LOG — the policy claim is false here"
+php artisan schedule:list | grep logs:prune   # the sweep that ENFORCES the window
+
+# The app side is now enforced by `reelmap:logs:prune` (dated files and the
+# pre-daily `laravel.log` alike), so what is left to check by hand is the sink
+# this repository cannot see. Find the destination the RUNNING web server writes
+# to, then check that specific file — a rule matching some other vhost's log is
+# not a rule for this one, and a server logging to stdout is journald's problem,
+# not logrotate's.
+# "No web server here" and "logs to stdout" are different answers, so settle
+# which box you are on BEFORE reading anything below. `nginx -T` needs root.
+if ! command -v nginx >/dev/null && ! command -v caddy >/dev/null; then
+  echo "NO WEB SERVER BINARY HERE — run this on the box that terminates TLS, and stop reading."
+else
+
+# EVERY active destination, not the first. `nginx -T` prints all vhosts and a
+# shared box has several; taking the first would validate somebody else's log
+# and leave this app's outside the retention policy. Strip the directive's
+# trailing semicolon, or every grep below searches for a filename that cannot
+# exist. Narrow to the app's server_name if this host serves more than Reelmap.
+ACCESS_LOGS=$(sudo nginx -T 2>/dev/null \
+  | awk '$1=="access_log" && $2!="off" {sub(/;$/,"",$2); print $2}' | sort -u)
+# Caddy keeps it in the adapted config, not the environment.
+ACCESS_LOGS=${ACCESS_LOGS:-$(caddy adapt --config /etc/caddy/Caddyfile 2>/dev/null \
+  | grep -o '"filename":"[^"]*"' | cut -d'"' -f4 | sort -u)}
+echo "access logs: ${ACCESS_LOGS:-stdout/journald}"
+
+if [ -n "$ACCESS_LOGS" ]; then
+  # Each one, because one unrotated destination is enough to break the claim.
+  echo "$ACCESS_LOGS" | while read -r log; do
+    case "$log" in
+      /*) grep -rlF "$log" /etc/logrotate.d/ >/dev/null \
+            || echo "NO LOGROTATE RULE FOR $log — the policy claim is false here" ;;
+      *)  echo "NON-FILE DESTINATION $log — check it by hand" ;;
+    esac
+  done
+else
+  # journald. A CONFIGURED retention is not a COMPLIANT one: the old check
+  # passed on any MaxRetentionSec, including one longer than the window it is
+  # supposed to enforce. Compare the number.
+  WINDOW=$(( ${LOG_DAILY_DAYS:-14} * 86400 ))
+  RETENTION=$(grep -rhE '^ *MaxRetentionSec=' \
+    /etc/systemd/journald.conf /etc/systemd/journald.conf.d/ 2>/dev/null \
+    | tail -1 | cut -d= -f2 | tr -dc '0-9')
+  journalctl --disk-usage
+  if [ -z "$RETENTION" ]; then
+    echo "NO JOURNALD RETENTION LIMIT — coordinates are kept until the disk cap"
+  elif [ "$RETENTION" -gt "$WINDOW" ]; then
+    echo "JOURNALD KEEPS ${RETENTION}s, LONGER THAN THE PUBLISHED ${WINDOW}s — the policy claim is false here"
+  else
+    echo "journald retention ${RETENTION}s is within the published ${WINDOW}s"
+  fi
+fi
+
+fi
 
 # The scheduler is registered and its next runs look sane.
 php artisan schedule:list

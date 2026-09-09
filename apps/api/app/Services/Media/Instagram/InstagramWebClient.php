@@ -104,16 +104,22 @@ class InstagramWebClient
                 ])
                 ->get($url);
         } catch (\Throwable $e) {
-            // Never throw — a transport error just makes the caller fall through.
-            Log::debug('instagram_web.request_threw', ['error' => $e->getMessage()]);
+            // Never throw — a transport error just makes the caller fall
+            // through. Warning for the same reason as the branch below: the
+            // client error it becomes is not reported.
+            Log::warning('instagram_web.request_threw', ['error' => $e->getMessage()]);
 
             return null;
         }
 
         if (! $response->successful()) {
             // Expired cookie, rate limit, or a removed resource — a 4xx is the
-            // signal the cookie needs refresh. Not fatal: return null.
-            Log::debug('instagram_web.request_failed', ['status' => $response->status()]);
+            // signal the cookie needs refresh. Not fatal to the request: the
+            // caller falls through to a 422. But WARNING, not debug: the 422
+            // that follows is a client error and is no longer reported (T-156),
+            // so this line is the only durable trace that bio verification is
+            // broken for everyone until someone refreshes the session.
+            Log::warning('instagram_web.request_failed', ['status' => $response->status()]);
 
             return null;
         }

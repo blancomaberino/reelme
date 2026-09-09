@@ -4,16 +4,11 @@ use App\Exceptions\ApiExceptionRenderer;
 use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\RememberUserLocale;
 use App\Support\Observability\ErrorReporter;
-use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Auth\AuthenticationException;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Context;
-use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -46,24 +41,50 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->throttleApi('api');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Through `handles()` like the two rules below it: if the API prefix ever
+        // moves, JSON rendering and error classification must not disagree —
+        // which is exactly what a third hand-written copy of this test would do.
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => ApiExceptionRenderer::handles($request),
         );
 
-        // Forward genuine server errors to the error tracker (T-091) with the
-        // request_id (T-092) — NOT the expected client errors (validation, auth,
-        // 404, other 4xx), which are normal flow and would drown the signal.
+        /*
+         * An API client error is not a fault, so it is not reported AT ALL — no
+         * tracker event, and no framework ERROR line with a stack trace.
+         *
+         * The rule asks the renderer what the exception MEANS instead of
+         * keeping a second list of classes beside it. The list version drifted:
+         * every domain exception carrying its own `status()` — the signup age
+         * gate, email-not-verified, claim, redemption, payout, quota — is
+         * neither a ValidationException nor an HttpExceptionInterface, so all
+         * six were filed as server errors. The signup gate made that visible:
+         * the privacy policy says the only age-check record we keep is that one
+         * PASSED, while a refusal wrote a timestamped, request-id-correlated
+         * log line (and, with a DSN set, a Sentry event) saying one did not.
+         *
+         * `dontReportWhen` rather than a `return` inside the callback below,
+         * because the callback is not the only writer and it is the OTHER
+         * writer that held the trace: a report callback returning null skips
+         * our capture, and Laravel still writes its own ERROR line.
+         *
+         * Scoped to `api/*` for exactly that reason. The classification comes
+         * from a renderer that returns null for every other request, so letting
+         * it silence Filament, the legal pages, artisan and the queue would
+         * trade a privacy fix for the only record a failed admin authorization
+         * leaves. Registration is an API route, so the age gate is covered.
+         *
+         * Not the whole surface, deliberately: the queue's `JobFailed` hook in
+         * ObservabilityServiceProvider is a separate writer and still captures
+         * every failed job, whatever it maps to.
+         */
+        $exceptions->dontReportWhen(
+            fn (Throwable $e) => ApiExceptionRenderer::handles(request())
+                && ApiExceptionRenderer::statusFor($e) < 500,
+        );
+
+        // What is left is a genuine server error: forward it to the tracker
+        // (T-091) with the request_id (T-092) that ties it to the request.
         $exceptions->report(function (Throwable $e): void {
-            $expected = $e instanceof ValidationException
-                || $e instanceof AuthenticationException
-                || $e instanceof AuthorizationException
-                || $e instanceof ModelNotFoundException
-                || ($e instanceof HttpExceptionInterface && $e->getStatusCode() < 500);
-
-            if ($expected) {
-                return;
-            }
-
             app(ErrorReporter::class)->capture($e, ['request_id' => Context::get('request_id')]);
         });
 

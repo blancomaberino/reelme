@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\RetentionWindow;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
@@ -73,6 +74,50 @@ Schedule::command('reelmap:sources:prune-payloads')->dailyAt('04:10')->onOneServ
 // T-050: sweep finished data-export archives. Daily is well inside their
 // multi-day retention, and each run is a directory listing plus a few unlinks.
 Schedule::command('reelmap:gdpr:prune-exports')->dailyAt('04:30')->onOneServer()->withoutOverlapping();
+
+// T-156: enforce the log window the privacy policy publishes; PruneLogFiles
+// says why rotation alone does not.
+//
+// NEITHER onOneServer() NOR withoutOverlapping(), and the second is the subtle
+// one: logs are per-machine FILES, so every box must sweep its own — but the
+// overlap mutex is keyed on sha1(expression + command) in the SHARED cache
+// store, with no host component, so it is `onOneServer()` wearing a different
+// name. One box would take the lock and the rest would skip the run. The
+// command is a glob plus unlinks and idempotent, so two overlapping runs on one
+// box are harmless; a fleet where only one box prunes is not.
+//
+// Hourly, because a window is only as tight as the sweep that enforces it: a
+// daily pass makes the published "14 days" mean up to 15.
+Schedule::command('reelmap:logs:prune')
+    ->hourly()
+    // The command exits non-zero when a file it should have deleted survived —
+    // a permission error that `File::delete()` swallows. Without this line that
+    // exit code goes to /dev/null and the retention promise fails silently,
+    // every hour, while every other signal stays green.
+    ->onFailure(fn () => Log::error('logs.prune_failed_run', [
+        'command' => 'reelmap:logs:prune',
+    ]));
+
+// T-156: `failed_jobs.exception` holds a full stack trace and `payload` holds
+// the job's arguments — the same request data the 14-day window covers, in a
+// table nothing prunes and `DELETE /me` never reaches. A window that is true of
+// the files and false of the database is not a window.
+//
+// RetentionWindow rather than the config, because the two sinks INVERT its
+// meaning at zero: Monolog reads `days=0` as keep-forever, artisan reads
+// `--hours=0` as delete-everything-before-now. An empty `LOG_DAILY_DAYS=`
+// casts to 0, so deriving this from the raw value would have left the files
+// untouched and silently emptied the failed-job table — the record an incident
+// is reconstructed from — while reporting success. The floor lives with the
+// conversion so there is no second site to forget it at.
+Schedule::command('queue:prune-failed', ['--hours' => RetentionWindow::hours()])
+    // Hourly, matching the log sweep: a daily pass makes the published window
+    // mean up to a day longer, and the two sinks state the same promise.
+    // onOneServer() here, unlike the log sweep, because failed_jobs is one
+    // shared table rather than a file on each box.
+    ->hourly()
+    ->onOneServer()
+    ->withoutOverlapping();
 
 // T-045 / 06 §4.3: the monthly payout run, first business day. One earner's
 // failed KYC must never stop the others being paid — the command catches per

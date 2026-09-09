@@ -314,7 +314,7 @@
       When you create an account we ask for your date of birth to check you meet
       that minimum age. <strong>That date is not stored.</strong> It is used in
       the moment to make the check and then discarded — all that is recorded is
-      that a check was made, and when. It is separate from the optional date of
+      that a check was passed, and when. It is separate from the optional date of
       birth you can add to your profile, which is kept because you chose to put
       it there and can clear it whenever you like.
     </p>
