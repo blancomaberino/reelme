@@ -211,6 +211,8 @@ export const es: Record<MessageKey, string> = {
     'Activá el acceso a la ubicación en Ajustes para centrar el mapa donde estás.',
   'map.location.blocked.cta': 'Abrir Ajustes',
   'map.location.unavailable': 'No pudimos obtener tu ubicación. Probá de nuevo en un momento.',
+  'map.location.imprecise':
+    'Reelmap necesita tu ubicación exacta. Activá Ubicación precisa en Ajustes.',
 
   // Botón de filtros + hoja inferior (compartido por el mapa y Mis lugares).
   'filters.title': 'Filtros',

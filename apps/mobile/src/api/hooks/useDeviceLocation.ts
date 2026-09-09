@@ -28,6 +28,17 @@ export function useDeviceLocation() {
     // a refetch, and the walk across town is reported as "50 m" after all. One
     // rule, every reader of the state it governs — `use-viewer-position` already
     // keys off this constant, and this hook was the writer that did not.
+    //
+    // It costs GPS, and that is the trade rather than an oversight: with
+    // `refetchOnWindowFocus` on, a foreground more than two minutes after the
+    // last fix now buys a fresh acquisition where five minutes used to. The two
+    // cheaper options were both worse. `refetchOnWindowFocus: false` puts the
+    // staleness straight back — these are tab screens that never unmount, so
+    // nothing else would ever refetch them, and a half-hour-old position would
+    // be served as current. Sharing one key with `viewerPosition` is refused
+    // deliberately in `keys.ts`: that query must NEVER prompt, and this one
+    // does. Paying a radio for a screen whose whole question is "here, now" is
+    // the correct end of the trade.
     staleTime: VIEWER_FIX_MAX_AGE_MS,
     retry: false,
   });

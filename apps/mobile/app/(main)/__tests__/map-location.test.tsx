@@ -408,6 +408,42 @@ describe('locate control', () => {
     expect(screen.getByTestId('MapView')).toBeOnTheScreen();
   });
 
+  it('points a Precise-Location-off user at Settings, not at a retry', async () => {
+    // The regression this arm exists to close. When `imprecise` was added for
+    // Tonight and the offers browse, this screen's `if` chain had no case for it
+    // and fell through to the silent `denied` arm — so the one control whose
+    // contract is "never a silent no-op" became exactly that, for the users the
+    // reason was written for. The copy must NOT be the blocked banner's: their
+    // permission is on, and "location is off for Reelmap" sends them hunting for
+    // a switch that is already flipped.
+    jest.useFakeTimers();
+    // A cached reading exists but is ~2 km — iOS with Precise Location off. The
+    // bounded read refuses it; the unbounded probe sees it and classifies.
+    lastKnown.mockImplementation(async (options?: { requiredAccuracy?: number }) =>
+      options?.requiredAccuracy !== undefined
+        ? null
+        : ({ coords: { latitude: 1, longitude: 2, accuracy: 2_000 } } as never),
+    );
+    watchEmits(null);
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    render(<MapScreen />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Center on my location'));
+    });
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(5_000);
+    });
+
+    expect(alert).toHaveBeenCalledWith(
+      'Reelmap needs your exact location. Turn on Precise Location in Settings.',
+    );
+    expect(screen.queryByText('Location is off for Reelmap')).toBeNull();
+    expect(animateToRegion).not.toHaveBeenCalled();
+    alert.mockRestore();
+    jest.useRealTimers();
+  });
+
   it('explains a missing fix instead of failing silently', async () => {
     // A watch that never calls back — indoors, a tunnel, a sim with no location.
     // Since the fresh-fix path became cancellable this no longer resolves

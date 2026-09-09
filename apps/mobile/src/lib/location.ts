@@ -50,6 +50,12 @@ export const USER_REGION_DELTA = 0.02;
  */
 const FIX_TIMEOUT_MS = 5_000;
 
+/**
+ * How old and how coarse a fix may be. Optional on both ends: omitting a bound
+ * means "any", which is what the viewport path wants.
+ */
+export type FixBounds = { maxAge?: number; requiredAccuracy?: number };
+
 export type PermissionState = 'granted' | 'denied' | 'undetermined';
 
 /**
@@ -111,26 +117,24 @@ export async function requestLocationPermission(): Promise<PermissionOutcome> {
  */
 export async function getUserRegion(
   timeoutMs: number = FIX_TIMEOUT_MS,
-  bounds?: { maxAge?: number; requiredAccuracy?: number },
+  bounds?: FixBounds,
 ): Promise<Region | null> {
   const m = locationModule();
   if (!m) return null;
 
-  try {
-    // `bounds` constrains the CACHED fix, and callers that measure distances
-    // must pass it. Unbounded, `getLastKnownPositionAsync` will happily hand
-    // back a reading from another city hours ago — free when the answer only
-    // has to frame a viewport (what this function was written for), and wrong
-    // once the answer is rendered as "713 m" (T-156). Default stays unbounded
-    // so the viewport path keeps its instant, good-enough answer.
-    const last = await m.getLastKnownPositionAsync(bounds);
-    // Only RETURN a usable cached region. A bogus one (`toRegion` → null) must
-    // fall through to the fresh fix, not short-circuit it into "no location".
-    const cached = last ? toRegion(last.coords) : null;
-    if (cached) return cached;
-  } catch {
-    // Fall through to a fresh fix.
-  }
+  // `bounds` constrains the CACHED fix, and callers that measure distances must
+  // pass it. Unbounded, `getLastKnownPositionAsync` will happily hand back a
+  // reading from another city hours ago — free when the answer only has to frame
+  // a viewport (what this function was written for), and wrong once the answer
+  // is rendered as "713 m" (T-156). Default stays unbounded so the viewport path
+  // keeps its instant, good-enough answer.
+  //
+  // Only a USABLE cached region short-circuits. A bogus one (`toRegion` → null)
+  // and a throwing bridge both fall through to the fresh fix rather than
+  // becoming "no location" — which is why `lastKnownRegion` returns null for
+  // both, and why this is an `if` rather than a `return`.
+  const cached = await lastKnownRegion(bounds);
+  if (cached) return cached;
 
   try {
     // `requiredAccuracy` has to be applied HERE too, not only to the cached
@@ -157,10 +161,7 @@ export async function getUserRegion(
  *
  * Bounds are honoured, so passing none means "anything the OS still remembers".
  */
-export async function lastKnownRegion(bounds?: {
-  maxAge?: number;
-  requiredAccuracy?: number;
-}): Promise<Region | null> {
+export async function lastKnownRegion(bounds?: FixBounds): Promise<Region | null> {
   const m = locationModule();
   if (!m) return null;
 
@@ -308,14 +309,22 @@ export type RefusalPresentation = {
   openSettings: boolean;
 };
 
+const REFUSAL_PRESENTATION = {
+  // Settings is the only way forward for a permanently blocked permission and
+  // for Precise Location; `denied` can still be re-requested in-app and
+  // `unavailable` is a genuine retry, so neither goes there.
+  blocked: { tone: 'needsPermission', openSettings: true },
+  denied: { tone: 'needsPermission', openSettings: false },
+  unavailable: { tone: 'noFix', openSettings: false },
+  imprecise: { tone: 'imprecise', openSettings: true },
+  // A table rather than the chain of ternaries this started as: `satisfies`
+  // makes a fifth reason a COMPILE error here, where the old default arm would
+  // have swallowed it into "needs permission, no Settings" — silently, which is
+  // the failure this whole function exists to stop.
+} as const satisfies Record<RefusalReason, RefusalPresentation>;
+
 export function presentRefusal(reason: RefusalReason): RefusalPresentation {
-  return {
-    tone: reason === 'unavailable' ? 'noFix' : reason === 'imprecise' ? 'imprecise' : 'needsPermission',
-    // Settings is the only way forward for a permanently blocked permission and
-    // for Precise Location. `denied` can still be re-requested in-app, and
-    // `unavailable` is a retry, so neither goes there.
-    openSettings: reason === 'blocked' || reason === 'imprecise',
-  };
+  return REFUSAL_PRESENTATION[reason];
 }
 
 /**
@@ -334,6 +343,21 @@ export const VIEWER_FIX_MAX_AGE_MS = 2 * 60 * 1000;
 export const VIEWER_FIX_MAX_ACCURACY_M = 500;
 
 /**
+ * The two bounds together — the rule for "a fix someone is about to measure a
+ * DISTANCE from", as opposed to one that only has to frame a viewport.
+ *
+ * One object rather than two constants re-paired at each call site, for the
+ * reason {@link positionIfGranted} already gives about itself: a third bound
+ * added to the rule must not be able to land in one caller and not the other.
+ * It had already happened once — `locateUser` was written with the pair spelled
+ * out and `positionIfGranted` with its own copy.
+ */
+export const VIEWER_FIX_BOUNDS: FixBounds = {
+  maxAge: VIEWER_FIX_MAX_AGE_MS,
+  requiredAccuracy: VIEWER_FIX_MAX_ACCURACY_M,
+};
+
+/**
  * The viewer's position WITHOUT ever prompting, or null.
  *
  * Extracted because it existed twice: the redemption screen reads the fix this
@@ -346,8 +370,5 @@ export const VIEWER_FIX_MAX_ACCURACY_M = 500;
 export async function positionIfGranted(timeoutMs: number = FIX_TIMEOUT_MS): Promise<Region | null> {
   if ((await getLocationPermission()).state !== 'granted') return null;
 
-  return getUserRegion(timeoutMs, {
-    maxAge: VIEWER_FIX_MAX_AGE_MS,
-    requiredAccuracy: VIEWER_FIX_MAX_ACCURACY_M,
-  });
+  return getUserRegion(timeoutMs, VIEWER_FIX_BOUNDS);
 }

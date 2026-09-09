@@ -7,8 +7,7 @@ import {
   lastKnownRegion,
   type RefusalReason,
   requestLocationPermission,
-  VIEWER_FIX_MAX_ACCURACY_M,
-  VIEWER_FIX_MAX_AGE_MS,
+  VIEWER_FIX_BOUNDS,
 } from './location';
 
 /**
@@ -142,10 +141,7 @@ export async function locateUser(): Promise<
     return { ok: false, reason: outcome.canAskAgain ? 'denied' : 'blocked' };
   }
 
-  const region = await getUserRegion(undefined, {
-    maxAge: VIEWER_FIX_MAX_AGE_MS,
-    requiredAccuracy: VIEWER_FIX_MAX_ACCURACY_M,
-  });
+  const region = await getUserRegion(undefined, VIEWER_FIX_BOUNDS);
   if (region) return { ok: true, region };
 
   // Nothing usable. Now separate "no fix at all" from "a fix we refused",
@@ -154,15 +150,11 @@ export async function locateUser(): Promise<
   // that a retry can never substitute for. Without this branch those users got
   // a "try again" button that was guaranteed to fail, forever, at 5 s a tap.
   //
-  // `lastKnownRegion`, NOT `getUserRegion`: the probe must read the cache and
-  // stop there. `getUserRegion` falls through to a fresh 5 s watch when the
-  // cached read is empty, so using it here spent the budget twice and pushed the
-  // map's "couldn't get your location" alert to ten seconds after the tap — a
-  // regression a screen test caught immediately. Unbounded, so it answers "is
-  // there a position at all", and instant on both paths.
-  //
-  // Its result CLASSIFIES, and is never returned: a position refused as too
-  // coarse must not reach a caller about to render metres from it.
+  // {@link lastKnownRegion} and not `getUserRegion` — see its docblock for why
+  // reading the cache is the whole job here. Unbounded, so the question it
+  // answers is "is there a position at all". Its result CLASSIFIES and is never
+  // returned: a fix refused as too coarse must not reach a caller that is about
+  // to render metres from it.
   const anyFix = await lastKnownRegion();
 
   return { ok: false, reason: anyFix ? 'imprecise' : 'unavailable' };

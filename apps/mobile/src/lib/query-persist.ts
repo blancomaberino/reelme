@@ -33,6 +33,12 @@ const CACHE_KEY = 'reelmap-query-cache';
 // and heals on the next fetch; a cold start that drops to guest is not. The
 // targeted fix lives in `setLocale`, which invalidates the affected queries when
 // the language actually changes.
+// NOT bumped for T-158's `['places', <slug>]` → `['places','detail', <slug>]`
+// rename either, and for the same reason as T-168 above. Entries written under
+// the old shape restore under keys nothing asks for and fall out at the 24h
+// cap; the cost is one cache miss per place detail, once, healing on the next
+// fetch. A bump would discard EVERY persisted cache for every user to avoid
+// that — including the session restore an offline cold start depends on.
 const CACHE_BUSTER = 'v1';
 
 /**
@@ -129,6 +135,14 @@ export function isPersistableKey(key: readonly unknown[]): boolean {
     // `queryKeys.place`) and this asks the only question that cannot be
     // inherited by accident: is it a detail? Everything else under this head is
     // denied because it is not on the list, not because someone remembered it.
+    //
+    // Scope, honestly: this is true of `places` and NOT of the two branches
+    // above. `me` and `lists` are still deny-lists (`!== 'quotas'`,
+    // `!== 'public'`), so a new key under either still inherits PERSIST — the
+    // same mechanism, untouched. Converting them means auditing every `me` key,
+    // most of which SHOULD persist (the profile, my-places, its tags and
+    // facets), so it is a change to offline behaviour rather than a rename, and
+    // it does not belong in a T-158 audit response. Left for its own task.
     if (second !== 'detail') return false;
 
     // `['places','detail', slug]` and `['places','detail', slug, 'sources']`.

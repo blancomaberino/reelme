@@ -48,7 +48,7 @@ export function useNearbyOffers(at: Pick<Region, 'latitude' | 'longitude'> | nul
         // `near` is non-null here — the query is disabled otherwise — but it is
         // spread conditionally rather than asserted, so the parameter is ABSENT
         // rather than empty in any path that reaches this anyway.
-        params: { ...(near !== null && { near }), radius_m: radius, active: 1, limit: 50 },
+        params: { ...(near !== null ? { near } : {}), radius_m: radius, active: 1, limit: 50 },
       });
       return data.data;
     },

@@ -13,15 +13,33 @@ import { Button } from '@/components/button';
 import { OptionPill } from '@/components/filters/option-pill';
 import { Chip } from '@/components/place/chip';
 import { MyPlaceCard } from '@/components/place/my-place-card';
-import { useT } from '@/i18n';
+import { type MessageKey, useT } from '@/i18n';
 import { useDebounced } from '@/lib/use-debounced';
 import { useFormat } from '@/lib/use-format';
-import { openLocationSettings, presentRefusal, type RefusalReason } from '@/lib/location';
+import {
+  openLocationSettings,
+  presentRefusal,
+  type RefusalPresentation,
+  type RefusalReason,
+} from '@/lib/location';
 import { type Palette, useColors } from '@/theme/colors';
 import { radius, space, type } from '@/theme/tokens';
 
 /** How many dish suggestions fit above the fold without becoming a wall. */
 const DISH_SUGGESTIONS = 8;
+
+/**
+ * This screen's words for each refusal tone. A table, not a ternary chain: `tsc`
+ * then requires a line here when a tone is added, where the chain's final `else`
+ * would have quietly rendered "turn on location" at whoever forgot. The offers
+ * browse keeps its own copy of this map because its wording differs, but the
+ * DECISION behind it is shared — {@link presentRefusal}.
+ */
+const REFUSAL_COPY = {
+  noFix: 'tonight.noFix',
+  imprecise: 'tonight.imprecise',
+  needsPermission: 'tonight.needsLocation',
+} as const satisfies Record<RefusalPresentation['tone'], MessageKey>;
 
 /**
  * Tonight (T-158) — the surface that answers "where do I eat, here, now".
@@ -188,21 +206,14 @@ function TonightBody({
   const t = useT();
 
   if (blocked !== null) {
-    // The three-way decision lives in `lib/location` beside the enum that
-    // produces it — this screen and the offers browse both need it, and it was
-    // duplicating the choice that put the wrong answer on the newer one.
+    // Why this decision lives in `lib/location` rather than here: see
+    // {@link presentRefusal}. This screen supplies only its own copy.
     const { tone, openSettings } = presentRefusal(blocked);
 
     return (
       <View style={styles.state} testID="tonight-location">
         <Text style={styles.stateText}>
-          {t(
-            tone === 'noFix'
-              ? 'tonight.noFix'
-              : tone === 'imprecise'
-                ? 'tonight.imprecise'
-                : 'tonight.needsLocation',
-          )}
+          {t(REFUSAL_COPY[tone])}
         </Text>
         <Button
           title={t(openSettings ? 'map.location.blocked.cta' : 'common.tryAgain')}

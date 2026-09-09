@@ -17,7 +17,12 @@ import { ScreenHeader } from '@/components/screen-header';
 import { type MessageKey, useT } from '@/i18n';
 import { type Region, regionRadiusM } from '@/lib/geo';
 import { DEFAULT_REGION } from '@/lib/initial-region';
-import { openLocationSettings, presentRefusal, USER_REGION_DELTA } from '@/lib/location';
+import {
+  openLocationSettings,
+  presentRefusal,
+  type RefusalPresentation,
+  USER_REGION_DELTA,
+} from '@/lib/location';
 import { useSettingsStore } from '@/stores/settings';
 import { useViewportStore } from '@/stores/viewport';
 import { type Palette, useColors } from '@/theme/colors';
@@ -27,6 +32,19 @@ type Mode = 'list' | 'map';
 
 /** The `t()` from {@link useT} — passed to the pure label helper below. */
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
+
+/**
+ * This screen's words for each refusal tone. A table, not a ternary chain, so
+ * `tsc` demands a line here when a tone is added rather than letting the final
+ * `else` render "turn on location" at a case nobody considered. Tonight keeps
+ * its own copy of this map — the wording differs — but the DECISION is shared:
+ * {@link presentRefusal}.
+ */
+const REFUSAL_COPY = {
+  noFix: 'offers.browse.noFix',
+  imprecise: 'offers.browse.imprecise',
+  needsPermission: 'offers.browse.needLocation',
+} as const satisfies Record<RefusalPresentation['tone'], MessageKey>;
 
 /**
  * Nearby offers (T-047, 05 screen #17).
@@ -222,13 +240,7 @@ export default function OffersBrowseScreen() {
         <View style={styles.centered} testID="offers-location-blocked">
           <Ionicons name="location-outline" size={40} color={c.muted} />
           <Text style={styles.emptyText}>
-            {t(
-              refusal.tone === 'noFix'
-                ? 'offers.browse.noFix'
-                : refusal.tone === 'imprecise'
-                  ? 'offers.browse.imprecise'
-                  : 'offers.browse.needLocation',
-            )}
+            {t(REFUSAL_COPY[refusal.tone])}
           </Text>
           <Button
             title={t(refusal.openSettings ? 'offers.browse.openSettings' : 'common.tryAgain')}

@@ -27,6 +27,29 @@ function period(int $openDay, string $openTime, ?int $closeDay, ?string $closeTi
     return ['open_day' => $openDay, 'open_time' => $openTime, 'close_day' => $closeDay, 'close_time' => $closeTime];
 }
 
+/**
+ * The place ids in a response payload, as integers.
+ *
+ * One home for the cast, because the cast is where this file got it wrong: the
+ * four copies of this chain all read `->map(intval(...))`, and `Collection::map`
+ * passes ($value, $key) into `intval`'s ($value, $base) — so element 0 was
+ * decoded in base 0 (auto, right by accident) and element 1 in base 1, which is
+ * invalid and yields 0. Every assertion using it either had a single row or only
+ * checked membership of the first, so it survived four review rounds; the first
+ * test to assert a full ORDER went red immediately.
+ *
+ * The map answers under `data.pins`, the listings under `data`. Ids serialize as
+ * STRINGS, so they are cast rather than compared loosely — a loose comparison
+ * would pass while the filter did nothing.
+ */
+function idsFrom(array $json, string $surface = 'index'): array
+{
+    return collect(data_get($json, $surface === 'map' ? 'data.pins' : 'data'))
+        ->pluck('id')
+        ->map(fn ($id) => (int) $id)
+        ->all();
+}
+
 function placeWithHours(
     ?array $periods,
     ?string $timezone = MONTEVIDEO,
@@ -439,11 +462,7 @@ it('filters on every surface that takes the faceted filters', function (string $
 
     $response->assertOk();
 
-    // The map answers under `data.pins`; the listings under `data`. Ids
-    // serialize as STRINGS, so they are cast rather than compared loosely — a
-    // loose comparison here would have passed while the filter did nothing.
-    $ids = collect(data_get($response->json(), $surface === 'map' ? 'data.pins' : 'data'))
-        ->pluck('id')->map(fn ($id) => (int) $id)->all();
+    $ids = idsFrom($response->json(), $surface);
 
     expect($ids)->toContain($open->id)
         ->and($ids)->not->toContain($closed->id)
@@ -495,8 +514,7 @@ it('refuses open_now without a point on the public index, and only there', funct
     // without a point. Both halves are load-bearing — dropping `openNow()` from
     // these two paths keeps the `toContain` green and turns the `not->toContain`
     // red, which is the mutation this pair exists to catch.
-    $ids = collect(data_get($response->json(), $surface === 'map' ? 'data.pins' : 'data'))
-        ->pluck('id')->map(fn ($id) => (int) $id)->all();
+    $ids = idsFrom($response->json(), $surface);
 
     expect($ids)->toContain($open->id)
         ->and($ids)->not->toContain($closed->id);
@@ -558,19 +576,10 @@ it('filters and orders together on the query Tonight actually sends', function (
     // No periods AND no timezone — the "hours unknown" row, excluded either way.
     $nearestButUnknown = placeWithHours(null, null, -34.9001, -56.1601);
 
-    $ids = collect(data_get($this->getJson(
+    $ids = idsFrom($this->getJson(
         "/api/v1/places?open_now=1&near={$near}&radius_m=50000&sort=distance"
-    )->assertOk()->json(), 'data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+    )->assertOk()->json());
 
-    // NOTE on the `(int)` cast above, which used to be `->map(intval(...))`
-    // throughout this file: `Collection::map` passes ($value, $key), and
-    // `intval`'s second parameter is the BASE — so element 0 was decoded with
-    // base 0 (auto, correct by accident) and every later element with a base
-    // equal to its index. Base 1 is invalid, so index 1 silently became 0. Every
-    // existing assertion using it either had one row or only checked membership
-    // of the first, which is why four rounds did not see it; this test is the
-    // first to assert a full ORDER, and it went red immediately.
-    //
     // Excluded: shut right now, and hours nobody knows. The unknown one is the
     // NEAREST place in the fixture, so it would head the list if the filter were
     // dropped — the row that must be absent, per T-158's acceptance.
@@ -601,7 +610,7 @@ it('reads every spelling of the flag the way the caller meant it', function (str
         return;
     }
 
-    $ids = collect(data_get($response->assertOk()->json(), 'data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+    $ids = idsFrom($response->assertOk()->json());
 
     expect(in_array($closed->id, $ids, strict: true))->toBe(! $filtered);
 })->with([

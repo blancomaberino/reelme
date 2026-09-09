@@ -115,15 +115,34 @@ export function useMapCamera(input: {
         onLocated?.();
         return;
       }
-      if (result.reason === 'blocked') {
-        setLocateBlocked(true);
-        return;
+      // Exhaustive over `RefusalReason`, deliberately: this screen's two
+      // channels (the Settings hint banner, and an alert) do not line up with
+      // `presentRefusal`'s tone/openSettings pair the way the two list screens
+      // do — the map stays usable with no fix, so a refusal here is an aside
+      // rather than the whole screen. What it MUST NOT do is inherit a default.
+      // It did: when `imprecise` was added for the list screens, the map's
+      // trailing `if` chain sent it to the silent `denied` arm, and the one
+      // control whose entire contract is "never a silent no-op" became one for
+      // the users the new reason was written for. The `switch` makes the next
+      // reason a compile error instead.
+      switch (result.reason) {
+        case 'blocked':
+          setLocateBlocked(true);
+          break;
+        case 'imprecise':
+          // Precise Location is off. Settings is the only fix, but the banner
+          // above says "location is off for Reelmap", which is false here and
+          // would send the user hunting for a switch that is already on.
+          Alert.alert(t('map.location.imprecise'));
+          break;
+        case 'unavailable':
+          Alert.alert(t('map.location.unavailable'));
+          break;
+        case 'denied':
+          // Dismissed the OS prompt, and can be asked again. They know what they
+          // did; re-explaining it would be nagging.
+          break;
       }
-      if (result.reason === 'unavailable') {
-        Alert.alert(t('map.location.unavailable'));
-      }
-      // 'denied' with canAskAgain — the user dismissed the OS prompt. They know
-      // what they did; re-explaining it would be nagging.
     } finally {
       setLocating(false);
     }

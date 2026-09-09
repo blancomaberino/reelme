@@ -220,6 +220,8 @@ export const en = {
     'Turn on location access in Settings to center the map where you are.',
   'map.location.blocked.cta': 'Open Settings',
   'map.location.unavailable': 'Couldn’t get your location. Try again in a moment.',
+  'map.location.imprecise':
+    'Reelmap needs your exact location. Turn on Precise Location in Settings.',
 
   // Filters button + bottom-sheet (map and My places share these).
   'filters.title': 'Filters',
