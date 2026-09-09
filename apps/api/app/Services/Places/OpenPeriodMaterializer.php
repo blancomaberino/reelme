@@ -54,8 +54,6 @@ class OpenPeriodMaterializer
      *                          {@see DishMaterializer::materialize()} for why
      *                          recomputing it here from `wasRecentlyCreated`
      *                          would be wrong.
-     */
-    /**
      * @return bool whether the stored projection actually CHANGED — the signal
      *              the nightly pass reports on, see the note at the comparison
      */

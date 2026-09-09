@@ -50,10 +50,13 @@ use Illuminate\Support\Facades\Schema;
  *    5499 ms for the current plan). Add `, id` — the tiebreaker at
  *    `PlaceController::applySort()`, which is not optional, since a keyset needs
  *    a total order — and the planner CHOSE a full sort on the 200k-row copy this
- *    was measured on. Stated as a measurement rather than a law on purpose:
- *    PG 13+ incremental sort can consume a KNN scan's distance pathkey and sort
- *    only within `id` ties, and whether it does is a costing decision that moves
- *    with row counts and `work_mem`. Re-measure before concluding it is shut.
+ *    was measured on. Stated as a measurement rather than a law on purpose —
+ *    but the obvious escape does NOT appear to exist here, which was itself
+ *    re-measured: on PG 16 no incremental-sort path over the KNN scan is
+ *    generated at all, not even with `enable_seqscan=off` and `enable_sort=off`
+ *    together, while a btree control on the same database does produce one. So
+ *    the path is absent rather than out-costed. Re-measure on the version you
+ *    are on before concluding it is either shut or open.
  *  - The keyset predicate cannot be an index condition either, so page 2 onward
  *    is a sequential scan whatever page 1 does.
  *  - `<->` on geography is a SPHERE distance; `ST_Distance(geog, geog)` is

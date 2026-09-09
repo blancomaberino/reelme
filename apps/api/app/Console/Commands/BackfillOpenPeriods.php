@@ -23,7 +23,7 @@ use Throwable;
  */
 class BackfillOpenPeriods extends Command
 {
-    protected $signature = 'reelmap:open-periods:backfill {--fail-on-drift : exit non-zero if any place had to be repaired}';
+    protected $signature = 'reelmap:open-periods:backfill {--fail-on-drift : exit non-zero if the counted walk had to repair a place}';
 
     protected $description = 'Materialize open-period rows from existing places (pre-T-158 rows)';
 
@@ -44,7 +44,7 @@ class BackfillOpenPeriods extends Command
         //
         // This USED to say "runs inside the deploy's maintenance window, so that
         // time is downtime", and that stopped being true when T-158 scheduled
-        // the command nightly: it now also runs at 04:00 against live traffic.
+        // the command nightly: it now also runs nightly against live traffic.
         // The justification has to stand on its own, and it does, but for a
         // different reason. The statement takes row locks on
         // `place_open_periods` ONLY — `USING places` reads the join side without
@@ -118,6 +118,15 @@ class BackfillOpenPeriods extends Command
         //
         // In a healthy system this is zero every night: the observer keeps the
         // projection in step, so anything found here is a place it dropped.
+        //
+        // ONE-SIDED, and worth knowing before trusting a green run: this counts
+        // what the WALK repaired, and the walk only visits places that carry
+        // hours. The bulk DELETE above silently fixes the other direction — a
+        // place whose hours were removed while the observer's delete was dropped
+        // — without counting it. So a zero here means "no place with hours was
+        // missing its rows", not "the observer has not dropped anything".
+        // Counting that half means returning a row count from the DELETE and is
+        // a change to the statement, not to this block.
         if ($repaired !== []) {
             $this->components->warn('Repaired drift on '.count($repaired).' place(s).');
 
@@ -130,19 +139,24 @@ class BackfillOpenPeriods extends Command
             ]);
         }
 
+        if ($failed !== []) {
+            // Reported AND non-zero exit: a partial run that looks successful is
+            // how a place stays unlistable with nobody knowing.
+            //
+            // BEFORE the drift return below, not after: a run that both repaired
+            // and failed would otherwise exit on drift and never print which
+            // places failed. Same exit code either way, but the ids are the half
+            // a person can act on.
+            $this->components->error('Failed on '.count($failed).' place(s): '.implode(', ', $failed));
+
+            return self::FAILURE;
+        }
+
         // `--fail-on-drift` only for the SCHEDULED run, which is the one where a
         // non-zero count means something is wrong. The deploy pass repairs the
         // whole corpus on purpose — it is the migration — and failing there
         // would make every release's backfill red for doing its job.
         if ($this->option('fail-on-drift') && $repaired !== []) {
-            return self::FAILURE;
-        }
-
-        if ($failed !== []) {
-            // Reported AND non-zero exit: a partial run that looks successful is
-            // how a place stays unlistable with nobody knowing.
-            $this->components->error('Failed on '.count($failed).' place(s): '.implode(', ', $failed));
-
             return self::FAILURE;
         }
 

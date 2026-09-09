@@ -87,9 +87,10 @@ Schedule::command('reelmap:open-periods:backfill --fail-on-drift')
     // covers SIGTERM, not 137. This is the longest-running job on the schedule
     // and therefore the likeliest to be killed.
     ->withoutOverlapping(120)
-    // `--fail-on-drift` makes the exit code mean "the observer dropped
-    // something", and this line is what carries that anywhere: `schedule:run`
-    // throws exit codes away.
+    // `--fail-on-drift` makes the exit code mean "the walk had to repair a place
+    // that carries hours" — see the command for the half it cannot see — and
+    // this line is what carries that anywhere: `schedule:run` throws exit codes
+    // away.
     ->onFailure(fn () => Log::error('open_periods.backfill_failed', [
         'command' => 'reelmap:open-periods:backfill',
     ]));
