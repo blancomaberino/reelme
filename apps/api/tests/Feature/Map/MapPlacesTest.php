@@ -9,6 +9,8 @@ use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\Tag;
 use App\Models\User;
+use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -21,6 +23,45 @@ function activePlace(float $lat, float $lng, array $attrs = []): Place
 {
     return Place::factory()->active()->atPoint($lat, $lng)->create($attrs);
 }
+
+it('answers the whole map response from ONE instant', function () {
+    // Found by CodeRabbit after the local pass had seen the same shape and let
+    // it go. `respond()` built `baseQuery()` twice — once for the count, once
+    // for the rows — and each response path minted its own `now()` on top, so a
+    // request straddling a minute boundary could report a `total_in_bbox` that
+    // counted a place the rows omitted, or a pin whose `open_state` read
+    // "Abierto" while `?open_now=1` had just stopped selecting it.
+    //
+    // Asserted through the OBSERVABLE agreement of the three numbers rather
+    // than by counting `now()` calls: any implementation that reaches the same
+    // instant everywhere keeps this green.
+    //
+    // The fixture sits ON the boundary — it closes at 21:00 and the request is
+    // made in the last second before it — so a second `now()` taken a moment
+    // later lands after closing and the two halves disagree.
+    $this->travelTo(new DateTimeImmutable('2026-09-08 20:59:59', new DateTimeZone('America/Montevideo')));
+
+    // Inside BBOX (London), like every other fixture in this file — the
+    // timezone is what puts the place on a Montevideo clock, not its coordinate.
+    Place::factory()->active()->atPoint(51.50, -0.12)->create([
+        'timezone' => 'America/Montevideo',
+        // Tuesday 19:00-21:00, the shape `OpeningSchedule` reads.
+        'opening_hours_periods_json' => [
+            ['open_day' => 2, 'open_time' => '19:00', 'close_day' => 2, 'close_time' => '21:00'],
+        ],
+    ]);
+
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&open_now=1')->assertOk();
+
+    // Selected by the filter, counted by the count, and described as open by the
+    // pin — all three, or the response contradicts itself.
+    expect($res->json('meta.total_in_bbox'))->toBe(1)
+        ->and($res->json('data.pins'))->toHaveCount(1)
+        ->and($res->json('data.pins.0.open_state.open_now'))->toBeTrue()
+        // The closing time the same instant implies — so the pin's own answer,
+        // not just its boolean, comes from the moment the filter used.
+        ->and($res->json('data.pins.0.open_state.closes_at'))->toBe('21:00');
+});
 
 it('returns raw pins (no clusters) at high zoom', function () {
     activePlace(51.5117, -0.1300, ['name' => 'Alpha', 'shares_count' => 3]);

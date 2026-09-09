@@ -254,7 +254,15 @@ describe('locateUser', () => {
     lastKnown.mockResolvedValue(null);
     watchEmits(null);
 
-    expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
+    // Fake timers, because a watch that never calls back makes `locateUser`
+    // sit out the full 5s `FIX_TIMEOUT_MS` in real time. Three tests doing that
+    // is 15s of suite for nothing (found by CodeRabbit).
+    jest.useFakeTimers();
+    const pending = locateUser();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
+    jest.useRealTimers();
   });
 
   it('refuses a STALE cached fix and takes the fresh one instead', async () => {
@@ -298,7 +306,15 @@ describe('locateUser', () => {
     );
     watchEmits(null);
 
-    expect(await locateUser()).toEqual({ ok: false, reason: 'imprecise' });
+    // Fake timers, because a watch that never calls back makes `locateUser`
+    // sit out the full 5s `FIX_TIMEOUT_MS` in real time. Three tests doing that
+    // is 15s of suite for nothing (found by CodeRabbit).
+    jest.useFakeTimers();
+    const pending = locateUser();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ ok: false, reason: 'imprecise' });
+    jest.useRealTimers();
   });
 
   it('reports a STALE but precise fix as "unavailable", so the retry stays', async () => {
@@ -323,7 +339,13 @@ describe('locateUser', () => {
     lastKnown.mockResolvedValue(null);
     watchEmits(null);
 
-    expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
+    // Same 5s wait as its siblings above; same reason for the fake timers.
+    jest.useFakeTimers();
+    const pending = locateUser();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
+    jest.useRealTimers();
   });
 
   it('refuses a fix too coarse to measure a distance from, and waits for a better one', async () => {

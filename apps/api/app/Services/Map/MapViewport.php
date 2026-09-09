@@ -7,6 +7,7 @@ use App\Http\Requests\MapPlacesRequest;
 use App\Http\Resources\Concerns\ResolvesThumbnail;
 use App\Models\Builders\PlaceQueryBuilder;
 use App\Models\Place;
+use Carbon\CarbonInterface;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -49,11 +50,21 @@ class MapViewport
         ];
         $zoom = (int) $request->validated('zoom');
 
-        $total = $this->baseQuery($request, $bbox, $constrain)->count();
+        // ONE instant for the whole response. There were up to four `now()`
+        // calls in a single request — one per `baseQuery()` (it is built twice,
+        // for the count and for the rows) and one more in whichever of the two
+        // response paths ran — so a request that straddled a minute boundary
+        // could return a `total_in_bbox` that counted a place the rows omitted,
+        // or a pin whose `open_state` said "Abierto" while the `?open_now=1`
+        // filter had just stopped selecting it. Small, and exactly the kind of
+        // disagreement nobody can reproduce afterwards.
+        $at = now();
+
+        $total = $this->baseQuery($request, $bbox, $constrain, $at)->count();
 
         return $zoom >= self::CLUSTER_ZOOM_CUTOFF
-            ? $this->pinsResponse($request, $bbox, $constrain, $zoom, $total)
-            : $this->clusteredResponse($request, $bbox, $constrain, $zoom, $total);
+            ? $this->pinsResponse($request, $bbox, $constrain, $zoom, $total, $at)
+            : $this->clusteredResponse($request, $bbox, $constrain, $zoom, $total, $at);
     }
 
     /**
@@ -63,7 +74,7 @@ class MapViewport
      * @param  array{minLng: float, minLat: float, maxLng: float, maxLat: float}  $bbox
      * @param  (Closure(PlaceQueryBuilder): mixed)|null  $constrain
      */
-    private function baseQuery(MapPlacesRequest $request, array $bbox, ?Closure $constrain): PlaceQueryBuilder
+    private function baseQuery(MapPlacesRequest $request, array $bbox, ?Closure $constrain, CarbonInterface $at): PlaceQueryBuilder
     {
         $query = Place::query()
             ->publiclyVisible()
@@ -95,7 +106,7 @@ class MapViewport
         // "…and open right now" (T-158). Applied on all three place surfaces;
         // the reasoning lives once, on PlaceQueryBuilder::openNow().
         if ($request->validated('open_now')) {
-            $query->openNow(now());
+            $query->openNow($at);
         }
 
         if ($constrain !== null) {
@@ -109,16 +120,15 @@ class MapViewport
      * @param  array{minLng: float, minLat: float, maxLng: float, maxLat: float}  $bbox
      * @param  (Closure(PlaceQueryBuilder): mixed)|null  $constrain
      */
-    private function pinsResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total): JsonResponse
+    private function pinsResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total, CarbonInterface $at): JsonResponse
     {
         $near = $request->nearPoint();
-        $places = $this->selectPinFields($this->baseQuery($request, $bbox, $constrain), $near)
+        $places = $this->selectPinFields($this->baseQuery($request, $bbox, $constrain, $at), $near)
             ->orderByDesc('shares_count')
             ->limit(self::PIN_CAP + 1)
             ->get();
 
         $truncated = $places->count() > self::PIN_CAP;
-        $at = now();
         $pins = $places->take(self::PIN_CAP)->map(fn (Place $p) => $this->pin($p, $near, $at))->all();
 
         return ApiResponse::item(['pins' => $pins, 'clusters' => []], array_filter([
@@ -133,13 +143,13 @@ class MapViewport
      * @param  array{minLng: float, minLat: float, maxLng: float, maxLat: float}  $bbox
      * @param  (Closure(PlaceQueryBuilder): mixed)|null  $constrain
      */
-    private function clusteredResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total): JsonResponse
+    private function clusteredResponse(MapPlacesRequest $request, array $bbox, ?Closure $constrain, int $zoom, int $total, CarbonInterface $at): JsonResponse
     {
         $cell = 360.0 / ((2 ** $zoom) * self::GRID_K);
 
         // Aggregate the (already filtered) places onto a grid. Reuse the base
         // builder's SQL + bindings so filters apply identically.
-        $base = $this->baseQuery($request, $bbox, $constrain)->select('id')->addSelect(DB::raw('location::geometry AS geom'));
+        $base = $this->baseQuery($request, $bbox, $constrain, $at)->select('id')->addSelect(DB::raw('location::geometry AS geom'));
         $sql = $base->toSql();
         $bindings = $base->getBindings();
 
@@ -198,7 +208,6 @@ class MapViewport
             // distance at zoom 15 and loses it at zoom 13 is a bug the user finds
             // by pinching, and one nothing but a test at both zooms would catch.
             $near = $request->nearPoint();
-            $at = now();
             $pins = $this->selectPinFields(Place::query()->whereIn('id', $singletonIds), $near)
                 ->get()
                 ->map(fn (Place $p) => $this->pin($p, $near, $at))
