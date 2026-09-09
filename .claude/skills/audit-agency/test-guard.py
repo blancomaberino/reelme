@@ -435,7 +435,10 @@ def main():
     # carrying a REAL matching receipt, because this tree is dirty during
     # development and would answer DENY either way.
     with tempfile.TemporaryDirectory() as sub:
-        subprocess.run(["git", "init", "-q", sub], check=True)
+        # `-b main`, or no merge base resolves and verify_marker_binding skips
+        # the base comparison — so this case would pass without ever checking
+        # the binding it now depends on.
+        subprocess.run(["git", "init", "-q", "-b", "main", sub], check=True)
         subprocess.run(["git", "-C", sub, "config", "user.email", "t@t"], check=True)
         subprocess.run(["git", "-C", sub, "config", "user.name", "t"], check=True)
         nested = pathlib.Path(sub) / "apps" / "api"
