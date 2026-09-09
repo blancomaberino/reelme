@@ -150,19 +150,38 @@ function scheduledEvents(string $needle): Collection
 }
 
 it('counts a file another run already removed as pruned, not as a failure', function () {
-    // Two hourly runs can select the same file. GONE is the outcome this
-    // command wants, so losing the race is not a failure — counting it fired
-    // `logs.prune_failed_run` on a benign race, and an alert that cries wolf is
-    // an alert nobody reads. Simulated by deleting the file after the glob,
-    // which is what a concurrent run does.
     $doomed = pruneTestLog('laravel-2026-01-06.log', 40);
     $survivor = pruneTestLog('laravel-2026-01-07.log', 40);
 
-    File::delete($doomed);
+    // The race at the only moment it can actually happen: the file is selected
+    // by the glob, passes the age check, and is gone by the time we unlink it.
+    //
+    // An earlier version of this test deleted the file BEFORE the command ran —
+    // so the glob never selected it, the catch never fired, and the test passed
+    // without exercising one line of the code it was written to guard. That is
+    // the defect this branch is about, reproduced in its own test.
+    File::partialMock()->shouldReceive('delete')->andReturnUsing(
+        function (string $path) use ($doomed) {
+            if ($path === $doomed) {
+                unlink($path);  // the concurrent run gets there first
+
+                return false;   // ...so ours reports a failed unlink
+            }
+
+            return unlink($path);
+        }
+    );
+
+    Log::spy();
 
     $this->artisan('reelmap:logs:prune')->assertSuccessful();
 
-    expect(File::exists($survivor))->toBeFalse();
+    expect(File::exists($doomed))->toBeFalse()
+        ->and(File::exists($survivor))->toBeFalse();
+
+    // The alert must not fire: `onFailure` is wired to a non-zero exit, and an
+    // alert that cries wolf on normal operation is one nobody reads.
+    Log::shouldNotHaveReceived('warning');
 });
 
 it('is scheduled on every machine, and holds no fleet-wide lock', function () {
