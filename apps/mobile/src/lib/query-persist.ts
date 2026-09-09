@@ -92,7 +92,9 @@ export async function clearPersistedQueryCache(): Promise<void> {
  *  - `['lists', …]` — the viewer's own lists, but never `['lists','public',…]`.
  *
  * Everything else — other users' profiles, the feed, search results, the tag
- * catalog, share-pipeline status — stays memory-only.
+ * catalog, Tonight, share-pipeline status — stays memory-only. The discovery
+ * surfaces are memory-only DELIBERATELY, and doubly so for the ones keyed by
+ * the viewer's position: a rehydrated "open now" list is a fabricated open.
  */
 export function isPersistableKey(key: readonly unknown[]): boolean {
   const [head, second] = key;
@@ -111,10 +113,30 @@ export function isPersistableKey(key: readonly unknown[]): boolean {
     // `['places','map', quantizedBbox, zoomBand, filters]` — index 4 is the
     // filter object the key was built from.
     if (second === 'map') return isOwnMapScope(key[4]);
-    // Public discovery slices that happen to live under the same head.
-    if (second === 'tag' || second === 'payment-cards') return false;
-    // `['places', <slug>]` and `['places', <slug>, 'sources']`.
-    return typeof second === 'string';
+
+    // Everything else under this head is allowed by SHAPE, not by name, and
+    // that is a fix rather than a style choice. This used to deny-list the
+    // public slices by their second segment (`'tag'`, `'payment-cards'`) and
+    // let everything else through as `typeof second === 'string'` — so
+    // `['places','tonight', near, radiusM, dish, openNow]` (T-158) matched the
+    // branch written for `['places', <slug>]` and persisted a discovery slice
+    // keyed by the viewer's own coordinate, in plaintext, for the cache's 24h.
+    // An enumeration of the queries we happened to have is not a rule; the next
+    // one to be added inherits the wrong answer, silently, exactly as this one
+    // did through four review rounds.
+    //
+    // A place DETAIL is two segments, or three ending in `sources`. A discovery
+    // QUERY carries its parameters, so it is always longer. Length is the thing
+    // that actually distinguishes them.
+    if (key.length === 3) return key[2] === 'sources';
+    if (key.length !== 2) return false;
+
+    // One name still has to be reserved: `['places','payment-cards']` is a
+    // public list shaped exactly like a slug, and no structural rule can tell
+    // them apart. It is listed here rather than inferred, and it is the only
+    // one — a second entry appearing under this line means the shapes have
+    // drifted and this branch, not the list, is what needs revisiting.
+    return typeof second === 'string' && second !== 'payment-cards';
   }
 
   return false;

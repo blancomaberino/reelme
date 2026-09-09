@@ -15,8 +15,21 @@
 #
 # The last two steps put the permission back. They are part of the flow rather
 # than cleanup to remember, because a run that dies half-way still leaves the
-# simulator denied — run `offers-location.yaml` afterwards to confirm the
-# restore, exactly as CLAUDE.md asks (verify the restore, don't assert it).
+# simulator denied.
+#
+# What this flow can NOT do is confirm that restore, and an earlier version of
+# this comment claimed otherwise — it said to run `offers-location.yaml`
+# afterwards. That flow launches with `permissions: location: inuse`, so it SETS
+# the grant instead of reading what this run left; it passes identically whether
+# the restore happened or not, and would mask exactly the failure it was cited
+# for. Its own header says as much.
+#
+# There is no read-back to substitute: `simctl privacy` grants, revokes and
+# resets, and has no status action. The only thing that observes what this run
+# left is a launch that sets NO permission — open the app by hand, or run a flow
+# whose `launchApp` has no `permissions:` block, and check that Offers shows the
+# list rather than `offers-location-blocked`. Stated here rather than automated,
+# because a verification step that quietly re-grants is worse than none.
 #
 # PRECONDITIONS: dev client installed, API reachable (./scripts/dev.sh run),
 # locale es. No seeded offers needed — the refusal replaces the list entirely.

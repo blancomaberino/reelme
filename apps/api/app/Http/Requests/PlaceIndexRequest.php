@@ -85,10 +85,20 @@ class PlaceIndexRequest extends FormRequest
             // km², some fifteen times Montevideo — so for the corpus we actually
             // have, a point inside the city still encloses nearly all of it, and
             // at that selectivity the planner drops the GiST bound for a
-            // sequential scan. What genuinely caps the work is the
-            // `(created_at, id)` index added in the same release: it lets
-            // `sort=recent` walk rows in order and stop at the LIMIT instead of
-            // sorting everything the filters left. This rule is the cheap half.
+            // sequential scan.
+            //
+            // An earlier version of this comment credited the `(created_at, id)`
+            // index added in the same release with "genuinely capping the work".
+            // That is true only for `sort=recent`, and review pointed out that
+            // it is not the query this feature sends: Tonight always asks with
+            // `sort=distance` (see `useTonight`), which orders by
+            // `ST_Distance(...)` rather than the KNN `<->` operator, so NO index
+            // can serve that ordering and the whole `ST_DWithin`-filtered set is
+            // materialized and sorted on every page. On the distance path this
+            // rule and `radius_m` are the ONLY bounds there are — which is an
+            // argument for keeping this rule, not against it, and an argument
+            // against believing a comment that has not been re-read since the
+            // sort it describes stopped being the default one.
             //
             // The map is NOT covered by this and is not comparably bounded: its
             // bbox is capped at 90° of span, which is a sanity check rather than

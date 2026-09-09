@@ -80,7 +80,7 @@ export function useTonight(q: TonightQuery) {
   const near = nearParam(q.at);
 
   return useInfiniteQuery({
-    queryKey: queryKeys.tonight(near ?? '', q.radiusM, dish, q.openNow),
+    queryKey: queryKeys.tonight(near, q.radiusM, dish, q.openNow),
     queryFn: ({ pageParam }) => fetchPage(effective, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.meta.pagination.next_cursor,

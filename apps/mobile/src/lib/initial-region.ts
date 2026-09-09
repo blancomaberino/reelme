@@ -1,7 +1,13 @@
 // Where the map opens (T-100). One ordered fallback chain, in one place, so the
 // "which viewport wins?" question has a single answer that tests can pin.
 import { distanceM, type Region } from './geo';
-import { getLocationPermission, getUserRegion, requestLocationPermission } from './location';
+import {
+  getLocationPermission,
+  getUserRegion,
+  requestLocationPermission,
+  VIEWER_FIX_MAX_ACCURACY_M,
+  VIEWER_FIX_MAX_AGE_MS,
+} from './location';
 
 /**
  * Last resort only. Montevideo is where the seed/demo data lives, so it is the
@@ -112,6 +118,16 @@ export async function resolveInitialRegion(input: {
  * The user's position for an explicit "locate me" tap — here the prompt IS the
  * point, so an `undetermined` permission is always requested. Returns the
  * region, or the reason we can't provide one so the caller can explain itself.
+ *
+ * BOUNDED, unlike {@link resolveInitialRegion} above, and the split is the whole
+ * reason both exist. `getUserRegion` says it in its own docblock: "callers that
+ * measure distances must pass it". `resolveInitialRegion` only has to frame a
+ * viewport, where a cached fix from another city an hour ago is free and
+ * harmless. Every caller of THIS function measures: the map's locate-me button
+ * yanks the camera to the answer, and the offers browse and Tonight render it
+ * as "a menos de 2 km" and sort by it. An unbounded cached fix there is the
+ * fabricated precision T-156 removed from the pin sheet, re-entering through
+ * the one position path that had no bound on it.
  */
 export async function locateUser(): Promise<
   { ok: true; region: Region } | { ok: false; reason: 'blocked' | 'denied' | 'unavailable' }
@@ -124,7 +140,15 @@ export async function locateUser(): Promise<
     return { ok: false, reason: outcome.canAskAgain ? 'denied' : 'blocked' };
   }
 
-  const region = await getUserRegion();
+  const region = await getUserRegion(undefined, {
+    maxAge: VIEWER_FIX_MAX_AGE_MS,
+    requiredAccuracy: VIEWER_FIX_MAX_ACCURACY_M,
+  });
+
+  // `unavailable`, not a silent fallback to a stale fix: the screens present
+  // this as "we could not get your position, try again", which is true and
+  // recoverable. Showing a distance measured from where the phone was two hours
+  // ago is neither.
   return region ? { ok: true, region } : { ok: false, reason: 'unavailable' };
 }
 

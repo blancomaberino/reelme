@@ -33,10 +33,39 @@ use Illuminate\Support\Facades\Schema;
  * The claim that is safe either way is that the worst case is unchanged: without
  * the index the sort was mandatory, with it the sort is optional.
  *
+ * SCOPE, added after review corrected the paragraph above: all of that is about
+ * `sort=recent`, the DEFAULT sort — and Tonight, the feature that introduced
+ * `?open_now=1`, does not use it. `useTonight` always sends `sort=distance`,
+ * which orders by `ST_Distance(...)` and not the KNN `<->` operator, so no btree
+ * is reachable from that plan and the filtered set is sorted in full on every
+ * page. This index bounds the default listing and the Filament table; the
+ * distance path is bounded by `near` + `radius_m` alone. Both statements are
+ * needed, and only the first one was here.
+ *
  * Column order matters and DESC does not: a btree is scanned backwards for
  * `ORDER BY … DESC` at no cost, and `(created_at, id)` is exactly the tuple the
- * cursor compares. Both columns are immutable after insert, so the index is paid
- * for on INSERT only — enrichment, merges and admin edits never touch it.
+ * cursor compares. Both columns are immutable after insert, so no UPDATE ever
+ * changes what this index STORES — but "paid for on INSERT only", as this said
+ * before review, is wrong: a non-HOT update writes a new tuple into every index
+ * on the table whatever it changed, and `places` is updated often enough by
+ * enrichment to make that the common case. The honest claim is narrower and
+ * still enough: one more btree on a table that already carries nine.
+ *
+ * LOCKING, which this docblock did not mention at all. `Schema::table()->index()`
+ * emits a plain `CREATE INDEX`, taking a SHARE lock that conflicts with the ROW
+ * EXCLUSIVE every writer holds. `scripts/deploy.sh` puts the app in maintenance
+ * mode before migrating, so no HTTP writer is live — but it terminates Horizon
+ * AFTER `migrate`, and says so in its own comments, so enrichment jobs from the
+ * previous release ARE still writing `places` while this builds. Milliseconds at
+ * today's ~20 rows; a deploy stall at some corpus size nobody will predict.
+ *
+ * Deliberately NOT `CREATE INDEX CONCURRENTLY`: that requires
+ * `$withinTransaction = false` and gives up the property that `down()` is a true
+ * reverse — a failed concurrent build leaves an INVALID index behind for someone
+ * to find by hand. Moving `horizon:terminate` ahead of `migrate` is the other
+ * fix, and `deploy.sh` rejects it for a separate good reason (replacement
+ * workers would boot against the new schema). So the lock is accepted, and the
+ * point of this paragraph is that it is accepted rather than unnoticed.
  *
  * NOT a partial index over `publiclyVisible()`, tempting as that is: Filament's
  * places table sorts by `created_at` over EVERY place including hidden, removed

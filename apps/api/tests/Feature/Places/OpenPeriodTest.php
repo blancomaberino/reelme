@@ -27,9 +27,16 @@ function period(int $openDay, string $openTime, ?int $closeDay, ?string $closeTi
     return ['open_day' => $openDay, 'open_time' => $openTime, 'close_day' => $closeDay, 'close_time' => $closeTime];
 }
 
-function placeWithHours(?array $periods, ?string $timezone = MONTEVIDEO): Place
-{
-    return Place::factory()->active()->atPoint(-34.90, -56.16)->create([
+function placeWithHours(
+    ?array $periods,
+    ?string $timezone = MONTEVIDEO,
+    // Defaults to the one point every other test in this file uses, so the
+    // distance between fixtures is zero and orderings are decided elsewhere.
+    // Only the `sort=distance` test needs them to differ.
+    float $lat = -34.90,
+    float $lng = -56.16,
+): Place {
+    return Place::factory()->active()->atPoint($lat, $lng)->create([
         'opening_hours_periods_json' => $periods,
         'timezone' => $timezone,
     ]);
@@ -436,7 +443,7 @@ it('filters on every surface that takes the faceted filters', function (string $
     // serialize as STRINGS, so they are cast rather than compared loosely — a
     // loose comparison here would have passed while the filter did nothing.
     $ids = collect(data_get($response->json(), $surface === 'map' ? 'data.pins' : 'data'))
-        ->pluck('id')->map(intval(...))->all();
+        ->pluck('id')->map(fn ($id) => (int) $id)->all();
 
     expect($ids)->toContain($open->id)
         ->and($ids)->not->toContain($closed->id)
@@ -489,7 +496,7 @@ it('refuses open_now without a point on the public index, and only there', funct
     // these two paths keeps the `toContain` green and turns the `not->toContain`
     // red, which is the mutation this pair exists to catch.
     $ids = collect(data_get($response->json(), $surface === 'map' ? 'data.pins' : 'data'))
-        ->pluck('id')->map(intval(...))->all();
+        ->pluck('id')->map(fn ($id) => (int) $id)->all();
 
     expect($ids)->toContain($open->id)
         ->and($ids)->not->toContain($closed->id);
@@ -508,10 +515,16 @@ it('indexes the columns the default sort pages by', function () {
     // without it every filtered listing sorts its whole candidate set before the
     // LIMIT applies. That is the only bound `?open_now=1` has that does not
     // depend on how much the geography happened to remove.
-    // Matched by COLUMNS, not by name: renaming an index in a later migration
-    // changes nothing about the invariant, and a pin that goes red for a rename
-    // teaches the next author to delete pins. `tablename` still scopes it, so an
-    // index created on the wrong table does not satisfy this.
+    // Matched by the COLUMN LIST rather than by name: renaming an index in a
+    // later migration changes nothing about the invariant, and a pin that goes
+    // red for a rename teaches the next author to delete pins. `tablename` still
+    // scopes it, so an index created on the wrong table does not satisfy this.
+    //
+    // Precisely: it matches the literal `(created_at,id)` after whitespace is
+    // stripped, so an equivalent index declared `(created_at DESC, id DESC)`
+    // would render as `(created_atDESC,idDESC)` and fail this. Conservative in
+    // the safe direction — it can only ask for a rewrite, never bless a missing
+    // index — but "by columns" was a stronger claim than the code makes.
     $matching = DB::table('pg_indexes')
         ->where('tablename', 'places')
         ->pluck('indexdef')
@@ -521,17 +534,54 @@ it('indexes the columns the default sort pages by', function () {
     expect($matching)->not->toBeEmpty();
 });
 
-it('accepts open_now on the public index once a point rides with it', function () {
+it('filters and orders together on the query Tonight actually sends', function () {
+    // This replaces a test that asserted `open_now` on the public index with the
+    // DEFAULT sort. Review found it was byte-identical to the `public index` row
+    // of the surface test above, whose assertions are a superset — and that the
+    // one combination nothing covered was the only one the app ever sends.
+    // `useTonight` pairs `open_now=1` with `sort=distance` on every request.
+    //
+    // Both halves have to hold at once, which is the point: `open_now` must
+    // still exclude while the sort is composed on top of it, and the order must
+    // survive the correlated EXISTS the filter adds to the query.
     $this->travelTo(new DateTimeImmutable('2026-09-08 20:00', new DateTimeZone(MONTEVIDEO)));
 
-    $open = placeWithHours([period(2, '11:00', 2, '23:00')]);
-    $closed = placeWithHours([period(2, '08:00', 2, '15:00')]);
+    // Montevideo's centre, and the point every URL below measures from.
+    $near = '-34.90,-56.16';
+
+    // Open, and the FURTHER of the two open ones — so an endpoint that ignored
+    // the sort would be as likely to put it first as not, and one that ignored
+    // the filter would still have to place it after `$nearerButClosed`.
+    $fartherOpen = placeWithHours([period(2, '19:00', 2, '23:00')], MONTEVIDEO, -34.95, -56.20);
+    $nearerOpen = placeWithHours([period(2, '11:00', 2, '23:00')], MONTEVIDEO, -34.901, -56.161);
+    $nearerButClosed = placeWithHours([period(2, '08:00', 2, '15:00')], MONTEVIDEO, -34.9005, -56.1605);
+    // No periods AND no timezone — the "hours unknown" row, excluded either way.
+    $nearestButUnknown = placeWithHours(null, null, -34.9001, -56.1601);
 
     $ids = collect(data_get($this->getJson(
-        '/api/v1/places?open_now=1&near=-34.90,-56.16&radius_m=50000'
-    )->assertOk()->json(), 'data'))->pluck('id')->map(intval(...))->all();
+        "/api/v1/places?open_now=1&near={$near}&radius_m=50000&sort=distance"
+    )->assertOk()->json(), 'data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
 
-    expect($ids)->toContain($open->id)->and($ids)->not->toContain($closed->id);
+    // NOTE on the `(int)` cast above, which used to be `->map(intval(...))`
+    // throughout this file: `Collection::map` passes ($value, $key), and
+    // `intval`'s second parameter is the BASE — so element 0 was decoded with
+    // base 0 (auto, correct by accident) and every later element with a base
+    // equal to its index. Base 1 is invalid, so index 1 silently became 0. Every
+    // existing assertion using it either had one row or only checked membership
+    // of the first, which is why four rounds did not see it; this test is the
+    // first to assert a full ORDER, and it went red immediately.
+    //
+    // Excluded: shut right now, and hours nobody knows. The unknown one is the
+    // NEAREST place in the fixture, so it would head the list if the filter were
+    // dropped — the row that must be absent, per T-158's acceptance.
+    expect($ids)->not->toContain($nearerButClosed->id);
+    expect($ids)->not->toContain($nearestButUnknown->id);
+
+    // Ordered by distance, not by insertion or recency: the nearer open place
+    // comes first even though it was created second. Separate `expect()` calls
+    // rather than one `->and()` chain — `->not` persists across `->and()` in
+    // Pest, which silently inverted this assertion when it was written that way.
+    expect($ids)->toBe([$nearerOpen->id, $fartherOpen->id]);
 });
 
 it('reads every spelling of the flag the way the caller meant it', function (string $query, ?bool $filtered) {
@@ -551,7 +601,7 @@ it('reads every spelling of the flag the way the caller meant it', function (str
         return;
     }
 
-    $ids = collect(data_get($response->assertOk()->json(), 'data'))->pluck('id')->map(intval(...))->all();
+    $ids = collect(data_get($response->assertOk()->json(), 'data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
 
     expect(in_array($closed->id, $ids, strict: true))->toBe(! $filtered);
 })->with([

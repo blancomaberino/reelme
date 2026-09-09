@@ -103,8 +103,14 @@ export const queryKeys = {
    * Tonight (T-158). Every input is IN the key — that is what makes changing
    * the zone, the dish or the open-now toggle re-ask rather than re-render the
    * page already in hand.
+   *
+   * `near` is `string | null` for the same reason {@link nearParam} returns
+   * null: "no position" is one state, and it had grown two spellings. Typing it
+   * `string` here forced every caller to `?? ''` on the way in, which is how the
+   * empty-string sentinel kept coming back after the parameter itself stopped
+   * using one.
    */
-  tonight: (near: string, radiusM: number, dish: string, openNow: boolean) =>
+  tonight: (near: string | null, radiusM: number, dish: string, openNow: boolean) =>
     ['places', 'tonight', near, radiusM, dish, openNow] as const,
   share: (id: string) => ['shares', id] as const,
   /** The viewer's recent-shares list (ingest history), keyed by page size. */
@@ -151,8 +157,10 @@ export const queryKeys = {
    * is a race over which of them a screen happens to mount first.
    */
   viewerPosition: () => ['device', 'viewer-position'] as const,
-  /** Nearby active offers for the diner browse (T-047). */
-  nearbyOffers: (near: string, radiusM: number) => ['offers', 'nearby', near, radiusM] as const,
+  /** Nearby active offers for the diner browse (T-047). `near` is nullable for
+   *  the reason given on {@link tonight} above. */
+  nearbyOffers: (near: string | null, radiusM: number) =>
+    ['offers', 'nearby', near, radiusM] as const,
   /** Balance, Connect state and recent entries (T-046). Never cached — money. */
   wallet: () => ['wallet'] as const,
   walletLedger: () => ['wallet', 'ledger'] as const,

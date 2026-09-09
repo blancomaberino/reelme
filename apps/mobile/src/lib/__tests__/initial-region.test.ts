@@ -236,6 +236,30 @@ describe('locateUser', () => {
 
     expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
   });
+
+  it('refuses a fix too coarse to measure a distance from, and waits for a better one', async () => {
+    // Unlike `resolveInitialRegion` above, every caller of `locateUser` MEASURES
+    // from the answer: the locate-me button moves the camera to it, and the
+    // offers browse and Tonight print "a menos de 2 km" and sort by it. So this
+    // path passes `VIEWER_FIX_MAX_ACCURACY_M`, and a ±2 km reading — iOS with
+    // Precise Location off — must not become a metre-precise claim.
+    //
+    // Asserted through the OBSERVABLE (which fix comes back), not by inspecting
+    // the options object: an equivalent bound applied some other way should keep
+    // this test green.
+    lastKnown.mockResolvedValue(null);
+    watchPos.mockImplementation(async (_o, cb) => {
+      const emit = cb as (l: unknown) => void;
+      emit({ coords: { latitude: 1, longitude: 2, accuracy: 2_000 } });
+      emit({ coords: { latitude: FIX_LAT, longitude: FIX_LNG, accuracy: 12 } });
+      return { remove: jest.fn() } as never;
+    });
+
+    expect(await locateUser()).toMatchObject({
+      ok: true,
+      region: { latitude: FIX_LAT, longitude: FIX_LNG },
+    });
+  });
 });
 
 describe('shouldCenterOnViewer', () => {
