@@ -156,10 +156,24 @@ home=$(fake_home '#!/usr/bin/env bash
 echo "# Grounding report"
 echo "- Changed files: **1**"
 echo "## Secret scan (gitleaks)"
-echo "gitleaks was skipped for reasons"')
+echo "_skipped, gitleaks, reasons_"')
 dir=$(make_repo)
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
-check "an unrecognised 'skipped' line fails RED, not silently" "unrecognised 'skipped' line" "$out"
+check "a skip line the parser cannot read fails RED, not silently" "does not recognise" "$out"
+
+# ...but the word "skipped" in QUOTED SOURCE is not a skip line. The pass echoes
+# changed code, so a diff that merely contains the word tripped a hard refusal
+# and made the gate unusable on the branch that adds it. Found by running the
+# real thing on the real branch; no scratch repo produced it.
+home=$(fake_home '#!/usr/bin/env bash
+echo "# Grounding report"
+echo "- Changed files: **1**"
+echo "## Heuristic pattern scan (changed files)"
+echo "apps/api/tests/X.php:12: // the row that must be skipped by the filter"
+echo "  && bad \"no marker when a required tool was skipped\""')
+dir=$(make_repo)
+out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+check "the word 'skipped' in quoted source is not a skip line" "Grounding marker recorded" "$out"
 
 # The pass's own not-installed line for a tool this diff does NOT need is fine.
 home=$(fake_home '#!/usr/bin/env bash

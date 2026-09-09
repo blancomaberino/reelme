@@ -183,18 +183,21 @@ if not skipped:
             f"{len(files)}.\nOne of us resolved the range differently — no marker written."
         )
 
-    # Anchored: `skip()` emits exactly this shape. An unrecognised line that
-    # merely CONTAINS "skipped" is format drift, and drift must fail RED —
-    # reading a skipped tool as one that ran is the silent false green.
-    known_prose = "ast-grep installed but no project ruleset"
+    # Drift must fail RED — reading a skipped tool as one that ran is the silent
+    # false green. But the FAILURE condition has to be anchored to the same
+    # prefix as the success condition, not to the word "skipped" anywhere in the
+    # output: the pass QUOTES changed source lines, so a diff that merely
+    # contains the word (this branch's own tests do) tripped a hard refusal and
+    # made the gate unusable on the very change that adds it. Found by running
+    # it on this branch — no scratch repo would have.
     for line in text.splitlines():
-        if "skipped" not in line.lower():
+        if not line.startswith("_skipped"):
             continue
-        if re.match(r"^_skipped — (\S+) not installed", line) or known_prose in line:
+        if re.match(r"^_skipped — (\S+) not installed", line):
             continue
         raise SystemExit(
-            f"refused: unrecognised 'skipped' line in the grounding output:\n  {line.strip()}\n"
-            "The parser cannot tell a missing tool from one that ran. No marker written."
+            f"refused: a skip line the parser does not recognise:\n  {line.strip()}\n"
+            "It cannot tell a missing tool from one that ran. No marker written."
         )
 
     result["tools_skipped"] = sorted(set(re.findall(r"^_skipped — (\S+) not installed", text, re.M)))
