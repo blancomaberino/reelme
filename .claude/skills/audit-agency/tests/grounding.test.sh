@@ -74,6 +74,9 @@ fake_home() { # fake_home <body>
 }
 
 # The output shape a real pass produces, reduced to what the parser reads.
+# BOTH unconditional sections: a required tool with no section at all is now a
+# refusal, because absence of a skip line used to read as "it ran" — and a stub
+# with one header was literally a pass that runs nothing.
 REAL_PASS='#!/usr/bin/env bash
 echo "# Grounding report"
 echo
@@ -82,6 +85,7 @@ echo "- Changed files: **1**"
 echo
 echo "## Secret scan (gitleaks)"
 echo "✅ No secrets detected in the diff."
+echo "## Static analysis (semgrep)"
 echo "⚠️  one lead"'
 
 ground_ok() { fake_home "$REAL_PASS"; }
@@ -142,7 +146,8 @@ home=$(fake_home '#!/usr/bin/env bash
 echo "# Grounding report"
 echo "- Changed files: **1**"
 echo "## Secret scan (gitleaks)"
-echo "_skipped — gitleaks not installed. Install: `brew install gitleaks`_"')
+echo "_skipped — gitleaks not installed. Install: `brew install gitleaks`_"
+echo "## Static analysis (semgrep)"')
 dir=$(make_repo)
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
 check "a pass missing a tool the diff NEEDS is refused" "this diff needs gitleaks" "$out"
@@ -156,6 +161,7 @@ home=$(fake_home '#!/usr/bin/env bash
 echo "# Grounding report"
 echo "- Changed files: **1**"
 echo "## Secret scan (gitleaks)"
+echo "## Static analysis (semgrep)"
 echo "_skipped, gitleaks, reasons_"')
 dir=$(make_repo)
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
@@ -168,6 +174,8 @@ check "a skip line the parser cannot read fails RED, not silently" "does not rec
 home=$(fake_home '#!/usr/bin/env bash
 echo "# Grounding report"
 echo "- Changed files: **1**"
+echo "## Secret scan (gitleaks)"
+echo "## Static analysis (semgrep)"
 echo "## Heuristic pattern scan (changed files)"
 echo "apps/api/tests/X.php:12: // the row that must be skipped by the filter"
 echo "  && bad \"no marker when a required tool was skipped\""')
@@ -179,6 +187,8 @@ check "the word 'skipped' in quoted source is not a skip line" "Grounding marker
 home=$(fake_home '#!/usr/bin/env bash
 echo "# Grounding report"
 echo "- Changed files: **1**"
+echo "## Secret scan (gitleaks)"
+echo "## Static analysis (semgrep)"
 echo "## Dockerfile lint (hadolint)"
 echo "_skipped — hadolint not installed. Install: `brew install hadolint`_"')
 dir=$(make_repo)
@@ -190,19 +200,29 @@ check "a tool the diff does NOT need may be missing" "Grounding marker recorded"
 home=$(fake_home '#!/usr/bin/env bash
 echo "# Grounding report"
 echo "- Changed files: **99**"
-echo "## Secret scan (gitleaks)"')
+echo "## Secret scan (gitleaks)"
+echo "## Static analysis (semgrep)"')
 dir=$(make_repo)
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
 check "a pass that saw a different file count is refused" "resolved the range differently" "$out"
 
 # Zero files means the BASE is wrong, and the message must say so rather than
 # send the operator to debug the parser.
+# Both sides must AGREE on zero for the base to be the answer — a stub claiming
+# zero over a repo that has changes is a mismatch, and the mismatch message is
+# the honest one because it can print both numbers.
 home=$(fake_home '#!/usr/bin/env bash
 echo "# Grounding report"
 echo "- Changed files: **0**"')
 dir=$(make_repo)
+(cd "$dir" && git checkout -q -B feat/empty main)   # a branch with nothing on it
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
-check "zero changed files blames the base, not the parser" "check the base ref" "$out"
+check "zero on BOTH sides blames the base, not the parser" "check the base ref" "$out"
+
+# ...and a disagreement says so instead, with both numbers.
+dir=$(make_repo)
+out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+check "a count disagreement names both numbers" "resolved the range differently" "$out"
 
 # A pass scoped to one commit must not certify the branch. It is now caught at
 # WRITE time, by the file-count comparison, before a marker exists at all —
@@ -251,14 +271,28 @@ out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-f
 check "writer and checker prefer the same ref when origin/main and main differ" "receipt recorded" "$out"
 
 # ------------------------------------------------------------------ the hatch
+# It exists for a machine the pass CANNOT run on, so every case below runs with
+# a $HOME that has no ground.sh. Using the real one would be asking for the
+# hatch where the honest path works — which is now refused, one case down.
+no_pass=$(mktemp -d "$tmproot/home.XXXXXX")
+
 dir=$(make_repo)
-out=$(cd "$dir" && REELMAP_SKIP_GROUNDING=1 bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+out=$(cd "$dir" && HOME="$no_pass" REELMAP_SKIP_GROUNDING=1 bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
 check "the skip is honoured and announced" "Grounding pass SKIPPED" "$out"
 check "and it names the sentence the PR body needs" "Grounding pass skipped:" "$out"
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
 check "a skipped pass still records a receipt" "receipt recorded" "$out"
 grep -q '"grounding": "skipped"' "$dir/.claude/state/audit-receipt.json" \
   && ok "the skip is written into the receipt" || bad "the skip is written into the receipt"
+
+# A hatch available where the honest path works is the path everyone takes.
+dir=$(make_repo); home=$(ground_ok)
+if command -v gitleaks >/dev/null 2>&1 && command -v semgrep >/dev/null 2>&1; then
+  out=$(cd "$dir" && HOME="$home" REELMAP_SKIP_GROUNDING=1 bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+  check "the hatch is REFUSED where the pass can run" "the grounding pass CAN run here" "$out"
+else
+  echo "SKIP  [the hatch is REFUSED where the pass can run] (gitleaks/semgrep not installed here)"
+fi
 
 # Fail CLOSED when the skill is not installed, and name the hatch.
 empty_home=$(mktemp -d "$tmproot/home.XXXXXX")
@@ -313,6 +347,68 @@ stray=$(cd "$dir" && git status --porcelain | grep -c "__pycache__")
 [ "$stray" -eq 0 ] \
   && ok "the marker run leaves no bytecode in .claude/" \
   || bad "the marker run leaves no bytecode in .claude/" "found $stray"
+
+# ------------------------------------------------- against the REAL pass
+# Every case above stubs ground.sh, so the parser is checked against a mock of
+# itself and agrees by construction. That suite is structurally incapable of
+# catching a disagreement between this script and the real pass — and one had
+# already shipped: ground.sh drops paths failing `[ -e ]`, this script did not,
+# so a file deleted in the working tree made the two counts differ and refused a
+# legitimate branch while blaming the base ref.
+real_ground="$HOME/.claude/skills/coderabbit/scripts/ground.sh"
+if [ -f "$real_ground" ] && command -v gitleaks >/dev/null 2>&1 && command -v semgrep >/dev/null 2>&1; then
+  dir=$(make_repo)
+  out=$(cd "$dir" && bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+  check "the REAL pass and this script agree on the file set" "Grounding marker recorded" "$out"
+
+  # The divergence that shipped: in the diff, absent from disk.
+  dir=$(make_repo)
+  (cd "$dir" && echo "<?php" > apps/api/app/Gone.php && git add -A >/dev/null 2>&1      && git -c user.email=t@t -c user.name=t commit -qm gone >/dev/null 2>&1 && rm apps/api/app/Gone.php)
+  out=$(cd "$dir" && bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+  check "a file deleted in the working tree does not break the count" "Grounding marker recorded" "$out"
+
+  # And a base file removed from disk must not be reported as a bad base ref.
+  dir=$(make_repo)
+  (cd "$dir" && rm apps/api/app/Seed.php)
+  out=$(cd "$dir" && bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+  printf '%s' "$out" | grep -q "check the base ref"     && bad "a deleted file is not blamed on the base ref" "$out"     || ok "a deleted file is not blamed on the base ref"
+else
+  echo "SKIP  [the REAL pass agrees with this script] (ground.sh or its scanners not installed)"
+fi
+
+# A pass that emits headers and nothing else: the shape a stub had, and the
+# shape "no skip line means it ran" accepted.
+home=$(fake_home '#!/usr/bin/env bash
+echo "# Grounding report"
+echo "- Changed files: **1**"
+echo "## Secret scan (gitleaks)"')
+dir=$(make_repo)
+out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+check "a required tool with NO section at all is refused" "no section for them at all" "$out"
+
+# The three mutations a review found green. Each needs a case that is not.
+#
+# 1. Every scratch repo had a clean tree, so dropping the working-tree half of
+#    the file list changed nothing — the regression the comment says shipped once.
+#    An UNTRACKED file is invisible to both sides (neither uses --others), so
+#    it cannot show the difference; a MODIFIED tracked file can.
+dir=$(make_repo); home=$(ground_ok)
+(cd "$dir" && echo "<?php // edited, not committed" > apps/api/app/Seed.php)
+out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+check "an uncommitted EDIT counts toward the file set" "resolved the range differently" "$out"
+
+# 2. The diff was always one .php file, so the per-filetype derivation was
+#    never exercised: deleting it whole left the suite green.
+dir=$(make_repo)
+(cd "$dir" && printf '#!/usr/bin/env bash\necho hi\n' > scripts.sh && git add -A >/dev/null 2>&1 \
+   && git -c user.email=t@t -c user.name=t commit -qm sh >/dev/null 2>&1)
+home=$(fake_home '#!/usr/bin/env bash
+echo "# Grounding report"
+echo "- Changed files: **2**"
+echo "## Secret scan (gitleaks)"
+echo "## Static analysis (semgrep)"')
+out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
+check "a .sh in the diff REQUIRES the shell linter" "needs shellcheck" "$out"
 
 [ $fails -eq 0 ] && echo "ALL PASS" || echo "$fails FAILED"
 exit $((fails > 0))

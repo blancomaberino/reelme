@@ -53,7 +53,11 @@ seated()  { printf '%s' "$1" | grep -qF -- "- $2"; }
 # LANE SELECTION, not about grounding — grounding.test.sh owns that — so they
 # stub the marker with the documented skip rather than install the user-level
 # script. The skip is recorded in the receipt either way, which is the point.
-grounded() { (cd "$1" && REELMAP_SKIP_GROUNDING=1 bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1); }
+# A $HOME with no ground.sh: the hatch is only honoured where the pass CANNOT
+# run, so pointing at the real one would be refused. These cases are about lane
+# SELECTION; grounding.test.sh owns the grounding behaviour.
+NO_PASS_HOME="$(mktemp -d)"
+grounded() { (cd "$1" && HOME="$NO_PASS_HOME" REELMAP_SKIP_GROUNDING=1 bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1); }
 receipt() { (cd "$1" && git add -A && git commit -qm c) >/dev/null 2>&1; grounded "$1"; (cd "$1" && { bash .claude/skills/audit-agency/record-receipt.sh "$2" >/dev/null; } 2>&1); }
 
 echo "select-lanes.sh"

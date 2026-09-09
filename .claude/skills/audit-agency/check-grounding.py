@@ -27,6 +27,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import sys
 
 MARKER = ".claude/state/grounding.json"
@@ -113,11 +114,19 @@ def main() -> int:
         print("skipped")
         return 0
 
-    # Re-checked here and not only at write time, because the marker is a file
-    # and this is the reader: a pass that skipped a tool the diff needs is the
-    # false green the whole rebuild is about.
-    missing_tools = set(marker.get("required_tools") or []) & set(marker.get("tools_skipped") or [])
-    if missing_tools:
+    # Re-derived from the LOG, not from the marker's own two lists. Intersecting
+    # `required_tools` with `tools_skipped` read both operands out of the same
+    # file the writer wrote, so it could never disagree with the writer — a
+    # marker claiming `"required_tools": []` beside `"tools_skipped":
+    # ["gitleaks"]` returned ok. The log is digest-bound (checked above), so
+    # scanning it is an independent reading of the same evidence.
+    try:
+        log_text = pathlib.Path(LOG).read_text(errors="replace")
+    except OSError:
+        print("stale")
+        return 0
+    skipped_in_log = set(re.findall(r"^_skipped — (\S+) not installed", log_text, re.M))
+    if set(marker.get("required_tools") or []) & skipped_in_log:
         print("out-of-scope")
         return 0
 

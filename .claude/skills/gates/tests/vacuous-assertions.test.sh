@@ -18,10 +18,14 @@ trap 'rm -rf "$tmproot"' EXIT
 
 # run_on <php-test-body> -> prints "<exit>|<output>"
 run_on() {
-  local dir out code
+  local dir out code path
   dir=$(mktemp -d "$tmproot/repo.XXXXXX")
-  mkdir -p "$dir/apps/api/tests"
-  printf '%s\n' "$1" > "$dir/apps/api/tests/Example.php"
+  # The path is a parameter now: every case wrote apps/api/tests/Example.php, so
+  # narrowing the scan to that ONE pathspec — deleting the mobile and contracts
+  # scope entirely — left the suite green.
+  path="${2:-apps/api/tests/Example.php}"
+  mkdir -p "$dir/$(dirname "$path")"
+  printf '%s\n' "$1" > "$dir/$path"
   (
     cd "$dir" || exit 1
     git init -q .
@@ -77,6 +81,20 @@ empty=$(mktemp -d "$tmproot/empty.XXXXXX")
 (cd "$empty" && git init -q .)
 out=$(cd "$empty" && bash "$script" 2>&1); code=$?
 check "an empty scan fails instead of reporting a pass" 1 "refusing to report a pass" "$code|$out"
+
+# The other two scopes, which no case reached — and the Jest matcher, which the
+# PHP-only fixtures could never exercise.
+check "a mobile .test.tsx is scanned" 1 "on a literal" \
+  "$(run_on 'it("x", () => { expect(3).toBe(3); });' 'apps/mobile/src/x.test.tsx')"
+
+check "a contracts .test.ts is scanned" 1 "on a literal" \
+  "$(run_on 'it("x", () => { expect(true).toBe(true); });' 'packages/contracts/src/x.test.ts')"
+
+# A path git C-QUOTES: the quoted string used to reach grep as a filename that
+# does not exist, so the file was skipped while still counted — the scan could
+# report a pass having read nothing.
+check "a non-ASCII filename is scanned, not silently skipped" 1 "constant asserted to be itself" \
+  "$(run_on '<?php $this->assertTrue(true);' 'apps/api/tests/Café.php')"
 
 # The known blind spot, asserted so nobody later mistakes it for coverage: the
 # tautology this gate was written after is NOT detectable by it.

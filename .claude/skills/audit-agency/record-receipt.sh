@@ -106,9 +106,12 @@ esac
 # well-formed. A lead is not a finding, but it is a thing somebody has to have
 # looked at, and the note is where that shows.
 if [ "$verdict" != docs-only ] && [ -z "${2:-}" ]; then
-  leads="$(python3 -c 'import json,sys
+  # int() inside the Python, not in the shell test: a hand-written marker with
+  # "leads": "many" made `[ "$leads" -gt 0 ]` error and evaluate FALSE, which
+  # skipped the requirement instead of enforcing it.
+  leads="$(python3 -c 'import json
 try:
-    print(json.load(open(".claude/state/grounding.json")).get("leads", 0))
+    print(int(json.load(open(".claude/state/grounding.json")).get("leads", 0)))
 except Exception:
     print(0)' 2>/dev/null || echo 0)"
   if [ "${leads:-0}" -gt 0 ]; then

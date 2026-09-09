@@ -24,17 +24,23 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 
 fail=0
 
+# -z, and NUL all the way through: git C-QUOTES a path with non-ASCII or control
+# bytes ("apps/api/tests/Caf\303\251.php"), and the quoted string reached grep as
+# a filename that does not exist. grep errored into /dev/null while the count
+# still counted the file — so the scan silently skipped it AND the empty-scan
+# guard could not fire. A space in a name worked; an accent did not.
+#
+# --others: a test file written but not yet `git add`ed is exactly the one being
+# reviewed, and listing only tracked files hid it from this gate.
 test_files() {
-  # --others: a test file written but not yet `git add`ed is exactly the one
-  # being reviewed, and listing only tracked files hid it from this gate.
-  git ls-files --cached --others --exclude-standard 'apps/*/tests/*.php' 'apps/*/tests/**/*.php' \
+  git ls-files -z --cached --others --exclude-standard 'apps/*/tests/*.php' 'apps/*/tests/**/*.php' \
     'apps/*/**/*.test.ts' 'apps/*/**/*.test.tsx' 'packages/*/**/*.test.ts'
 }
 
 # scan <label> <bre-pattern>
 scan() {
   local label="$1" pattern="$2" hits
-  hits=$(test_files | tr '\n' '\0' | xargs -0 grep -n "$pattern" 2>/dev/null)
+  hits=$(test_files | xargs -0 grep -Hn "$pattern" 2>/dev/null)
 
   if [ -n "$hits" ]; then
     printf '\033[31m  x %s\033[0m\n' "$label"
@@ -43,7 +49,7 @@ scan() {
   fi
 }
 
-count=$(test_files | wc -l | tr -d ' ')
+count=$(test_files | tr -dc '\0' | wc -c | tr -d ' ')
 if [ "$count" -eq 0 ]; then
   echo "  no test files matched — refusing to report a pass on an empty scan." >&2
   exit 1

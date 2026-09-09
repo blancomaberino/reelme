@@ -22,6 +22,12 @@
 # installed at all. The threat model is the one `guard-pr-audit.py` states: a
 # busy agent taking a shortcut, not someone attacking their own repository.
 # Nothing here survives a determined forger, and it is not meant to.
+#
+# One more limit worth naming: a tool that is INSTALLED but fails at runtime
+# (semgrep unable to fetch its rules offline) prints a findings line with
+# nothing under it, and emits no skip line. The marker cannot tell that from a
+# real run. It certifies that the tools the diff needed were present, not that
+# each produced a meaningful result.
 set -uo pipefail
 
 top="$(git rev-parse --show-toplevel 2>/dev/null)" || {
@@ -69,6 +75,21 @@ MSG
   exit 2
 fi
 
+# The hatch is for a machine where the pass CANNOT run. If the script and the
+# two unconditional scanners are all present, it can — and a hatch available
+# where the honest path works is the path everyone takes. Refuse it there.
+if [ "${REELMAP_SKIP_GROUNDING:-}" = 1 ] && [ -f "$ground" ] \
+   && command -v gitleaks >/dev/null 2>&1 && command -v semgrep >/dev/null 2>&1; then
+  cat >&2 <<'MSG'
+refused: REELMAP_SKIP_GROUNDING=1, but the grounding pass CAN run here — the
+script and both unconditional scanners (gitleaks, semgrep) are installed.
+
+The hatch is for a machine the pass cannot run on. Run it:
+  .claude/skills/audit-agency/run-grounding.sh
+MSG
+  exit 2
+fi
+
 skipped=false
 if [ "${REELMAP_SKIP_GROUNDING:-}" = 1 ]; then
   skipped=true
@@ -93,7 +114,7 @@ fi
 # touched the guard path. Fixed once already and lost in a rewrite; the
 # select-lanes suite is what caught it the second time.
 SKIPPED="$skipped" BASE="$base" LOG="$log" PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
-import importlib.util, json, os, pathlib, re
+import fnmatch, importlib.util, json, os, pathlib, re
 from datetime import datetime, timezone
 
 # The hook owns the tree hash AND the digest, imported rather than
@@ -129,18 +150,30 @@ committed = guard.run(
 working = guard.run(
     ["git", "diff", "--name-only", "--diff-filter=ACMR", "HEAD"], os.getcwd()
 ).splitlines()
-files = sorted({f for f in committed + working if f.strip()})
+# `[ -e ]`, because ground.sh applies it too: a file deleted in the working tree
+# is in the diff and not on disk, and without this the two counts disagree on a
+# perfectly legitimate branch — a hard refusal whose only exit is the hatch.
+files = sorted({f for f in committed + working if f.strip() and os.path.exists(f)})
+
+# The patterns mirror the ones ground.sh selects files with — a subset would
+# mean a diff the pass DOES scan, with the scanner missing, recorded as `ok`.
+# Enumerating four of its eleven lockfile globs was exactly that.
+LOCKFILE_GLOBS = (
+    "*composer.lock", "*package-lock.json", "*yarn.lock", "*pnpm-lock.yaml",
+    "*Gemfile.lock", "*poetry.lock", "*go.sum", "*go.mod", "*Cargo.lock",
+    "*requirements*.txt",
+)
 
 required = {"gitleaks", "semgrep"}
 for f in files:
     name = os.path.basename(f)
-    if f.endswith((".sh", ".bash")):
+    if fnmatch.fnmatch(name, "*.sh") or fnmatch.fnmatch(name, "*.bash"):
         required.add("shellcheck")
-    if f.startswith(".github/workflows/"):
+    if f.startswith(".github/workflows/") and fnmatch.fnmatch(name, "*.y*ml"):
         required.add("actionlint")
-    if name == "Dockerfile" or name.startswith("Dockerfile."):
+    if fnmatch.fnmatch(name, "*Dockerfile*") or fnmatch.fnmatch(name, "*.dockerfile"):
         required.add("hadolint")
-    if name in {"composer.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"}:
+    if any(fnmatch.fnmatch(name, g) for g in LOCKFILE_GLOBS):
         required.add("osv-scanner")
 
 result = {
@@ -151,7 +184,7 @@ result = {
     "changed_files": len(files),
     "required_tools": sorted(required),
     "tools_skipped": [],
-    "leads": text.count("⚠"),
+    "leads": len(re.findall(r"^⚠", text, re.M)),  # anchored: the footer legend mentions ⚠️ too
     "digest": guard.grounding_digest(log),
     "ran_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
@@ -169,18 +202,19 @@ if not skipped:
     if not m:
         raise SystemExit("refused: the grounding output states no changed-file count. No marker written.")
     seen = int(m.group(1))
-    if seen == 0:
-        raise SystemExit(
-            f"refused: the grounding pass saw NO changed files against {base[:12]} —\n"
-            "check the base ref, not the parser. No marker written."
-        )
-    # The pass and this script must be looking at the SAME diff. A mismatch
-    # means one of us resolved the range differently, and a marker that
-    # certifies a set nobody grounded is the thing this file exists to prevent.
+    # The mismatch check FIRST when we have files of our own: it can print both
+    # numbers, while the zero branch can only blame the base — and blaming the
+    # base for a disagreement is how an operator ends up debugging the wrong
+    # thing. Zero on both sides is the only case the base is really the answer.
     if seen != len(files):
         raise SystemExit(
             f"refused: the grounding pass saw {seen} changed file(s) and this script sees "
             f"{len(files)}.\nOne of us resolved the range differently — no marker written."
+        )
+    if seen == 0:
+        raise SystemExit(
+            f"refused: the grounding pass saw NO changed files against {base[:12]} —\n"
+            "check the base ref, not the parser. No marker written."
         )
 
     # Drift must fail RED — reading a skipped tool as one that ran is the silent
@@ -201,6 +235,26 @@ if not skipped:
         )
 
     result["tools_skipped"] = sorted(set(re.findall(r"^_skipped — (\S+) not installed", text, re.M)))
+
+    # A required tool must have a SECTION in the report, not merely no skip
+    # line. Absence of a skip line was read as "it ran", so a pass emitting a
+    # header and nothing else satisfied every check — which is precisely what
+    # the stub in this gate's own test suite does.
+    SECTION_FOR = {
+        "gitleaks": "Secret scan (gitleaks)",
+        "semgrep": "Static analysis (semgrep)",
+        "osv-scanner": "Dependency vulnerabilities",
+        "actionlint": "GitHub Actions lint (actionlint)",
+        "hadolint": "Dockerfile lint (hadolint)",
+        "shellcheck": "Shell lint (shellcheck)",
+    }
+    silent = sorted(t for t in required if SECTION_FOR.get(t, t) not in text)
+    if silent:
+        raise SystemExit(
+            "refused: this diff needs " + ", ".join(silent) + ", and the grounding output has\n"
+            "no section for them at all — the pass did not cover what the diff calls for.\n"
+            "No marker written."
+        )
 
     missing = sorted(required & set(result["tools_skipped"]))
     if missing:

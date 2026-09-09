@@ -183,7 +183,9 @@ def main():
     # was that the push guard never read this field at all, so a receipt could
     # say anything — or nothing — about whether the scripted pass ran.
     with tempfile.TemporaryDirectory() as repo:
-        subprocess.run(["git", "init", "-q", repo], check=True)
+        # `-b main`, or no merge base resolves and the base check silently does
+        # not apply — which is how the case for it passed as ALLOW.
+        subprocess.run(["git", "init", "-q", "-b", "main", repo], check=True)
         subprocess.run(["git", "-C", repo, "config", "user.email", "t@t"], check=True)
         subprocess.run(["git", "-C", repo, "config", "user.name", "t"], check=True)
         (pathlib.Path(repo) / "f.txt").write_text("hello\n")
@@ -216,6 +218,7 @@ def main():
             body = {
                 "head": head,
                 "tree": tree,
+                "base": guard.run(["git", "merge-base", "main", "HEAD"], repo).strip(),
                 "skipped": False,
                 "digest": guard.grounding_digest(state_dir / "grounding.log"),
             }
@@ -233,8 +236,43 @@ def main():
         write_marker()
         grounding_cases.append(("ok + a marker that verifies", decision(PUSH, project_dir=repo), "ALLOW"))
 
+        # A skip is verified like any other state — it leaves a marker too.
         write_receipt(grounding="skipped")
-        grounding_cases.append(("skipped is allowed, loudly", decision(PUSH, project_dir=repo), "ALLOW"))
+        write_marker(skipped=True)
+        grounding_cases.append(("skipped is allowed", decision(PUSH, project_dir=repo), "ALLOW"))
+
+        # ...but only with its own marker. Before this, `skipped` needed nothing
+        # but the word, which made the hatch's artifact cheaper than a real pass.
+        (state_dir / "grounding.json").unlink()
+        grounding_cases.append(("skipped with NO marker", decision(PUSH, project_dir=repo), "DENY"))
+
+        # And a marker that records a real pass must not certify a claimed skip,
+        # nor the reverse — the two states are not interchangeable.
+        write_marker(skipped=False)
+        grounding_cases.append(("skipped over a ran marker", decision(PUSH, project_dir=repo), "DENY"))
+        write_receipt(grounding="ok")
+        write_marker(skipped=True)
+        grounding_cases.append(("ok over a skipped marker", decision(PUSH, project_dir=repo), "DENY"))
+
+        # Restore the state the visibility check below expects.
+        write_receipt(grounding="skipped")
+        write_marker(skipped=True)
+
+        # ALLOW is half the claim. The word is "loudly", and the first version
+        # printed to stderr — which is surfaced only on a NON-ZERO exit, so the
+        # message went nowhere and the skip was the cheapest, quietest path
+        # through the whole gate. Asserting the decision alone passed either way.
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=repo)
+        env.pop("REELMAP_SKIP_AUDIT", None)
+        spoken = subprocess.run(
+            [sys.executable, HOOK], input=json.dumps({"tool_input": {"command": PUSH}}),
+            capture_output=True, text=True, env=env,
+        ).stdout
+        heard = "SKIPPED" in spoken and "did not run" in spoken
+        print(f"{'PASS' if heard else 'FAIL'}  {'[T-156] the skip is SAID, not just allowed':44s} "
+              f"want=visible got={'visible' if heard else 'silent: ' + spoken[:60]!r}")
+        if not heard:
+            failures.append("grounding: the skip is said")
 
         # Claiming `ok` is not the same as having run: the guard re-verifies the
         # artifact, because record-receipt.sh refusing to WRITE a bad receipt
@@ -242,6 +280,16 @@ def main():
         write_receipt(grounding="ok")
         (state_dir / "grounding.json").unlink()
         grounding_cases.append(("ok with NO marker", decision(PUSH, project_dir=repo), "DENY"))
+
+        # head AND tree, not either: no case built a marker with the right
+        # commit and the wrong content, so dropping the tree half of that
+        # comparison left the suite green.
+        write_marker(tree="0" * 64)
+        grounding_cases.append(("right head, wrong tree", decision(PUSH, project_dir=repo), "DENY"))
+        write_marker(head="0" * 40)
+        grounding_cases.append(("right tree, wrong head", decision(PUSH, project_dir=repo), "DENY"))
+        write_marker(base="0" * 40)
+        grounding_cases.append(("a base nobody would compute", decision(PUSH, project_dir=repo), "DENY"))
 
         write_marker()
         (state_dir / "grounding.log").write_text("replaced after the run\n")
@@ -375,6 +423,9 @@ def main():
         nested = pathlib.Path(sub) / "apps" / "api"
         nested.mkdir(parents=True)
         (nested / "f.txt").write_text("hi\n")
+        # The tree hash counts untracked files, so the receipt and marker written
+        # below would otherwise invalidate the very tree they record.
+        (pathlib.Path(sub) / ".gitignore").write_text(".claude/state/\n")
         subprocess.run(["git", "-C", sub, "add", "-A"], check=True)
         subprocess.run(["git", "-C", sub, "commit", "-qm", "x"], check=True)
 
@@ -401,6 +452,18 @@ def main():
         # receipt from a subdirectory, not about the grounding pass.
         receipt.write_text(
             json.dumps({"head": head, "tree": tree, "verdict": "clean", "grounding": "skipped"})
+        )
+        # A skip is verified like any other state, so this fixture needs the
+        # marker too — it is about finding the receipt from a subdirectory.
+        (receipt.parent / "grounding.log").write_text("skipped\n")
+        (receipt.parent / "grounding.json").write_text(
+            json.dumps({
+                "head": head,
+                "tree": tree,
+                "base": guard.run(["git", "merge-base", "main", "HEAD"], sub).strip(),
+                "skipped": True,
+                "digest": guard.grounding_digest(receipt.parent / "grounding.log"),
+            })
         )
 
         got = decision("git push", cwd=str(nested), project_dir=sub)
