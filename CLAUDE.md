@@ -60,8 +60,9 @@ state, not a deliverable); `task.py start` prints the template.
 - **Sibling** — what existing map/list/form/sheet/query does this extend? What gets extracted?
 - **State, writers and readers** — every state given a new consequence, and
   *every* place that writes it (grep `set({ field`, `->update([`, `fill(`, direct
-  assignment) **or branches on it** (`switch`, an `if` chain, a ternary —
-  especially one whose last arm is implicit — T-158).
+  assignment) **or branches on it** — readers are found by grepping the STATE'S
+  NAME, never the keyword: `switch`/`if`/ternary are unsearchable, and the arm
+  that bit T-158 was a trailing `if` with no `else` to grep for (T-158).
 - **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
 - **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
 - **Authz** — who may call this, and where is that checked?
@@ -77,10 +78,11 @@ rounds that T-156 spent on a file the task never named.
 **Fix the shape, not the instance.** A second finding in the same file means the
 first fix enumerated cases; replace it with the rule that covers them.
 
-**A review finding gets the same brief as a feature.** Two lines before the edit:
-the *writers and readers* list above — the fix is wrong until it is complete —
-and *the test that is red now and green after*. If the fix itself trips a **plan
-review** trigger, it is a task: full brief and that review (T-158, `lessons.md`).
+**A review finding gets the same brief as a feature** — the two items above it
+needs, the writers-and-readers list and the red-then-green test. And **a fix that
+trips a plan-review trigger is promoted to a task**: full brief, plan review, its
+own round. That promotion is the half with teeth; the rest is the brief you would
+have written anyway (T-158, `lessons.md`).
 
 ## 4. Review, audit and the gates
 
@@ -104,14 +106,15 @@ review** trigger, it is a task: full brief and that review (T-158, `lessons.md`)
   current tree: run `.claude/skills/audit-agency/run-grounding.sh` (T-156).
 - **Rounds:** at most two. A third round of findings in one file means the design
   is wrong — stop, redesign, then review once.
-- **A finding you will not act on is DECLINED IN WRITING before the receipt** —
-  and a 🔴 or 🟡 needs an explicit OWNER waiver, exactly like an escape hatch
-  below; a self-written decline covers 🟢 and 💭 only. Never applied after a
-  receipt: those bind to HEAD, so a late "non-blocking" tidy-up costs a whole
-  round (T-158). A finding you cannot reproduce is BOUNDED instead — record in
-  code what holds it off and which unrelated limit that rests on — and one you
-  can neither reproduce nor bound goes to the owner. "Could not reproduce" is not
-  a decline.
+- **Dispose of every finding before the receipt, in writing** — fix it, decline
+  it, or bound it. Applying it is not the cheap option: it costs the brief (§3),
+  and skipping that is what turns one round into nineteen. You may decline 🟢 and
+  💭 yourself; a 🔴 or 🟡 needs an owner waiver, justified in the PR body like an
+  escape hatch below. A finding you cannot REPRODUCE is bounded instead: record
+  in code what holds it off and what that bound rests on. Neither reproducible
+  nor boundable goes to the owner — "could not reproduce" is not a decline.
+  Applying a fix AFTER a receipt invalidates it (receipts bind to HEAD), so a
+  late "non-blocking" tidy-up costs a whole round (T-158).
 - **Escape hatches are owner-approved only** and must be justified in the PR
   body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`,
   `REELMAP_SKIP_GROUNDING=1`.
@@ -122,9 +125,7 @@ review** trigger, it is a task: full brief and that review (T-158, `lessons.md`)
   `record-receipt.sh`, `select-lanes.sh`, the hook lines in `.claude/settings.json`,
   `run-gates.sh`, and the gates' own tests. Findings about them go to the owner,
   not into them. What a review loop MAY edit is judgement the gate never reads:
-  `review-checklist.md`, `ground.sh` heuristics, and the ADVICE TEXT a check
-  prints on failure — provided no test asserts it and the exit paths are
-  untouched, both of which you show rather than claim.
+  `review-checklist.md` and `ground.sh` heuristics.
 - **A branch you did not write runs its own `.claude/**`** — the gates, the
   selector and the hooks' tests exec files from the diff. Read `.claude/**` in
   the diff before running any of them on a contributor's branch.
@@ -144,13 +145,12 @@ review** trigger, it is a task: full brief and that review (T-158, `lessons.md`)
 - **A test that computes its expected value must be able to move it.** Put the
   derivation in production code and drive it from the test; a `beforeEach` that
   pins the input makes the assertion a tautology (T-156).
-- **Every test owes ONE observed failing run, before it is trusted.** Red first
-  where there is a defect; revert the fix where one is already written; for a
-  guard over already-correct code, mutate the PRODUCTION code — then restore with
-  an absolute path (T-158).
-- **A test's fixture has a horizon; assert you are inside it.** Past the edge of
-  what it leans on — a range of minutes, a row cap, a call count — the test
-  agrees with every implementation and stops guarding in silence (T-158).
+- **Every test owes ONE observed failing run, before it is trusted.** Write it red
+  first. If the fix already exists, revert the fix to see red; if there was never
+  a defect — a guard over already-correct code — mutate the PRODUCTION code
+  instead, then restore with an absolute path. Say WHICH of the three you did, in
+  the commit: T-158's problem was not ambiguity but two commit messages that
+  claimed every guard had been mutated while three vacuous tests shipped.
 - Tests run without network — fakes, fixtures, recorded responses.
 - API: Pest on Postgres, never sqlite. Mobile: Jest + Maestro flows.
 

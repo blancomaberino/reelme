@@ -224,24 +224,18 @@ T-158 is 22 commits: **two of feature, one merge, and nineteen answering a
 review** — two `/simplify` passes, two answering GitHub CodeRabbit, and fifteen
 answering an audit or panel seating, seven of which were a full five-seat round.
 Every round found something real. But **at least eleven of those nineteen commits
-were repairing the previous commit's fix** — two independent counts of the commit
-bodies put it at eleven and at sixteen — which is the whole story. The feature
+were repairing the previous commit's fix**, which is the whole story. The feature
 had a design brief; the ~84 review findings did not, and each was read as a work
 order and edited straight in. (That figure counts finding-level items in the
 seventeen commits answering an audit, panel or bot round; including the two
 `/simplify` passes takes it past a hundred. Stating the rule because this is the
 one number not reproducible from the log alone.)
 
-Those counts are derived from the branch — `git log main..feat/t-158-tonight-open-now`
-and the commit bodies — and not estimated, because estimating is how the first two
-versions of this paragraph got them wrong. The first said two audit rounds, one
-`/simplify`, five panels, thirty-odd findings and three defects; every figure was
-the post-merge half only. The second corrected them to fourteen rounds, five
-panels, ~69 findings and six defects, and was still low on all four. A post-mortem
-that undercounts is the defect it is describing, and it took the same seat catching
-it twice to stop me rounding my own record down.
-
-Four habits, and what each cost:
+Counts are derived from `git log main..feat/t-158-tonight-open-now` and the commit
+bodies, not estimated — two earlier drafts of this paragraph estimated and were low
+on every figure. The ~84 is the one number the log cannot reproduce: it counts
+finding-level items in the seventeen commits answering an audit, panel or bot
+round.
 
 **1. No "every reader and writer" grep before changing a rule.** §3 has asked for
 the WRITER half since T-168. The READER half was missing from the template
@@ -273,8 +267,16 @@ against the code they were written to reject — a fractional-instant assertion,
 depth-guard mock that hand-rolled `beginTransaction()`, and the `travelTo` one —
 and **two of those commits' own messages claimed every guard had been mutated and
 watched fail.** That is the finding, not the three tests: mutation-after is a step
-you can believe you performed. Writing the test first makes that impossible,
-because the red run is the first thing you see.
+you can believe you performed — and that is the point. The rule it replaced was
+not ambiguous; it was ATTESTED TO FALSELY, twice, in commit messages written by
+someone who thought they had done it. A better-worded rule does not fix that.
+What would: an artifact. `record-receipt.sh` already refuses a receipt when the
+grounding pass reports leads and no note explains them, and `approve.sh` already
+refuses until the axes are named — the same shape, tree-keyed, would work here
+(run each changed test file against the base version of the production files the
+diff touches; require one failure per new test file; refuse the receipt without
+it). Both are owner-only files, so this entry is where it gets recorded rather
+than built.
 
 **4. A fix written before the bug was reproduced.** A reported `sort=distance`
 cursor-precision bug was real as a PHP mechanism and is reachable at continental
