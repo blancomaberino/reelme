@@ -58,7 +58,7 @@ seated()  { printf '%s' "$1" | grep -qF -- "- $2"; }
 # SELECTION; grounding.test.sh owns the grounding behaviour.
 NO_PASS_HOME="$(mktemp -d)"
 grounded() { (cd "$1" && HOME="$NO_PASS_HOME" REELMAP_SKIP_GROUNDING=1 bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1); }
-receipt() { (cd "$1" && git add -A && git commit -qm c) >/dev/null 2>&1; grounded "$1"; (cd "$1" && { bash .claude/skills/audit-agency/record-receipt.sh "$2" >/dev/null; } 2>&1); }
+receipt() { (cd "$1" && git add -A && git commit -qm c) >/dev/null 2>&1; grounded "$1"; (cd "$1" && { bash .claude/skills/audit-agency/record-receipt.sh "$2" --declines none >/dev/null; } 2>&1); }
 
 echo "select-lanes.sh"
 
@@ -144,8 +144,11 @@ seated "$out" "Application Security Engineer" && seated "$out" "Backend Architec
 d="$(scratch)"; touchf "$d/apps/api/app/A.php"; git -C "$d" add -A; git -C "$d" commit -qm c; git -C "$d" branch -D main -q
 out="$(lanes "$d")"; rc=$?
 [ $rc -ne 0 ] && printf '%s' "$out" | grep -q '^LANES: unknown' && ok "no base ref → LANES: unknown, exit 1" || bad "no base ref" "rc=$rc $out"
-e="$(cd "$d" && { bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null; } 2>&1)"; rc=$?
-[ $rc -ne 0 ] && printf '%s' "$e" | grep -q '^refused:' && ok "receipt REFUSED when the selector cannot read the diff" || bad "receipt on unknown" "rc=$rc $e"
+# `--declines none` is passed so this still tests the SELECTOR's refusal: without
+# it the receipt is refused for a missing disposition instead, and a grep for a
+# bare `^refused:` would have gone green on the wrong reason.
+e="$(cd "$d" && { bash .claude/skills/audit-agency/record-receipt.sh clean --declines none >/dev/null; } 2>&1)"; rc=$?
+[ $rc -ne 0 ] && printf '%s' "$e" | grep -q 'could not read the diff' && ok "receipt REFUSED when the selector cannot read the diff" || bad "receipt on unknown" "rc=$rc $e"
 
 # ---------------------------------------------------------------- output shape
 d="$(scratch)"; touchf "$d/apps/api/app/Models/A.php"; touchf "$d/.claude/hooks/x.sh"
@@ -171,14 +174,14 @@ grep -q '"selector_changed_by_this_diff": true' "$d/.claude/state/audit-receipt.
 
 d="$(scratch)"; touchf "$d/apps/api/app/A.php"; git -C "$d" add -A; git -C "$d" commit -qm c; touchf "$d/.claude/hooks/new-guard.sh" 'x'
 grounded "$d"   # after the untracked file exists: the marker is keyed to the tree
-(cd "$d" && bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null 2>&1)
+(cd "$d" && bash .claude/skills/audit-agency/record-receipt.sh clean --declines none >/dev/null 2>&1)
 grep -q '"selector_changed_by_this_diff": true' "$d/.claude/state/audit-receipt.json" \
   && ok "an UNTRACKED new hook flags the receipt" || bad "self-mod untracked hook" "$(cat "$d/.claude/state/audit-receipt.json")"
 
 d="$(scratch)"; other="$(scratch)"; touchf "$d/apps/api/app/Models/A.php"
 (cd "$d" && git add -A && git commit -qm c) >/dev/null 2>&1
 grounded "$d"
-(cd "$d" && CLAUDE_PROJECT_DIR="$other" bash .claude/skills/audit-agency/record-receipt.sh clean >/dev/null 2>&1)
+(cd "$d" && CLAUDE_PROJECT_DIR="$other" bash .claude/skills/audit-agency/record-receipt.sh clean --declines none >/dev/null 2>&1)
 [ -f "$d/.claude/state/audit-receipt.json" ] && [ ! -f "$other/.claude/state/audit-receipt.json" ] \
   && ok "CLAUDE_PROJECT_DIR cannot redirect a receipt into another repo" || bad "receipt redirect" "in=$([ -f "$d/.claude/state/audit-receipt.json" ] && echo yes || echo no) other=$([ -f "$other/.claude/state/audit-receipt.json" ] && echo yes || echo no)"
 

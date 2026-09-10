@@ -363,12 +363,45 @@ d_json=$(cd "$dir" && python3 -c 'import json;print(json.load(open(".claude/stat
 check "and is recorded verbatim, not as a boolean" "owner waived" "$d_json"
 
 # An empty string is the shape an agent reaches for when it wants the field gone.
+# Refused at PARSE time now, not at the requirement check — an empty value is a
+# typo wherever it appears, so the earlier and more specific reason is the right
+# one. (This case predates the parse loop; it used to fall through to the
+# requirement's generic refusal.)
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines "" 2>&1)
-check "an empty --declines is refused, not treated as none" "no --declines" "$out"
+check "an empty --declines is refused, not treated as none" "needs a value" "$out"
 
-# `clean` asserts nothing was found, so it has nothing to decline either.
+# THE BYPASS, found by both seats and reproduced in a scratch repo: the first
+# version scanned "$@" for the flag while still reading the note from `$2`, so
+# `findings-fixed --declines none` made the flag its own note — the leads refusal
+# was satisfied by the string "--declines" and the receipt recorded it AS the
+# note. A new gate that switched off the gate beside it.
+#
+# The assertion names the refusal REASON, not just the refusal: the two are now
+# adjacent, and a reason-blind test would pass against either.
+dir=$(make_repo); home=$(ground_ok)   # the stub emits one ⚠️, so a note is required
+(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed --declines none 2>&1)
+check "the flag cannot stand in for the note" "carries no note" "$out"
+
+# Parse cases that used to be accepted silently.
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none --declines "T-9: waived" 2>&1)
+check "--declines twice is refused, not first-wins" "given twice" "$out"
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines --force 2>&1)
+check "a flag-shaped value is refused, not recorded as the answer" "needs a value" "$out"
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" "extra" --declines none 2>&1)
+check "a second positional is refused" "unexpected argument" "$out"
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --oops --declines none 2>&1)
+check "an unknown option is refused" "unknown option" "$out"
+# A note that merely CONTAINS the flag name is a note, not a flag.
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "about --declines" --declines none 2>&1)
+check "a note mentioning the flag is still a note" "receipt recorded" "$out"
+
+# `clean` is NOT exempt: nothing ties the verdict to a finding, so exempting it
+# made "type clean" the one-word way past this refusal.
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh clean "n" 2>&1)
-check "clean needs no --declines" "receipt recorded" "$out"
+check "clean is refused without --declines too" "no --declines" "$out"
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh clean "n" --declines none 2>&1)
+check "and accepted with it" "receipt recorded" "$out"
 
 # docs-only seats nobody, so there are no findings to dispose of. `make_repo`
 # always builds a code diff, so the docs case is made by replacing it.

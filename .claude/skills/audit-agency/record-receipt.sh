@@ -21,22 +21,41 @@ top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "refused: not insid
 cd "$top"
 
 verdict=${1:-}
-note=${2:-}
-# `--declines` is parsed rather than positional so the two existing call shapes
-# (verdict, and verdict + note) keep working unchanged.
+[ $# -gt 0 ] && shift
+
+# A shift LOOP, not a scan over "$@". The scan read `$2` for the note while also
+# matching `--declines` anywhere, so `record-receipt.sh findings-fixed --declines
+# none` made the flag its own note: `$2` was non-empty, the leads refusal below
+# was satisfied by the flag's name, and the receipt recorded `"note":
+# "--declines"` over a lead nobody had written a sentence about. A new gate that
+# disables the gate beside it. Both review seats reproduced it.
+note=""
 declines=""
 declines_given=""
-_args=("$@")
-for ((_i = 0; _i < ${#_args[@]}; _i++)); do
-  if [ "${_args[$_i]}" = "--declines" ]; then
-    declines_given=1
-    declines="${_args[$((_i + 1))]:-}"
-    break
-  fi
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --declines)
+      [ -n "$declines_given" ] && { echo "refused: --declines given twice" >&2; exit 2; }
+      # A value that is absent or looks like another flag is a typo, not an
+      # answer — and taking it silently is how `--declines --force` became the
+      # recorded disposition.
+      case "${2:-}" in '' | --*) echo "refused: --declines needs a value (none, or what was declined)" >&2; exit 2 ;; esac
+      declines_given=1
+      declines=$2
+      shift 2
+      ;;
+    --*) echo "refused: unknown option '$1'" >&2; exit 2 ;;
+    *)
+      [ -z "$note" ] || { echo "refused: unexpected argument '$1'" >&2; exit 2; }
+      note=$1
+      shift
+      ;;
+  esac
 done
 
 if [ -z "$verdict" ]; then
-  echo "usage: record-receipt.sh <clean|findings-fixed|docs-only> [note] --declines <none|what you declined>" >&2
+  echo "usage: record-receipt.sh <clean|findings-fixed> [note] --declines <none|what you declined>" >&2
+  echo "       record-receipt.sh docs-only [note]" >&2
   echo "  clean / findings-fixed: ONLY after every 🔴 and 🟡 is fixed or explicitly waived by the owner." >&2
   echo "  docs-only: ONLY when select-lanes.sh reports 'LANES: none' — this script checks." >&2
   exit 2
@@ -119,7 +138,7 @@ esac
 # read that number — so a `clean` receipt over a log with thirty ⚠️ was
 # well-formed. A lead is not a finding, but it is a thing somebody has to have
 # looked at, and the note is where that shows.
-if [ "$verdict" != docs-only ] && [ -z "${2:-}" ]; then
+if [ "$verdict" != docs-only ] && [ -z "$note" ]; then
   # int() inside the Python, not in the shell test: a hand-written marker with
   # "leads": "many" made `[ "$leads" -gt 0 ]` error and evaluate FALSE, which
   # skipped the requirement instead of enforcing it.
@@ -154,21 +173,38 @@ fi
 #
 # This does not fix that, and saying it would be the same false comfort the rule
 # is about. What it does is force the QUESTION to be answered: `--declines none`
-# is a claim on the record, and an omission is now a refusal rather than a
-# silence. Exactly the value approve.sh's `--panel` has, and its own header is
-# honest about the limit — naming the axes does not prove they ran, it makes
-# skipping one a decision rather than an oversight.
+# is a claim on the record, and omitting it is a refusal rather than a silence.
+#
+# The precedent is `approve.sh --simplify`, which is a bare attestation and says
+# so. An earlier version of this comment cited `--panel` instead — which is the
+# one flag in that file explicitly HARDENED out of being an attestation: it
+# cross-checks every name against `record-panel.sh`'s log for the exact HEAD sha,
+# because "a gate that takes the author's word is the 'check that cannot fail'
+# this skill exists to find". Citing it here had the argument backwards. The
+# evidence-backed version of THIS field is a findings log written as each seat
+# returns, with `--declines` checked against the unresolved entries; that is the
+# upgrade path, and this is not it.
 #
 # Empty is refused as well as absent: "" is the shape you reach for when you want
 # the field gone, and a receipt whose `declines` is blank reads as "asked and not
 # answered", which is the state this exists to remove.
 #
-# Scoped to `findings-fixed`, which is the only verdict that says findings
-# EXISTED. `clean` already asserts there were none and `docs-only` seats nobody,
-# so demanding the field there would be a question with one possible answer —
-# and twenty call sites proved it: requiring it everywhere broke seven tests that
-# were correctly recording receipts over diffs with nothing to decline.
-if [ "$verdict" = findings-fixed ] && { [ -z "$declines_given" ] || [ -z "$declines" ]; }; then
+# Exempt ONLY the verdict this script can prove. `docs-only` is checked against
+# select-lanes.sh above, so it is the one verdict that is not a self-assertion —
+# and a diff that seats nobody has no findings to dispose of.
+#
+# `clean` is NOT exempt, and an earlier version of this made it so. The reasoning
+# was that `clean` already asserts no findings were raised, so the field would be
+# a question with one possible answer. Review took that apart: nothing here or in
+# `guard-pr-audit.py` ties the verdict to any finding, so `clean` is a free
+# self-assertion by the same agent deciding whether to decline — which made
+# "type `clean`" the cheapest way past this refusal. An escape that costs one
+# word is the inverted gradient CLAUDE.md §4 was rewritten to remove, reappearing
+# in the mechanism meant to enforce it.
+#
+# Requiring it on `clean` too cost fifteen call sites in the suites. That is a
+# migration cost, not an argument.
+if [ "$verdict" != docs-only ] && { [ -z "$declines_given" ] || [ -z "$declines" ]; }; then
   echo "refused: this receipt carries no --declines." >&2
   echo "Every finding is fixed, declined, or bounded before the receipt (CLAUDE.md §4)," >&2
   echo "and a 🔴 or 🟡 needs an owner waiver to be declined. Say which:" >&2

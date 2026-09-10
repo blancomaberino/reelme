@@ -101,9 +101,9 @@ have written anyway (T-158, `lessons.md`).
   grounding pass — gitleaks, semgrep, osv-scanner, actionlint, hadolint,
   shellcheck, the wrong-reason-assertion heuristics — is the half that cannot be
   argued out of a finding, and agents skip it because seating lanes feels like
-  reviewing. `record-receipt.sh` refuses a `findings-fixed` receipt with no
-  `--declines` (say `none`, or what was declined and who waived it), and refuses
-  without a grounding marker for the
+  reviewing. `record-receipt.sh` refuses any receipt but `docs-only` with no
+  `--declines` (say `none`, or what was declined or bounded and who waived it),
+  and refuses without a grounding marker for the
   current tree: run `.claude/skills/audit-agency/run-grounding.sh` (T-156).
 - **Rounds:** at most two. A third round of findings in one file means the design
   is wrong — stop, redesign, then review once.
