@@ -217,3 +217,63 @@ closed PR.
 app repo stayed on `main`, and the next commits landed on `main`. Use
 `git -C ~/Sites/reelmap …` or `cd` explicitly; the symptom is `/coderabbit`
 reporting "0 changed files".
+
+## Fixing a finding is a change, and needs the same brief (T-158, 2026-09-09)
+
+T-158 went through two audit rounds, a `/simplify` pass and five `/coderabbit`
+panel rounds. Every round found something real — but **three of the defects were
+in the previous round's fix**, which is the whole story. The feature had a design
+brief; the thirty-odd review findings did not, and each was read as a work order
+and edited straight in.
+
+Four habits, and what each cost:
+
+**1. No "every reader and writer" grep before changing a rule.** CLAUDE.md §3 has
+asked for this since T-168 and it was skipped on every fix.
+- A fourth `RefusalReason` (`imprecise`) was added for two list screens. The map
+  branched on the same enum with a trailing `if` chain, so the new case fell into
+  its silent `denied` arm — the one control whose stated contract is "never a
+  silent no-op" became one, for exactly the users the reason was written for.
+- `locateUser` was bounded without listing its three callers; two of them render
+  the result and went dark for iOS users with Precise Location off.
+- A persistence rule written for `['places','tonight', …]` was not run against the
+  other eight `['places', …]` keys; `placesByTag('sources')` still matched.
+
+**2. A mechanism asserted from memory instead of read.** Four defects, one habit:
+- A guard compared `DB::transactionLevel()` against the depth captured before the
+  call, to catch a framework branch that *restores* that counter before rethrowing.
+  Dead code for the case it named. `handleTransactionException()` is eleven lines
+  and answers it.
+- A test froze the clock with `travelTo()` to prove that four `now()` reads had
+  become one. Under a frozen clock those are indistinguishable.
+- `fn () => ... $calls++` captures by value, so the replacement clock never moved.
+- A fixture built 20 opening periods; `OpeningSchedule::salvage()` slices to 14.
+
+**3. Green-then-mutate instead of red-first.** Most guards this session were
+mutated and watched fail. The one that was not is the one that shipped vacuous.
+Mutation-after proves the same property and is a step you can skip; writing the
+test first makes skipping it impossible, because the red run is the first thing
+you see.
+
+**4. A fix written before the bug was reproduced.** A reported `sort=distance`
+cursor-precision bug was real as a PHP mechanism and is reachable at continental
+range — but `radius_m` is capped at 50 km, which holds the values at 13
+significant digits. The fix could not be made to bite and was reverted. Measuring
+first would have replaced an hour of work with a comment.
+
+### The loop was a separate mistake
+
+Receipts bind to HEAD. Findings were fixed, receipts recorded, and then
+"non-blocking" notes applied on top — each of which invalidated the receipt and
+required the panel again. **Batch every finding into one fix commit before
+recording anything, or decline it and leave the file alone.** A non-blocking note
+acted on after the receipt costs a full round.
+
+### What the rounds were worth
+
+Not nothing, which is why the two-round limit was exceeded deliberately rather
+than ignored: the panel found a privacy bug (a discovery query keyed by the
+viewer's coordinate persisted to plaintext storage), a CHECK constraint enforcing
+half its invariant, and a nightly repair that hid the drift it repaired. The
+lesson is not "review less" — it is that a fix reviewed as carelessly as it was
+written turns one round into five.

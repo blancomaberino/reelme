@@ -57,8 +57,12 @@ state, not a deliverable); `task.py start` prints the template.
 
 - **Entry point** — which existing screen/route/command reaches this? Which test presses it?
 - **Sibling** — what existing map/list/form/sheet/query does this extend? What gets extracted?
-- **State & writers** — every state given a new consequence, and *every* place that
-  writes it (grep `set({ field`, `->update([`, `fill(`, direct assignment).
+- **State, writers and readers** — every state given a new consequence, and
+  *every* place that writes it (grep `set({ field`, `->update([`, `fill(`, direct
+  assignment) **or branches on it** (`switch`, an `if` chain, a ternary with a
+  default arm). Readers are the half this line used to omit: widening an enum is
+  safe only once every branch over it has been found, and T-158 widened one into
+  a screen whose trailing `else` then swallowed the new case in silence.
 - **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
 - **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
 - **Authz** — who may call this, and where is that checked?
@@ -73,6 +77,24 @@ rounds that T-156 spent on a file the task never named.
 
 **Fix the shape, not the instance.** A second finding in the same file means the
 first fix enumerated cases; replace it with the rule that covers them.
+
+**A review finding gets the same brief as a feature** — not the whole template,
+but the two lines a fix actually needs, before the edit: *every reader and writer
+of the state I am changing* (the §3 line above, and the fix is wrong until that
+list is empty), and *the test that is red now and green after*. A finding read as a work
+order and edited straight into is what spent five panel rounds on T-158, where
+three of the defects were in the previous round's fix (§5, and `lessons.md`).
+
+**Read the mechanism before asserting it.** A guard, comment or test that
+depends on how a framework behaves is worth nothing until that behaviour has
+been opened and read — not recalled. Four T-158 defects were one habit: a guard
+against a branch that restores the counter it watched, a test on a clock helper
+that freezes rather than advances, a closure capturing by value, a fixture
+silently sliced to a cap.
+
+**Reproduce a reported bug before fixing it.** Not every finding is real; a fix
+for an unreachable one is code that cannot be tested and will be deleted (T-158,
+the `sort=distance` cursor).
 
 ## 4. Review, audit and the gates
 
@@ -126,7 +148,15 @@ first fix enumerated cases; replace it with the rule that covers them.
 - **A test that computes its expected value must be able to move it.** Put the
   derivation in production code and drive it from the test; a `beforeEach` that
   pins the input makes the assertion a tautology (T-156).
-- Prove a guard bites: mutate it, watch the test fail, restore with an absolute path.
+- **Red before green.** Write the test, watch it FAIL against current code, then
+  fix. Mutating afterwards proves the same thing and is a step you can forget —
+  T-158 forgot it exactly once and shipped a test that passed against the code it
+  was written to reject. When a fix is already written, mutate it: revert the fix,
+  watch the test fail, restore with an absolute path.
+- **A test's fixture has a horizon; assert you are inside it.** Anything a test
+  leans on — a range of minutes, a cap on rows, a call count — stops holding
+  somewhere, and past that edge the test agrees with every implementation. Bound
+  it in an assertion, or the test stops guarding in silence (T-158).
 - Tests run without network — fakes, fixtures, recorded responses.
 - API: Pest on Postgres, never sqlite. Mobile: Jest + Maestro flows.
 
