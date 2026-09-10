@@ -178,7 +178,8 @@ def main():
         # not about the grounding pass — skipped is allowed-and-loud, so the
         # control still allows and the case keeps testing what it tested.
         (rec / "audit-receipt.json").write_text(
-            json.dumps({"head": head, "tree": tree, "verdict": "clean", "grounding": "skipped"})
+            json.dumps({"head": head, "tree": tree, "verdict": "clean",
+                        "grounding": "skipped", "declines": "none"})
         )
 
         # Sanity: the receipt IS valid there, so a push judged against `clean`
@@ -227,8 +228,11 @@ def main():
         state_dir.mkdir(parents=True)
 
         def write_receipt(**extra):
-            body = {"head": head, "tree": tree, "verdict": "clean"}
+            # `declines` is in the default because the current record-receipt.sh
+            # always writes it; a case that wants it ABSENT passes declines=None.
+            body = {"head": head, "tree": tree, "verdict": "clean", "declines": "none"}
             body.update(extra)
+            body = {k: v for k, v in body.items() if v is not None}
             (state_dir / "audit-receipt.json").write_text(json.dumps(body))
 
         def write_marker(log_text="grounded\n", **extra):
@@ -248,6 +252,16 @@ def main():
         # A receipt from before this check existed says nothing about grounding.
         write_receipt()
         grounding_cases.append(("receipt without the key", decision(PUSH, project_dir=repo), "DENY"))
+
+        # A receipt with no `declines` key was written by something other than the
+        # current record-receipt.sh — a stale copy on a contributor branch, which
+        # CLAUDE.md §4 calls the normal case, or a hand-written one. Same reasoning
+        # as the grounding key above: the writer refusing to emit a bad receipt
+        # only ever catches receipts that writer wrote. `.claude/state/` is
+        # gitignored and outside the tree hash, so nothing else notices.
+        write_receipt(grounding="ok", declines=None)
+        write_marker()
+        grounding_cases.append(("receipt without the declines key", decision(PUSH, project_dir=repo), "DENY"))
 
         # The honest states.
         write_receipt(grounding="ok")
@@ -472,7 +486,8 @@ def main():
         # `grounding: skipped` — allowed and loud. This case is about finding the
         # receipt from a subdirectory, not about the grounding pass.
         receipt.write_text(
-            json.dumps({"head": head, "tree": tree, "verdict": "clean", "grounding": "skipped"})
+            json.dumps({"head": head, "tree": tree, "verdict": "clean",
+                        "grounding": "skipped", "declines": "none"})
         )
         # A skip is verified like any other state, so this fixture needs the
         # marker too — it is about finding the receipt from a subdirectory.

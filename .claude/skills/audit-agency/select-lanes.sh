@@ -154,5 +154,5 @@ if [ -n "$unmatched" ]; then
 fi
 echo
 echo "Launch every seat in ONE message (one Agent call each) over the same diff."
-echo "RECEIPT: .claude/skills/audit-agency/record-receipt.sh <clean|findings-fixed> \"<note>\"   (after the fix commit)"
+echo "RECEIPT: .claude/skills/audit-agency/record-receipt.sh <clean|findings-fixed> \"<note>\" --declines <none|what you declined>   (after the fix commit)"
 exit 0

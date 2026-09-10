@@ -406,7 +406,8 @@ def deny(reason: str, action: str) -> NoReturn:
         "else. Skipping one is therefore a decision only you will ever know you made.\n\n"
         "Fix every 🔴 and 🟡 it surfaces, or get the owner to waive one explicitly, then record "
         "the receipt:\n"
-        '  .claude/skills/audit-agency/record-receipt.sh findings-fixed "<one-line summary>"\n\n'
+        '  .claude/skills/audit-agency/record-receipt.sh findings-fixed "<one-line summary>"'
+        " --declines <none|what you declined>\n\n"
         "The receipt is keyed to HEAD AND the working tree's content, so commit your fixes BEFORE "
         "recording it — a receipt taken over a dirty tree certifies code the audit never saw.\n\n"
         "This is a separate question from the line-by-line diff review. The agency panel reads the "
@@ -564,6 +565,23 @@ def main() -> None:
         deny(
             "The audit receipt matches HEAD, but the working tree's content has changed since — "
             "those edits are not covered by it.",
+            action,
+        )
+
+    # Every finding was disposed of — fixed, declined, or bounded (CLAUDE.md §4).
+    # `record-receipt.sh` refuses to WRITE a receipt without `--declines`, so the
+    # only receipts missing the key are ones it did not write: a stale copy on a
+    # contributor branch, which §4 calls the normal case, or a hand-written one.
+    # `.claude/state/` is gitignored and outside the tree hash, so nothing else
+    # notices. Key presence is all that is checkable here — the VALUE is an
+    # attestation by construction, and pretending otherwise is the false comfort
+    # the rule is about.
+    if "declines" not in receipt:
+        deny(
+            "The audit receipt predates the declines check, or was not written by "
+            "record-receipt.sh. Re-record it, saying what was declined or bounded "
+            "(or `none`): .claude/skills/audit-agency/record-receipt.sh "
+            '<clean|findings-fixed> "<note>" --declines <none|what>',
             action,
         )
 
