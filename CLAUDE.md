@@ -26,7 +26,7 @@ disagree, this file wins.
    a row that must be EXCLUDED. Coverage never regresses. E2E for user flows.
 6. **Wiring over code** — reachable from an existing screen, sibling reused not
    re-implemented, the interaction re-asks, no mock that silences a crash, and a
-   rule on state covers *every* writer of that state.
+   rule on state covers *every* writer **and reader** of that state.
 7. **UI work uses `/frontend-design`.**
 8. **Verify on the device, then restore it.** Maestro drives the simulator;
    `simctl openurl` never navigates (a hook denies it); location back to
@@ -58,10 +58,10 @@ state, not a deliverable); `task.py start` prints the template.
 - **Entry point** — which existing screen/route/command reaches this? Which test presses it?
 - **Sibling** — what existing map/list/form/sheet/query does this extend? What gets extracted?
 - **State, writers and readers** — every state given a new consequence, and
-  *every* place that writes it (grep `set({ field`, `->update([`, `fill(`) **or
-  branches on it** (`switch`, an `if` chain, a ternary — especially one whose
-  last arm is implicit). Widening an enum is safe only once every branch over it
-  is listed (T-158).
+  *every* place that writes it (grep `set({ field`, `->update([`, `fill(`, direct
+  assignment) **or branches on it** (`switch`, an `if` chain, a ternary —
+  especially one whose last arm is implicit). Widening an enum is safe only once
+  every branch over it is listed (T-158).
 - **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
 - **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
 - **Authz** — who may call this, and where is that checked?
