@@ -61,8 +61,7 @@ state, not a deliverable); `task.py start` prints the template.
 - **State, writers and readers** — every state given a new consequence, and
   *every* place that writes it (grep `set({ field`, `->update([`, `fill(`, direct
   assignment) **or branches on it** — readers are found by grepping the STATE'S
-  NAME, never the keyword: `switch`/`if`/ternary are unsearchable, and the arm
-  that bit T-158 was a trailing `if` with no `else` to grep for (T-158).
+  NAME, never the keyword: `switch`/`if`/ternary are unsearchable (T-158).
 - **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
 - **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
 - **Authz** — who may call this, and where is that checked?
@@ -106,15 +105,16 @@ have written anyway (T-158, `lessons.md`).
   current tree: run `.claude/skills/audit-agency/run-grounding.sh` (T-156).
 - **Rounds:** at most two. A third round of findings in one file means the design
   is wrong — stop, redesign, then review once.
-- **Dispose of every finding before the receipt, in writing** — fix it, decline
-  it, or bound it. Applying it is not the cheap option: it costs the brief (§3),
-  and skipping that is what turns one round into nineteen. You may decline 🟢 and
-  💭 yourself; a 🔴 or 🟡 needs an owner waiver, justified in the PR body like an
-  escape hatch below. A finding you cannot REPRODUCE is bounded instead: record
-  in code what holds it off and what that bound rests on. Neither reproducible
-  nor boundable goes to the owner — "could not reproduce" is not a decline.
-  Applying a fix AFTER a receipt invalidates it (receipts bind to HEAD), so a
-  late "non-blocking" tidy-up costs a whole round (T-158).
+- **Dispose of every finding before the receipt, in writing.** Three dispositions
+  and no fourth: FIX it, DECLINE it, or — for one you cannot reproduce — BOUND it,
+  recording in code what holds it off and what that bound rests on. A 🔴 or 🟡
+  needs an owner waiver to be declined or bounded, justified in the PR body like
+  an escape hatch below; 🟢 and 💭 you dispose of yourself. Neither reproducible
+  nor boundable goes to the owner — "could not reproduce" is not a decline. And
+  fixing is not the cheap way out: it costs the brief (§3), and skipping that is
+  what turns one round into nineteen. A fix applied AFTER a receipt invalidates it
+  (receipts bind to HEAD), so a late "non-blocking" tidy-up costs a whole round
+  (T-158).
 - **Escape hatches are owner-approved only** and must be justified in the PR
   body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`,
   `REELMAP_SKIP_GROUNDING=1`.

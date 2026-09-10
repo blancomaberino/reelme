@@ -226,16 +226,15 @@ answering an audit or panel seating, seven of which were a full five-seat round.
 Every round found something real. But **at least eleven of those nineteen commits
 were repairing the previous commit's fix**, which is the whole story. The feature
 had a design brief; the ~84 review findings did not, and each was read as a work
-order and edited straight in. (That figure counts finding-level items in the
-seventeen commits answering an audit, panel or bot round; including the two
-`/simplify` passes takes it past a hundred. Stating the rule because this is the
-one number not reproducible from the log alone.)
+order and edited straight in.
 
 Counts are derived from `git log main..feat/t-158-tonight-open-now` and the commit
 bodies, not estimated — two earlier drafts of this paragraph estimated and were low
-on every figure. The ~84 is the one number the log cannot reproduce: it counts
+on every figure. The ~84 is the one the log cannot reproduce on its own: it counts
 finding-level items in the seventeen commits answering an audit, panel or bot
-round.
+round, and including the two `/simplify` passes takes it past a hundred.
+
+Four habits, and what each cost:
 
 **1. No "every reader and writer" grep before changing a rule.** §3 has asked for
 the WRITER half since T-168. The READER half was missing from the template
