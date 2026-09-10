@@ -101,7 +101,9 @@ have written anyway (T-158, `lessons.md`).
   grounding pass — gitleaks, semgrep, osv-scanner, actionlint, hadolint,
   shellcheck, the wrong-reason-assertion heuristics — is the half that cannot be
   argued out of a finding, and agents skip it because seating lanes feels like
-  reviewing. `record-receipt.sh` refuses without a grounding marker for the
+  reviewing. `record-receipt.sh` refuses any receipt but `docs-only` with no
+  `--declines` (say `none`, or what was declined or bounded and who waived it),
+  and refuses without a grounding marker for the
   current tree: run `.claude/skills/audit-agency/run-grounding.sh` (T-156).
 - **Rounds:** at most two. A third round of findings in one file means the design
   is wrong — stop, redesign, then review once.
@@ -115,6 +117,9 @@ have written anyway (T-158, `lessons.md`).
   what turns one round into nineteen. A fix applied AFTER a receipt invalidates it
   (receipts bind to HEAD), so a late "non-blocking" tidy-up costs a whole round
   (T-158).
+- **Write up a finding by NAME, never by quoting it** — tool, rule id and
+  `file:line`. The repo is public and a disposition is copied into the PR body, so
+  pasting a scanner's matched value publishes the very string it caught.
 - **Escape hatches are owner-approved only** and must be justified in the PR
   body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`,
   `REELMAP_SKIP_GROUNDING=1`.

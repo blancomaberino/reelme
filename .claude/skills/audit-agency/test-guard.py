@@ -30,7 +30,22 @@ PUSH = "git" + " push"
 GHPR = "gh" + " pr "
 
 
+# A receipt key written as an explicit JSON null, distinct from "omit this key".
+NULL = object()
+
+
 def decision(cmd, env_extra=None, project_dir=ROOT, cwd=None):
+    """The ALLOW/DENY alone — most cases only care about that."""
+    return judge(cmd, env_extra, project_dir, cwd)[0]
+
+
+def judge(cmd, env_extra=None, project_dir=ROOT, cwd=None):
+    """(decision, the denial's own words).
+
+    A case that asserts only DENY stays green when an unrelated required key
+    starts denying first and the check it was written for rots — so anything
+    guarding one specific key pins the reason too.
+    """
     env = dict(os.environ, CLAUDE_PROJECT_DIR=project_dir)
     env.pop("REELMAP_SKIP_AUDIT", None)
     env.update(env_extra or {})
@@ -45,20 +60,21 @@ def decision(cmd, env_extra=None, project_dir=ROOT, cwd=None):
         env=env,
     )
     if p.returncode != 0:
-        return f"CRASH: {p.stderr.strip()[:200]}"
+        return (f"CRASH: {p.stderr.strip()[:200]}", "")
     # Read the DECISION, not the presence of output. The gate also prints a
     # `systemMessage` when it skips a repo that does not carry it — announced on
     # purpose, since a guard that allows silently is the one nobody debugs — and
     # treating any stdout as a denial scored those skips as denials.
     out = p.stdout.strip()
     if not out:
-        return "ALLOW"
+        return ("ALLOW", "")
     try:
         decided = json.loads(out)
     except (json.JSONDecodeError, ValueError):
-        return f"MALFORMED: {out[:120]}"
+        return (f"MALFORMED: {out[:120]}", "")
     hook_out = decided.get("hookSpecificOutput") or {}
-    return "DENY" if hook_out.get("permissionDecision") == "deny" else "ALLOW"
+    verdict = "DENY" if hook_out.get("permissionDecision") == "deny" else "ALLOW"
+    return (verdict, hook_out.get("permissionDecisionReason") or "")
 
 
 # (name, command, expected)
@@ -178,7 +194,8 @@ def main():
         # not about the grounding pass — skipped is allowed-and-loud, so the
         # control still allows and the case keeps testing what it tested.
         (rec / "audit-receipt.json").write_text(
-            json.dumps({"head": head, "tree": tree, "verdict": "clean", "grounding": "skipped"})
+            json.dumps({"head": head, "tree": tree, "verdict": "clean",
+                        "grounding": "skipped", "declines": "none"})
         )
 
         # Sanity: the receipt IS valid there, so a push judged against `clean`
@@ -227,11 +244,30 @@ def main():
         state_dir.mkdir(parents=True)
 
         def write_receipt(**extra):
-            body = {"head": head, "tree": tree, "verdict": "clean"}
+            # `declines` is in the default because the current record-receipt.sh
+            # always writes it; a case that wants it ABSENT passes declines=None.
+            # NULL is how a case asks for an explicit JSON `null` — a shape a
+            # hand-writer produces and `None` here cannot express, since None is
+            # the signal to drop the key entirely.
+            # `required_lanes` is in the default as DEFENCE IN DEPTH, not to avoid
+            # vacuity: an ABSENT key does not exempt, so removing this default
+            # changes no outcome today (measured). What it buys is that removing it
+            # AND loosening the hook's isinstance guard together turn three DENY
+            # cases into ALLOW — so the default is what keeps those cases aimed at
+            # the exemption rather than at the absent-key branch. A case that wants
+            # the exemption passes required_lanes=[] explicitly.
+            body = {"head": head, "tree": tree, "verdict": "clean",
+                    "declines": "none", "required_lanes": ["Senior SecOps Engineer"]}
             body.update(extra)
+            body = {k: (None if v is NULL else v)
+                    for k, v in body.items() if v is not None}
             (state_dir / "audit-receipt.json").write_text(json.dumps(body))
 
         def write_marker(log_text="grounded\n", **extra):
+            # NOTE the opposite convention to write_receipt above: there, a None
+            # kwarg DROPS the key and NULL writes a JSON null. Here None is passed
+            # straight through, so write_marker(skipped=None) writes null rather
+            # than omitting the key.
             (state_dir / "grounding.log").write_text(log_text)
             body = {
                 "head": head,
@@ -248,6 +284,83 @@ def main():
         # A receipt from before this check existed says nothing about grounding.
         write_receipt()
         grounding_cases.append(("receipt without the key", decision(PUSH, project_dir=repo), "DENY"))
+
+        # The declines key (CLAUDE.md §4). The writer refusing to emit a bad
+        # receipt only ever catches receipts that writer wrote, so the hook
+        # re-checks — and these pin the REASON, because every one of them denies
+        # for a reason the case beside it would also satisfy.
+        #
+        # Presence was the whole check once, and it was two characters from
+        # useless: `""`, null and false all passed, which is the same "escape that
+        # costs one word" record-receipt.sh cites for not exempting `clean`. The
+        # writer refuses an empty value at PARSE time, so accepting one here let
+        # writer and reader disagree about what an empty disposition means.
+        def declines_case(name, want, want_reason="", **extra):
+            # No reason to pin is the DEFAULT, not something a caller passes: an
+            # explicit "" reads like an assertion, and `"" in why` never fails.
+            write_receipt(grounding="ok", **extra)
+            write_marker()
+            got, why = judge(PUSH, project_dir=repo)
+            good = got == want and want_reason in why
+            print(f"{'PASS' if good else 'FAIL'}  {'[T-156] ' + name:44s} "
+                  f"want={want:5s} got={got}")
+            if not good:
+                if got != want:
+                    failures.append(f"declines: {name} (want {want}, got {got})")
+                else:
+                    failures.append(f"declines: {name} denied for the wrong reason: {why[:120]!r}")
+
+        declines_case("no declines key at all", "DENY",
+                      "has no `declines`", declines=None)
+        # The ADVICE, not just the diagnosis. An older version told the reader to
+        # look for `--declines` being rejected as an unknown option — a symptom the
+        # pre-flag writer never produces, because it reads the note from $2 and
+        # parses no options, so it accepts the flag SILENTLY. Reverting that advice
+        # reddened nothing, because only the diagnosis substring was pinned.
+        _, why = judge(PUSH, project_dir=repo)
+        for phrase in ("SUCCEEDS", "parses no options", "different checkouts"):
+            good = phrase in why
+            print(f"{'PASS' if good else 'FAIL'}  "
+                  f"{'[T-156] the advice names ' + phrase:44s} want=present")
+            if not good:
+                failures.append(f"declines advice lost {phrase!r}")
+        # Each of these is a DIFFERENT refusal from the one above — the key is
+        # there, so only the emptiness check can catch them.
+        declines_case("an empty declines", "DENY",
+                      "`declines` is empty", declines="")
+        declines_case("whitespace is not a disposition", "DENY",
+                      "`declines` is empty", declines="   ")
+        # `null` covers every non-string: the check is `isinstance(declines, str)`,
+        # so false/0/[]/{} reach the identical branch with the identical reason. A
+        # case per JSON type would assert one predicate five times.
+        declines_case("null declines", "DENY",
+                      "`declines` is empty", declines=NULL)
+        # ...and the exemption must survive the tightening: a docs-only diff seats
+        # nobody, so record-receipt.sh writes the key EMPTY on purpose. A bare
+        # falsiness test here would have denied every such receipt.
+        declines_case("a receipt that seated nobody may leave it empty", "ALLOW",
+                      verdict="docs-only", declines="", required_lanes=[])
+
+        # The exemption is the PROOF, not the word. Claiming `docs-only` while the
+        # receipt records seats is the bypass an earlier version allowed, because it
+        # trusted the verdict string the same agent had just typed.
+        declines_case("docs-only cannot be claimed over a seated diff", "DENY",
+                      "`declines` is empty", verdict="docs-only", declines="",
+                      required_lanes=["Senior SecOps Engineer", "Software Architect"])
+
+        # Empty lanes ALONE do not exempt. Keying only on required_lanes removed the
+        # claimed-docs-only bypass and opened this one in its place; both seats
+        # raised it, and it is why the exemption needs the verdict too.
+        declines_case("empty lanes without the docs-only verdict do not exempt",
+                      "DENY", "`declines` is empty",
+                      verdict="clean", declines="", required_lanes=[])
+
+        # And the unknown case fails CLOSED: a receipt with no required_lanes at all
+        # is not "nobody was seated", it is a receipt that cannot say.
+        declines_case("an absent required_lanes does not exempt", "DENY",
+                      "`declines` is empty", declines="", required_lanes=None)
+        declines_case("a malformed required_lanes does not exempt", "DENY",
+                      "`declines` is empty", declines="", required_lanes="none")
 
         # The honest states.
         write_receipt(grounding="ok")
@@ -472,7 +585,8 @@ def main():
         # `grounding: skipped` — allowed and loud. This case is about finding the
         # receipt from a subdirectory, not about the grounding pass.
         receipt.write_text(
-            json.dumps({"head": head, "tree": tree, "verdict": "clean", "grounding": "skipped"})
+            json.dumps({"head": head, "tree": tree, "verdict": "clean",
+                        "grounding": "skipped", "declines": "none"})
         )
         # A skip is verified like any other state, so this fixture needs the
         # marker too — it is about finding the receipt from a subdirectory.

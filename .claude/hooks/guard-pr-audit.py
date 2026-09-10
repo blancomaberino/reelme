@@ -406,7 +406,8 @@ def deny(reason: str, action: str) -> NoReturn:
         "else. Skipping one is therefore a decision only you will ever know you made.\n\n"
         "Fix every 🔴 and 🟡 it surfaces, or get the owner to waive one explicitly, then record "
         "the receipt:\n"
-        '  .claude/skills/audit-agency/record-receipt.sh findings-fixed "<one-line summary>"\n\n'
+        '  .claude/skills/audit-agency/record-receipt.sh findings-fixed "<one-line summary>"'
+        " --declines <none|what you declined>\n\n"
         "The receipt is keyed to HEAD AND the working tree's content, so commit your fixes BEFORE "
         "recording it — a receipt taken over a dirty tree certifies code the audit never saw.\n\n"
         "This is a separate question from the line-by-line diff review. The agency panel reads the "
@@ -564,6 +565,98 @@ def main() -> None:
         deny(
             "The audit receipt matches HEAD, but the working tree's content has changed since — "
             "those edits are not covered by it.",
+            action,
+        )
+
+    # Every finding was disposed of — fixed, declined, or bounded (CLAUDE.md §4).
+    # `record-receipt.sh` refuses to WRITE a receipt without `--declines`, so the
+    # only receipts reaching here without it are ones that script did not write:
+    # a hand-written one, or one written by a DIFFERENT CHECKOUT's older copy.
+    # `settings.json` resolves this hook from $CLAUDE_PROJECT_DIR while
+    # record-receipt.sh deliberately uses `git rev-parse --show-toplevel`, so a
+    # worktree can pair a new hook with an old writer.
+    #
+    # Two earlier versions of this comment argued from premises nobody checked,
+    # which is worth recording because the denial text inherited each one.
+    #
+    # First: "a stale copy on a contributor branch" — impossible, `.claude/state/`
+    # is gitignored, so a receipt never travels with a branch.
+    #
+    # Then, correcting that: "an old writer takes `--declines` for an unknown
+    # option". Also false. `git show origin/main:…/record-receipt.sh` reads
+    # `NOTE="${2:-}"` and parses no options at all, so an old writer ACCEPTS the
+    # flag silently and writes a key-less receipt. The operator follows the advice,
+    # sees no error, gets a receipt, pushes, and is denied identically — a silent
+    # loop whose only exit is the owner's REELMAP_SKIP_AUDIT=1.
+    #
+    # That is why the message now names the observable an operator can actually
+    # check (re-recording succeeds, the push still denies) instead of an error
+    # message that is never printed. A gate whose advice cannot be followed is how
+    # somebody reaches for the hatch.
+    if "declines" not in receipt:
+        deny(
+            "The audit receipt has no `declines`, so it was not written by this "
+            "checkout's record-receipt.sh. Re-record it, saying what was declined "
+            "or bounded (or `none`): .claude/skills/audit-agency/record-receipt.sh "
+            '<clean|findings-fixed> "<note>" --declines <none|what>. If that '
+            "SUCCEEDS and this still denies, the script predates the flag and "
+            "ignored it silently — it reads the note from $2 and parses no options, "
+            "so there is no error to see — which means this hook and that script "
+            "came from different checkouts. Rebase onto `main`, or run both from the "
+            "same working tree.",
+            action,
+        )
+
+    # Presence alone was not enough. The writer refuses an empty or flag-shaped
+    # value at parse time, so a reader that accepted `""`, null or false let the
+    # one population this check exists for walk past it by adding two characters —
+    # the same "escape that costs one word" that record-receipt.sh cites as its
+    # reason for NOT exempting `clean`.
+    #
+    # Exempt only where the PROOF and the CLAIM agree.
+    #
+    # `docs-only` stands for "the selector seated nobody, so there are no findings
+    # to dispose of". Two ways to read that, and both alone are wrong:
+    #
+    #   - the verdict STRING alone (what an earlier version did, copying the
+    #     writer) trusts a word the same agent typed, so a hand-written
+    #     `{verdict: "docs-only", required_lanes: [...]}` skipped the check;
+    #   - `required_lanes == []` ALONE removed that hole and opened a different
+    #     one: `{verdict: "clean", required_lanes: []}` then exempted itself. Two
+    #     seats caught that, and the version claiming to "exempt on the proof" did
+    #     not hold, which is the overclaiming this file has now been corrected for
+    #     three times.
+    #
+    # Requiring BOTH costs a hand-writer nothing extra in effort but leaves no
+    # single key to flip, and it keeps working if one side's provenance changes:
+    # `required_lanes` is built by parsing `select-lanes.sh`'s bullets, so a change
+    # to that output format would silently empty the list — and the verdict half
+    # still denies.
+    #
+    # An ABSENT or malformed `required_lanes` is NOT "no lanes": that would let any
+    # receipt predating the field exempt itself. Only a genuinely empty list
+    # qualifies, so the unknown case fails closed.
+    #
+    # The writer still tests `$verdict` only, deliberately: its check runs BEFORE
+    # select-lanes.sh so a missing flag costs no I/O, and `$lanes` is not known
+    # that early. The two sides are asymmetric on purpose, with the reader the
+    # stronger one — the right way round for a gate.
+    #
+    # The VALUE stays an attestation (T-173); this only holds writer and reader to
+    # one contract about emptiness.
+    declines = receipt.get("declines")
+    seated = receipt.get("required_lanes")
+    nobody_seated = (
+        isinstance(seated, list)
+        and not seated
+        and receipt.get("verdict") == "docs-only"
+    )
+    if not nobody_seated and not (isinstance(declines, str) and declines.strip()):
+        deny(
+            "The audit receipt's `declines` is empty, so it records no disposition. "
+            "Say what was declined or bounded, or `none`: "
+            ".claude/skills/audit-agency/record-receipt.sh "
+            '<clean|findings-fixed> "<note>" --declines <none|what>',
             action,
         )
 

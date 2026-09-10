@@ -96,14 +96,28 @@ not three stages. Give every seat the same frame:
 8. **Commit, then record** — the receipt covers the tree:
 
 ```bash
-.claude/skills/audit-agency/record-receipt.sh findings-fixed "3 🟡: contract guard, hours reporting path, review cap"
-.claude/skills/audit-agency/record-receipt.sh clean
-.claude/skills/audit-agency/record-receipt.sh docs-only        # only when select-lanes.sh said none
+.claude/skills/audit-agency/record-receipt.sh findings-fixed "3 🟡: contract guard, hours reporting path, review cap" --declines none
+.claude/skills/audit-agency/record-receipt.sh findings-fixed "2 🟡 fixed, 1 deferred" --declines "T-172: two clocks on the listings — owner waived, filed"
+.claude/skills/audit-agency/record-receipt.sh clean "nothing raised" --declines none
+.claude/skills/audit-agency/record-receipt.sh docs-only        # the one verdict the script can prove, so the one exempt from --declines
 ```
 
-The receipt stores `required_lanes` and `selector_changed_by_this_diff` (the
-receipt was produced by code the diff changed — Code Reviewer is mandatory then).
-It still cannot tell which seats you filled — that stays on you.
+The receipt stores `required_lanes`, `selector_changed_by_this_diff` (the receipt
+was produced by code the diff changed — Code Reviewer is mandatory then) and
+`declines`. It still cannot tell which seats you filled — that stays on you.
+
+`--declines` is required for every verdict except `docs-only`, which the script
+proves against the selector. Say `none`, or say what was declined or bounded and
+who waived it — CLAUDE.md §4 needs an owner waiver for a 🔴 or 🟡. Start a bounded
+one with `bounded:` and point at the code that holds it off; the flag is named for
+the common case, not the only one. **Put the same text in the PR body**: nothing
+reads this field yet, so the PR is where it gets a reader.
+
+**Name a finding, never quote it.** Tool, rule id and `file:line` — never the
+matched value, header or credentialed URL, in `--declines` or in the note. The
+receipt is gitignored and never secret-scanned, and both then go into a PUBLIC PR
+body, where a pasted gitleaks hit publishes the exact string the grounding pass
+exists to catch, and the GitHub API keeps it after any edit.
 
 ## Notes
 

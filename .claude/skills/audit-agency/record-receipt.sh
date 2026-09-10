@@ -21,8 +21,42 @@ top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "refused: not insid
 cd "$top"
 
 verdict=${1:-}
+[ $# -gt 0 ] && shift
+
+# A shift LOOP, not a scan over "$@". The scan read `$2` for the note while also
+# matching `--declines` anywhere, so `record-receipt.sh findings-fixed --declines
+# none` made the flag its own note: `$2` was non-empty, the leads refusal below
+# was satisfied by the flag's name, and the receipt recorded `"note":
+# "--declines"` over a lead nobody had written a sentence about. A new gate that
+# disables the gate beside it. Both review seats reproduced it.
+note=""
+declines=""
+declines_given=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --declines)
+      [ -n "$declines_given" ] && { echo "refused: --declines given twice" >&2; exit 2; }
+      # A value that is absent or looks like another flag is a typo, not an
+      # answer — and taking it silently is how `--declines --force` became the
+      # recorded disposition.
+      case "${2:-}" in '' | -*) echo "refused: --declines needs a value (none, or what was declined), not '${2:-}'" >&2; exit 2 ;; esac
+      declines_given=1
+      declines=$2
+      shift 2
+      ;;
+    --declines=*) echo "refused: write it as two words — --declines ${1#--declines=}" >&2; exit 2 ;;
+    --*) echo "refused: unknown option '$1' (the only option is --declines <none|what you declined>)" >&2; exit 2 ;;
+    *)
+      [ -z "$note" ] || { echo "refused: unexpected argument '$1'" >&2; exit 2; }
+      note=$1
+      shift
+      ;;
+  esac
+done
+
 if [ -z "$verdict" ]; then
-  echo "usage: record-receipt.sh <clean|findings-fixed|docs-only> [note]" >&2
+  echo "usage: record-receipt.sh <clean|findings-fixed> [note] --declines <none|what you declined>" >&2
+  echo "       record-receipt.sh docs-only [note]" >&2
   echo "  clean / findings-fixed: ONLY after every 🔴 and 🟡 is fixed or explicitly waived by the owner." >&2
   echo "  docs-only: ONLY when select-lanes.sh reports 'LANES: none' — this script checks." >&2
   exit 2
@@ -34,6 +68,37 @@ case "$verdict" in
     exit 2
     ;;
 esac
+
+# Every finding is disposed of before the receipt — fixed, declined, or bounded
+# (CLAUDE.md §4) — and a 🔴 or 🟡 needs an owner waiver to be declined or bounded.
+# Nothing can CHECK that: the receipt hashes HEAD and the tree and has never known
+# what a finding is. So this forces the question to be answered rather than
+# answering it: `--declines none` is a claim on the record, and omitting it is a
+# refusal rather than a silence. The precedent is `approve.sh --simplify`, which is
+# a bare attestation and says so. The evidence-backed version is a findings log
+# written as each seat returns, with `--declines` checked against the unresolved
+# entries (T-173); this is not that.
+#
+# Exempt ONLY `docs-only`, the one verdict this script can prove — it is
+# cross-checked against select-lanes.sh below, and a diff that seats nobody has no
+# findings to dispose of. `clean` is deliberately NOT exempt: nothing ties the
+# verdict to any finding, so exempting it would make typing `clean` a one-word way
+# past this refusal.
+#
+# Before the selector and the grounding check on purpose: this depends only on
+# $verdict and needs no I/O at all. This script does not RUN the grounding pass —
+# it reads the marker — so the ~0.5s it saves directly is not the point. The cost
+# was the refusal ORDER: a stale marker refused first and sent you to
+# run-grounding.sh, which IS minutes of gitleaks/semgrep, and only afterwards did
+# anything mention the missing flag.
+if [ "$verdict" != docs-only ] && [ -z "$declines_given" ]; then
+  echo "refused: this receipt carries no --declines." >&2
+  echo "Every finding is fixed, declined, or bounded before the receipt (CLAUDE.md §4)," >&2
+  echo "and a 🔴 or 🟡 needs an owner waiver to be declined. Say which:" >&2
+  echo "  record-receipt.sh $verdict \"<note>\" --declines none" >&2
+  echo "  record-receipt.sh $verdict \"<note>\" --declines \"T-###: <what, and the waiver>\"" >&2
+  exit 2
+fi
 
 # The lanes the diff SELECTS are recorded beside the verdict — so a receipt
 # says what was required, and a `docs-only` receipt on a code diff is refused
@@ -105,7 +170,7 @@ esac
 # read that number — so a `clean` receipt over a log with thirty ⚠️ was
 # well-formed. A lead is not a finding, but it is a thing somebody has to have
 # looked at, and the note is where that shows.
-if [ "$verdict" != docs-only ] && [ -z "${2:-}" ]; then
+if [ "$verdict" != docs-only ] && [ -z "$note" ]; then
   # int() inside the Python, not in the shell test: a hand-written marker with
   # "leads": "many" made `[ "$leads" -gt 0 ]` error and evaluate FALSE, which
   # skipped the requirement instead of enforcing it.
@@ -135,7 +200,7 @@ fi
 
 mkdir -p .claude/state
 
-VERDICT="$verdict" NOTE="${2:-}" LANES="$lanes" SELF_MOD="$self_mod" GROUNDING="$grounding_state" PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+VERDICT="$verdict" NOTE="$note" DECLINES="$declines" LANES="$lanes" SELF_MOD="$self_mod" GROUNDING="$grounding_state" PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
 import importlib.util, json, os, pathlib, subprocess
 from datetime import datetime, timezone
 
@@ -162,6 +227,7 @@ pathlib.Path(".claude/state/audit-receipt.json").write_text(
             "branch": branch,
             "verdict": os.environ["VERDICT"],
             "note": os.environ["NOTE"],
+            "declines": os.environ["DECLINES"],
             "selector_changed_by_this_diff": bool(os.environ["SELF_MOD"]),
             "grounding": os.environ["GROUNDING"],
             "required_lanes": [
