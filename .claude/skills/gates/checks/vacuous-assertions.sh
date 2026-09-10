@@ -83,7 +83,8 @@ fi
 cat <<'MSG'
 
   An assertion that cannot fail is worse than none: it buys confidence.
-  Assert the OBSERVABLE the code must produce, then prove it bites by mutating
-  the code and watching this test go red (CLAUDE.md §5).
+  Assert the OBSERVABLE the code must produce, then watch this test fail once
+  before you trust it — red first, or revert the fix, or mutate the production
+  code (CLAUDE.md §5).
 MSG
 exit 1

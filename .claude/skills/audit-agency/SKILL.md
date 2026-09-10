@@ -86,8 +86,9 @@ not three stages. Give every seat the same frame:
    when `SentryScrubber` matched on shape instead of naming SDK fields).
 4. **Batch into ONE commit.** Both receipts die on the next commit — so collect
    every seat's findings, apply them together, then re-seat once.
-5. **Prove each fix bites.** Mutate it, watch the test fail, restore with an
-   absolute path.
+5. **Prove each fix bites.** Every test owes one observed failing run — red
+   first, or revert the fix, or mutate the production code, restoring with an
+   absolute path. Say which you did (CLAUDE.md §5 owns the rule).
 6. **Re-run the gates for the areas the fix touched** (`run-gates.sh api`, …); fixes are code.
 7. **Re-review, narrowly:** Security and Architecture always, plus only the lanes
    whose code the fix commit touched. **Round limit: two.** A third round of

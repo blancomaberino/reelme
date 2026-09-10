@@ -18,7 +18,8 @@ disagree, this file wins.
 2. **Think before code.** Every task starts with the design brief (§3) — the
    reviewers' questions answered *before* the code exists, when they are free.
 3. **One review round, not eight.** `/simplify` → gates → ONE concurrent review
-   → batch every finding → one fix commit → narrow re-review → both receipts (§4).
+   → brief each finding (§3) → batch them → one fix commit → narrow re-review →
+   both receipts (§4).
 4. **Audit scope follows the diff.** `select-lanes.sh` decides the seats. Docs-only
    (`.md` files in `docs/`, `apps/*/docs/`, a `README.md`, or the top level) runs nobody; the guard — `.claude/**`,
    any `CLAUDE.md`/`AGENTS.md`, `.github/`, `scripts/` — always gets Security + Architecture.
@@ -26,7 +27,7 @@ disagree, this file wins.
    a row that must be EXCLUDED. Coverage never regresses. E2E for user flows.
 6. **Wiring over code** — reachable from an existing screen, sibling reused not
    re-implemented, the interaction re-asks, no mock that silences a crash, and a
-   rule on state covers *every* writer of that state.
+   rule on state covers *every* writer **and reader** of that state.
 7. **UI work uses `/frontend-design`.**
 8. **Verify on the device, then restore it.** Maestro drives the simulator;
    `simctl openurl` never navigates (a hook denies it); location back to
@@ -43,7 +44,7 @@ disagree, this file wins.
 | Build | code + tests together; iterate with `composer test -- --filter=X` / `jest <path>` | acceptance met on the device or by curl |
 | Polish | `/simplify`, then `.claude/skills/gates/run-gates.sh` (full suite, **once**) | gates green on the final tree |
 | Review | `/coderabbit` — one round: grounding + coverage + specialists + the `select-lanes.sh` seats + `/security-review`, **all launched in one message** | every 🔴/🟡 verified against the code |
-| Fix | batch all findings → **one** commit → gates → re-seat only Security, Architecture and the lanes whose code changed | round ≤ 2 (§4) |
+| Fix | brief each finding (§3) → batch all → **one** commit → gates → re-seat only Security, Architecture and the lanes whose code changed | round ≤ 2 (§4); declines written down before the receipt |
 | Receipts | `record-receipt.sh` (audit) and `approve.sh` (coderabbit), together, on the final commit | both match HEAD + tree |
 | PR | `gh pr create` with summary, `T-###`, test evidence | CI green; bot findings fed back to the skill checklist |
 
@@ -57,8 +58,10 @@ state, not a deliverable); `task.py start` prints the template.
 
 - **Entry point** — which existing screen/route/command reaches this? Which test presses it?
 - **Sibling** — what existing map/list/form/sheet/query does this extend? What gets extracted?
-- **State & writers** — every state given a new consequence, and *every* place that
-  writes it (grep `set({ field`, `->update([`, `fill(`, direct assignment).
+- **State, writers and readers** — every state given a new consequence, and
+  *every* place that writes it (grep `set({ field`, `->update([`, `fill(`, direct
+  assignment) **or branches on it** — readers are found by grepping the STATE'S
+  NAME, never the keyword: `switch`/`if`/ternary are unsearchable (T-158).
 - **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
 - **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
 - **Authz** — who may call this, and where is that checked?
@@ -73,6 +76,12 @@ rounds that T-156 spent on a file the task never named.
 
 **Fix the shape, not the instance.** A second finding in the same file means the
 first fix enumerated cases; replace it with the rule that covers them.
+
+**A review finding gets the same brief as a feature** — the two items above it
+needs, the writers-and-readers list and the red-then-green test. And **a fix that
+trips a plan-review trigger is promoted to a task**: full brief, plan review, its
+own round. That promotion is the half with teeth; the rest is the brief you would
+have written anyway (T-158, `lessons.md`).
 
 ## 4. Review, audit and the gates
 
@@ -96,6 +105,16 @@ first fix enumerated cases; replace it with the rule that covers them.
   current tree: run `.claude/skills/audit-agency/run-grounding.sh` (T-156).
 - **Rounds:** at most two. A third round of findings in one file means the design
   is wrong — stop, redesign, then review once.
+- **Dispose of every finding before the receipt, in writing.** Three dispositions
+  and no fourth: FIX it, DECLINE it, or — for one you cannot reproduce — BOUND it,
+  recording in code what holds it off and what that bound rests on. A 🔴 or 🟡
+  needs an owner waiver to be declined or bounded, justified in the PR body like
+  an escape hatch below; 🟢 and 💭 you dispose of yourself. Neither reproducible
+  nor boundable goes to the owner — "could not reproduce" is not a decline. And
+  fixing is not the cheap way out: it costs the brief (§3), and skipping that is
+  what turns one round into nineteen. A fix applied AFTER a receipt invalidates it
+  (receipts bind to HEAD), so a late "non-blocking" tidy-up costs a whole round
+  (T-158).
 - **Escape hatches are owner-approved only** and must be justified in the PR
   body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`,
   `REELMAP_SKIP_GROUNDING=1`.
@@ -126,7 +145,12 @@ first fix enumerated cases; replace it with the rule that covers them.
 - **A test that computes its expected value must be able to move it.** Put the
   derivation in production code and drive it from the test; a `beforeEach` that
   pins the input makes the assertion a tautology (T-156).
-- Prove a guard bites: mutate it, watch the test fail, restore with an absolute path.
+- **Every test owes ONE observed failing run, before it is trusted.** Write it red
+  first. If the fix already exists, revert the fix to see red; if there was never
+  a defect — a guard over already-correct code — mutate the PRODUCTION code
+  instead, then restore with an absolute path. Say WHICH of the three you did, in
+  the commit: T-158's problem was not ambiguity but two commit messages that
+  claimed every guard had been mutated while three vacuous tests shipped.
 - Tests run without network — fakes, fixtures, recorded responses.
 - API: Pest on Postgres, never sqlite. Mobile: Jest + Maestro flows.
 

@@ -217,3 +217,91 @@ closed PR.
 app repo stayed on `main`, and the next commits landed on `main`. Use
 `git -C ~/Sites/reelmap …` or `cd` explicitly; the symptom is `/coderabbit`
 reporting "0 changed files".
+
+## Fixing a finding is a change, and needs the same brief (T-158, 2026-09-09)
+
+T-158 is 22 commits: **two of feature, one merge, and nineteen answering a
+review** — two `/simplify` passes, two answering GitHub CodeRabbit, and fifteen
+answering an audit or panel seating, seven of which were a full five-seat round.
+Every round found something real. But **at least eleven of those nineteen commits
+were repairing the previous commit's fix**, which is the whole story. The feature
+had a design brief; the ~84 review findings did not, and each was read as a work
+order and edited straight in.
+
+Counts are derived from `git log main..feat/t-158-tonight-open-now` and the commit
+bodies, not estimated — two earlier drafts of this paragraph estimated and were low
+on every figure. The ~84 is the one the log cannot reproduce on its own: it counts
+finding-level items in the seventeen commits answering an audit, panel or bot
+round, and including the two `/simplify` passes takes it past a hundred.
+
+Four habits, and what each cost:
+
+**1. No "every reader and writer" grep before changing a rule.** §3 has asked for
+the WRITER half since T-168. The READER half was missing from the template
+entirely and is added in the same commit as this entry — so this defect is half a
+skipped rule and half a hole, and recording it as pure indiscipline is how the
+hole survives the next revision.
+- A fourth `RefusalReason` (`imprecise`) was added for two list screens. The map
+  branched on the same enum with a trailing `if` chain, so the new case fell into
+  its silent `denied` arm — the one control whose stated contract is "never a
+  silent no-op" became one, for exactly the users the reason was written for.
+- `locateUser` was bounded without listing its three callers; two of them render
+  the result, and both then rendered a permanent "try again in a moment" over a
+  button that could never succeed, for iOS users with Precise Location off.
+- A persistence rule written for `['places','tonight', …]` was not run against the
+  other six `['places', …]` keys; `placesByTag('sources')` still matched.
+
+**2. A mechanism asserted from memory instead of read.** Four defects, one habit:
+- A guard compared `DB::transactionLevel()` against the depth captured before the
+  call, to catch a framework branch that *restores* that counter before rethrowing.
+  Dead code for the case it named. `handleTransactionException()` is 28 lines, 14
+  of them code, and answers it.
+- A test froze the clock with `travelTo()` to prove that four `now()` reads had
+  become one. Under a frozen clock those are indistinguishable.
+- `fn () => ... $calls++` captures by value, so the replacement clock never moved.
+- A fixture built 20 opening periods; `OpeningSchedule::salvage()` slices to 14.
+
+**3. Green-then-mutate instead of red-first.** Three tests shipped that passed
+against the code they were written to reject — a fractional-instant assertion, the
+depth-guard mock that hand-rolled `beginTransaction()`, and the `travelTo` one —
+and **two of those commits' own messages claimed every guard had been mutated and
+watched fail.** That is the finding, not the three tests: mutation-after is a step
+you can believe you performed — and that is the point. The rule it replaced was
+not ambiguous; it was ATTESTED TO FALSELY, twice, in commit messages written by
+someone who thought they had done it. A better-worded rule does not fix that.
+What would: an artifact. `record-receipt.sh` already refuses a receipt when the
+grounding pass reports leads and no note explains them, and `approve.sh` already
+refuses until the axes are named — the same shape, tree-keyed, would work here
+(run each changed test file against the base version of the production files the
+diff touches; require one failure per new test file; refuse the receipt without
+it). Both are owner-only files, so this entry is where it gets recorded rather
+than built.
+
+**4. A fix written before the bug was reproduced.** A reported `sort=distance`
+cursor-precision bug was real as a PHP mechanism and is reachable at continental
+range — but `radius_m` is capped at 50 km, which holds the values at 13
+significant digits. The fix could not be made to bite and was reverted. Measuring
+first would have replaced an hour of work with a comment.
+
+Note what the right output was, because "reproduce it" understates it: the bug is
+held off by a validation bound in an unrelated file, with nothing tying the two
+together. Raise `radius_m` and the cursor breaks. So an unreproducible finding is
+**bounded** — record what holds it off and what that rests on — and `CLAUDE.md` §4
+now says so.
+
+### The loop was a separate mistake
+
+Receipts bind to HEAD. Findings were fixed, receipts recorded, and then
+"non-blocking" notes applied on top — each of which invalidated the receipt and
+required the panel again. **Batch every finding into one fix commit before
+recording anything, or decline it and leave the file alone.** A non-blocking note
+acted on after the receipt costs a full round.
+
+### What the rounds were worth
+
+Not nothing, which is why the two-round limit was exceeded deliberately rather
+than ignored: the panel found a privacy bug (a discovery query keyed by the
+viewer's coordinate persisted to plaintext storage), a CHECK constraint enforcing
+half its invariant, and a nightly repair that hid the drift it repaired. The
+lesson is not "review less" — it is that a fix reviewed as carelessly as it was
+written turns one round into nineteen commits of rework.
