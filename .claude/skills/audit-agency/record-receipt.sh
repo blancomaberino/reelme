@@ -86,8 +86,11 @@ esac
 # past this refusal.
 #
 # Before the selector and the grounding check on purpose: this depends only on
-# $verdict, and behind them a missing flag cost a full gitleaks/semgrep run before
-# the refusal could say so.
+# $verdict and needs no I/O at all. This script does not RUN the grounding pass —
+# it reads the marker — so the ~0.5s it saves directly is not the point. The cost
+# was the refusal ORDER: a stale marker refused first and sent you to
+# run-grounding.sh, which IS minutes of gitleaks/semgrep, and only afterwards did
+# anything mention the missing flag.
 if [ "$verdict" != docs-only ] && [ -z "$declines_given" ]; then
   echo "refused: this receipt carries no --declines." >&2
   echo "Every finding is fixed, declined, or bounded before the receipt (CLAUDE.md §4)," >&2

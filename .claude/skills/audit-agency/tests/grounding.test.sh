@@ -424,16 +424,22 @@ dir=$(make_repo); home=$(ground_ok)
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh docs-only 2>&1)
 check "docs-only needs no --declines" "receipt recorded" "$out"
 
-# Cheap refusals before expensive ones. The requirement depends only on $verdict,
-# and behind the selector and check-grounding.py a missing flag cost a full
-# gitleaks/semgrep run before anything said why. A repo with NO marker at all
-# must answer about the flag first.
+# Cheap refusals before expensive ones. The requirement depends only on $verdict
+# and needs no I/O. Behind the selector and check-grounding.py, a repo with a stale
+# marker was refused for grounding FIRST — sending you to run-grounding.sh, minutes
+# of gitleaks/semgrep — and only then told about the missing flag. A repo with no
+# marker at all must therefore answer about the flag first.
 dir=$(make_repo)
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
 check "a missing --declines is refused before the grounding check" "no --declines" "$out"
-printf '%s' "$out" | grep -q "no grounding pass" \
-  && bad "the cheap refusal comes first" "also ran the grounding check: $out" \
-  || ok "the cheap refusal comes first"
+# The FIRST refusal, not the absence of somebody else's literal: an earlier version
+# asserted that "no grounding pass" was missing from the output, so rewording the
+# grounding refusal would have made this guard green forever.
+first=$(printf '%s' "$out" | grep -m1 '^refused:')
+case "$first" in
+  *"no --declines"*) ok "the cheap refusal comes first" ;;
+  *) bad "the cheap refusal comes first" "first refusal was: $first" ;;
+esac
 
 # `[ $# -gt 0 ] && shift` guards the zero-argument path. Written as a bare
 # `shift` — the obvious simplification — set -e kills the script with no output

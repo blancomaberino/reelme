@@ -576,23 +576,34 @@ def main() -> None:
     # record-receipt.sh deliberately uses `git rev-parse --show-toplevel`, so a
     # worktree can pair a new hook with an old writer.
     #
-    # An earlier version of this comment blamed "a stale copy on a contributor
-    # branch", which cannot happen: `.claude/state/` is gitignored, so a receipt
-    # never travels with a branch. That was not a harmless slip — the denial text
-    # inherited the wrong cause and said only "re-record it", which an old writer
-    # CANNOT do (it takes `--declines` for an unknown option), leaving the owner's
-    # REELMAP_SKIP_AUDIT=1 as the only exit. A gate whose advice cannot be
-    # followed is how somebody reaches for the hatch. So the message names the
-    # real fix.
+    # Two earlier versions of this comment argued from premises nobody checked,
+    # which is worth recording because the denial text inherited each one.
+    #
+    # First: "a stale copy on a contributor branch" — impossible, `.claude/state/`
+    # is gitignored, so a receipt never travels with a branch.
+    #
+    # Then, correcting that: "an old writer takes `--declines` for an unknown
+    # option". Also false. `git show origin/main:…/record-receipt.sh` reads
+    # `NOTE="${2:-}"` and parses no options at all, so an old writer ACCEPTS the
+    # flag silently and writes a key-less receipt. The operator follows the advice,
+    # sees no error, gets a receipt, pushes, and is denied identically — a silent
+    # loop whose only exit is the owner's REELMAP_SKIP_AUDIT=1.
+    #
+    # That is why the message now names the observable an operator can actually
+    # check (re-recording succeeds, the push still denies) instead of an error
+    # message that is never printed. A gate whose advice cannot be followed is how
+    # somebody reaches for the hatch.
     if "declines" not in receipt:
         deny(
             "The audit receipt has no `declines`, so it was not written by this "
             "checkout's record-receipt.sh. Re-record it, saying what was declined "
             "or bounded (or `none`): .claude/skills/audit-agency/record-receipt.sh "
-            '<clean|findings-fixed> "<note>" --declines <none|what>. If that script '
-            "rejects `--declines` as an unknown option it predates the flag, which "
-            "means this hook and that script came from different checkouts — rebase "
-            "onto `main`, or run both from the same working tree.",
+            '<clean|findings-fixed> "<note>" --declines <none|what>. If that '
+            "SUCCEEDS and this still denies, the script predates the flag and "
+            "ignored it silently — it reads the note from $2 and parses no options, "
+            "so there is no error to see — which means this hook and that script "
+            "came from different checkouts. Rebase onto `main`, or run both from the "
+            "same working tree.",
             action,
         )
 
@@ -602,26 +613,32 @@ def main() -> None:
     # the same "escape that costs one word" that record-receipt.sh cites as its
     # reason for NOT exempting `clean`.
     #
-    # Verdict-aware rather than a bare falsiness test, because `docs-only` is
-    # exempt from the flag and writes the key empty on purpose.
+    # Exempt on the PROOF, not on the name. `record-receipt.sh` spells the
+    # exemption `verdict != docs-only`, and an earlier version here copied that —
+    # which made the hook trust a self-asserted string, and let a hand-written
+    # `{verdict: "docs-only", required_lanes: [...]}` skip the check entirely.
     #
-    # This is the hook's first read of `verdict`, which makes a previously inert
-    # attestation load-bearing, and the hook does NOT cross-check `docs-only`
-    # against the selector — only record-receipt.sh does. So a receipt claiming
-    # `docs-only` skips this check. That is a BOUND, not an equivalence: it holds
-    # because reaching here at all means hand-writing the whole receipt AND
-    # matching a valid grounding marker for this tree, which is strictly more work
-    # than typing `--declines none`. State it as what it rests on — a comment that
-    # claims equivalence is the kind of premise this file was corrected for once
-    # already. The hook holds `required_lanes` too, so the self-consistent version
-    # is reachable; it is T-173's, not this change's.
+    # What `docs-only` stands for is "the selector seated nobody, so there are no
+    # findings to dispose of", and the hook already holds that: `required_lanes` is
+    # in the receipt it just parsed. Testing it is strictly more general than
+    # testing the name, and it is the shape CLAUDE.md §3 asks for — the rule, not
+    # the instance it was first noticed in.
     #
-    # The VALUE stays an attestation either way; all this does is hold writer and
-    # reader to one contract.
+    # An ABSENT or malformed key is NOT "no lanes": that would let any receipt
+    # predating the field exempt itself. Only a list that is genuinely empty
+    # exempts, so the unknown case fails closed.
+    #
+    # The writer still tests `$verdict`, deliberately: its check runs BEFORE
+    # select-lanes.sh so a missing flag costs no I/O, and `$lanes` is not known
+    # that early. The two sides are asymmetric on purpose, and the reader is the
+    # stronger one — which is the right way round for a gate.
+    #
+    # The VALUE stays an attestation; all this does is hold writer and reader to
+    # one contract about emptiness.
     declines = receipt.get("declines")
-    if receipt.get("verdict") != "docs-only" and not (
-        isinstance(declines, str) and declines.strip()
-    ):
+    seated = receipt.get("required_lanes")
+    nobody_seated = isinstance(seated, list) and not seated
+    if not nobody_seated and not (isinstance(declines, str) and declines.strip()):
         deny(
             "The audit receipt's `declines` is empty, so it records no disposition. "
             "Say what was declined or bounded, or `none`: "

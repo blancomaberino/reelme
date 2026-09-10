@@ -249,13 +249,22 @@ def main():
             # NULL is how a case asks for an explicit JSON `null` — a shape a
             # hand-writer produces and `None` here cannot express, since None is
             # the signal to drop the key entirely.
-            body = {"head": head, "tree": tree, "verdict": "clean", "declines": "none"}
+            # `required_lanes` is in the default because the hook exempts a receipt
+            # that seated NOBODY: without it every case below would be exempt and
+            # the declines check would never be reached. A case that wants the
+            # exemption passes required_lanes=[].
+            body = {"head": head, "tree": tree, "verdict": "clean",
+                    "declines": "none", "required_lanes": ["Senior SecOps Engineer"]}
             body.update(extra)
             body = {k: (None if v is NULL else v)
                     for k, v in body.items() if v is not None}
             (state_dir / "audit-receipt.json").write_text(json.dumps(body))
 
         def write_marker(log_text="grounded\n", **extra):
+            # NOTE the opposite convention to write_receipt above: there, a None
+            # kwarg DROPS the key and NULL writes a JSON null. Here None is passed
+            # straight through, so write_marker(skipped=None) writes null rather
+            # than omitting the key.
             (state_dir / "grounding.log").write_text(log_text)
             body = {
                 "head": head,
@@ -283,7 +292,9 @@ def main():
         # costs one word" record-receipt.sh cites for not exempting `clean`. The
         # writer refuses an empty value at PARSE time, so accepting one here let
         # writer and reader disagree about what an empty disposition means.
-        def declines_case(name, want, want_reason, **extra):
+        def declines_case(name, want, want_reason="", **extra):
+            # No reason to pin is the DEFAULT, not something a caller passes: an
+            # explicit "" reads like an assertion, and `"" in why` never fails.
             write_receipt(grounding="ok", **extra)
             write_marker()
             got, why = judge(PUSH, project_dir=repo)
@@ -304,15 +315,30 @@ def main():
                       "`declines` is empty", declines="")
         declines_case("whitespace is not a disposition", "DENY",
                       "`declines` is empty", declines="   ")
+        # `null` covers every non-string: the check is `isinstance(declines, str)`,
+        # so false/0/[]/{} reach the identical branch with the identical reason. A
+        # case per JSON type would assert one predicate five times.
         declines_case("null declines", "DENY",
                       "`declines` is empty", declines=NULL)
-        declines_case("a non-string declines", "DENY",
-                      "`declines` is empty", declines=False)
-        # ...and the exemption must survive the tightening: `docs-only` is exempt
-        # from the flag, so record-receipt.sh writes the key EMPTY on purpose. A
-        # bare falsiness test here would have denied every docs-only receipt.
-        declines_case("docs-only may leave it empty", "ALLOW", "",
-                      verdict="docs-only", declines="")
+        # ...and the exemption must survive the tightening: a docs-only diff seats
+        # nobody, so record-receipt.sh writes the key EMPTY on purpose. A bare
+        # falsiness test here would have denied every such receipt.
+        declines_case("a receipt that seated nobody may leave it empty", "ALLOW",
+                      verdict="docs-only", declines="", required_lanes=[])
+
+        # The exemption is the PROOF, not the word. Claiming `docs-only` while the
+        # receipt records seats is the bypass an earlier version allowed, because it
+        # trusted the verdict string the same agent had just typed.
+        declines_case("docs-only cannot be claimed over a seated diff", "DENY",
+                      "`declines` is empty", verdict="docs-only", declines="",
+                      required_lanes=["Senior SecOps Engineer", "Software Architect"])
+
+        # And the unknown case fails CLOSED: a receipt with no required_lanes at all
+        # is not "nobody was seated", it is a receipt that cannot say.
+        declines_case("an absent required_lanes does not exempt", "DENY",
+                      "`declines` is empty", declines="", required_lanes=None)
+        declines_case("a malformed required_lanes does not exempt", "DENY",
+                      "`declines` is empty", declines="", required_lanes="none")
 
         # The honest states.
         write_receipt(grounding="ok")
