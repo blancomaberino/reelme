@@ -80,8 +80,8 @@ first fix enumerated cases; replace it with the rule that covers them.
 **A review finding gets the same brief as a feature.** Two lines, before the
 edit: the *writers and readers* list above — the fix is wrong until that list is
 complete — and *the test that is red now and green after*. A finding edited
-straight in is what turned one round into fourteen on T-158, six of which
-carried a defect introduced by the previous round's fix (§4, and `lessons.md`).
+straight in is what turned one round into nineteen on T-158, at least eleven of
+which carried a defect introduced by the previous round's fix (§4, `lessons.md`).
 If the fix itself touches auth, money, a migration or a public contract, it is a
 task: full brief and the plan review above.
 

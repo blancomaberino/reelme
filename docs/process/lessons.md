@@ -220,17 +220,22 @@ reporting "0 changed files".
 
 ## Fixing a finding is a change, and needs the same brief (T-158, 2026-09-09)
 
-T-158 went through roughly **fourteen review rounds** — two `/simplify` passes,
-four or more audit rounds, five agency panels and three GitHub CodeRabbit rounds.
-Every round found something real. But **six of them carried a defect introduced by
-the previous round's fix**, which is the whole story. The feature had a design
-brief; the ~69 review findings did not, and each was read as a work order and
-edited straight in.
+T-158 is 22 commits: **two of feature, one merge, and nineteen answering a
+review** — two `/simplify` passes, two answering GitHub CodeRabbit, and fifteen
+answering an audit or panel seating, seven of which were a full five-seat round.
+Every round found something real. But **at least eleven of them carried a defect
+introduced by the previous round's fix**, which is the whole story. The feature
+had a design brief; the ~84 review findings did not, and each was read as a work
+order and edited straight in.
 
-(The first draft of this entry said "two audit rounds, five panels, thirty-odd
-findings, three defects". Every figure was the post-merge half of the branch only.
-A post-mortem that undercounts is the same defect it is describing, caught by the
-seat asked to check it.)
+Those counts are derived from the branch — `git log main..feat/t-158-tonight-open-now`
+and the commit bodies — and not estimated, because estimating is how the first two
+versions of this paragraph got them wrong. The first said two audit rounds, one
+`/simplify`, five panels, thirty-odd findings and three defects; every figure was
+the post-merge half only. The second corrected them to fourteen rounds, five
+panels, ~69 findings and six defects, and was still low on all four. A post-mortem
+that undercounts is the defect it is describing, and it took the same seat catching
+it twice to stop me rounding my own record down.
 
 Four habits, and what each cost:
 
