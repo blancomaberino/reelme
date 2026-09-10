@@ -336,7 +336,13 @@ describe('locateUser', () => {
     );
     watchEmits(null);
 
-    expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
+    // Fake timers here too — review caught that this one was missed when its two
+    // siblings were converted, so it alone still paid the full 5s.
+    jest.useFakeTimers();
+    const pending = locateUser();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
   });
 
   it('still reports "unavailable" when there is no fix to be had at any precision', async () => {

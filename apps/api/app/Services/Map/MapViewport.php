@@ -50,14 +50,20 @@ class MapViewport
         ];
         $zoom = (int) $request->validated('zoom');
 
-        // ONE instant for the whole response. There were up to four `now()`
-        // calls in a single request — one per `baseQuery()` (it is built twice,
-        // for the count and for the rows) and one more in whichever of the two
-        // response paths ran — so a request that straddled a minute boundary
-        // could return a `total_in_bbox` that counted a place the rows omitted,
-        // or a pin whose `open_state` said "Abierto" while the `?open_now=1`
-        // filter had just stopped selecting it. Small, and exactly the kind of
-        // disagreement nobody can reproduce afterwards.
+        // ONE instant for the open/closed question. There were THREE `now()`
+        // reads in a single request — one per `baseQuery()`, which is built
+        // twice (for the count and for the rows), plus one in whichever response
+        // path ran — so a request that straddled a minute boundary could return
+        // a `total_in_bbox` that counted a place the rows omitted, or a pin whose
+        // `open_state` said "Abierto" while the `?open_now=1` filter had just
+        // stopped selecting it. Exactly the kind of disagreement nobody can
+        // reproduce afterwards.
+        //
+        // Scoped to open/closed deliberately, and review corrected an earlier
+        // "one instant for the whole response" that claimed more: the offer
+        // window inside `selectPinFields()` still reads the clock for
+        // `has_active_offer`. Harmless, because nothing in the payload compares
+        // against it — but the claim to make is the one that is true.
         $at = now();
 
         $total = $this->baseQuery($request, $bbox, $constrain, $at)->count();
