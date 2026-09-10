@@ -61,8 +61,7 @@ state, not a deliverable); `task.py start` prints the template.
 - **State, writers and readers** — every state given a new consequence, and
   *every* place that writes it (grep `set({ field`, `->update([`, `fill(`, direct
   assignment) **or branches on it** (`switch`, an `if` chain, a ternary —
-  especially one whose last arm is implicit). Widening an enum is safe only once
-  every branch over it is listed (T-158).
+  especially one whose last arm is implicit — T-158).
 - **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
 - **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
 - **Authz** — who may call this, and where is that checked?
@@ -78,12 +77,10 @@ rounds that T-156 spent on a file the task never named.
 **Fix the shape, not the instance.** A second finding in the same file means the
 first fix enumerated cases; replace it with the rule that covers them.
 
-**A review finding gets the same brief as a feature.** Two lines, before the
-edit: the *writers and readers* list above — the fix is wrong until that list is
-complete — and *the test that is red now and green after*. A finding edited
-straight in is what cost T-158 nineteen commits of rework, at least eleven of
-them repairing the previous fix (`lessons.md`). If the fix itself trips any
-**plan review** trigger above, it is a task: full brief and that review.
+**A review finding gets the same brief as a feature.** Two lines before the edit:
+the *writers and readers* list above — the fix is wrong until it is complete —
+and *the test that is red now and green after*. If the fix itself trips a **plan
+review** trigger, it is a task: full brief and that review (T-158, `lessons.md`).
 
 ## 4. Review, audit and the gates
 
@@ -150,8 +147,7 @@ them repairing the previous fix (`lessons.md`). If the fix itself trips any
 - **Every test owes ONE observed failing run, before it is trusted.** Red first
   where there is a defect; revert the fix where one is already written; for a
   guard over already-correct code, mutate the PRODUCTION code — then restore with
-  an absolute path. T-158 shipped three tests that passed against the code they
-  were written to reject, two in commits claiming every guard was mutated.
+  an absolute path (T-158).
 - **A test's fixture has a horizon; assert you are inside it.** Past the edge of
   what it leans on — a range of minutes, a row cap, a call count — the test
   agrees with every implementation and stops guarding in silence (T-158).
