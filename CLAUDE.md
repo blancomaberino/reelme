@@ -43,7 +43,7 @@ disagree, this file wins.
 | Build | code + tests together; iterate with `composer test -- --filter=X` / `jest <path>` | acceptance met on the device or by curl |
 | Polish | `/simplify`, then `.claude/skills/gates/run-gates.sh` (full suite, **once**) | gates green on the final tree |
 | Review | `/coderabbit` — one round: grounding + coverage + specialists + the `select-lanes.sh` seats + `/security-review`, **all launched in one message** | every 🔴/🟡 verified against the code |
-| Fix | batch all findings → **one** commit → gates → re-seat only Security, Architecture and the lanes whose code changed | round ≤ 2 (§4) |
+| Fix | brief each finding (§3) → batch all → **one** commit → gates → re-seat only Security, Architecture and the lanes whose code changed | round ≤ 2 (§4); declines written down before the receipt |
 | Receipts | `record-receipt.sh` (audit) and `approve.sh` (coderabbit), together, on the final commit | both match HEAD + tree |
 | PR | `gh pr create` with summary, `T-###`, test evidence | CI green; bot findings fed back to the skill checklist |
 
@@ -58,11 +58,10 @@ state, not a deliverable); `task.py start` prints the template.
 - **Entry point** — which existing screen/route/command reaches this? Which test presses it?
 - **Sibling** — what existing map/list/form/sheet/query does this extend? What gets extracted?
 - **State, writers and readers** — every state given a new consequence, and
-  *every* place that writes it (grep `set({ field`, `->update([`, `fill(`, direct
-  assignment) **or branches on it** (`switch`, an `if` chain, a ternary with a
-  default arm). Readers are the half this line used to omit: widening an enum is
-  safe only once every branch over it has been found, and T-158 widened one into
-  a screen whose trailing `else` then swallowed the new case in silence.
+  *every* place that writes it (grep `set({ field`, `->update([`, `fill(`) **or
+  branches on it** (`switch`, an `if` chain, a ternary — especially one whose
+  last arm is implicit). Widening an enum is safe only once every branch over it
+  is listed (T-158).
 - **Contract ends** — Resource ↔ JSON Schema ↔ mobile TS: which change together?
 - **Data** — migration? index? backfill? rollback? What does a hostile input reach (DB, logs, Sentry)?
 - **Authz** — who may call this, and where is that checked?
@@ -78,23 +77,13 @@ rounds that T-156 spent on a file the task never named.
 **Fix the shape, not the instance.** A second finding in the same file means the
 first fix enumerated cases; replace it with the rule that covers them.
 
-**A review finding gets the same brief as a feature** — not the whole template,
-but the two lines a fix actually needs, before the edit: *every reader and writer
-of the state I am changing* (the §3 line above, and the fix is wrong until that
-list is empty), and *the test that is red now and green after*. A finding read as a work
-order and edited straight into is what spent five panel rounds on T-158, where
-three of the defects were in the previous round's fix (§5, and `lessons.md`).
-
-**Read the mechanism before asserting it.** A guard, comment or test that
-depends on how a framework behaves is worth nothing until that behaviour has
-been opened and read — not recalled. Four T-158 defects were one habit: a guard
-against a branch that restores the counter it watched, a test on a clock helper
-that freezes rather than advances, a closure capturing by value, a fixture
-silently sliced to a cap.
-
-**Reproduce a reported bug before fixing it.** Not every finding is real; a fix
-for an unreachable one is code that cannot be tested and will be deleted (T-158,
-the `sort=distance` cursor).
+**A review finding gets the same brief as a feature.** Two lines, before the
+edit: the *writers and readers* list above — the fix is wrong until that list is
+complete — and *the test that is red now and green after*. A finding edited
+straight in is what turned one round into fourteen on T-158, six of which
+carried a defect introduced by the previous round's fix (§4, and `lessons.md`).
+If the fix itself touches auth, money, a migration or a public contract, it is a
+task: full brief and the plan review above.
 
 ## 4. Review, audit and the gates
 
@@ -118,6 +107,12 @@ the `sort=distance` cursor).
   current tree: run `.claude/skills/audit-agency/run-grounding.sh` (T-156).
 - **Rounds:** at most two. A third round of findings in one file means the design
   is wrong — stop, redesign, then review once.
+- **A finding you will not act on is DECLINED IN WRITING before the receipt**, in
+  the PR body or the code it concerns — never applied after one, since receipts
+  bind to HEAD and a late "non-blocking" tidy-up costs a whole round (T-158). A
+  finding you cannot reproduce is BOUNDED instead: record in code what holds it
+  off and which unrelated limit that rests on. "Could not reproduce" is not a
+  decline; escalate it.
 - **Escape hatches are owner-approved only** and must be justified in the PR
   body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`,
   `REELMAP_SKIP_GROUNDING=1`.
@@ -148,11 +143,11 @@ the `sort=distance` cursor).
 - **A test that computes its expected value must be able to move it.** Put the
   derivation in production code and drive it from the test; a `beforeEach` that
   pins the input makes the assertion a tautology (T-156).
-- **Red before green.** Write the test, watch it FAIL against current code, then
-  fix. Mutating afterwards proves the same thing and is a step you can forget —
-  T-158 forgot it exactly once and shipped a test that passed against the code it
-  was written to reject. When a fix is already written, mutate it: revert the fix,
-  watch the test fail, restore with an absolute path.
+- **Every test owes ONE observed failing run, before it is trusted.** Red first
+  where there is a defect; revert the fix where one is already written; for a
+  guard over already-correct code, mutate the PRODUCTION code — then restore with
+  an absolute path. T-158 shipped three tests that passed against the code they
+  were written to reject, two in commits claiming every guard was mutated.
 - **A test's fixture has a horizon; assert you are inside it.** Anything a test
   leans on — a range of minutes, a cap on rows, a call count — stops holding
   somewhere, and past that edge the test agrees with every implementation. Bound

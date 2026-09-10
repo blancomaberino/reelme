@@ -220,46 +220,64 @@ reporting "0 changed files".
 
 ## Fixing a finding is a change, and needs the same brief (T-158, 2026-09-09)
 
-T-158 went through two audit rounds, a `/simplify` pass and five `/coderabbit`
-panel rounds. Every round found something real — but **three of the defects were
-in the previous round's fix**, which is the whole story. The feature had a design
-brief; the thirty-odd review findings did not, and each was read as a work order
-and edited straight in.
+T-158 went through roughly **fourteen review rounds** — two `/simplify` passes,
+four or more audit rounds, five agency panels and three GitHub CodeRabbit rounds.
+Every round found something real. But **six of them carried a defect introduced by
+the previous round's fix**, which is the whole story. The feature had a design
+brief; the ~69 review findings did not, and each was read as a work order and
+edited straight in.
+
+(The first draft of this entry said "two audit rounds, five panels, thirty-odd
+findings, three defects". Every figure was the post-merge half of the branch only.
+A post-mortem that undercounts is the same defect it is describing, caught by the
+seat asked to check it.)
 
 Four habits, and what each cost:
 
-**1. No "every reader and writer" grep before changing a rule.** CLAUDE.md §3 has
-asked for this since T-168 and it was skipped on every fix.
+**1. No "every reader and writer" grep before changing a rule.** §3 has asked for
+the WRITER half since T-168. The READER half was missing from the template
+entirely and is added in the same commit as this entry — so this defect is half a
+skipped rule and half a hole, and recording it as pure indiscipline is how the
+hole survives the next revision.
 - A fourth `RefusalReason` (`imprecise`) was added for two list screens. The map
   branched on the same enum with a trailing `if` chain, so the new case fell into
   its silent `denied` arm — the one control whose stated contract is "never a
   silent no-op" became one, for exactly the users the reason was written for.
 - `locateUser` was bounded without listing its three callers; two of them render
-  the result and went dark for iOS users with Precise Location off.
+  the result, and both then rendered a permanent "try again in a moment" over a
+  button that could never succeed, for iOS users with Precise Location off.
 - A persistence rule written for `['places','tonight', …]` was not run against the
-  other eight `['places', …]` keys; `placesByTag('sources')` still matched.
+  other six `['places', …]` keys; `placesByTag('sources')` still matched.
 
 **2. A mechanism asserted from memory instead of read.** Four defects, one habit:
 - A guard compared `DB::transactionLevel()` against the depth captured before the
   call, to catch a framework branch that *restores* that counter before rethrowing.
-  Dead code for the case it named. `handleTransactionException()` is eleven lines
-  and answers it.
+  Dead code for the case it named. `handleTransactionException()` is 28 lines, 14
+  of them code, and answers it.
 - A test froze the clock with `travelTo()` to prove that four `now()` reads had
   become one. Under a frozen clock those are indistinguishable.
 - `fn () => ... $calls++` captures by value, so the replacement clock never moved.
 - A fixture built 20 opening periods; `OpeningSchedule::salvage()` slices to 14.
 
-**3. Green-then-mutate instead of red-first.** Most guards this session were
-mutated and watched fail. The one that was not is the one that shipped vacuous.
-Mutation-after proves the same property and is a step you can skip; writing the
-test first makes skipping it impossible, because the red run is the first thing
-you see.
+**3. Green-then-mutate instead of red-first.** Three tests shipped that passed
+against the code they were written to reject — a fractional-instant assertion, the
+depth-guard mock that hand-rolled `beginTransaction()`, and the `travelTo` one —
+and **two of those commits' own messages claimed every guard had been mutated and
+watched fail.** That is the finding, not the three tests: mutation-after is a step
+you can believe you performed. Writing the test first makes that impossible,
+because the red run is the first thing you see.
 
 **4. A fix written before the bug was reproduced.** A reported `sort=distance`
 cursor-precision bug was real as a PHP mechanism and is reachable at continental
 range — but `radius_m` is capped at 50 km, which holds the values at 13
 significant digits. The fix could not be made to bite and was reverted. Measuring
 first would have replaced an hour of work with a comment.
+
+Note what the right output was, because "reproduce it" understates it: the bug is
+held off by a validation bound in an unrelated file, with nothing tying the two
+together. Raise `radius_m` and the cursor breaks. So an unreproducible finding is
+**bounded** — record what holds it off and what that rests on — and `CLAUDE.md` §4
+now says so.
 
 ### The loop was a separate mistake
 
@@ -276,4 +294,4 @@ than ignored: the panel found a privacy bug (a discovery query keyed by the
 viewer's coordinate persisted to plaintext storage), a CHECK constraint enforcing
 half its invariant, and a nightly repair that hid the drift it repaired. The
 lesson is not "review less" — it is that a fix reviewed as carelessly as it was
-written turns one round into five.
+written turns one round into fourteen.
