@@ -424,6 +424,20 @@ dir=$(make_repo); home=$(ground_ok)
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh docs-only 2>&1)
 check "docs-only needs no --declines" "receipt recorded" "$out"
 
+# ...and the HOOK must accept what the WRITER just wrote. The hook exempts a
+# receipt whose required_lanes is an empty list AND whose verdict is docs-only;
+# that list is built by parsing select-lanes.sh's `- ` bullets, so the two ends are
+# coupled through a text format nothing pins. Before this case, adding one bullet
+# to the LANES block would have silently denied every legitimate docs-only push —
+# the writer's suite and the hook's suite each passed, separately.
+hook_out=$(printf '%s' '{"tool_input":{"command":"git push origin HEAD"}}' \
+  | CLAUDE_PROJECT_DIR="$dir" python3 "$repo_root/.claude/hooks/guard-pr-audit.py" 2>&1)
+if [ -z "$hook_out" ]; then
+  ok "the hook accepts the docs-only receipt the writer just produced"
+else
+  bad "the hook accepts the docs-only receipt the writer just produced" "$hook_out"
+fi
+
 # Cheap refusals before expensive ones. The requirement depends only on $verdict
 # and needs no I/O. Behind the selector and check-grounding.py, a repo with a stale
 # marker was refused for grounding FIRST — sending you to run-grounding.sh, minutes
@@ -432,14 +446,11 @@ check "docs-only needs no --declines" "receipt recorded" "$out"
 dir=$(make_repo)
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
 check "a missing --declines is refused before the grounding check" "no --declines" "$out"
-# The FIRST refusal, not the absence of somebody else's literal: an earlier version
-# asserted that "no grounding pass" was missing from the output, so rewording the
-# grounding refusal would have made this guard green forever.
-first=$(printf '%s' "$out" | grep -m1 '^refused:')
-case "$first" in
-  *"no --declines"*) ok "the cheap refusal comes first" ;;
-  *) bad "the cheap refusal comes first" "first refusal was: $first" ;;
-esac
+# No second assertion here on purpose. An earlier version added one that checked
+# "no grounding pass" was ABSENT — which would go green forever if that refusal were
+# reworded — and its replacement checked which refusal came FIRST. But the script
+# exits 2 at the first refusal, so only one ever prints: "first" is "only", and the
+# check above already asserts which one it is. A restatement is not a second test.
 
 # `[ $# -gt 0 ] && shift` guards the zero-argument path. Written as a bare
 # `shift` — the obvious simplification — set -e kills the script with no output

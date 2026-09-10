@@ -613,31 +613,44 @@ def main() -> None:
     # the same "escape that costs one word" that record-receipt.sh cites as its
     # reason for NOT exempting `clean`.
     #
-    # Exempt on the PROOF, not on the name. `record-receipt.sh` spells the
-    # exemption `verdict != docs-only`, and an earlier version here copied that —
-    # which made the hook trust a self-asserted string, and let a hand-written
-    # `{verdict: "docs-only", required_lanes: [...]}` skip the check entirely.
+    # Exempt only where the PROOF and the CLAIM agree.
     #
-    # What `docs-only` stands for is "the selector seated nobody, so there are no
-    # findings to dispose of", and the hook already holds that: `required_lanes` is
-    # in the receipt it just parsed. Testing it is strictly more general than
-    # testing the name, and it is the shape CLAUDE.md §3 asks for — the rule, not
-    # the instance it was first noticed in.
+    # `docs-only` stands for "the selector seated nobody, so there are no findings
+    # to dispose of". Two ways to read that, and both alone are wrong:
     #
-    # An ABSENT or malformed key is NOT "no lanes": that would let any receipt
-    # predating the field exempt itself. Only a list that is genuinely empty
-    # exempts, so the unknown case fails closed.
+    #   - the verdict STRING alone (what an earlier version did, copying the
+    #     writer) trusts a word the same agent typed, so a hand-written
+    #     `{verdict: "docs-only", required_lanes: [...]}` skipped the check;
+    #   - `required_lanes == []` ALONE removed that hole and opened a different
+    #     one: `{verdict: "clean", required_lanes: []}` then exempted itself. Two
+    #     seats caught that, and the version claiming to "exempt on the proof" did
+    #     not hold, which is the overclaiming this file has now been corrected for
+    #     three times.
     #
-    # The writer still tests `$verdict`, deliberately: its check runs BEFORE
+    # Requiring BOTH costs a hand-writer nothing extra in effort but leaves no
+    # single key to flip, and it keeps working if one side's provenance changes:
+    # `required_lanes` is built by parsing `select-lanes.sh`'s bullets, so a change
+    # to that output format would silently empty the list — and the verdict half
+    # still denies.
+    #
+    # An ABSENT or malformed `required_lanes` is NOT "no lanes": that would let any
+    # receipt predating the field exempt itself. Only a genuinely empty list
+    # qualifies, so the unknown case fails closed.
+    #
+    # The writer still tests `$verdict` only, deliberately: its check runs BEFORE
     # select-lanes.sh so a missing flag costs no I/O, and `$lanes` is not known
-    # that early. The two sides are asymmetric on purpose, and the reader is the
-    # stronger one — which is the right way round for a gate.
+    # that early. The two sides are asymmetric on purpose, with the reader the
+    # stronger one — the right way round for a gate.
     #
-    # The VALUE stays an attestation; all this does is hold writer and reader to
+    # The VALUE stays an attestation (T-173); this only holds writer and reader to
     # one contract about emptiness.
     declines = receipt.get("declines")
     seated = receipt.get("required_lanes")
-    nobody_seated = isinstance(seated, list) and not seated
+    nobody_seated = (
+        isinstance(seated, list)
+        and not seated
+        and receipt.get("verdict") == "docs-only"
+    )
     if not nobody_seated and not (isinstance(declines, str) and declines.strip()):
         deny(
             "The audit receipt's `declines` is empty, so it records no disposition. "

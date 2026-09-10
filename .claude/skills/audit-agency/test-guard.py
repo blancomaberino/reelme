@@ -249,10 +249,13 @@ def main():
             # NULL is how a case asks for an explicit JSON `null` — a shape a
             # hand-writer produces and `None` here cannot express, since None is
             # the signal to drop the key entirely.
-            # `required_lanes` is in the default because the hook exempts a receipt
-            # that seated NOBODY: without it every case below would be exempt and
-            # the declines check would never be reached. A case that wants the
-            # exemption passes required_lanes=[].
+            # `required_lanes` is in the default as DEFENCE IN DEPTH, not to avoid
+            # vacuity: an ABSENT key does not exempt, so removing this default
+            # changes no outcome today (measured). What it buys is that removing it
+            # AND loosening the hook's isinstance guard together turn three DENY
+            # cases into ALLOW — so the default is what keeps those cases aimed at
+            # the exemption rather than at the absent-key branch. A case that wants
+            # the exemption passes required_lanes=[] explicitly.
             body = {"head": head, "tree": tree, "verdict": "clean",
                     "declines": "none", "required_lanes": ["Senior SecOps Engineer"]}
             body.update(extra)
@@ -309,6 +312,18 @@ def main():
 
         declines_case("no declines key at all", "DENY",
                       "has no `declines`", declines=None)
+        # The ADVICE, not just the diagnosis. An older version told the reader to
+        # look for `--declines` being rejected as an unknown option — a symptom the
+        # pre-flag writer never produces, because it reads the note from $2 and
+        # parses no options, so it accepts the flag SILENTLY. Reverting that advice
+        # reddened nothing, because only the diagnosis substring was pinned.
+        _, why = judge(PUSH, project_dir=repo)
+        for phrase in ("SUCCEEDS", "parses no options", "different checkouts"):
+            good = phrase in why
+            print(f"{'PASS' if good else 'FAIL'}  "
+                  f"{'[T-156] the advice names ' + phrase:44s} want=present")
+            if not good:
+                failures.append(f"declines advice lost {phrase!r}")
         # Each of these is a DIFFERENT refusal from the one above — the key is
         # there, so only the emptiness check can catch them.
         declines_case("an empty declines", "DENY",
@@ -332,6 +347,13 @@ def main():
         declines_case("docs-only cannot be claimed over a seated diff", "DENY",
                       "`declines` is empty", verdict="docs-only", declines="",
                       required_lanes=["Senior SecOps Engineer", "Software Architect"])
+
+        # Empty lanes ALONE do not exempt. Keying only on required_lanes removed the
+        # claimed-docs-only bypass and opened this one in its place; both seats
+        # raised it, and it is why the exemption needs the verdict too.
+        declines_case("empty lanes without the docs-only verdict do not exempt",
+                      "DENY", "`declines` is empty",
+                      verdict="clean", declines="", required_lanes=[])
 
         # And the unknown case fails CLOSED: a receipt with no required_lanes at all
         # is not "nobody was seated", it is a receipt that cannot say.
