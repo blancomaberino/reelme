@@ -89,8 +89,8 @@ it('answers the whole map response from ONE instant', function () {
 
     // The AGREEMENT is the property, not any particular verdict: whichever
     // minute the one instant landed in, the count, the rows and the pin's own
-    // open/closed answer must describe the same world. With four instants they
-    // describe two.
+    // open/closed answer must describe the same world. With three — `baseQuery()`
+    // built twice plus the response path's own read — they describe two.
     expect($pins)->toHaveCount($total);
 
     if ($total === 1) {

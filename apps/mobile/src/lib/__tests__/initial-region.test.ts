@@ -264,8 +264,8 @@ describe('locateUser', () => {
     watchEmits(null);
 
     // Fake timers, because a watch that never calls back makes `locateUser`
-    // sit out the full 5s `FIX_TIMEOUT_MS` in real time. Three tests doing that
-    // is 15s of suite for nothing (found by CodeRabbit).
+    // sit out the full 5s `FIX_TIMEOUT_MS` in real time. Four tests in this file
+    // do it, which was 20s of suite for nothing (found by CodeRabbit).
     jest.useFakeTimers();
     const pending = locateUser();
     await jest.advanceTimersByTimeAsync(5_000);
@@ -315,8 +315,8 @@ describe('locateUser', () => {
     watchEmits(null);
 
     // Fake timers, because a watch that never calls back makes `locateUser`
-    // sit out the full 5s `FIX_TIMEOUT_MS` in real time. Three tests doing that
-    // is 15s of suite for nothing (found by CodeRabbit).
+    // sit out the full 5s `FIX_TIMEOUT_MS` in real time. Four tests in this file
+    // do it, which was 20s of suite for nothing (found by CodeRabbit).
     jest.useFakeTimers();
     const pending = locateUser();
     await jest.advanceTimersByTimeAsync(5_000);
@@ -336,8 +336,8 @@ describe('locateUser', () => {
     );
     watchEmits(null);
 
-    // Fake timers here too — review caught that this one was missed when its two
-    // siblings were converted, so it alone still paid the full 5s.
+    // Fake timers here too — review caught that this one was missed when its
+    // three siblings were converted, so it alone still paid the full 5s.
     jest.useFakeTimers();
     const pending = locateUser();
     await jest.advanceTimersByTimeAsync(5_000);
