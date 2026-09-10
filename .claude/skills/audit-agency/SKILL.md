@@ -96,7 +96,9 @@ not three stages. Give every seat the same frame:
 8. **Commit, then record** — the receipt covers the tree:
 
 ```bash
-.claude/skills/audit-agency/record-receipt.sh findings-fixed "3 🟡: contract guard, hours reporting path, review cap"
+.claude/skills/audit-agency/record-receipt.sh findings-fixed "3 🟡: contract guard, hours reporting path, review cap" --declines none
+.claude/skills/audit-agency/record-receipt.sh findings-fixed "2 🟡 fixed, 1 deferred" --declines "T-172: two clocks on the listings — owner waived, filed"
+
 .claude/skills/audit-agency/record-receipt.sh clean
 .claude/skills/audit-agency/record-receipt.sh docs-only        # only when select-lanes.sh said none
 ```

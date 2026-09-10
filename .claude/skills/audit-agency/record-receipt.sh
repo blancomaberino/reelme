@@ -21,8 +21,22 @@ top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "refused: not insid
 cd "$top"
 
 verdict=${1:-}
+note=${2:-}
+# `--declines` is parsed rather than positional so the two existing call shapes
+# (verdict, and verdict + note) keep working unchanged.
+declines=""
+declines_given=""
+_args=("$@")
+for ((_i = 0; _i < ${#_args[@]}; _i++)); do
+  if [ "${_args[$_i]}" = "--declines" ]; then
+    declines_given=1
+    declines="${_args[$((_i + 1))]:-}"
+    break
+  fi
+done
+
 if [ -z "$verdict" ]; then
-  echo "usage: record-receipt.sh <clean|findings-fixed|docs-only> [note]" >&2
+  echo "usage: record-receipt.sh <clean|findings-fixed|docs-only> [note] --declines <none|what you declined>" >&2
   echo "  clean / findings-fixed: ONLY after every 🔴 and 🟡 is fixed or explicitly waived by the owner." >&2
   echo "  docs-only: ONLY when select-lanes.sh reports 'LANES: none' — this script checks." >&2
   exit 2
@@ -133,9 +147,39 @@ except Exception:
   fi
 fi
 
+# Every finding is disposed of before the receipt — fixed, declined, or bounded
+# (CLAUDE.md §4) — and a 🔴 or 🟡 needs an owner waiver to be declined or bounded.
+# Nothing could check that: the receipt hashes HEAD and the tree and has never
+# known what a finding is, so a declined blocker left no trace at all.
+#
+# This does not fix that, and saying it would be the same false comfort the rule
+# is about. What it does is force the QUESTION to be answered: `--declines none`
+# is a claim on the record, and an omission is now a refusal rather than a
+# silence. Exactly the value approve.sh's `--panel` has, and its own header is
+# honest about the limit — naming the axes does not prove they ran, it makes
+# skipping one a decision rather than an oversight.
+#
+# Empty is refused as well as absent: "" is the shape you reach for when you want
+# the field gone, and a receipt whose `declines` is blank reads as "asked and not
+# answered", which is the state this exists to remove.
+#
+# Scoped to `findings-fixed`, which is the only verdict that says findings
+# EXISTED. `clean` already asserts there were none and `docs-only` seats nobody,
+# so demanding the field there would be a question with one possible answer —
+# and twenty call sites proved it: requiring it everywhere broke seven tests that
+# were correctly recording receipts over diffs with nothing to decline.
+if [ "$verdict" = findings-fixed ] && { [ -z "$declines_given" ] || [ -z "$declines" ]; }; then
+  echo "refused: this receipt carries no --declines." >&2
+  echo "Every finding is fixed, declined, or bounded before the receipt (CLAUDE.md §4)," >&2
+  echo "and a 🔴 or 🟡 needs an owner waiver to be declined. Say which:" >&2
+  echo "  record-receipt.sh $verdict \"<note>\" --declines none" >&2
+  echo "  record-receipt.sh $verdict \"<note>\" --declines \"T-###: <what, and the waiver>\"" >&2
+  exit 2
+fi
+
 mkdir -p .claude/state
 
-VERDICT="$verdict" NOTE="${2:-}" LANES="$lanes" SELF_MOD="$self_mod" GROUNDING="$grounding_state" PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+VERDICT="$verdict" NOTE="$note" DECLINES="$declines" LANES="$lanes" SELF_MOD="$self_mod" GROUNDING="$grounding_state" PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
 import importlib.util, json, os, pathlib, subprocess
 from datetime import datetime, timezone
 
@@ -162,6 +206,7 @@ pathlib.Path(".claude/state/audit-receipt.json").write_text(
             "branch": branch,
             "verdict": os.environ["VERDICT"],
             "note": os.environ["NOTE"],
+            "declines": os.environ["DECLINES"],
             "selector_changed_by_this_diff": bool(os.environ["SELF_MOD"]),
             "grounding": os.environ["GROUNDING"],
             "required_lanes": [

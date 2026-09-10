@@ -94,7 +94,7 @@ ground_ok() { fake_home "$REAL_PASS"; }
 dir=$(make_repo); home=$(ground_ok)
 out=$(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
 check "a real run records a marker" "Grounding marker recorded" "$out"
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "which lets the receipt be recorded" "receipt recorded" "$out"
 grep -q '"grounding": "ok"' "$dir/.claude/state/audit-receipt.json" \
   && ok "the receipt records a real pass as ok" || bad "the receipt records a real pass as ok"
@@ -130,14 +130,14 @@ json.dump({"head": head, "tree": tree, "base": base},
           open(".claude/state/grounding.json", "w"))
 PYEOF
 )
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "FALSE-GREEN #2: a marker with no 'skipped' key is refused" "(missing)" "$out"
 
 # A marker that is complete but whose log is gone: the digest cannot match.
 dir=$(make_repo); home=$(ground_ok)
 (cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
 rm -f "$dir/.claude/state/grounding.log"
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "a marker whose log is gone is refused" "(stale)" "$out"
 
 # ------------------------------------------------- a tool the diff NEEDS missing
@@ -246,13 +246,13 @@ m["base"] = "0" * 40          # a base no merge-base would ever return
 json.dump(m, open(".claude/state/grounding.json", "w"))
 PYEOF
 )
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "a marker recording a base nobody computed is out-of-scope" "(out-of-scope)" "$out"
 
 # The correct base spelled as a REF must be accepted.
 dir=$(make_repo); home=$(ground_ok)
 (cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh main >/dev/null 2>&1)
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "the correct base spelled as a REF is accepted" "receipt recorded" "$out"
 
 # Writer and checker must PREFER the same ref when the two disagree.
@@ -267,7 +267,7 @@ dir=$(make_repo); home=$(ground_ok)
   git checkout -q feat/x
 )
 (cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "writer and checker prefer the same ref when origin/main and main differ" "receipt recorded" "$out"
 
 # ------------------------------------------------------------------ the hatch
@@ -280,7 +280,7 @@ dir=$(make_repo)
 out=$(cd "$dir" && HOME="$no_pass" REELMAP_SKIP_GROUNDING=1 bash .claude/skills/audit-agency/run-grounding.sh 2>&1)
 check "the skip is honoured and announced" "Grounding pass SKIPPED" "$out"
 check "and it names the sentence the PR body needs" "Grounding pass skipped:" "$out"
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "a skipped pass still records a receipt" "receipt recorded" "$out"
 grep -q '"grounding": "skipped"' "$dir/.claude/state/audit-receipt.json" \
   && ok "the skip is written into the receipt" || bad "the skip is written into the receipt"
@@ -307,18 +307,18 @@ check "and names the escape hatch rather than hiding it" "REELMAP_SKIP_GROUNDING
 dir=$(make_repo); home=$(ground_ok)
 (cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
 echo "<?php // later edit" > "$dir/apps/api/app/Thing.php"
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "a marker from BEFORE an edit is stale, and refused" "(stale)" "$out"
 
 dir2=$(make_repo)
 mkdir -p "$dir2/.claude/state"
 cp "$dir/.claude/state/grounding.json" "$dir2/.claude/state/grounding.json"
-out=$(cd "$dir2" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir2" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "a marker from another checkout is refused" "no grounding pass" "$out"
 
 # ------------------------------------------------------------- exit codes
 dir=$(make_repo)
-(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" >/dev/null 2>&1)
+(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none >/dev/null 2>&1)
 rc=$?
 [ "$rc" -eq 2 ] && ok "a refused receipt exits 2" || bad "a refused receipt exits 2" "got $rc"
 
@@ -333,8 +333,51 @@ dir=$(make_repo); home=$(ground_ok)   # the stub emits one ⚠️
 (cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed 2>&1)
 check "a receipt with no note is refused when the pass raised leads" "carries no note" "$out"
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "checked all 1" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "checked all 1" --declines none 2>&1)
 check "and accepted once the note says what they were" "receipt recorded" "$out"
+
+# --- the declines field ------------------------------------------------------
+#
+# CLAUDE.md §4 says every finding is disposed of before the receipt — fixed,
+# declined, or bounded — and that a 🔴/🟡 needs an owner waiver to be declined.
+# Until this refusal existed that rule lived only in prose, and prose is what
+# T-158 spent nineteen commits proving is not enough: the receipt hashes HEAD and
+# the tree and knows nothing about findings, so a declined blocker left no trace.
+#
+# What this CAN enforce is that the question was answered. Same value, and the
+# same honest limit, as approve.sh naming the axes: it does not prove a decline
+# was justified, it makes omitting one a decision rather than an oversight.
+dir=$(make_repo); home=$(ground_ok)
+(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+check "a receipt with no --declines is refused" "no --declines" "$out"
+
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
+check "and accepted when it says nothing was declined" "receipt recorded" "$out"
+d_json=$(cd "$dir" && python3 -c 'import json;print(json.load(open(".claude/state/audit-receipt.json"))["declines"])' 2>&1)
+check "the answer reaches the receipt" "none" "$d_json"
+
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines "T-172: two clocks, owner waived" 2>&1)
+check "a described decline is accepted" "receipt recorded" "$out"
+d_json=$(cd "$dir" && python3 -c 'import json;print(json.load(open(".claude/state/audit-receipt.json"))["declines"])' 2>&1)
+check "and is recorded verbatim, not as a boolean" "owner waived" "$d_json"
+
+# An empty string is the shape an agent reaches for when it wants the field gone.
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines "" 2>&1)
+check "an empty --declines is refused, not treated as none" "no --declines" "$out"
+
+# `clean` asserts nothing was found, so it has nothing to decline either.
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh clean "n" 2>&1)
+check "clean needs no --declines" "receipt recorded" "$out"
+
+# docs-only seats nobody, so there are no findings to dispose of. `make_repo`
+# always builds a code diff, so the docs case is made by replacing it.
+dir=$(make_repo); home=$(ground_ok)
+(cd "$dir" && git rm -q apps/api/app/Thing.php && printf '# d\n' > README.md \
+   && git add -A && git -c user.email=t@t -c user.name=t commit -qm docs) >/dev/null 2>&1
+(cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh docs-only 2>&1)
+check "docs-only needs no --declines" "receipt recorded" "$out"
 
 # Running the marker must not CHANGE the diff it is describing. Importing the
 # hook writes __pycache__ beside it — an untracked file under .claude/, which
@@ -429,7 +472,7 @@ m["digest"] = g.grounding_digest(".claude/state/grounding.log")   # kept consist
 json.dump(m, open(".claude/state/grounding.json", "w"))
 PYEOF
 )
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines none 2>&1)
 check "an emptied required_tools does not hide a skipped scanner" "(out-of-scope)" "$out"
 
 # A lead count that cannot be trusted must fail CLOSED, not become 0.
