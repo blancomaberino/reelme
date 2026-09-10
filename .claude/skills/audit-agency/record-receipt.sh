@@ -39,12 +39,13 @@ while [ $# -gt 0 ]; do
       # A value that is absent or looks like another flag is a typo, not an
       # answer — and taking it silently is how `--declines --force` became the
       # recorded disposition.
-      case "${2:-}" in '' | --*) echo "refused: --declines needs a value (none, or what was declined)" >&2; exit 2 ;; esac
+      case "${2:-}" in '' | -*) echo "refused: --declines needs a value (none, or what was declined), not '${2:-}'" >&2; exit 2 ;; esac
       declines_given=1
       declines=$2
       shift 2
       ;;
-    --*) echo "refused: unknown option '$1'" >&2; exit 2 ;;
+    --declines=*) echo "refused: write it as two words — --declines ${1#--declines=}" >&2; exit 2 ;;
+    --*) echo "refused: unknown option '$1' (the only option is --declines <none|what you declined>)" >&2; exit 2 ;;
     *)
       [ -z "$note" ] || { echo "refused: unexpected argument '$1'" >&2; exit 2; }
       note=$1
@@ -67,6 +68,34 @@ case "$verdict" in
     exit 2
     ;;
 esac
+
+# Every finding is disposed of before the receipt — fixed, declined, or bounded
+# (CLAUDE.md §4) — and a 🔴 or 🟡 needs an owner waiver to be declined or bounded.
+# Nothing can CHECK that: the receipt hashes HEAD and the tree and has never known
+# what a finding is. So this forces the question to be answered rather than
+# answering it: `--declines none` is a claim on the record, and omitting it is a
+# refusal rather than a silence. The precedent is `approve.sh --simplify`, which is
+# a bare attestation and says so. The evidence-backed version is a findings log
+# written as each seat returns, with `--declines` checked against the unresolved
+# entries (T-173); this is not that.
+#
+# Exempt ONLY `docs-only`, the one verdict this script can prove — it is
+# cross-checked against select-lanes.sh below, and a diff that seats nobody has no
+# findings to dispose of. `clean` is deliberately NOT exempt: nothing ties the
+# verdict to any finding, so exempting it would make typing `clean` a one-word way
+# past this refusal.
+#
+# Before the selector and the grounding check on purpose: this depends only on
+# $verdict, and behind them a missing flag cost a full gitleaks/semgrep run before
+# the refusal could say so.
+if [ "$verdict" != docs-only ] && [ -z "$declines_given" ]; then
+  echo "refused: this receipt carries no --declines." >&2
+  echo "Every finding is fixed, declined, or bounded before the receipt (CLAUDE.md §4)," >&2
+  echo "and a 🔴 or 🟡 needs an owner waiver to be declined. Say which:" >&2
+  echo "  record-receipt.sh $verdict \"<note>\" --declines none" >&2
+  echo "  record-receipt.sh $verdict \"<note>\" --declines \"T-###: <what, and the waiver>\"" >&2
+  exit 2
+fi
 
 # The lanes the diff SELECTS are recorded beside the verdict — so a receipt
 # says what was required, and a `docs-only` receipt on a code diff is refused
@@ -164,55 +193,6 @@ except Exception:
     echo "  record-receipt.sh $verdict \"<what the leads were, and what you did>\"" >&2
     exit 2
   fi
-fi
-
-# Every finding is disposed of before the receipt — fixed, declined, or bounded
-# (CLAUDE.md §4) — and a 🔴 or 🟡 needs an owner waiver to be declined or bounded.
-# Nothing could check that: the receipt hashes HEAD and the tree and has never
-# known what a finding is, so a declined blocker left no trace at all.
-#
-# This does not fix that, and saying it would be the same false comfort the rule
-# is about. What it does is force the QUESTION to be answered: `--declines none`
-# is a claim on the record, and omitting it is a refusal rather than a silence.
-#
-# The precedent is `approve.sh --simplify`, which is a bare attestation and says
-# so. An earlier version of this comment cited `--panel` instead — which is the
-# one flag in that file explicitly HARDENED out of being an attestation: it
-# cross-checks every name against `record-panel.sh`'s log for the exact HEAD sha,
-# because "a gate that takes the author's word is the 'check that cannot fail'
-# this skill exists to find". Citing it here had the argument backwards. The
-# evidence-backed version of THIS field is a findings log written as each seat
-# returns, with `--declines` checked against the unresolved entries; that is the
-# upgrade path, and this is not it.
-#
-# Absence is all this has to check: an empty or flag-shaped VALUE is already
-# refused by the parse loop above, where a typo belongs. An earlier version
-# tested `[ -z "$declines" ]` here too — unreachable once the parse refused it,
-# and review caught that the test pinning the empty case was therefore pinning
-# which of two adjacent refusals fires.
-#
-# Exempt ONLY the verdict this script can prove. `docs-only` is checked against
-# select-lanes.sh above, so it is the one verdict that is not a self-assertion —
-# and a diff that seats nobody has no findings to dispose of.
-#
-# `clean` is NOT exempt, and an earlier version of this made it so. The reasoning
-# was that `clean` already asserts no findings were raised, so the field would be
-# a question with one possible answer. Review took that apart: nothing here or in
-# `guard-pr-audit.py` ties the verdict to any finding, so `clean` is a free
-# self-assertion by the same agent deciding whether to decline — which made
-# "type `clean`" the cheapest way past this refusal. An escape that costs one
-# word is the inverted gradient CLAUDE.md §4 was rewritten to remove, reappearing
-# in the mechanism meant to enforce it.
-#
-# Requiring it on `clean` too cost fifteen call sites in the suites. That is a
-# migration cost, not an argument.
-if [ "$verdict" != docs-only ] && [ -z "$declines_given" ]; then
-  echo "refused: this receipt carries no --declines." >&2
-  echo "Every finding is fixed, declined, or bounded before the receipt (CLAUDE.md §4)," >&2
-  echo "and a 🔴 or 🟡 needs an owner waiver to be declined. Say which:" >&2
-  echo "  record-receipt.sh $verdict \"<note>\" --declines none" >&2
-  echo "  record-receipt.sh $verdict \"<note>\" --declines \"T-###: <what, and the waiver>\"" >&2
-  exit 2
 fi
 
 mkdir -p .claude/state

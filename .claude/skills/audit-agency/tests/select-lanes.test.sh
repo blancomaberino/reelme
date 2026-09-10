@@ -111,6 +111,18 @@ d="$(scratch)"; touchf "$d/docs/a.md"; touchf "$d/apps/api/app/Models/Place.php"
 out="$(lanes "$d")"
 ! printf '%s' "$out" | grep -q '^LANES: none' && ok "one PHP file among docs brings the normal rules back" || bad "one PHP file among docs" "$out"
 
+# The RECEIPT: line is the command an agent COPIES, so its text is behaviour. It
+# was changed to carry --declines with nothing asserting it: reverting that line
+# to its old form left this whole suite green. The docs-only hint above is
+# already pinned the same way.
+#
+# Its OWN invocation, not the $out above: borrowing a neighbour's output makes
+# the subject of this assertion whatever case happens to precede it.
+d="$(scratch)"; touchf "$d/apps/api/app/Models/Place.php"
+out="$(lanes "$d")"
+if printf '%s' "$out" | grep -q -- '--declines <none|what you declined>'; then
+  ok "the printed receipt command carries --declines"; else bad "RECEIPT: line omits --declines" "$out"; fi
+
 d="$(scratch)"; touchf "$d/CLAUDE.md"
 e="$(receipt "$d" docs-only)"; rc=$?
 [ $rc -ne 0 ] && printf '%s' "$e" | grep -q '^refused:' && ok "docs-only receipt REFUSED on a guard diff (says refused)" || bad "docs-only receipt REFUSED on a guard diff" "rc=$rc $e"

@@ -117,6 +117,9 @@ have written anyway (T-158, `lessons.md`).
   what turns one round into nineteen. A fix applied AFTER a receipt invalidates it
   (receipts bind to HEAD), so a late "non-blocking" tidy-up costs a whole round
   (T-158).
+- **Write up a finding by NAME, never by quoting it** — tool, rule id and
+  `file:line`. The repo is public and a disposition is copied into the PR body, so
+  pasting a scanner's matched value publishes the very string it caught.
 - **Escape hatches are owner-approved only** and must be justified in the PR
   body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`,
   `REELMAP_SKIP_GROUNDING=1`.

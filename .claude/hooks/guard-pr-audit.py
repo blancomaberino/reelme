@@ -570,17 +570,62 @@ def main() -> None:
 
     # Every finding was disposed of — fixed, declined, or bounded (CLAUDE.md §4).
     # `record-receipt.sh` refuses to WRITE a receipt without `--declines`, so the
-    # only receipts missing the key are ones it did not write: a stale copy on a
-    # contributor branch, which §4 calls the normal case, or a hand-written one.
-    # `.claude/state/` is gitignored and outside the tree hash, so nothing else
-    # notices. Key presence is all that is checkable here — the VALUE is an
-    # attestation by construction, and pretending otherwise is the false comfort
-    # the rule is about.
+    # only receipts reaching here without it are ones that script did not write:
+    # a hand-written one, or one written by a DIFFERENT CHECKOUT's older copy.
+    # `settings.json` resolves this hook from $CLAUDE_PROJECT_DIR while
+    # record-receipt.sh deliberately uses `git rev-parse --show-toplevel`, so a
+    # worktree can pair a new hook with an old writer.
+    #
+    # An earlier version of this comment blamed "a stale copy on a contributor
+    # branch", which cannot happen: `.claude/state/` is gitignored, so a receipt
+    # never travels with a branch. That was not a harmless slip — the denial text
+    # inherited the wrong cause and said only "re-record it", which an old writer
+    # CANNOT do (it takes `--declines` for an unknown option), leaving the owner's
+    # REELMAP_SKIP_AUDIT=1 as the only exit. A gate whose advice cannot be
+    # followed is how somebody reaches for the hatch. So the message names the
+    # real fix.
     if "declines" not in receipt:
         deny(
-            "The audit receipt predates the declines check, or was not written by "
-            "record-receipt.sh. Re-record it, saying what was declined or bounded "
-            "(or `none`): .claude/skills/audit-agency/record-receipt.sh "
+            "The audit receipt has no `declines`, so it was not written by this "
+            "checkout's record-receipt.sh. Re-record it, saying what was declined "
+            "or bounded (or `none`): .claude/skills/audit-agency/record-receipt.sh "
+            '<clean|findings-fixed> "<note>" --declines <none|what>. If that script '
+            "rejects `--declines` as an unknown option it predates the flag, which "
+            "means this hook and that script came from different checkouts — rebase "
+            "onto `main`, or run both from the same working tree.",
+            action,
+        )
+
+    # Presence alone was not enough. The writer refuses an empty or flag-shaped
+    # value at parse time, so a reader that accepted `""`, null or false let the
+    # one population this check exists for walk past it by adding two characters —
+    # the same "escape that costs one word" that record-receipt.sh cites as its
+    # reason for NOT exempting `clean`.
+    #
+    # Verdict-aware rather than a bare falsiness test, because `docs-only` is
+    # exempt from the flag and writes the key empty on purpose.
+    #
+    # This is the hook's first read of `verdict`, which makes a previously inert
+    # attestation load-bearing, and the hook does NOT cross-check `docs-only`
+    # against the selector — only record-receipt.sh does. So a receipt claiming
+    # `docs-only` skips this check. That is a BOUND, not an equivalence: it holds
+    # because reaching here at all means hand-writing the whole receipt AND
+    # matching a valid grounding marker for this tree, which is strictly more work
+    # than typing `--declines none`. State it as what it rests on — a comment that
+    # claims equivalence is the kind of premise this file was corrected for once
+    # already. The hook holds `required_lanes` too, so the self-consistent version
+    # is reachable; it is T-173's, not this change's.
+    #
+    # The VALUE stays an attestation either way; all this does is hold writer and
+    # reader to one contract.
+    declines = receipt.get("declines")
+    if receipt.get("verdict") != "docs-only" and not (
+        isinstance(declines, str) and declines.strip()
+    ):
+        deny(
+            "The audit receipt's `declines` is empty, so it records no disposition. "
+            "Say what was declined or bounded, or `none`: "
+            ".claude/skills/audit-agency/record-receipt.sh "
             '<clean|findings-fixed> "<note>" --declines <none|what>',
             action,
         )

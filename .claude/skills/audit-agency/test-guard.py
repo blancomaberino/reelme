@@ -30,7 +30,22 @@ PUSH = "git" + " push"
 GHPR = "gh" + " pr "
 
 
+# A receipt key written as an explicit JSON null, distinct from "omit this key".
+NULL = object()
+
+
 def decision(cmd, env_extra=None, project_dir=ROOT, cwd=None):
+    """The ALLOW/DENY alone — most cases only care about that."""
+    return judge(cmd, env_extra, project_dir, cwd)[0]
+
+
+def judge(cmd, env_extra=None, project_dir=ROOT, cwd=None):
+    """(decision, the denial's own words).
+
+    A case that asserts only DENY stays green when an unrelated required key
+    starts denying first and the check it was written for rots — so anything
+    guarding one specific key pins the reason too.
+    """
     env = dict(os.environ, CLAUDE_PROJECT_DIR=project_dir)
     env.pop("REELMAP_SKIP_AUDIT", None)
     env.update(env_extra or {})
@@ -45,20 +60,21 @@ def decision(cmd, env_extra=None, project_dir=ROOT, cwd=None):
         env=env,
     )
     if p.returncode != 0:
-        return f"CRASH: {p.stderr.strip()[:200]}"
+        return (f"CRASH: {p.stderr.strip()[:200]}", "")
     # Read the DECISION, not the presence of output. The gate also prints a
     # `systemMessage` when it skips a repo that does not carry it — announced on
     # purpose, since a guard that allows silently is the one nobody debugs — and
     # treating any stdout as a denial scored those skips as denials.
     out = p.stdout.strip()
     if not out:
-        return "ALLOW"
+        return ("ALLOW", "")
     try:
         decided = json.loads(out)
     except (json.JSONDecodeError, ValueError):
-        return f"MALFORMED: {out[:120]}"
+        return (f"MALFORMED: {out[:120]}", "")
     hook_out = decided.get("hookSpecificOutput") or {}
-    return "DENY" if hook_out.get("permissionDecision") == "deny" else "ALLOW"
+    verdict = "DENY" if hook_out.get("permissionDecision") == "deny" else "ALLOW"
+    return (verdict, hook_out.get("permissionDecisionReason") or "")
 
 
 # (name, command, expected)
@@ -230,9 +246,13 @@ def main():
         def write_receipt(**extra):
             # `declines` is in the default because the current record-receipt.sh
             # always writes it; a case that wants it ABSENT passes declines=None.
+            # NULL is how a case asks for an explicit JSON `null` — a shape a
+            # hand-writer produces and `None` here cannot express, since None is
+            # the signal to drop the key entirely.
             body = {"head": head, "tree": tree, "verdict": "clean", "declines": "none"}
             body.update(extra)
-            body = {k: v for k, v in body.items() if v is not None}
+            body = {k: (None if v is NULL else v)
+                    for k, v in body.items() if v is not None}
             (state_dir / "audit-receipt.json").write_text(json.dumps(body))
 
         def write_marker(log_text="grounded\n", **extra):
@@ -253,15 +273,46 @@ def main():
         write_receipt()
         grounding_cases.append(("receipt without the key", decision(PUSH, project_dir=repo), "DENY"))
 
-        # A receipt with no `declines` key was written by something other than the
-        # current record-receipt.sh — a stale copy on a contributor branch, which
-        # CLAUDE.md §4 calls the normal case, or a hand-written one. Same reasoning
-        # as the grounding key above: the writer refusing to emit a bad receipt
-        # only ever catches receipts that writer wrote. `.claude/state/` is
-        # gitignored and outside the tree hash, so nothing else notices.
-        write_receipt(grounding="ok", declines=None)
-        write_marker()
-        grounding_cases.append(("receipt without the declines key", decision(PUSH, project_dir=repo), "DENY"))
+        # The declines key (CLAUDE.md §4). The writer refusing to emit a bad
+        # receipt only ever catches receipts that writer wrote, so the hook
+        # re-checks — and these pin the REASON, because every one of them denies
+        # for a reason the case beside it would also satisfy.
+        #
+        # Presence was the whole check once, and it was two characters from
+        # useless: `""`, null and false all passed, which is the same "escape that
+        # costs one word" record-receipt.sh cites for not exempting `clean`. The
+        # writer refuses an empty value at PARSE time, so accepting one here let
+        # writer and reader disagree about what an empty disposition means.
+        def declines_case(name, want, want_reason, **extra):
+            write_receipt(grounding="ok", **extra)
+            write_marker()
+            got, why = judge(PUSH, project_dir=repo)
+            good = got == want and want_reason in why
+            print(f"{'PASS' if good else 'FAIL'}  {'[T-156] ' + name:44s} "
+                  f"want={want:5s} got={got}")
+            if not good:
+                if got != want:
+                    failures.append(f"declines: {name} (want {want}, got {got})")
+                else:
+                    failures.append(f"declines: {name} denied for the wrong reason: {why[:120]!r}")
+
+        declines_case("no declines key at all", "DENY",
+                      "has no `declines`", declines=None)
+        # Each of these is a DIFFERENT refusal from the one above — the key is
+        # there, so only the emptiness check can catch them.
+        declines_case("an empty declines", "DENY",
+                      "`declines` is empty", declines="")
+        declines_case("whitespace is not a disposition", "DENY",
+                      "`declines` is empty", declines="   ")
+        declines_case("null declines", "DENY",
+                      "`declines` is empty", declines=NULL)
+        declines_case("a non-string declines", "DENY",
+                      "`declines` is empty", declines=False)
+        # ...and the exemption must survive the tightening: `docs-only` is exempt
+        # from the flag, so record-receipt.sh writes the key EMPTY on purpose. A
+        # bare falsiness test here would have denied every docs-only receipt.
+        declines_case("docs-only may leave it empty", "ALLOW", "",
+                      verdict="docs-only", declines="")
 
         # The honest states.
         write_receipt(grounding="ok")

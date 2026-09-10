@@ -108,10 +108,16 @@ was produced by code the diff changed — Code Reviewer is mandatory then) and
 
 `--declines` is required for every verdict except `docs-only`, which the script
 proves against the selector. Say `none`, or say what was declined or bounded and
-who waived it — CLAUDE.md §4 needs an owner waiver for a 🔴 or 🟡. **Put the same
-text in the PR body**: nothing reads this field yet, so the PR is where it gets a
-reader. A bounded finding goes here too; the flag is named for the common case,
-not the only one.
+who waived it — CLAUDE.md §4 needs an owner waiver for a 🔴 or 🟡. Start a bounded
+one with `bounded:` and point at the code that holds it off; the flag is named for
+the common case, not the only one. **Put the same text in the PR body**: nothing
+reads this field yet, so the PR is where it gets a reader.
+
+**Name a finding, never quote it.** Tool, rule id and `file:line` — never the
+matched value, header or credentialed URL, in `--declines` or in the note. The
+receipt is gitignored and never secret-scanned, and both then go into a PUBLIC PR
+body, where a pasted gitleaks hit publishes the exact string the grounding pass
+exists to catch, and the GitHub API keeps it after any edit.
 
 ## Notes
 

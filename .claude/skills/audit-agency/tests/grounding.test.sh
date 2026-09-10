@@ -331,7 +331,7 @@ rc=$?
 # count was recorded and read by nothing until this refusal existed.
 dir=$(make_repo); home=$(ground_ok)   # the stub emits one ⚠️
 (cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
-out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed 2>&1)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed --declines none 2>&1)
 check "a receipt with no note is refused when the pass raised leads" "carries no note" "$out"
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "checked all 1" --declines none 2>&1)
 check "and accepted once the note says what they were" "receipt recorded" "$out"
@@ -392,6 +392,18 @@ out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-f
 check "a second positional is refused" "unexpected argument" "$out"
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --oops --declines none 2>&1)
 check "an unknown option is refused" "unknown option" "$out"
+
+# The flag-shape guard matched only `--*`, so a single-dash value walked straight
+# in and was recorded AS the disposition — the exact thing its own comment says it
+# prevents.
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines -n 2>&1)
+check "a single-dash value is refused too, not recorded as the answer" "needs a value" "$out"
+
+# `--declines=none` is the likeliest typo, and "unknown option" told a BLOCKED
+# agent the flag does not exist — sending it hunting for another name. The reason
+# has to name the form that works.
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" --declines=none 2>&1)
+check "--declines=none names the two-word form" "two words" "$out"
 # A note that merely CONTAINS the flag name is a note, not a flag.
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "about --declines" --declines none 2>&1)
 check "a note mentioning the flag is still a note" "receipt recorded" "$out"
@@ -411,6 +423,25 @@ dir=$(make_repo); home=$(ground_ok)
 (cd "$dir" && HOME="$home" bash .claude/skills/audit-agency/run-grounding.sh >/dev/null 2>&1)
 out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh docs-only 2>&1)
 check "docs-only needs no --declines" "receipt recorded" "$out"
+
+# Cheap refusals before expensive ones. The requirement depends only on $verdict,
+# and behind the selector and check-grounding.py a missing flag cost a full
+# gitleaks/semgrep run before anything said why. A repo with NO marker at all
+# must answer about the flag first.
+dir=$(make_repo)
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed "n" 2>&1)
+check "a missing --declines is refused before the grounding check" "no --declines" "$out"
+printf '%s' "$out" | grep -q "no grounding pass" \
+  && bad "the cheap refusal comes first" "also ran the grounding check: $out" \
+  || ok "the cheap refusal comes first"
+
+# `[ $# -gt 0 ] && shift` guards the zero-argument path. Written as a bare
+# `shift` — the obvious simplification — set -e kills the script with no output
+# and exit 1, and the usage text below it becomes unreachable.
+out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh 2>&1); rc=$?
+check "no arguments at all prints the usage" "usage: record-receipt.sh" "$out"
+check "and the usage names the flag" "--declines" "$out"
+[ "$rc" -eq 2 ] && ok "no arguments exits 2, not 1" || bad "no arguments exits 2, not 1" "got $rc"
 
 # Running the marker must not CHANGE the diff it is describing. Importing the
 # hook writes __pycache__ beside it — an untracked file under .claude/, which
@@ -519,7 +550,7 @@ import json
 m = json.load(open('.claude/state/grounding.json'))
 m['leads'] = $bad_leads
 json.dump(m, open('.claude/state/grounding.json','w'))")
-  out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed 2>&1)
+  out=$(cd "$dir" && bash .claude/skills/audit-agency/record-receipt.sh findings-fixed --declines none 2>&1)
   check "a lead count of $bad_leads is refused, not read as zero" "not a whole number" "$out"
 done
 
