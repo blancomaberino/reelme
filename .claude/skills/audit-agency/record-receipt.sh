@@ -185,9 +185,11 @@ fi
 # returns, with `--declines` checked against the unresolved entries; that is the
 # upgrade path, and this is not it.
 #
-# Empty is refused as well as absent: "" is the shape you reach for when you want
-# the field gone, and a receipt whose `declines` is blank reads as "asked and not
-# answered", which is the state this exists to remove.
+# Absence is all this has to check: an empty or flag-shaped VALUE is already
+# refused by the parse loop above, where a typo belongs. An earlier version
+# tested `[ -z "$declines" ]` here too — unreachable once the parse refused it,
+# and review caught that the test pinning the empty case was therefore pinning
+# which of two adjacent refusals fires.
 #
 # Exempt ONLY the verdict this script can prove. `docs-only` is checked against
 # select-lanes.sh above, so it is the one verdict that is not a self-assertion —
@@ -204,7 +206,7 @@ fi
 #
 # Requiring it on `clean` too cost fifteen call sites in the suites. That is a
 # migration cost, not an argument.
-if [ "$verdict" != docs-only ] && { [ -z "$declines_given" ] || [ -z "$declines" ]; }; then
+if [ "$verdict" != docs-only ] && [ -z "$declines_given" ]; then
   echo "refused: this receipt carries no --declines." >&2
   echo "Every finding is fixed, declined, or bounded before the receipt (CLAUDE.md §4)," >&2
   echo "and a 🔴 or 🟡 needs an owner waiver to be declined. Say which:" >&2
