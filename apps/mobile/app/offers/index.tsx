@@ -1,14 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
-import { useQuery } from '@tanstack/react-query';
 import { Stack, router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { PROVIDER_DEFAULT } from 'react-native-maps';
 
+import { useDeviceLocation } from '@/api/hooks/useDeviceLocation';
 import { BROWSE_RADIUS_M, useNearbyOffers } from '@/api/hooks/useNearbyOffers';
-import { queryKeys } from '@/api/keys';
 import type { Offer } from '@/api/offers';
 import { Button } from '@/components/button';
 import { LocationBlockedHint, MapControls, useMapCamera, useMapSelection } from '@/components/map/map-controls';
@@ -17,8 +16,13 @@ import { discountHeadline, OfferCard } from '@/components/offer/offer-card';
 import { ScreenHeader } from '@/components/screen-header';
 import { type MessageKey, useT } from '@/i18n';
 import { type Region, regionRadiusM } from '@/lib/geo';
-import { DEFAULT_REGION, locateUser } from '@/lib/initial-region';
-import { openLocationSettings, USER_REGION_DELTA } from '@/lib/location';
+import { DEFAULT_REGION } from '@/lib/initial-region';
+import {
+  openLocationSettings,
+  presentRefusal,
+  type RefusalPresentation,
+  USER_REGION_DELTA,
+} from '@/lib/location';
 import { useSettingsStore } from '@/stores/settings';
 import { useViewportStore } from '@/stores/viewport';
 import { type Palette, useColors } from '@/theme/colors';
@@ -28,6 +32,19 @@ type Mode = 'list' | 'map';
 
 /** The `t()` from {@link useT} — passed to the pure label helper below. */
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
+
+/**
+ * This screen's words for each refusal tone. A table, not a ternary chain, so
+ * `tsc` demands a line here when a tone is added rather than letting the final
+ * `else` render "turn on location" at a case nobody considered. Tonight keeps
+ * its own copy of this map — the wording differs — but the DECISION is shared:
+ * {@link presentRefusal}.
+ */
+const REFUSAL_COPY = {
+  noFix: 'offers.browse.noFix',
+  imprecise: 'offers.browse.imprecise',
+  needsPermission: 'offers.browse.needLocation',
+} as const satisfies Record<RefusalPresentation['tone'], MessageKey>;
 
 /**
  * Nearby offers (T-047, 05 screen #17).
@@ -60,15 +77,7 @@ export default function OffersBrowseScreen() {
    * button is `refetch()` rather than a second copy of the same logic. It also
    * means a fix is not re-requested every time this screen is revisited.
    */
-  const fix = useQuery({
-    queryKey: queryKeys.deviceLocation(),
-    queryFn: locateUser,
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
-
-  const at = fix.data?.ok ? fix.data.region : null;
-  const blocked = fix.data && !fix.data.ok ? fix.data.reason : null;
+  const { fix, at, blocked } = useDeviceLocation();
 
   /*
    * Where the MAP opens, which is a different question from where the LIST
@@ -222,17 +231,22 @@ export default function OffersBrowseScreen() {
     if (mode === 'map') return mapBody();
 
     if (blocked !== null) {
+      // Once, not three times: the previous version called `presentRefusal` in
+      // the copy, in the button title and again in the handler, so the message
+      // and the action it offers were free to disagree.
+      const refusal = presentRefusal(blocked);
+
       return (
         <View style={styles.centered} testID="offers-location-blocked">
           <Ionicons name="location-outline" size={40} color={c.muted} />
           <Text style={styles.emptyText}>
-            {t(blocked === 'unavailable' ? 'offers.browse.noFix' : 'offers.browse.needLocation')}
+            {t(REFUSAL_COPY[refusal.tone])}
           </Text>
           <Button
-            title={t(blocked === 'blocked' ? 'offers.browse.openSettings' : 'common.tryAgain')}
+            title={t(refusal.openSettings ? 'offers.browse.openSettings' : 'common.tryAgain')}
             variant="secondary"
             onPress={() => {
-              if (blocked === 'blocked') void openLocationSettings();
+              if (refusal.openSettings) void openLocationSettings();
               else void fix.refetch();
             }}
             testID="offers-location-cta"

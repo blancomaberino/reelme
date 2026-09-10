@@ -51,6 +51,14 @@ describe('isPersistableKey', () => {
     ['share status', queryKeys.share('42')],
     ['the public map', queryKeys.mapPlaces('bbox', 12, publicScope)],
     ['the idle map placeholder', ['places', 'map', 'idle']],
+    // T-158. The one that got through: it sits under the `places` head, is not
+    // a slug, and carries the viewer's ~11 m coordinate as a key segment — so
+    // persisting it wrote a position to plaintext AsyncStorage for 24h AND let
+    // a cold start rehydrate a day-old "open now" list.
+    ['Tonight', queryKeys.tonight('-34.9011,-56.1645', 2000, 'pasta', true)],
+    // The same shape with the filters at their defaults, because the bug was in
+    // the key's LENGTH rather than in any particular segment's value.
+    ['Tonight with no dish filter', queryKeys.tonight('-34.9011,-56.1645', 1000, '', false)],
     // Sits under the allowlisted `me` head, so it needs its own carve-out —
     // see the dehydrate test below for what happens without one.
     ['the quota snapshot', queryKeys.quotas()],

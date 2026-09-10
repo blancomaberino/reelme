@@ -103,6 +103,12 @@ class PlaceController extends Controller
             $query->servingDish($dish);
         }
 
+        // "…and open right now" (T-158). Applied on all three place surfaces;
+        // the reasoning lives once, on PlaceQueryBuilder::openNow().
+        if ($request->validated('open_now')) {
+            $query->openNow(now());
+        }
+
         if (($influencerId = $request->validated('influencer_id')) !== null) {
             $query->whereExists(fn ($sub) => $sub->from('place_sources')
                 ->join('source_posts', 'source_posts.id', '=', 'place_sources.source_post_id')
@@ -319,6 +325,41 @@ class PlaceController extends Controller
                 [$dist, $point] = PlaceQueryBuilder::distanceFrom($near);
                 $query->orderByRaw("{$dist} ASC, id ASC", $point);
                 if ($cursor !== null) {
+                    // A float binding, deliberately, and the reasoning is worth
+                    // keeping because review raised the opposite and it took
+                    // measurement to settle. PHP renders a float binding as
+                    // `PDO::PARAM_STR` at `precision=14` while `json_encode`
+                    // wrote the cursor at `serialize_precision=-1` (up to 17), so
+                    // a distance needing 15+ significant digits WOULD come back
+                    // smaller than the row it came from, and that row would
+                    // repeat at the top of the next page.
+                    //
+                    // It cannot happen HERE, and the reason is a validation rule
+                    // rather than anything about floats. Significant digits scale
+                    // with magnitude — roughly 8 fractional digits plus the
+                    // integer ones — and `radius_m` is capped at 50_000 by
+                    // `PlaceIndexRequest`. Five integer digits means at most 13
+                    // significant, comfortably inside PHP's `precision=14`:
+                    // measured over 3000 geodesics inside 50 km, max 13, zero
+                    // round-trip mismatches, and a `%.17G` + `?::double
+                    // precision` version of this line could not be made to differ
+                    // on any of them. A guard nothing can make bite is not a
+                    // guard, so it was not kept.
+                    //
+                    // THE RADIUS CAP IS THE LOAD-BEARING INVARIANT, and an
+                    // earlier version of this note missed that — it credited
+                    // `ST_Distance` itself, which is wrong: at 6983 km the same
+                    // expression returns 15 significant digits through this same
+                    // driver, and the boundary row demonstrably repeats. So what
+                    // reopens this is raising the `radius_m` ceiling, or adding a
+                    // distance-sorted surface that does not go through
+                    // `withinRadiusOf()` — not some subtlety of the driver.
+                    //
+                    // Also reopens it: php.ini `precision` dropping below 14, or
+                    // the ordering expression changing (the `<->` follow-up in
+                    // the index migration is such a change). The fix, if any of
+                    // that happens, is `%.17G` into a `?::double precision`
+                    // binding, and it is in this branch's history.
                     $query->whereRaw("({$dist}, id) > (?, ?)", [...$point, (float) $cursor[0], KeysetCursor::intKey($cursor[1])]);
                 }
                 break;

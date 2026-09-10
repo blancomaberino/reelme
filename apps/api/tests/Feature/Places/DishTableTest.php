@@ -732,29 +732,6 @@ it('filters the map by dish too, rather than silently ignoring the parameter', f
 });
 
 /**
- * Source text with comments and docblocks removed — the prose in this repo
- * quotes the forbidden calls when explaining them, and a guard that matched
- * those would flag its own documentation.
- */
-function stripPhpComments(string $code): string
-{
-    // `token_get_all` treats anything before an opening tag as inline HTML, so a
-    // bare code fragment (what the control fixtures pass) would come back
-    // untouched — comments included — and the negative controls would flag.
-    $prefixed = str_contains($code, '<?php') ? $code : "<?php\n".$code;
-
-    $out = '';
-    foreach (@token_get_all($prefixed) as $token) {
-        if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
-            continue;
-        }
-        $out .= is_array($token) ? $token[1] : $token;
-    }
-
-    return $out;
-}
-
-/**
  * Does this (comment-stripped) source mutate `place_sources` outside Eloquent
  * model events?
  *

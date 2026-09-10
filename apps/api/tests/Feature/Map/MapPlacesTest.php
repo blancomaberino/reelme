@@ -9,6 +9,7 @@ use App\Models\PlaceSource;
 use App\Models\Share;
 use App\Models\Tag;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 
@@ -21,6 +22,94 @@ function activePlace(float $lat, float $lng, array $attrs = []): Place
 {
     return Place::factory()->active()->atPoint($lat, $lng)->create($attrs);
 }
+
+it('answers the whole map response from ONE instant', function () {
+    // Found by CodeRabbit after the local pass had seen the same shape and let
+    // it go. `respond()` built `baseQuery()` twice — once for the count, once
+    // for the rows — and each response path minted its own `now()` on top, so a
+    // request straddling a minute boundary could report a `total_in_bbox` that
+    // counted a place the rows omitted, or a pin whose `open_state` read
+    // "Abierto" while `?open_now=1` had just stopped selecting it.
+    //
+    // Two earlier versions of this test did not bite, and both failures are
+    // worth naming because they are the usual ones:
+    //
+    //  1. `travelTo` FREEZES Carbon. Under a frozen clock four `now()` calls are
+    //     indistinguishable from one, so the test guarded the `open_now` filter
+    //     rather than the instant (caught in review).
+    //  2. A clock that advanced once, at a chosen call number, depends on how
+    //     many `now()` calls the middleware happens to make first — so the
+    //     boundary landed before the handler and everything read "closed",
+    //     which is self-consistent and green.
+    //
+    // So the fixture alternates instead: one-minute open windows every other
+    // minute, and a clock that advances one minute per call. CONSECUTIVE reads
+    // therefore always disagree about this place — and in the broken version the
+    // count's `now()` and the rows' `now()` are consecutive, with nothing
+    // between them that touches the clock, so the starting offset does not
+    // matter. (Readers an even number of calls apart would agree; none are.)
+    //
+    // Fourteen windows, not more: `OpeningSchedule::salvage()` slices to
+    // MAX_PERIODS = 14, so a longer list would be silently truncated and the
+    // fixture would not be what the code below reads.
+    $periods = [];
+    for ($i = 0; $i < 14; $i++) {
+        $open = 19 * 60 + $i * 2;
+        $periods[] = [
+            'open_day' => 2,
+            'open_time' => sprintf('%02d:%02d', intdiv($open, 60), $open % 60),
+            'close_day' => 2,
+            'close_time' => sprintf('%02d:%02d', intdiv($open + 1, 60), ($open + 1) % 60),
+        ];
+    }
+
+    // Inside BBOX (London), like every other fixture here — the TIMEZONE is what
+    // puts the place on a Montevideo clock, not its coordinate.
+    Place::factory()->active()->atPoint(51.50, -0.12)->create([
+        'timezone' => 'America/Montevideo',
+        'opening_hours_periods_json' => $periods,
+    ]);
+
+    // Installed after the fixture: creating it reads the clock too, and those
+    // reads would otherwise eat the ticks this test is counting on.
+    // A real closure, not an arrow fn: `fn ()` captures by VALUE, so `$calls++`
+    // incremented a copy and the clock never moved — which the counter check at
+    // the end caught, doing its job on its first outing.
+    $calls = 0;
+    Carbon::setTestNow(function () use (&$calls) {
+        return Carbon::instance(
+            new DateTimeImmutable('2026-09-08 19:00:30', new DateTimeZone('America/Montevideo'))
+        )->addMinutes($calls++);
+    });
+
+    $res = $this->getJson('/api/v1/map/places?bbox='.BBOX.'&zoom=16&open_now=1')->assertOk();
+
+    $total = $res->json('meta.total_in_bbox');
+    $pins = $res->json('data.pins');
+
+    // The AGREEMENT is the property, not any particular verdict: whichever
+    // minute the one instant landed in, the count, the rows and the pin's own
+    // open/closed answer must describe the same world. With three — `baseQuery()`
+    // built twice plus the response path's own read — they describe two.
+    expect($pins)->toHaveCount($total);
+
+    if ($total === 1) {
+        expect($pins[0]['open_state']['open_now'])->toBeTrue();
+    }
+
+    // The clock really did move — otherwise this is the frozen version again,
+    // passing for the reason review already rejected.
+    expect($calls)->toBeGreaterThan(1)
+        // ...and it stayed inside the alternating window. The last one opens at
+        // 19:26, so past tick 26 every reader says "closed", all three agree,
+        // and this test would go quietly green against any implementation. That
+        // is the third way a version of this test has managed to stop biting, so
+        // the horizon is asserted rather than assumed: if something upstream
+        // starts reading the clock more, this fails loudly instead.
+        ->and($calls)->toBeLessThan(26);
+
+    Carbon::setTestNow();
+});
 
 it('returns raw pins (no clusters) at high zoom', function () {
     activePlace(51.5117, -0.1300, ['name' => 'Alpha', 'shares_count' => 3]);

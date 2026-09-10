@@ -55,6 +55,46 @@ Schedule::command('reelmap:offers:reconcile-quotas')
         'command' => 'reelmap:offers:reconcile-quotas',
     ]));
 
+// T-158: rebuild the open-hours projection nightly.
+//
+// `PlaceObserver` maintains `place_open_periods` on every write, and on failure
+// it logs `open_periods.materialize_failed` and lets the enrichment succeed —
+// derived data must not take down the write that produced it. That leaves drift
+// with no way back: the observer's own comment concedes "a retry only heals this
+// by accident, when the next write happens to touch the same columns", and the
+// deploy-time backfill only runs at a deploy.
+//
+// The drift is invisible from both ends, which is what makes a schedule the
+// right answer rather than a nicety. The place keeps showing a correct "Open"
+// cue on its detail screen — that is computed in PHP from the jsonb — while
+// being absent from every `?open_now=1` listing. Nobody looking at either
+// surface can tell, and Tonight is exactly the surface that would quietly stop
+// showing a venue that is open.
+//
+// Same nightly window as the two audits above and the same `onFailure` line, for
+// the same reason: `schedule:run` discards the exit code, so without it a
+// backfill that failed reaches nobody.
+Schedule::command('reelmap:open-periods:backfill --fail-on-drift')
+    // 04:45, after `gdpr:prune-exports`, not 04:00 beside the audits: this is
+    // the only O(corpus) job in the nightly cluster — one short transaction per
+    // place — so it is the one that would still be running when
+    // `sources:prune-payloads` starts at 04:10. The window stays serial.
+    ->dailyAt('04:45')
+    ->onOneServer()
+    // An explicit expiry, unlike its neighbours. The default is 1440 minutes,
+    // which for a daily job means a SIGKILL or an OOM leaves a lock that expires
+    // at the same minute the next run fires — and `releaseOnTerminationSignals`
+    // covers SIGTERM, not 137. This is the longest-running job on the schedule
+    // and therefore the likeliest to be killed.
+    ->withoutOverlapping(120)
+    // `--fail-on-drift` makes the exit code mean "the walk had to repair a place
+    // that carries hours" — see the command for the half it cannot see — and
+    // this line is what carries that anywhere: `schedule:run` throws exit codes
+    // away.
+    ->onFailure(fn () => Log::error('open_periods.backfill_failed', [
+        'command' => 'reelmap:open-periods:backfill',
+    ]));
+
 // T-050: the fail-safe behind account deletion. The delayed PurgeUserData job
 // is the fast path, not the guarantee — a flushed Redis or a failed job is an
 // erasure that silently never happens, and nothing else would ever notice.

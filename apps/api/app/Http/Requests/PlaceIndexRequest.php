@@ -45,6 +45,10 @@ class PlaceIndexRequest extends FormRequest
             // {@see PlaceQueryBuilder::servingDish()}, because this rule counts
             // raw characters and `?dish=p.` would clear it.
             'dish' => ['nullable', 'string', 'min:'.Dish::MIN_QUERY, 'max:'.Dish::MAX_NAME],
+            // "…and open right now" (T-158). A cheap boolean, but the answer is
+            // not: a place with no structured hours or no timezone is EXCLUDED,
+            // never assumed open — {@see PlaceQueryBuilder::openNow()}.
+            'open_now' => ['nullable', 'boolean'],
             ...$this->nearRules(),
             'radius_m' => ['nullable', 'integer', 'between:1,50000'],
             'influencer_id' => ['nullable', 'integer', 'min:1'],
@@ -67,6 +71,49 @@ class PlaceIndexRequest extends FormRequest
         $validator->after(function ($v) {
             if ($this->input('sort') === 'distance' && ! is_string($this->query('near'))) {
                 $v->errors()->add('sort', 'sort=distance requires the near parameter.');
+            }
+            // `open_now` has to ride a point, for the same reason `sort=distance`
+            // does — except here the reason is cost, not meaning. The filter is a
+            // correlated EXISTS over `place_open_periods`, and without
+            // `ST_DWithin` to cut the candidate set first there is nothing at all
+            // between an unauthenticated `?open_now=1` and the opening periods of
+            // every publicly visible place. The personal listings are scoped to
+            // one user; this was the only surface with no bound whatsoever.
+            //
+            // Be precise about how much this buys, because the honest answer is
+            // "less than it looks". `radius_m` tops out at 50km — around 7,850
+            // km², some fifteen times Montevideo — so for the corpus we actually
+            // have, a point inside the city still encloses nearly all of it, and
+            // at that selectivity the planner drops the GiST bound for a
+            // sequential scan.
+            //
+            // An earlier version of this comment credited the `(created_at, id)`
+            // index added in the same release with "genuinely capping the work".
+            // That is true only for `sort=recent`, and review pointed out that
+            // it is not the query this feature sends: Tonight always asks with
+            // `sort=distance` (see `useTonight`), which orders by
+            // `ST_Distance(...)` rather than the KNN `<->` operator, so NO index
+            // can serve that ordering and the whole `ST_DWithin`-filtered set is
+            // materialized and sorted on every page. On the distance path this
+            // rule and `radius_m` are the ONLY bounds there are — which is an
+            // argument for keeping this rule, not against it, and an argument
+            // against believing a comment that has not been re-read since the
+            // sort it describes stopped being the default one.
+            //
+            // The map is NOT covered by this and is not comparably bounded: its
+            // bbox is capped at 90° of span, which is a sanity check rather than
+            // a viewport, so a hostile caller can ask for the same set there.
+            // Left alone deliberately — narrowing the map's span is a product
+            // decision about how far a user may zoom out, not a validation fix.
+            //
+            // Guarded on the base rule so the two messages under this key cannot
+            // contradict each other: `?open_now=yes` fails `boolean` above, and
+            // `boolean()` here (filter_var) would read the same value as true and
+            // add a second, unrelated complaint about `near`.
+            if (! $v->errors()->has('open_now')
+                && $this->boolean('open_now')
+                && ! is_string($this->query('near'))) {
+                $v->errors()->add('open_now', 'open_now requires the near parameter.');
             }
         });
     }

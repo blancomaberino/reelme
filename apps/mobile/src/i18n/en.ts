@@ -23,6 +23,32 @@ export const en = {
   'errorBoundary.body': 'The app hit an unexpected error. You can try again — if it keeps happening, restarting usually fixes it.',
   'errorBoundary.restart': 'Try again',
 
+  // Tonight (T-158) — the surface that answers "where do I eat, here, now".
+  // The answer line states the query back rather than labelling the controls:
+  // it is the thing that visibly changes when a dial is tapped.
+  'tabs.tonight': 'Tonight',
+  'tonight.title': 'Tonight',
+  'tonight.answer.open': '{{count}} places open within {{km}} km',
+  'tonight.answer.open_one': '{{count}} place open within {{km}} km',
+  'tonight.answer.open_other': '{{count}} places open within {{km}} km',
+  'tonight.answer.any': '{{count}} places within {{km}} km',
+  'tonight.answer.any_one': '{{count}} place within {{km}} km',
+  'tonight.answer.any_other': '{{count}} places within {{km}} km',
+  'tonight.answer.openMore': '{{count}}+ places open within {{km}} km',
+  'tonight.answer.anyMore': '{{count}}+ places within {{km}} km',
+  'tonight.noFix': "We couldn't get your location. Try again in a moment.",
+  'tonight.imprecise':
+    'Reelmap needs your exact location to measure distances. Turn on Precise Location in Settings.',
+  'tonight.answer.locating': 'Finding where you are',
+  'tonight.answer.noLocation': 'Nothing to show yet',
+  'tonight.answer.looking': 'Looking around you',
+  'tonight.openNow': 'Open now',
+  'tonight.zone': '{{km}} km',
+  'tonight.dish.placeholder': 'What do you feel like?',
+  'tonight.dish.label': 'Dish',
+  // Direction, not mood: each says what to do next.
+  'tonight.needsLocation': 'Tonight needs your location to find places near you.',
+  'tonight.empty': 'Nothing matches yet. Try a wider zone, or turn off “Open now”.',
   'tabs.map': 'Map',
   'tabs.myPlaces': 'My places',
   'tabs.search': 'Search',
@@ -195,6 +221,8 @@ export const en = {
     'Turn on location access in Settings to center the map where you are.',
   'map.location.blocked.cta': 'Open Settings',
   'map.location.unavailable': 'Couldn’t get your location. Try again in a moment.',
+  'map.location.imprecise':
+    'Reelmap needs your exact location. Turn on Precise Location in Settings.',
 
   // Filters button + bottom-sheet (map and My places share these).
   'filters.title': 'Filters',
@@ -758,6 +786,8 @@ export const en = {
   'offers.browse.empty': 'No offers running within {{km}} km right now.',
   'offers.browse.needLocation': 'Turn on location to see what is on offer around you.',
   'offers.browse.noFix': "We couldn't get your location. Try again in a moment.",
+  'offers.browse.imprecise':
+    'Reelmap needs your exact location to measure distances. Turn on Precise Location in Settings.',
   'offers.browse.openSettings': 'Open settings',
   'offers.browse.notMapped': '{{count}} offers have no map location.',
   'offers.browse.notMapped_one': '{{count}} offer has no map location.',
