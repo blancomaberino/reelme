@@ -223,10 +223,14 @@ reporting "0 changed files".
 T-158 is 22 commits: **two of feature, one merge, and nineteen answering a
 review** — two `/simplify` passes, two answering GitHub CodeRabbit, and fifteen
 answering an audit or panel seating, seven of which were a full five-seat round.
-Every round found something real. But **at least eleven of them carried a defect
-introduced by the previous round's fix**, which is the whole story. The feature
+Every round found something real. But **at least eleven of those nineteen commits
+were repairing the previous commit's fix** — two independent counts of the commit
+bodies put it at eleven and at sixteen — which is the whole story. The feature
 had a design brief; the ~84 review findings did not, and each was read as a work
-order and edited straight in.
+order and edited straight in. (That figure counts finding-level items in the
+seventeen commits answering an audit, panel or bot round; including the two
+`/simplify` passes takes it past a hundred. Stating the rule because this is the
+one number not reproducible from the log alone.)
 
 Those counts are derived from the branch — `git log main..feat/t-158-tonight-open-now`
 and the commit bodies — and not estimated, because estimating is how the first two
@@ -299,4 +303,4 @@ than ignored: the panel found a privacy bug (a discovery query keyed by the
 viewer's coordinate persisted to plaintext storage), a CHECK constraint enforcing
 half its invariant, and a nightly repair that hid the drift it repaired. The
 lesson is not "review less" — it is that a fix reviewed as carelessly as it was
-written turns one round into fourteen.
+written turns one round into nineteen commits of rework.

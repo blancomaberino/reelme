@@ -18,7 +18,8 @@ disagree, this file wins.
 2. **Think before code.** Every task starts with the design brief (§3) — the
    reviewers' questions answered *before* the code exists, when they are free.
 3. **One review round, not eight.** `/simplify` → gates → ONE concurrent review
-   → batch every finding → one fix commit → narrow re-review → both receipts (§4).
+   → brief each finding (§3) → batch them → one fix commit → narrow re-review →
+   both receipts (§4).
 4. **Audit scope follows the diff.** `select-lanes.sh` decides the seats. Docs-only
    (`.md` files in `docs/`, `apps/*/docs/`, a `README.md`, or the top level) runs nobody; the guard — `.claude/**`,
    any `CLAUDE.md`/`AGENTS.md`, `.github/`, `scripts/` — always gets Security + Architecture.
@@ -80,10 +81,9 @@ first fix enumerated cases; replace it with the rule that covers them.
 **A review finding gets the same brief as a feature.** Two lines, before the
 edit: the *writers and readers* list above — the fix is wrong until that list is
 complete — and *the test that is red now and green after*. A finding edited
-straight in is what turned one round into nineteen on T-158, at least eleven of
-which carried a defect introduced by the previous round's fix (§4, `lessons.md`).
-If the fix itself touches auth, money, a migration or a public contract, it is a
-task: full brief and the plan review above.
+straight in is what cost T-158 nineteen commits of rework, at least eleven of
+them repairing the previous fix (`lessons.md`). If the fix itself trips any
+**plan review** trigger above, it is a task: full brief and that review.
 
 ## 4. Review, audit and the gates
 
@@ -107,12 +107,14 @@ task: full brief and the plan review above.
   current tree: run `.claude/skills/audit-agency/run-grounding.sh` (T-156).
 - **Rounds:** at most two. A third round of findings in one file means the design
   is wrong — stop, redesign, then review once.
-- **A finding you will not act on is DECLINED IN WRITING before the receipt**, in
-  the PR body or the code it concerns — never applied after one, since receipts
-  bind to HEAD and a late "non-blocking" tidy-up costs a whole round (T-158). A
-  finding you cannot reproduce is BOUNDED instead: record in code what holds it
-  off and which unrelated limit that rests on. "Could not reproduce" is not a
-  decline; escalate it.
+- **A finding you will not act on is DECLINED IN WRITING before the receipt** —
+  and a 🔴 or 🟡 needs an explicit OWNER waiver, exactly like an escape hatch
+  below; a self-written decline covers 🟢 and 💭 only. Never applied after a
+  receipt: those bind to HEAD, so a late "non-blocking" tidy-up costs a whole
+  round (T-158). A finding you cannot reproduce is BOUNDED instead — record in
+  code what holds it off and which unrelated limit that rests on — and one you
+  can neither reproduce nor bound goes to the owner. "Could not reproduce" is not
+  a decline.
 - **Escape hatches are owner-approved only** and must be justified in the PR
   body: `REELMAP_SKIP_AUDIT=1`, `ALLOW_UNREVIEWED_MERGE=1`, `--panel-skipped`,
   `REELMAP_SKIP_GROUNDING=1`.
@@ -123,7 +125,9 @@ task: full brief and the plan review above.
   `record-receipt.sh`, `select-lanes.sh`, the hook lines in `.claude/settings.json`,
   `run-gates.sh`, and the gates' own tests. Findings about them go to the owner,
   not into them. What a review loop MAY edit is judgement the gate never reads:
-  `review-checklist.md` and `ground.sh` heuristics.
+  `review-checklist.md`, `ground.sh` heuristics, and the ADVICE TEXT a check
+  prints on failure — provided no test asserts it and the exit paths are
+  untouched, both of which you show rather than claim.
 - **A branch you did not write runs its own `.claude/**`** — the gates, the
   selector and the hooks' tests exec files from the diff. Read `.claude/**` in
   the diff before running any of them on a contributor's branch.
@@ -148,10 +152,9 @@ task: full brief and the plan review above.
   guard over already-correct code, mutate the PRODUCTION code — then restore with
   an absolute path. T-158 shipped three tests that passed against the code they
   were written to reject, two in commits claiming every guard was mutated.
-- **A test's fixture has a horizon; assert you are inside it.** Anything a test
-  leans on — a range of minutes, a cap on rows, a call count — stops holding
-  somewhere, and past that edge the test agrees with every implementation. Bound
-  it in an assertion, or the test stops guarding in silence (T-158).
+- **A test's fixture has a horizon; assert you are inside it.** Past the edge of
+  what it leans on — a range of minutes, a row cap, a call count — the test
+  agrees with every implementation and stops guarding in silence (T-158).
 - Tests run without network — fakes, fixtures, recorded responses.
 - API: Pest on Postgres, never sqlite. Mobile: Jest + Maestro flows.
 
