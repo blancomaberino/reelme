@@ -32,18 +32,27 @@ export const MAX_RADIUS_M = 50_000;
  * the map sends, so one `near` cannot mean two precisions.
  */
 export function useNearbyOffers(at: Pick<Region, 'latitude' | 'longitude'> | null, radiusM = BROWSE_RADIUS_M) {
-  const near = nearParam(at) ?? '';
+  // Null, not `?? ''`. "No position" is ONE state and it had grown two
+  // spellings: `nearParam` answers null, this hook re-coerced to `''`, and the
+  // params object then carried `near: ''` — the empty parameter the API only
+  // tolerates because `ConvertEmptyStringsToNull` deletes it on arrival. Harmless
+  // by luck rather than by design, and the sort of thing that stops being
+  // harmless the day a second reader takes `''` at face value.
+  const near = nearParam(at);
   const radius = Math.min(Math.max(Math.round(radiusM), 1), MAX_RADIUS_M);
 
   return useQuery({
     queryKey: queryKeys.nearbyOffers(near, radius),
     queryFn: async (): Promise<Offer[]> => {
       const { data } = await api.get<{ data: Offer[] }>('/offers', {
-        params: { near, radius_m: radius, active: 1, limit: 50 },
+        // `near` is non-null here — the query is disabled otherwise — but it is
+        // spread conditionally rather than asserted, so the parameter is ABSENT
+        // rather than empty in any path that reaches this anyway.
+        params: { ...(near !== null ? { near } : {}), radius_m: radius, active: 1, limit: 50 },
       });
       return data.data;
     },
-    enabled: near !== '',
+    enabled: near !== null,
     staleTime: 60_000,
   });
 }

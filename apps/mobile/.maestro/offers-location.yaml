@@ -1,0 +1,75 @@
+# T-047 — Offers is reachable from the map, and the location gate lets a diner
+# with a fix through to the list while exempting the map.
+#
+# WHY THIS FLOW EXISTS. `app/offers/__tests__/browse.test.tsx` renders the screen
+# directly and mocks the fix, so it proves the branches render — not that anyone
+# can reach the screen, and not that the map really is exempt from the gate the
+# list obeys. Both are seam questions (CLAUDE.md "Wiring & seams" §1, §3).
+#
+# The denied branch needs a permission the app cannot revoke from inside itself;
+# it lives in `offers-location-blocked.yaml`, which says how to produce it.
+#
+# PRECONDITIONS
+#   - Dev client installed, API reachable (./scripts/dev.sh run).
+#   - A location fix. The permission is granted by the launch below, so this
+#     flow does not depend on what a previous run left behind; the simulator
+#     still needs a position:
+#       xcrun simctl location booted set -34.9011,-56.1645
+#   - Locale es (the default).
+#
+#   No seeded offers are required: an empty corpus renders `offers-empty`, which
+#   is as much a pass as a list — both are the non-blocked branch.
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/offers-location.yaml
+
+appId: pet.one.reelmap
+---
+- launchApp:
+    permissions:
+      location: inuse
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+
+# The diner's actual way in. Not a deep link: the map's own control.
+- tapOn:
+    id: "map-offers"
+
+# The header text is the same string as the map button's label, so the toggle —
+# which exists only on this screen — is what proves we arrived.
+- extendedWaitUntil:
+    visible:
+      id: "offers-toggle-list"
+    timeout: 30000
+- assertNotVisible:
+    id: "offers-location-blocked"
+- takeScreenshot: build/maestro/offers-list
+
+# The map mode is documented as exempt from the location gate. Assert the map
+# body, not just that the tab highlights.
+- tapOn:
+    id: "offers-toggle-map"
+- extendedWaitUntil:
+    visible:
+      id: "offers-map"
+    timeout: 30000
+- assertNotVisible:
+    id: "offers-location-blocked"
+
+# Back to the list. Both toggle buttons render in either mode, so the toggle's
+# own id proves nothing about which mode won — the map's absence does.
+- tapOn:
+    id: "offers-toggle-list"
+- assertNotVisible:
+    id: "offers-map"
+
+# Back to the map, then a URL-less relaunch, so the owner's next Cmd+R lands
+# where they expect. No permission argument: this flow never denied one, so
+# there is nothing here to restore — unlike `offers-location-blocked.yaml`,
+# where the same line is load-bearing.
+- back
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000

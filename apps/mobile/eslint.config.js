@@ -32,7 +32,7 @@ const TOKEN_RULE = {
       // `[value>=0]` rather than a regex: esquery only applies regex attribute
       // matching to STRING values, so a regex here silently matches nothing —
       // which is exactly how a lint rule ends up passing while enforcing zero.
-      selector: `Property[key.name=/^(${TOKENIZED_PROPS})$/] > Literal[value>=0]`,
+      selector: `Property[key.name=/^(${TOKENIZED_PROPS})$/] > Literal[value>0]`,
       message:
         'Use a token from @/theme/tokens (space / radius / type) instead of a raw number. ' +
         'If no step fits, the scale is wrong — change the scale, do not add a one-off.',

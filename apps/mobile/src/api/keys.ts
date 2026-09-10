@@ -60,8 +60,22 @@ export const queryKeys = {
   quotas: () => ['me', 'quotas'] as const,
   /** Accounts the viewer has blocked (T-054). */
   blocks: () => ['me', 'blocks'] as const,
-  place: (slug: string) => ['places', slug] as const,
-  placeSources: (slug: string) => ['places', slug, 'sources'] as const,
+  // `detail` is a NAMESPACE, not decoration, and it is what lets
+  // `isPersistableKey` be an allowlist instead of a deny-list. Place details are
+  // the only thing under `places` that may be written to disk; every other key
+  // here is a public discovery slice that must not be. While details were
+  // `['places', <slug>]`, "is this a detail?" could only be answered as "the
+  // second segment is a string that is not one of the names we remembered to
+  // exclude" — and T-158's Tonight key was the second discovery slice to be
+  // forgotten in that list. Under this namespace the question is `key[1] ===
+  // 'detail'`, which no new key can accidentally satisfy.
+  //
+  // Prefix relationships are unchanged: `place(slug)` still prefixes
+  // `placeSources(slug)`, so the four call sites that invalidate a place by it
+  // still take its sources with it, and `LOCALIZED_KEY_PREFIXES`' `['places']`
+  // still covers both.
+  place: (slug: string) => ['places', 'detail', slug] as const,
+  placeSources: (slug: string) => ['places', 'detail', slug, 'sources'] as const,
   // Quantized bbox + banded zoom keep tiny pans on one cache entry (T-032).
   //
   // The viewer's position (T-156) is deliberately NOT part of this key, and that
@@ -76,6 +90,12 @@ export const queryKeys = {
   // Freshness is handled where it belongs instead: `useMapPlaces` refetches when
   // the viewer point changes. Same result, and the cache entry stays addressable
   // by a device that does not know where it is yet.
+  //
+  // Keeping the position out of the KEY does not keep it off the disk, and this
+  // is the spot where a reader would conclude otherwise. The persisted payload
+  // carries each pin's `lat`/`lng` beside its `distance_m`, which locates the
+  // viewer by trilateration even though no key segment mentions them. See the
+  // "what this function can and cannot promise" note in `lib/query-persist.ts`.
   mapPlaces: (quantizedBbox: string, zoomBand: number, filters: MapFilters) =>
     ['places', 'map', quantizedBbox, zoomBand, filters] as const,
   feed: (scope: string) => ['feed', scope] as const,
@@ -99,6 +119,19 @@ export const queryKeys = {
   /** Distinct payment-discount cards for the map filter (T-079). */
   paymentCards: () => ['places', 'payment-cards'] as const,
   placesByTag: (slug: string) => ['places', 'tag', slug] as const,
+  /**
+   * Tonight (T-158). Every input is IN the key — that is what makes changing
+   * the zone, the dish or the open-now toggle re-ask rather than re-render the
+   * page already in hand.
+   *
+   * `near` is `string | null` for the same reason {@link nearParam} returns
+   * null: "no position" is one state, and it had grown two spellings. Typing it
+   * `string` here forced every caller to `?? ''` on the way in, which is how the
+   * empty-string sentinel kept coming back after the parameter itself stopped
+   * using one.
+   */
+  tonight: (near: string | null, radiusM: number, dish: string, openNow: boolean) =>
+    ['places', 'tonight', near, radiusM, dish, openNow] as const,
   share: (id: string) => ['shares', id] as const,
   /** The viewer's recent-shares list (ingest history), keyed by page size. */
   sharesList: (limit: number) => ['shares', 'list', limit] as const,
@@ -144,8 +177,10 @@ export const queryKeys = {
    * is a race over which of them a screen happens to mount first.
    */
   viewerPosition: () => ['device', 'viewer-position'] as const,
-  /** Nearby active offers for the diner browse (T-047). */
-  nearbyOffers: (near: string, radiusM: number) => ['offers', 'nearby', near, radiusM] as const,
+  /** Nearby active offers for the diner browse (T-047). `near` is nullable for
+   *  the reason given on {@link tonight} above. */
+  nearbyOffers: (near: string | null, radiusM: number) =>
+    ['offers', 'nearby', near, radiusM] as const,
   /** Balance, Connect state and recent entries (T-046). Never cached — money. */
   wallet: () => ['wallet'] as const,
   walletLedger: () => ['wallet', 'ledger'] as const,

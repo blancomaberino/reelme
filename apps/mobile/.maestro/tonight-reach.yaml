@@ -1,0 +1,110 @@
+# T-158 — "Esta noche" is reachable by pressing its tab, and its dials re-ask.
+#
+# WHY THIS FLOW EXISTS. `__tests__/navigation.test.tsx` records that the tab is
+# registered; it cannot press it. Expo Router's Tabs are mocked there, so the
+# test proves the screen is DECLARED, not that a diner can get to it — exactly
+# the reachability gap CLAUDE.md's "Wiring & seams" §1 describes. This is the
+# press.
+#
+# It also covers §3: the answer line is re-derived from the query, so changing a
+# dial must change it. A screen pinned to its first query looks perfect in a
+# screenshot, and that is how the map shipped without re-querying on pan.
+#
+# PRECONDITIONS
+#   - Dev client installed and the API reachable (./scripts/dev.sh run).
+#   - A location fix. The permission is granted by the launch below, so a
+#     previous run's denial cannot leak in; the simulator still needs a
+#     position, Montevideo by convention:
+#       xcrun simctl location booted set -34.9011,-56.1645
+#     Without a fix the answer line stays "Buscando dónde estás" and the waits
+#     below time out — that is a missing precondition, not a regression.
+#   - Locale es (the default). The tab is matched by its accessibility label.
+#
+#   No seeded places are required: the flow asserts the SHAPE of the answer
+#   line, which is rendered for zero results too ("0 lugares a menos de 5 km").
+#
+# NOT COVERED HERE, said out loud rather than implied away: the screen's own
+# location-refusal (`tonight-location`) and error (`tonight-error`) states, and
+# the "Más de N" answer that pagination produces. The refusal logic itself is
+# `presentRefusal`, walked on a device by `offers-location-blocked.yaml`; the
+# rest is asserted at the Jest level in `app/__tests__/tonight.test.tsx` (the
+# three location outcomes, the empty-vs-failed distinction, and the page-count
+# wording all have cases there).
+#
+# Run: ~/.maestro/bin/maestro test apps/mobile/.maestro/tonight-reach.yaml
+
+appId: pet.one.reelmap
+---
+- launchApp:
+    permissions:
+      location: inuse
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000
+
+# Nothing of the screen is on the map — so what follows is the tab press, not a
+# leftover deep link replayed at launch.
+- assertNotVisible:
+    id: "tonight-answer"
+
+- tapOn: ".*Esta noche, tab.*"
+
+# The answer line only exists on this screen (the title "Esta noche" is also the
+# tab's own label, so asserting the text would pass from the map).
+- extendedWaitUntil:
+    visible:
+      id: "tonight-answer"
+    timeout: 30000
+# Scoped to the answer element on purpose: "2 km" on its own is also the zone
+# pill's label, which renders whether or not the query ever came back — so an
+# unscoped assertion would pass with the line still reading "Mirando cerca tuyo".
+- assertVisible:
+    id: "tonight-answer"
+    text: ".*a menos de 2 km"
+- takeScreenshot: build/maestro/tonight-reach
+
+# The zone dial re-asks. "a menos de 5 km" appears only in the answer line — the
+# pill itself reads "5 km" — so this cannot pass on the pill's own label.
+- tapOn: "5 km"
+- extendedWaitUntil:
+    visible: ".*a menos de 5 km"
+    timeout: 30000
+
+# Turning "Abierto ahora" off switches the sentence from "N lugares ABIERTOS a
+# menos de 5 km" to "N lugares a menos de 5 km". The regex is a full match, so
+# the open-state wording cannot satisfy it.
+- tapOn: "Abierto ahora"
+# `lugar(es)?`, not `lugares?`: the singular string is "1 lugar a menos de 5 km"
+# (tonight.answer.any_one), and `lugares?` cannot match a word without the "e".
+# A corpus with exactly one match would have failed here for no reason at all.
+- extendedWaitUntil:
+    visible: ".*lugar(es)? a menos de 5 km"
+    timeout: 30000
+- takeScreenshot: build/maestro/tonight-dials
+
+# The third dial. A dish nobody serves is the one query whose answer does not
+# depend on what is in the database: the list must come back empty, which is
+# also the only proof at this level that typing re-asks rather than filtering
+# the page it already had.
+- tapOn:
+    id: "tonight-dish"
+- inputText: "zzzqx"
+# Enter, not `hideKeyboard`: the field is a plain TextInput with a "search"
+# return key and no dismiss accessory, which is what Maestro's hideKeyboard
+# needs — it fails outright here.
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      id: "tonight-empty"
+    timeout: 30000
+- takeScreenshot: build/maestro/tonight-dish-empty
+
+# Leave the app where the owner expects it: a URL-less launch, so the next
+# Cmd+R lands on the map rather than on this screen. No permission argument —
+# this flow never changed one, and repeating it here would imply a restore that
+# is not happening.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Filtros"
+    timeout: 90000

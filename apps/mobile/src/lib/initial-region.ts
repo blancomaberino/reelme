@@ -1,7 +1,15 @@
 // Where the map opens (T-100). One ordered fallback chain, in one place, so the
 // "which viewport wins?" question has a single answer that tests can pin.
 import { distanceM, type Region } from './geo';
-import { getLocationPermission, getUserRegion, requestLocationPermission } from './location';
+import {
+  getLocationPermission,
+  getUserRegion,
+  lastKnownRegion,
+  type RefusalReason,
+  requestLocationPermission,
+  VIEWER_FIX_BOUNDS,
+  VIEWER_FIX_MAX_AGE_MS,
+} from './location';
 
 /**
  * Last resort only. Montevideo is where the seed/demo data lives, so it is the
@@ -112,9 +120,19 @@ export async function resolveInitialRegion(input: {
  * The user's position for an explicit "locate me" tap — here the prompt IS the
  * point, so an `undetermined` permission is always requested. Returns the
  * region, or the reason we can't provide one so the caller can explain itself.
+ *
+ * BOUNDED, unlike {@link resolveInitialRegion} above, and the split is the whole
+ * reason both exist. `getUserRegion` says it in its own docblock: "callers that
+ * measure distances must pass it". `resolveInitialRegion` only has to frame a
+ * viewport, where a cached fix from another city an hour ago is free and
+ * harmless. Every caller of THIS function measures: the map's locate-me button
+ * yanks the camera to the answer, and the offers browse and Tonight render it
+ * as "a menos de 2 km" and sort by it. An unbounded cached fix there is the
+ * fabricated precision T-156 removed from the pin sheet, re-entering through
+ * the one position path that had no bound on it.
  */
 export async function locateUser(): Promise<
-  { ok: true; region: Region } | { ok: false; reason: 'blocked' | 'denied' | 'unavailable' }
+  { ok: true; region: Region } | { ok: false; reason: RefusalReason }
 > {
   const current = await getLocationPermission();
   const outcome = current.state === 'granted' ? current : await requestLocationPermission();
@@ -124,8 +142,34 @@ export async function locateUser(): Promise<
     return { ok: false, reason: outcome.canAskAgain ? 'denied' : 'blocked' };
   }
 
-  const region = await getUserRegion();
-  return region ? { ok: true, region } : { ok: false, reason: 'unavailable' };
+  const region = await getUserRegion(undefined, VIEWER_FIX_BOUNDS);
+  if (region) return { ok: true, region };
+
+  // Nothing usable. Now separate "no fix at all" from "a fix we refused",
+  // because the screens give opposite advice and only one of them can work: a
+  // timeout is a retry, and iOS with Precise Location off is a Settings trip
+  // that a retry can never substitute for. Without this branch those users got
+  // a "try again" button that was guaranteed to fail, forever, at 5 s a tap.
+  //
+  // Which BOUND failed, not "is there a fix at all". `VIEWER_FIX_BOUNDS` carries
+  // two, and the first version of this probe was unbounded — so it could not
+  // tell a coarse fix from a stale one and called both `imprecise`. Review found
+  // the case: a good fix from ten minutes ago, refused on AGE, with the fresh
+  // read timing out indoors. The unbounded probe handed back that same precise
+  // reading and the screen told a user whose Precise Location is already on to
+  // go and turn it on, hiding the retry that would have worked.
+  //
+  // Keeping `maxAge` and dropping only `requiredAccuracy` asks the exact
+  // question: is there a CURRENT fix that we refused for its precision? Yes is
+  // `imprecise` — Settings, because no retry can improve it. No means there is
+  // no usable current fix at all, which is `unavailable` and a retry that can
+  // genuinely succeed once the user steps outside.
+  //
+  // Its result CLASSIFIES and is never returned: a fix refused as too coarse
+  // must not reach a caller that is about to render metres from it.
+  const currentFix = await lastKnownRegion({ maxAge: VIEWER_FIX_MAX_AGE_MS });
+
+  return { ok: false, reason: currentFix ? 'imprecise' : 'unavailable' };
 }
 
 /**

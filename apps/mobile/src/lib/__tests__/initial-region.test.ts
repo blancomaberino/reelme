@@ -30,6 +30,35 @@ const watchEmits = (coords: { latitude: number; longitude: number } | null) =>
   });
 
 
+type FixOptions = { maxAge?: number; requiredAccuracy?: number } | undefined;
+
+/**
+ * `getLastKnownPositionAsync` as the DEVICE implements it: one stored reading,
+ * withheld when it fails a bound the caller asked for.
+ *
+ * Written once because the two classification tests below are only meaningful
+ * against a mock that applies both bounds independently — one that checks only
+ * the bound the test is about will agree with any implementation, including the
+ * broken one.
+ */
+const staleOrCoarse = (
+  fix: { ageMs: number; accuracy: number },
+  options: FixOptions,
+) =>
+  (options?.maxAge !== undefined && fix.ageMs > options.maxAge) ||
+  (options?.requiredAccuracy !== undefined && fix.accuracy > options.requiredAccuracy)
+    ? null
+    : ({ coords: { latitude: FIX_LAT, longitude: FIX_LNG, accuracy: fix.accuracy } } as never);
+
+// Real timers restored HERE rather than at the end of each test that installs
+// them: an `expect` that fails skips every line after it, so a per-test restore
+// leaks fake timers into whatever runs next and the real failure gets a
+// confusing second one behind it. `afterEach` runs either way, and calling it
+// when no fake timers are installed is a no-op.
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 const SAVED = { latitude: 51.5, longitude: -0.12, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
 // Madrid — the fix jest.setup hands back by default.
@@ -234,7 +263,125 @@ describe('locateUser', () => {
     lastKnown.mockResolvedValue(null);
     watchEmits(null);
 
-    expect(await locateUser()).toEqual({ ok: false, reason: 'unavailable' });
+    // Fake timers, because a watch that never calls back makes `locateUser`
+    // sit out the full 5s `FIX_TIMEOUT_MS` in real time. Four tests in this file
+    // do it, which was 20s of suite for nothing (found by CodeRabbit).
+    jest.useFakeTimers();
+    const pending = locateUser();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('refuses a STALE cached fix and takes the fresh one instead', async () => {
+    // The other half of the bound, and it was unguarded until review said so:
+    // the test below covers `requiredAccuracy`, nothing covered `maxAge`, and
+    // deleting it from the call left the suite green.
+    //
+    // The mock plays Expo's part — the real `getLastKnownPositionAsync` applies
+    // `maxAge` itself — so what is asserted is still the observable: which
+    // position comes back, not which options object went in.
+    lastKnown.mockImplementation(async (options?: { maxAge?: number }) =>
+      // A reading from an hour ago. Returned only to a caller that asked for no
+      // bound; refused for anything under an hour, as the device would.
+      options?.maxAge !== undefined && options.maxAge < 3_600_000
+        ? null
+        : ({ coords: { latitude: 1, longitude: 2, accuracy: 5 } } as never),
+    );
+    watchEmits({ latitude: FIX_LAT, longitude: FIX_LNG });
+
+    // Not (1, 2): an hour-old position is where the phone WAS, and every caller
+    // of locateUser renders metres from what it returns.
+    expect(await locateUser()).toMatchObject({
+      ok: true,
+      region: { latitude: FIX_LAT, longitude: FIX_LNG },
+    });
+  });
+
+  it('reports a coarse-only fix as "imprecise", not as "no fix at all"', async () => {
+    // iOS with Precise Location OFF returns ~1-3 km forever, so the bound
+    // refuses every reading the device can produce. Calling that `unavailable`
+    // renders "try again in a moment" plus a retry button that is guaranteed to
+    // fail on every tap, at 5s of GPS each — which is what shipped until review
+    // caught it. `imprecise` is the reason that sends them to Settings instead.
+    //
+    // The mock honours BOTH bounds, as the device does. Keying it on
+    // `requiredAccuracy` alone — which is what this test did first — encodes the
+    // very assumption under test, that accuracy is the only reason the bounded
+    // read can fail, and makes the stale case below inexpressible.
+    lastKnown.mockImplementation(async (options?: FixOptions) =>
+      staleOrCoarse({ ageMs: 0, accuracy: 2_000 }, options),
+    );
+    watchEmits(null);
+
+    // Fake timers, because a watch that never calls back makes `locateUser`
+    // sit out the full 5s `FIX_TIMEOUT_MS` in real time. Four tests in this file
+    // do it, which was 20s of suite for nothing (found by CodeRabbit).
+    jest.useFakeTimers();
+    const pending = locateUser();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ ok: false, reason: 'imprecise' });
+  });
+
+  it('reports a STALE but precise fix as "unavailable", so the retry stays', async () => {
+    // The mirror of the case above, and the bug the first version of the
+    // classifier shipped: it probed UNBOUNDED, so a good fix from ten minutes
+    // ago — refused on age, with the fresh read timing out indoors — came back
+    // as `imprecise`. The screen then told a user whose Precise Location is
+    // already on to go and turn it on, and took away the retry that would have
+    // worked. Precision is not the failing bound here; recency is.
+    lastKnown.mockImplementation(async (options?: FixOptions) =>
+      staleOrCoarse({ ageMs: 10 * 60_000, accuracy: 5 }, options),
+    );
+    watchEmits(null);
+
+    // Fake timers here too — review caught that this one was missed when its
+    // three siblings were converted, so it alone still paid the full 5s.
+    jest.useFakeTimers();
+    const pending = locateUser();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('still reports "unavailable" when there is no fix to be had at any precision', async () => {
+    // The other side of that branch, because the two must not collapse: nothing
+    // cached, nothing from the watch. A retry here CAN succeed — step outside —
+    // so this one keeps its retry button.
+    lastKnown.mockResolvedValue(null);
+    watchEmits(null);
+
+    // Same 5s wait as its siblings above; same reason for the fake timers.
+    jest.useFakeTimers();
+    const pending = locateUser();
+    await jest.advanceTimersByTimeAsync(5_000);
+
+    expect(await pending).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('refuses a fix too coarse to measure a distance from, and waits for a better one', async () => {
+    // Unlike `resolveInitialRegion` above, every caller of `locateUser` MEASURES
+    // from the answer: the locate-me button moves the camera to it, and the
+    // offers browse and Tonight print "a menos de 2 km" and sort by it. So this
+    // path passes `VIEWER_FIX_MAX_ACCURACY_M`, and a ±2 km reading — iOS with
+    // Precise Location off — must not become a metre-precise claim.
+    //
+    // Asserted through the OBSERVABLE (which fix comes back), not by inspecting
+    // the options object: an equivalent bound applied some other way should keep
+    // this test green.
+    lastKnown.mockResolvedValue(null);
+    watchPos.mockImplementation(async (_o, cb) => {
+      const emit = cb as (l: unknown) => void;
+      emit({ coords: { latitude: 1, longitude: 2, accuracy: 2_000 } });
+      emit({ coords: { latitude: FIX_LAT, longitude: FIX_LNG, accuracy: 12 } });
+      return { remove: jest.fn() } as never;
+    });
+
+    expect(await locateUser()).toMatchObject({
+      ok: true,
+      region: { latitude: FIX_LAT, longitude: FIX_LNG },
+    });
   });
 });
 

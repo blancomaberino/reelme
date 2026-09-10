@@ -177,6 +177,50 @@ it('sorts by distance nearest-first and paginates stably', function () {
         ->and($page2->json('meta.pagination.next_cursor'))->toBeNull();
 });
 
+it('walks every distance page without repeating or skipping a row', function () {
+    // The sibling above walks three places two at a time. This one uses
+    // `limit=1` over irregular offsets, so EVERY row is a page boundary and
+    // every cursor round-trip is exercised — the cursor carries a float key, and
+    // a float that does not survive the trip either repeats the boundary row or
+    // skips past it.
+    //
+    // Asserted as the whole walk against the single-page order, because that is
+    // the property worth holding — "pagination does not change the answer" —
+    // rather than any one page's contents. Tonight pages this sort with an
+    // infinite list, where a repeated row is a duplicate React key.
+    //
+    // Honest about what this does NOT prove: review raised a specific precision
+    // bug here (`json_encode` writes 17 digits, a PHP float binds through PDO at
+    // 14), and it is unreachable on this stack — PostGIS geography distances
+    // read back through this driver need at most 14 significant digits, measured
+    // over 500 of them. So this is a property test, not a guard for that bug;
+    // see the note in `PlaceController::applySort()`.
+    $names = ['A', 'B', 'C', 'D', 'E'];
+    foreach ($names as $i => $name) {
+        Place::factory()->active()
+            ->atPoint(38.71700 + $i * 0.0037291, -9.13550 - $i * 0.0011733)
+            ->create(['name' => $name]);
+    }
+
+    $url = '/api/v1/places?near=38.7169,-9.1355&radius_m=50000&sort=distance';
+    $expected = collect($this->getJson($url.'&limit=50')->assertOk()->json('data'))
+        ->pluck('name')->all();
+
+    $walked = [];
+    $cursor = null;
+    // Bounded so a cursor that never advances fails here rather than hanging.
+    for ($page = 0; $page < 10; $page++) {
+        $res = $this->getJson($url.'&limit=1'.($cursor === null ? '' : '&cursor='.urlencode($cursor)))->assertOk();
+        $walked = [...$walked, ...collect($res->json('data'))->pluck('name')->all()];
+        $cursor = $res->json('meta.pagination.next_cursor');
+        if ($cursor === null) {
+            break;
+        }
+    }
+
+    expect($walked)->toBe($expected)->and($walked)->toHaveCount(count($names));
+});
+
 it('computes distance in SQL across a MULTI-PAGE result, not in PHP per row', function () {
     // The listing's counterpart to the map's one-query assertion (T-156). It is
     // paginated, which is where a per-row computation hides best: a page of two
